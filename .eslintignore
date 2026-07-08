@@ -1,0 +1,12 @@
+# Dependencies and generated artifacts
+node_modules/
+coverage/
+logs/
+
+# Legacy prototypes and one-off debug extraction scripts
+crawler/order_parser.js
+services/emailParser.js
+detailed_product_extract.js
+extract_order_details.js
+extract_with_quantity.js
+find_quantity.js

@@ -1,0 +1,45 @@
+{
+  "name": "apple-order-manager",
+  "version": "1.0.0",
+  "description": "Apple订单管理系统 - 自动化邮件监听和订单同步",
+  "main": "src/app.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/app.js",
+    "dev": "nodemon src/app.js",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch",
+    "lint": "eslint . --ext .js",
+    "lint:fix": "eslint . --ext .js --fix",
+    "format": "prettier --write \"**/*.{js,json,md}\"",
+    "format:check": "prettier --check \"**/*.{js,json,md}\"",
+    "db:init": "node scripts/initDatabase.js",
+    "db:migrate": "sequelize-cli db:migrate",
+    "db:migrate:undo": "sequelize-cli db:migrate:undo",
+    "db:seed": "sequelize-cli db:seed:all",
+    "db:reset": "sequelize-cli db:migrate:undo:all && sequelize-cli db:migrate"
+  },
+  "keywords": ["apple", "order", "email", "automation"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.18.1",
+    "cheerio": "^1.2.0",
+    "express": "^4.19.2",
+    "node-imap": "^0.9.6",
+    "mailparser": "^3.7.1",
+    "pg": "^8.12.0",
+    "sequelize": "^6.37.3",
+    "node-cron": "^3.0.3",
+    "winston": "^3.13.0",
+    "dotenv": "^16.4.5",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.4",
+    "eslint": "^8.57.0",
+    "prettier": "^3.2.5",
+    "jest": "^29.7.0",
+    "sequelize-cli": "^6.6.2"
+  }
+}

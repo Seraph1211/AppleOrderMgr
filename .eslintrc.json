@@ -1,0 +1,32 @@
+{
+  "env": {
+    "node": true,
+    "es2021": true,
+    "jest": true
+  },
+  "extends": ["eslint:recommended"],
+  "parserOptions": {
+    "ecmaVersion": 12
+  },
+  "rules": {
+    "indent": ["error", 2],
+    "quotes": ["error", "single"],
+    "semi": ["error", "always"],
+    "camelcase": ["error", { "properties": "always" }],
+    "no-console": "warn",
+    "no-unused-vars": ["error", { "argsIgnorePattern": "^_" }],
+    "no-magic-numbers": ["warn", { "ignore": [0, 1, -1] }],
+    "require-await": "error",
+    "no-async-promise-executor": "error",
+    "max-len": ["warn", { "code": 100, "ignoreUrls": true }]
+  },
+  "overrides": [
+    {
+      "files": ["migrations/**/*.js"],
+      "rules": {
+        "camelcase": "off",
+        "no-unused-vars": ["error", { "argsIgnorePattern": "^_|^Sequelize$" }]
+      }
+    }
+  ]
+}
