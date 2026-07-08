@@ -390,7 +390,7 @@ INSERT INTO recipients (
 |--------|------|------|--------|------|--------|
 | **基础信息** |
 | `id` | SERIAL | PRIMARY KEY | - | 主键ID，自增 | 1 |
-| `order_number` | VARCHAR(50) | UNIQUE NOT NULL | - | Apple订单号（W+9位数字） | `W177976887` |
+| `order_number` | VARCHAR(50) | UNIQUE NOT NULL | - | Apple订单号（W+10位数字） | `W1779769040` |
 | `status` | VARCHAR(50) | NOT NULL | `'pending'` | 订单状态 | `pending` |
 | **Apple ID 相关** |
 | `apple_id_ref` | INT | FOREIGN KEY, NULL | - | 关联 apple_ids.id（自动匹配） | 1 |

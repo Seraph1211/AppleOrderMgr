@@ -28,8 +28,8 @@ module.exports = (sequelize) => {
       comment: 'Apple订单号（W开头）',
       validate: {
         is: {
-          args: /^W\d{9}$/,
-          msg: '订单号必须是W开头后跟9位数字'
+          args: /^W\d{10}$/,
+          msg: '订单号必须是W开头后跟10位数字'
         }
       }
     },

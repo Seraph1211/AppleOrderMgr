@@ -1,8 +1,14 @@
 /**
  * 订单爬虫服务模块
  * 功能：爬取 Apple 官网订单详情，提取订单状态、商品信息、取机门店等数据
+ *
+ * 代理使用策略：
+ * - 所有爬虫功能必须使用代理（防止 IP 被 Apple 风控）
+ * - 失败计数累积，连续失败 2 次永久废弃代理
+ * - HTTP 541 风控立即废弃代理
+ *
  * 作者：Seraph
- * 更新：2026-07-07
+ * 更新：2026-07-08
  */
 
 const axios = require('axios');
@@ -12,6 +18,7 @@ const logger = require('../utils/logger');
 const proxyManager = require('../utils/proxyManager');
 const { removeControlCharacters } = require('../utils/helpers');
 const { Order, CrawlLog, sequelize } = require('../models');
+const { config } = require('../utils/config');
 
 /**
  * 延迟函数
@@ -190,9 +197,24 @@ function parseOrderData(orderJson, html) {
         const itemStatus = item.orderItemStatusTracker?.d;
 
         if (itemDetails) {
+          // 提取商品型号 - 尝试多种可能的字段名
+          let model = itemDetails.partNumber ||
+                     itemDetails.sku ||
+                     itemDetails.productId ||
+                     itemDetails.modelNumber || '';
+
+          // ⚠️ Apple 官网订单详情页不包含型号字段
+          // 型号只能从邮件中的商品字符串提取（格式：MG714CH/A-商品名）
+          // 这里将 model 留空，由邮件解析器填充
+          logger.debug('商品信息提取', {
+            name: itemDetails.productName,
+            quantity: itemDetails.quantity,
+            modelFromJson: model || '(JSON中无型号字段)',
+          });
+
           products.push({
             name: itemDetails.productName || '',
-            model: itemDetails.partNumber || '',
+            model: model, // 通常为空，由邮件解析填充
             quantity: itemDetails.quantity || 0,
             status: itemStatus?.currentStatus || 'unknown',
             deliveryType: item.d?.deliveryType || 'unknown',
@@ -253,24 +275,32 @@ function parseOrderData(orderJson, html) {
  * @throws {Error} 当所有重试都失败时抛出异常
  */
 async function fetchWithRetry(orderUrl, maxRetries = 3) {
+  // 检查代理是否启用
+  if (!config.proxy.enabled) {
+    throw new Error('爬虫服务必须启用代理池（请设置 PROXY_ENABLED=true）');
+  }
+
   let lastError;
-  let lastProxy = null;
+  let currentProxy = null;
 
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       // 获取代理
-      const proxy = proxyManager.getNextProxy();
-      lastProxy = proxy;
+      currentProxy = proxyManager.getNextProxy();
+
+      if (!currentProxy) {
+        throw new Error('无可用代理，请检查代理池状态');
+      }
 
       logger.info('开始爬取订单', {
         url: orderUrl,
         attempt,
         maxRetries,
-        proxy: proxy ? `${proxy.host}:${proxy.port}` : 'none',
+        proxy: `${currentProxy.host}:${currentProxy.port}`,
       });
 
       // 发送请求
-      const html = await fetchOrderPage(orderUrl, proxy);
+      const html = await fetchOrderPage(orderUrl, currentProxy);
 
       // 提取 JSON 数据
       const orderJson = extractOrderJson(html);
@@ -282,16 +312,20 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
       // 解析订单数据
       const orderData = parseOrderData(orderJson, html);
 
+      // ✅ 成功：记录成功（不重置失败计数）
+      proxyManager.recordProxySuccess(currentProxy);
+
       logger.info('订单爬取成功', {
         orderNumber: orderData.orderNumber,
         status: orderData.orderStatus,
         productCount: orderData.products.length,
+        proxy: `${currentProxy.host}:${currentProxy.port}`,
       });
 
       return {
         success: true,
         data: orderData,
-        proxy: proxy ? `${proxy.host}:${proxy.port}` : null,
+        proxy: `${currentProxy.host}:${currentProxy.port}`,
       };
     } catch (error) {
       lastError = error;
@@ -301,24 +335,33 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
         maxRetries,
         error: error.message,
         statusCode: error.response?.status,
+        proxy: currentProxy ? `${currentProxy.host}:${currentProxy.port}` : 'none',
       });
 
-      // 检测风控（HTTP 541）
-      if (error.response?.status === 541) {
-        logger.warn('检测到风控限制（HTTP 541），标记代理并切换');
+      if (currentProxy) {
+        // HTTP 541: Apple 风控，立即永久废弃
+        if (error.response?.status === 541) {
+          logger.warn('检测到 Apple 风控（HTTP 541），立即废弃代理');
+          proxyManager.markProxyAsBad(currentProxy);
 
-        // 标记当前代理为不可用
-        if (lastProxy) {
-          proxyManager.markProxyAsBad(lastProxy);
+          // 尝试刷新代理池
+          try {
+            await proxyManager.refresh();
+          } catch (refreshError) {
+            logger.error('刷新代理池失败', {
+              error: refreshError.message,
+            });
+          }
         }
+        // 其他错误：累计失败次数
+        else {
+          const isDiscarded = proxyManager.recordProxyFailure(currentProxy);
 
-        // 刷新代理池
-        try {
-          await proxyManager.refresh();
-        } catch (refreshError) {
-          logger.error('刷新代理池失败', {
-            error: refreshError.message,
-          });
+          if (isDiscarded) {
+            logger.info('代理已永久废弃，获取新代理', {
+              discardedProxy: `${currentProxy.host}:${currentProxy.port}`,
+            });
+          }
         }
       }
 

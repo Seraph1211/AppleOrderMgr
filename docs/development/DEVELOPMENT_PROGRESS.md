@@ -31,7 +31,7 @@
 #### 🟡 P1 - 重要（完成前端导入后）
 - [ ] **真实邮件链路验证** - 配置 IMAP，测试邮件→解析→入库→查询
 - [ ] **真实订单爬取验证** - 配置真实订单号，验证 `parseOrderData` 字段路径
-- [ ] **代理池配置** - 配置快代理 API
+- [x] **代理池配置** - ✅ 已完成快代理私密代理配置（2026-07-08）
 
 #### 🟢 P2 - 优化（有空再做）
 - [ ] Jest 标准测试补齐
@@ -45,12 +45,192 @@
    - 解决方案：优先开发前端上传页面
 
 2. **真实凭证未配置** 🟡
-   - IMAP 账号未配置（需要 QQ/163 邮箱授权码）
+   - ~~代理池配置~~（✅ 已完成）
+   - IMAP 账号已配置（18874504636@163.com）
    - 测试订单号未配置（需要真实 Apple 订单）
 
 ---
 
 ## 🔥 最近完成的工作
+
+### Milestone 5.6: 订单号验证修复完成 ✅ (2026-07-08)
+
+**核心成果**：修复订单号验证规则，支持 10 位数字订单号；完善商品型号提取逻辑。
+
+#### 1. 问题发现
+- ❌ **订单号验证错误**：旧规则只支持 W + 9 位数字，实际订单号是 W + 10 位
+  - 错误示例：`W1779769040`（10 位）被拒绝
+  - 错误正则：`/^W\d{9}$/`
+- ❌ **商品型号缺失**：Apple 官网订单 JSON 中不包含 `partNumber` 等型号字段
+  - 实际字段：`productName`、`quantity`、`imageUrl`
+  - 缺失字段：`partNumber`、`sku`、`modelNumber`
+
+#### 2. 修复内容
+
+**任务 1：订单号验证修复**
+```javascript
+// SCHEMA.md - 更新文档说明
+order_number: VARCHAR(50) // Apple订单号（W+10位数字）
+
+// Order.js - 更新验证正则
+validate: {
+  is: {
+    args: /^W\d{10}$/,  // 改为 10 位
+    msg: '订单号必须是W开头后跟10位数字'
+  }
+}
+```
+
+**任务 2：商品型号提取优化**
+```javascript
+// crawlerService.js - 添加说明和降级逻辑
+// ⚠️ Apple 官网订单详情页不包含型号字段
+// 型号只能从邮件中的商品字符串提取（格式：MG714CH/A-商品名）
+// 这里将 model 留空，由邮件解析器填充
+
+let model = itemDetails.partNumber ||
+           itemDetails.sku ||
+           itemDetails.productId ||
+           itemDetails.modelNumber || '';
+```
+
+#### 3. 测试验证
+```bash
+✅ 订单号 W1779769040 验证通过
+✅ 真实订单爬取成功
+✅ 提取字段：订单号、下单日期、订单状态、商品名称、数量、图片
+⚠️  商品型号为空（符合预期，由邮件解析器提供）
+```
+
+#### 4. 级联更新（遵循文件变更规则）
+- ✅ `docs/database/SCHEMA.md` - 权威文档先更新
+- ✅ `src/models/Order.js` - 模型验证规则
+- ✅ `src/services/crawlerService.js` - 型号提取逻辑
+- ✅ `docs/development/DEVELOPMENT_PROGRESS.md` - 本文档
+
+#### 5. 技术发现
+- **Apple JSON 结构限制**：官网订单详情页的 JSON 不包含商品型号
+- **数据来源分工**：
+  - 邮件解析：Apple ID、取机人、商品型号、商品数量（权威）
+  - 官网爬取：订单状态、商品图片、取货门店、配送信息（权威）
+- **设计合理性验证**：快照模式设计正确，邮件数据和爬虫数据互补
+
+#### 6. 代理消耗
+- 本次测试消耗：6 个代理（3 初始 + 3 刷新）
+- 当前剩余：**505 个** / 1000 个
+
+**影响**：订单号验证不再阻塞真实订单处理，可以正常创建和爬取订单。
+
+---
+
+### Milestone 5.5: 代理池策略优化完成 ✅ (2026-07-08)
+
+**核心成果**：优化代理池使用策略，实现智能刷新和累计失败废弃机制。
+
+#### 1. 策略优化
+- ✅ **环境区分**：开发环境每次 3 个，生产环境每次 10 个
+- ✅ **使用范围**：严格限制在爬虫服务，其他服务禁止使用
+- ✅ **失败策略**：累计失败 2 次永久废弃，永不恢复
+- ✅ **刷新策略**：智能刷新，可用 < 30% 或 = 0 时才刷新
+- ✅ **特殊处理**：HTTP 541 风控立即永久废弃
+
+#### 2. 代码实现
+```javascript
+// 新增方法
+proxyManager.recordProxyFailure(proxy)   // 累计失败计数
+proxyManager.recordProxySuccess(proxy)   // 记录成功（不重置）
+proxyManager.needsRefresh()              // 智能判断是否需要刷新
+
+// 爬虫服务强制检查
+if (!config.proxy.enabled) {
+  throw new Error('爬虫服务必须启用代理池');
+}
+```
+
+#### 3. 配置更新
+```bash
+# 新增配置项
+PROXY_MAX_FAIL_COUNT=2           # 最大失败次数
+PROXY_REFRESH_THRESHOLD=0.3      # 刷新阈值（30%）
+
+# 开发环境：默认关闭，按需启用
+PROXY_ENABLED=false
+PROXY_NUM_PER_REQUEST=3
+
+# 生产环境：自动启用
+PROXY_ENABLED=true
+PROXY_NUM_PER_REQUEST=10
+```
+
+#### 4. 代理消耗优化
+**优化前**（全量定时刷新）：
+- 开发环境：10 个/次，4 分钟刷新 → 160 个/小时 💸
+- 1000 个可用约 6 小时
+
+**优化后**（智能刷新）：
+- 开发环境：3 个/次，10 分钟检查，仅需要时刷新 → 3-12 个/小时 ✅
+- 1000 个可用约 58-234 小时（提升 10-40 倍）
+
+#### 5. 已更新文件
+- ✅ `src/utils/proxyManager.js` - 新增失败计数、智能刷新逻辑
+- ✅ `src/utils/config.js` - 新增 maxFailCount、refreshThreshold 配置
+- ✅ `src/services/crawlerService.js` - 强制检查代理、累计失败处理
+- ✅ `.env` / `.env.example` - 更新配置说明
+- ✅ `docs/development/PROXY_USAGE_GUIDE.md` - 完整策略文档
+
+#### 6. 当前代理状态
+- 总数量：1000 个
+- 已使用：297 个
+- 剩余：**703 个** ✅
+- 策略版本：v2.0
+
+**参考文档**：`docs/development/PROXY_USAGE_GUIDE.md`
+
+---
+
+### Milestone 5.4: 快代理私密代理池配置完成 ✅ (2026-07-08)
+
+**核心成果**：成功配置快代理私密代理池，爬虫服务可以正常访问 Apple 官网。
+
+#### 1. 代理池配置
+- ✅ API 配置：使用快代理私密代理 API（`f_auth=1` 返回账密格式）
+- ✅ 认证方式：账密模式（`ip:port:username:password`）
+- ✅ 代理数量：1000 个私密代理，每次提取 10 个
+- ✅ 自动刷新：每 4 分钟刷新（代理有效期 1-5 分钟）
+
+#### 2. 测试结果
+```
+✅ 代理池初始化成功（10 个代理）
+✅ 成功访问 Apple 官网（HTTP 200）
+✅ 响应时间正常（1384ms）
+✅ 内容验证通过
+✅ 代理轮换机制正常
+```
+
+#### 3. 配置文件
+```bash
+# .env
+PROXY_ENABLED=true
+PROXY_API_URL=https://dps.kdlapi.com/api/getdps/?secret_id=xxx&signature=xxx&num=10&format=json&sep=1&dedup=1&f_auth=1
+PROXY_SECRET_ID=oqulxixc9oevt458bjye
+PROXY_SECRET_KEY=3dam61gsqj2envaoz55fl25zusoxs935
+```
+
+#### 4. 已实现功能
+- ✅ `proxyManager.js` 支持快代理账密格式
+- ✅ 自动解析 `ip:port:username:password` 格式
+- ✅ 风控检测（HTTP 541）自动切换代理
+- ✅ 坏代理标记与自动恢复
+- ✅ 测试脚本：`test/test_proxy.js` 和 `test/test_proxy_apple.js`
+
+#### 5. 关键技术点
+- **账密格式**：必须添加 `f_auth=1` 参数，否则只返回 `ip:port`
+- **有效期管理**：代理有效期 1-5 分钟，需要高频刷新
+- **剩余配额**：剩余 925 个代理（共 1000 个）
+
+**下一步**：配置真实订单号，验证完整爬虫流程。
+
+---
 
 ### Milestone 5.3: 订单快照模式完成 ✅ (2026-07-08)
 
@@ -165,8 +345,10 @@ await Order.create({ ...appleData, ...recipientData, ... }, { transaction });
 | **5.1 Lint 和冒烟测试** | ✅ | 2026-07-07 | ESLint error 清零、API 健康检查通过 |
 | **5.2 数据库同步触发器** | ✅ | 2026-07-07 | recipients 宽表同步触发器 |
 | **5.3 订单快照模式** | ✅ | 2026-07-08 | 快照字段、自动匹配逻辑 |
+| **5.4 快代理私密代理池** | ✅ | 2026-07-08 | 1000 个代理、账密认证、自动刷新 |
+| **5.5 代理池策略优化** | ✅ | 2026-07-08 | 智能刷新、累计失败废弃、节省配额 |
 | **6. 前端 Excel 导入** | 🔴 | - | **当前阻塞项** |
-| **7. 真实数据联调** | 🟡 | - | IMAP / 爬虫 / 端到端验证 |
+| **7. 真实数据联调** | 🟡 | - | 订单爬取 / 端到端验证 |
 
 ---
 
