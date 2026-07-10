@@ -74,12 +74,12 @@ module.exports = (sequelize) => {
     status: {
       type: DataTypes.STRING(20),
       allowNull: false,
-      defaultValue: 'active',
-      comment: '账号状态：active/inactive/locked',
+      defaultValue: '未使用',
+      comment: '账号状态：未使用/使用中/已下架/异常',
       validate: {
         isIn: {
-          args: [['active', 'inactive', 'locked']],
-          msg: '状态必须是 active、inactive 或 locked'
+          args: [['未使用', '使用中', '已下架', '异常']],
+          msg: '状态必须是：未使用、使用中、已下架或异常'
         }
       }
     },
@@ -96,6 +96,12 @@ module.exports = (sequelize) => {
       defaultValue: DataTypes.NOW,
       field: 'updated_at',
       comment: '记录更新时间'
+    },
+    lastOrderAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'last_order_at',
+      comment: '最后下单时间'
     }
   }, {
     tableName: 'apple_ids',
@@ -118,6 +124,10 @@ module.exports = (sequelize) => {
       {
         fields: ['is_modified'],
         name: 'idx_apple_ids_is_modified'
+      },
+      {
+        fields: ['last_order_at'],
+        name: 'idx_apple_ids_last_order_at'
       }
     ],
     comment: 'Apple账号管理表'

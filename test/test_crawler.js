@@ -1,8 +1,13 @@
 /**
  * 爬虫服务测试脚本
  * 功能：测试订单爬取功能，包括 HTML 解析、数据提取、数据库更新
+ *
+ * ⚠️ 代理池初始化优化：
+ * - 全局只初始化一次，避免重复消耗代理配额
+ * - 多个测试共享同一个代理池
+ *
  * 作者：Seraph
- * 更新：2026-07-07
+ * 更新：2026-07-09
  */
 
 require('dotenv').config();
@@ -13,6 +18,33 @@ const crawlerService = require('./src/services/crawlerService');
 const logger = require('./src/utils/logger');
 const proxyManager = require('./src/utils/proxyManager');
 const { Order, AppleId, Recipient, sequelize } = require('./src/models');
+
+// 全局标志：代理池是否已初始化
+let proxyInitialized = false;
+
+/**
+ * 初始化代理池（全局只执行一次）
+ */
+async function initializeProxyOnce() {
+  if (proxyInitialized) {
+    console.log('✅ 代理池已初始化，跳过重复初始化');
+    return;
+  }
+
+  if (process.env.PROXY_ENABLED === 'true') {
+    console.log('🔄 初始化代理池...');
+    await proxyManager.initialize();
+    console.log('✅ 代理池初始化成功');
+
+    const status = proxyManager.getStatus();
+    console.log(`   - 总代理数: ${status.total}`);
+    console.log(`   - 可用代理数: ${status.available}`);
+
+    proxyInitialized = true;
+  } else {
+    console.log('⚠️  代理池未启用（PROXY_ENABLED=false）');
+  }
+}
 
 /**
  * 测试 1: 提取和解析订单 JSON
@@ -90,12 +122,8 @@ async function testRealCrawl() {
       return;
     }
 
-    // 初始化代理池（如果启用）
-    if (process.env.PROXY_ENABLED === 'true') {
-      console.log('🔄 初始化代理池...');
-      await proxyManager.initialize();
-      console.log('✅ 代理池初始化成功');
-    }
+    // 初始化代理池（全局只执行一次）
+    await initializeProxyOnce();
 
     // 执行爬取
     console.log('🕷️  开始爬取订单...');
@@ -287,11 +315,8 @@ async function testFullCrawlAndUpdate() {
     await transaction.commit();
     console.log(`✅ 测试订单创建成功 (ID: ${order.id})`);
 
-    // 2. 初始化代理池（如果启用）
-    if (process.env.PROXY_ENABLED === 'true') {
-      console.log('🔄 初始化代理池...');
-      await proxyManager.initialize();
-    }
+    // 初始化代理池（全局只执行一次）
+    await initializeProxyOnce();
 
     // 3. 执行爬取和更新
     console.log('🕷️  开始爬取并更新订单...');

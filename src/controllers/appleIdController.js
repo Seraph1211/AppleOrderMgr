@@ -16,26 +16,37 @@ const {
   parsePositiveInt,
 } = require('../utils/apiResponse');
 
-const APPLE_ID_STATUSES = ['active', 'inactive', 'locked'];
+const APPLE_ID_STATUSES = ['未使用', '使用中', '已下架', '异常'];
 
 /**
  * 把 AppleId 实例序列化为对外对象
  * @param {Object} appleId - Sequelize AppleId JSON 形态
+ * @param {Object} stats - 统计数据 { orderCount, recipientCount, lastOrderDate }
+ * @param {boolean} includeSecrets - 是否包含密码和密保（管理接口需要）
  * @returns {Object} 对外对象
  */
-function serializeAppleId(appleId, counts = {}) {
-  return {
+function serializeAppleId(appleId, stats = {}, includeSecrets = false) {
+  const result = {
     id: appleId.id,
     apple_id: appleId.appleId,
     nickname: appleId.nickname,
     country: appleId.country,
     is_modified: appleId.isModified,
     status: appleId.status,
-    order_count: counts.orderCount ?? 0,
-    recipient_count: counts.recipientCount ?? 0,
+    order_count: stats.orderCount ?? 0,
+    recipient_count: stats.recipientCount ?? 0,
+    last_order_date: stats.lastOrderDate ?? null,
     created_at: appleId.createdAt,
     updated_at: appleId.updatedAt,
   };
+
+  // 管理接口需要返回密码和密保
+  if (includeSecrets) {
+    result.password = appleId.password;
+    result.security_qa = appleId.securityQa;
+  }
+
+  return result;
 }
 
 /**
@@ -56,6 +67,9 @@ async function listAppleIds(req, res) {
       }
       where.status = req.query.status;
     }
+    if (req.query.country) {
+      where.country = req.query.country;
+    }
     if (req.query.keyword) {
       const kw = String(req.query.keyword).trim();
       if (kw.length > 0) {
@@ -74,16 +88,17 @@ async function listAppleIds(req, res) {
       distinct: true,
     });
 
-    // 聚合每个 Apple ID 的订单数和收件人数（一次性 in 查询，避免 N+1）
+    // 聚合每个 Apple ID 的订单数、收件人数、最后下单日期（一次性 in 查询，避免 N+1）
     const ids = rows.map((r) => r.id);
-    const orderCounts = await getOrderCountsByAppleIds(ids);
+    const orderStats = await getOrderStatsByAppleIds(ids);
     const recipientCounts = await getRecipientCountsByAppleIds(ids);
 
     res.json(paginatedResponse(
       rows.map((row) => serializeAppleId(row.toJSON(), {
-        orderCount: orderCounts[row.id] || 0,
+        orderCount: orderStats[row.id]?.orderCount || 0,
         recipientCount: recipientCounts[row.id] || 0,
-      })),
+        lastOrderDate: orderStats[row.id]?.lastOrderDate || null,
+      }, true)), // 列表接口返回密码和密保
       count,
       page,
       limit,
@@ -99,17 +114,18 @@ async function listAppleIds(req, res) {
 }
 
 /**
- * 在 apple_ids 列表中按 id 聚合 Order/Recipient 数量，避免 N+1
+ * 在 apple_ids 列表中按 id 聚合 Order 统计，避免 N+1
  * @param {number[]} ids - Apple ID 列表
- * @returns {Promise<Object>} { [id]: count }
+ * @returns {Promise<Object>} { [id]: { orderCount, lastOrderDate } }
  */
-async function getOrderCountsByAppleIds(ids) {
+async function getOrderStatsByAppleIds(ids) {
   if (ids.length === 0) return {};
   const { Order } = require('../models');
   const rows = await Order.findAll({
     attributes: [
       'appleIdRef',
       [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
+      [sequelize.fn('MAX', sequelize.col('created_at')), 'lastOrderDate'],
     ],
     where: { appleIdRef: { [Op.in]: ids } },
     group: ['appleIdRef'],
@@ -117,7 +133,10 @@ async function getOrderCountsByAppleIds(ids) {
   });
   const out = {};
   rows.forEach((r) => {
-    out[r.appleIdRef] = parseInt(r.count, 10);
+    out[r.appleIdRef] = {
+      orderCount: parseInt(r.count, 10),
+      lastOrderDate: r.lastOrderDate,
+    };
   });
   return out;
 }
@@ -160,7 +179,7 @@ async function getAppleIdDetail(req, res) {
       throw ApiError.notFound('Apple ID 不存在', { id });
     }
 
-    const orderCounts = await getOrderCountsByAppleIds([id]);
+    const orderStats = await getOrderStatsByAppleIds([id]);
     const recipientCounts = await getRecipientCountsByAppleIds([id]);
 
     // 安全设计：密码不返回
@@ -171,8 +190,9 @@ async function getAppleIdDetail(req, res) {
     res.json({
       success: true,
       data: serializeAppleId({ ...plain, password: undefined }, {
-        orderCount: orderCounts[id] || 0,
+        orderCount: orderStats[id]?.orderCount || 0,
         recipientCount: recipientCounts[id] || 0,
+        lastOrderDate: orderStats[id]?.lastOrderDate || null,
       }),
     });
   } catch (error) {
@@ -250,7 +270,7 @@ async function updateAppleId(req, res) {
       throw ApiError.badRequest('Apple ID 必须是正整数', { received: req.params.id });
     }
 
-    const { password, nickname, country, status } = req.body || {};
+    const { password, nickname, country, status, security_qa, is_modified } = req.body || {};
 
     if (status !== undefined && !APPLE_ID_STATUSES.includes(status)) {
       throw ApiError.badRequest(
@@ -272,8 +292,11 @@ async function updateAppleId(req, res) {
     if (nickname !== undefined) updates.nickname = nickname;
     if (country !== undefined) updates.country = country;
     if (status !== undefined) updates.status = status;
+    if (security_qa !== undefined) updates.securityQa = security_qa;
+    if (is_modified !== undefined) updates.isModified = is_modified;
+
     // 一旦发生过任意字段更新，标记为 is_modified = true（用于审计）
-    if (Object.keys(updates).length > 0) {
+    if (Object.keys(updates).length > 0 && is_modified === undefined) {
       updates.isModified = true;
     }
 

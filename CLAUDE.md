@@ -344,6 +344,133 @@ npm test
 
 ---
 
+## 🎨 前端开发规范 - 强制要求
+
+**所有前端代码必须遵循 `docs/development/FRONTEND_DESIGN_SPEC.md` 和 `docs/development/AGENT_FRONTEND_GUIDE.md`**
+
+这是**阻塞性要求**。任何违反这些规范的前端代码都将被拒绝。
+
+### 核心设计原则
+
+1. **浅色主题** - 使用蓝色系配色，白色背景
+2. **列表优先** - 数据展示使用表格列表，非卡片网格（仪表板统计除外）
+3. **简洁清晰** - 减少视觉干扰，强调数据
+4. **一致性** - 严格遵循设计系统
+
+### 配色规范（必须遵守）
+
+```jsx
+// ✅ 正确: 浅色主题
+bg-primary        // #1E3A8A 深蓝色（主按钮）
+bg-primary-50     // #EFF6FF 极浅蓝（图标背景）
+text-primary      // 链接、强调
+bg-white          // 卡片、表格
+bg-gray-50        // 页面背景、表头
+text-gray-900     // 主标题
+text-gray-600     // 正文
+text-gray-500     // 辅助文字
+
+// ❌ 禁止: 深色主题类名
+bg-dark-bg
+bg-dark-surface
+text-dark-text
+text-dark-muted
+border-dark-border
+```
+
+### 布局规范（必须遵守）
+
+**✅ 必须使用表格列表**:
+```jsx
+<div className="card">
+  <div className="overflow-x-auto">
+    <table className="w-full">
+      <thead>
+        <tr className="border-b border-gray-200 bg-gray-50">
+          <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">列名</th>
+        </tr>
+      </thead>
+      <tbody className="bg-white">
+        <tr className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+          <td className="py-4 px-4">数据</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+```
+
+**❌ 禁止使用卡片网格**（除仪表板统计数据外）:
+```jsx
+// ❌ 错误: 不要这样做
+<div className="grid grid-cols-3 gap-6">
+  {items.map(item => <div className="card">...</div>)}
+</div>
+```
+
+### 组件规范
+
+**按钮**:
+```jsx
+<button className="btn btn-primary">保存</button>
+<button className="btn btn-secondary">取消</button>
+```
+
+**输入框**:
+```jsx
+<input type="text" className="input" placeholder="..." />
+```
+
+**徽章**:
+```jsx
+<span className="badge badge-success">已完成</span>
+<span className="badge badge-warning">待处理</span>
+<span className="badge badge-error">已取消</span>
+<span className="badge badge-info">处理中</span>
+```
+
+### 图标规范
+
+**使用 Lucide React**:
+```jsx
+import { Search, Plus, Edit, Trash2, User, Mail } from 'lucide-react'
+
+// 按钮内图标
+<Plus className="w-4 h-4" />
+
+// 列表/导航图标
+<User className="w-5 h-5" />
+
+// 图标带背景
+<div className="w-10 h-10 bg-primary-50 rounded-lg flex items-center justify-center">
+  <Mail className="w-5 h-5 text-primary" />
+</div>
+```
+
+### 开发前检查清单
+
+在开发前端功能前，必须确认:
+- [ ] 已阅读 `docs/development/FRONTEND_DESIGN_SPEC.md`
+- [ ] 已阅读 `docs/development/AGENT_FRONTEND_GUIDE.md`
+- [ ] 理解配色方案（蓝色主色，紫色辅助色）
+- [ ] 理解布局规则（表格列表，非卡片网格）
+- [ ] 使用浅色主题类名
+- [ ] 表格使用标准结构
+- [ ] 图标尺寸正确
+- [ ] 加载状态使用标准组件
+
+### 参考示例
+
+查看现有页面实现:
+- `frontend/src/pages/Dashboard.jsx` - 仪表板（卡片统计）
+- `frontend/src/pages/Orders.jsx` - 订单列表（表格）
+- `frontend/src/pages/AppleIds.jsx` - Apple ID 管理（表格）
+- `frontend/src/pages/Recipients.jsx` - 取机人管理（表格）
+
+**记住**: 前端设计规范文档是真相来源。有疑问时，请参考 `docs/development/FRONTEND_DESIGN_SPEC.md`！
+
+---
+
 ## 🔄 文件变更级联规则
 
 当修改某个文件时，必须遵循级联更新规则，确保文档与代码的一致性。

@@ -289,7 +289,19 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
       currentProxy = proxyManager.getNextProxy();
 
       if (!currentProxy) {
-        throw new Error('无可用代理，请检查代理池状态');
+        // ✅ 只有在代理池耗尽时才刷新
+        logger.warn('代理池已耗尽，尝试刷新获取新代理');
+        try {
+          await proxyManager.refresh();
+          currentProxy = proxyManager.getNextProxy();
+
+          if (!currentProxy) {
+            throw new Error('刷新代理池后仍无可用代理');
+          }
+        } catch (refreshError) {
+          logger.error('刷新代理池失败', { error: refreshError.message });
+          throw new Error('无可用代理且刷新失败');
+        }
       }
 
       logger.info('开始爬取订单', {
@@ -343,22 +355,15 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
         if (error.response?.status === 541) {
           logger.warn('检测到 Apple 风控（HTTP 541），立即废弃代理');
           proxyManager.markProxyAsBad(currentProxy);
-
-          // 尝试刷新代理池
-          try {
-            await proxyManager.refresh();
-          } catch (refreshError) {
-            logger.error('刷新代理池失败', {
-              error: refreshError.message,
-            });
-          }
+          // ✅ 修复：不在这里刷新，重试时会自动从池中获取下一个代理
+          // 只有当 getNextProxy() 返回 null 时，才需要刷新
         }
         // 其他错误：累计失败次数
         else {
           const isDiscarded = proxyManager.recordProxyFailure(currentProxy);
 
           if (isDiscarded) {
-            logger.info('代理已永久废弃，获取新代理', {
+            logger.info('代理已永久废弃，下次重试将获取新代理', {
               discardedProxy: `${currentProxy.host}:${currentProxy.port}`,
             });
           }

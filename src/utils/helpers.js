@@ -42,6 +42,34 @@ const isValidEmail = (email) => {
 };
 
 /**
+ * 验证手机号格式
+ * @param {string} phone - 手机号
+ * @returns {boolean} 是否为有效的手机号
+ */
+const isValidPhone = (phone) => {
+  if (!phone || typeof phone !== 'string') {
+    return false;
+  }
+  // 支持中国大陆手机号：1开头的11位数字
+  const phoneRegex = /^1[3-9]\d{9}$/;
+  return phoneRegex.test(phone);
+};
+
+/**
+ * 验证身份证号格式
+ * @param {string} idCard - 身份证号
+ * @returns {boolean} 是否为有效的身份证号
+ */
+const isValidIdCard = (idCard) => {
+  if (!idCard || typeof idCard !== 'string') {
+    return false;
+  }
+  // 支持15位或18位身份证号
+  const idCardRegex = /(^\d{15}$)|(^\d{18}$)|(^\d{17}(\d|X|x)$)/;
+  return idCardRegex.test(idCard);
+};
+
+/**
  * 安全地解析 JSON 字符串
  * @param {string} jsonString - JSON 字符串
  * @param {*} defaultValue - 解析失败时的默认值
@@ -245,6 +273,8 @@ module.exports = {
   sleep,
   isValidOrderNumber,
   isValidEmail,
+  isValidPhone,
+  isValidIdCard,
   safeJSONParse,
   removeControlCharacters,
   decodeHTMLEntities,

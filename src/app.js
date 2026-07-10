@@ -19,6 +19,8 @@ const appleIdsRouter = require('./routes/appleIds');
 const recipientsRouter = require('./routes/recipients');
 const ordersRouter = require('./routes/orders');
 const statsRouter = require('./routes/stats');
+const importRouter = require('./routes/importRoutes');
+const dashboardRouter = require('./routes/dashboardRoutes');
 
 const { sequelize } = require('./models');
 const emailService = require('./services/emailService');
@@ -71,6 +73,8 @@ app.use('/api/apple-ids', appleIdsRouter);
 app.use('/api/recipients', recipientsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/stats', statsRouter);
+app.use('/api/import', importRouter);
+app.use('/api/dashboard', dashboardRouter);
 
 // ---------- 404 兜底 ----------
 app.use((req, _res, next) => {

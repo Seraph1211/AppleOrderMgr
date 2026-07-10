@@ -157,12 +157,12 @@ module.exports = (sequelize) => {
     status: {
       type: DataTypes.STRING(20),
       allowNull: false,
-      defaultValue: 'active',
-      comment: '使用状态：active/inactive',
+      defaultValue: '未使用',
+      comment: '使用状态：未使用/使用中/已下架/异常',
       validate: {
         isIn: {
-          args: [['active', 'inactive']],
-          msg: '状态必须是 active 或 inactive'
+          args: [['未使用', '使用中', '已下架', '异常']],
+          msg: '状态必须是：未使用、使用中、已下架或异常'
         }
       }
     },
@@ -185,6 +185,12 @@ module.exports = (sequelize) => {
       defaultValue: DataTypes.NOW,
       field: 'updated_at',
       comment: '记录更新时间'
+    },
+    lastOrderAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'last_order_at',
+      comment: '最后下单时间'
     }
   }, {
     tableName: 'recipients',
@@ -219,6 +225,10 @@ module.exports = (sequelize) => {
       {
         fields: ['apple_id_ref'],
         name: 'idx_recipients_apple_id_ref'
+      },
+      {
+        fields: ['last_order_at'],
+        name: 'idx_recipients_last_order_at'
       }
     ],
     hooks: {

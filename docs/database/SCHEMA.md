@@ -99,10 +99,11 @@
 | **账号属性** |
 | `country` | VARCHAR(50) | - | - | 国家地区 | `美国` / `中国` |
 | `is_modified` | BOOLEAN | - | FALSE | 是否已修改国家及手机 | `true` / `false` |
-| `status` | VARCHAR(20) | - | `'active'` | 使用状态 | `active` / `inactive` |
+| `status` | VARCHAR(20) | - | `'未使用'` | 使用状态 | `未使用` / `使用中` / `已下架` / `异常` |
 | **时间戳** |
 | `created_at` | TIMESTAMP | NOT NULL | NOW() | 记录创建时间 | `2026-07-06 10:00:00` |
 | `updated_at` | TIMESTAMP | NOT NULL | NOW() | 记录更新时间 | `2026-07-06 10:00:00` |
+| `last_order_at` | TIMESTAMP | - | - | 最后下单时间 | `2026-07-08 15:30:00` |
 
 ### security_qa 字段（JSONB）结构
 
@@ -136,8 +137,10 @@
 
 | 状态值 | 含义 | 说明 |
 |--------|------|------|
-| `active` | 使用中 | 账号正常可用 |
-| `inactive` | 已停用 | 账号暂停使用 |
+| `未使用` | 未使用 | 账号尚未下单 |
+| `使用中` | 使用中 | 账号正在使用，有活跃订单 |
+| `已下架` | 已下架 | 账号已停用，不再使用 |
+| `异常` | 异常 | 账号出现问题（如被封、密码错误等） |
 
 ### 索引
 
@@ -145,6 +148,7 @@
 CREATE INDEX idx_apple_ids_apple_id ON apple_ids(apple_id);
 CREATE INDEX idx_apple_ids_status ON apple_ids(status);
 CREATE INDEX idx_apple_ids_country ON apple_ids(country);
+CREATE INDEX idx_apple_ids_last_order_at ON apple_ids(last_order_at);
 ```
 
 ### 约束
@@ -239,18 +243,21 @@ INSERT INTO apple_ids (
 | `apple_id_ref` | INTEGER | FK | - | 关联到apple_ids表的外键 | `5` |
 | **业务字段** |
 | `tag` | VARCHAR(100) | - | - | 标签（地区或批次） | `刘天佟 微信` / `群华华 微信` |
-| `status` | VARCHAR(20) | - | `'active'` | 使用状态 | `active` / `inactive` |
+| `status` | VARCHAR(20) | - | `'未使用'` | 使用状态 | `未使用` / `使用中` / `已下架` / `异常` |
 | `notes` | TEXT | - | - | 备注 | `转抢17` |
 | **时间戳** |
 | `created_at` | TIMESTAMP | NOT NULL | NOW() | 记录创建时间 | `2026-07-06 10:00:00` |
 | `updated_at` | TIMESTAMP | NOT NULL | NOW() | 记录更新时间 | `2026-07-06 10:00:00` |
+| `last_order_at` | TIMESTAMP | - | - | 最后下单时间 | `2026-07-08 15:30:00` |
 
 ### status 字段枚举值
 
 | 状态值 | 含义 | 说明 |
 |--------|------|------|
-| `active` | 使用中 | 可正常使用 |
-| `inactive` | 已下架 | 不再使用 |
+| `未使用` | 未使用 | 尚未下单 |
+| `使用中` | 使用中 | 正在使用，有活跃订单 |
+| `已下架` | 已下架 | 已停用，不再使用 |
+| `异常` | 异常 | 出现问题（如信息错误等） |
 
 ### 索引
 
@@ -262,6 +269,7 @@ CREATE INDEX idx_recipients_status ON recipients(status);
 CREATE INDEX idx_recipients_province_city ON recipients(province, city);
 CREATE INDEX idx_recipients_apple_id ON recipients(apple_id);
 CREATE INDEX idx_recipients_apple_id_ref ON recipients(apple_id_ref);
+CREATE INDEX idx_recipients_last_order_at ON recipients(last_order_at);
 ```
 
 ### 约束
