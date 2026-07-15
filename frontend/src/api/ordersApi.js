@@ -44,3 +44,15 @@ export const refreshOrder = (id) => {
 export const batchRefreshOrders = (ids) => {
   return client.post('/orders/batch-refresh', { order_ids: ids })
 }
+
+/**
+ * 更新订单信息
+ * @param {number} id - 订单 ID
+ * @param {Object} data - 更新数据
+ * @param {string} data.payerName - 付款人
+ * @param {string} data.paymentScreenshot - 付款截图 URL
+ * @returns {Promise<Object>} 更新结果
+ */
+export const updateOrder = (id, data) => {
+  return client.put(`/orders/${id}`, data)
+}

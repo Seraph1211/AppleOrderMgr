@@ -7,7 +7,8 @@ import {
   Mail,
   Menu,
   X,
-  Apple
+  Apple,
+  TrendingUp
 } from 'lucide-react'
 
 const navigation = [
@@ -15,6 +16,7 @@ const navigation = [
   { name: '订单管理', href: '/orders', icon: Package },
   { name: 'Apple ID', href: '/apple-ids', icon: Apple },
   { name: '取机人', href: '/recipients', icon: User },
+  { name: '渠道管理', href: '/channels', icon: TrendingUp },
 ]
 
 export default function Layout({ children }) {

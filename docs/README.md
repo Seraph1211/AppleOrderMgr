@@ -4,29 +4,29 @@
 
 ```
 docs/
-├── README.md                           # 本文件（文档导航）
+├── 说明.md                           # 本文件（文档导航）
 │
 ├── design/                             # 🎨 设计文档（架构与方案）
-│   ├── architecture.md                 # 系统架构设计
-│   ├── email-parser.md                 # 邮件解析方案
-│   ├── order-crawler.md                # 订单爬虫方案
-│   ├── api-design.md                   # API 接口设计
-│   └── email-processing.md             # 邮件处理方案
+│   ├── 系统架构.md                 # 系统架构设计
+│   ├── 邮件解析器.md                 # 邮件解析方案
+│   ├── 订单爬虫.md                # 订单爬虫方案
+│   ├── API设计.md                   # API 接口设计
+│   └── 邮件处理流程.md             # 邮件处理方案
 │
 ├── database/                           # 🗄️ 数据库文档
-│   ├── SCHEMA.md                       # ⚠️ 权威：数据库设计规范
-│   └── snapshot-matching.md            # 订单快照与自动匹配机制
+│   ├── 数据库架构.md                       # ⚠️ 权威：数据库设计规范
+│   └── 快照匹配.md            # 订单快照与自动匹配机制
 │
 ├── development/                        # 🛠️ 开发文档
-│   ├── CODING_STANDARDS.md             # ⚠️ 权威：编码规范
-│   ├── DEVELOPMENT_PROGRESS.md         # 开发进度跟踪
-│   ├── NOTIFICATION_GUIDE.md           # 通知机制指南
+│   ├── 编码规范.md             # ⚠️ 权威：编码规范
+│   ├── 开发进度.md         # 开发进度跟踪
+│   ├── 通知指南.md           # 通知机制指南
 │   └── history/                        # 📜 历史记录归档
-│       ├── 2026H1.md                   # 2026上半年开发历史
-│       └── technical-decisions.md      # 技术决策记录
+│       ├── 2026上半年.md                   # 2026上半年开发历史
+│       └── 技术决策.md      # 技术决策记录
 │
 └── deprecated/                         # 🗑️ 已废弃文档
-    └── 04-数据库设计方案.md             # 已被 database/SCHEMA.md 取代
+    └── 04-数据库设计方案.md             # 已被 database/数据库架构.md 取代
 ```
 
 ---
@@ -36,27 +36,27 @@ docs/
 ### 📖 按角色查找
 
 #### 新成员入门
-1. **必读**: [系统架构](design/architecture.md) → 了解整体设计
-2. **数据流**: [邮件解析](design/email-parser.md) + [订单爬虫](design/order-crawler.md) → 了解数据来源
-3. **开发规范**: [编码规范](development/CODING_STANDARDS.md) → 了解代码要求
+1. **必读**: [系统架构](design/系统架构.md) → 了解整体设计
+2. **数据流**: [邮件解析](design/邮件解析器.md) + [订单爬虫](design/订单爬虫.md) → 了解数据来源
+3. **开发规范**: [编码规范](development/编码规范.md) → 了解代码要求
 
 #### 前端开发者
-- 📋 [API 接口设计](design/api-design.md) - RESTful API 规范
-- 🗄️ [数据库设计](database/SCHEMA.md) - 了解数据结构
-- 📧 [邮件解析方案](design/email-parser.md) - 了解字段来源
+- 📋 [API 接口设计](design/API设计.md) - RESTful API 规范
+- 🗄️ [数据库设计](database/数据库架构.md) - 了解数据结构
+- 📧 [邮件解析方案](design/邮件解析器.md) - 了解字段来源
 
 #### 后端开发者
-- 🎨 [系统架构](design/architecture.md) - 三层架构设计
-- 📧 [邮件解析](design/email-parser.md) - 数据提取能力（13个字段）
-- 🕷️ [订单爬虫](design/order-crawler.md) - 反爬策略 + 数据整合（11个字段）
-- 🗄️ [数据库设计](database/SCHEMA.md) - ⚠️ 权威规范
-- ⚙️ [编码规范](development/CODING_STANDARDS.md) - ⚠️ 必须遵守
+- 🎨 [系统架构](design/系统架构.md) - 三层架构设计
+- 📧 [邮件解析](design/邮件解析器.md) - 数据提取能力（13个字段）
+- 🕷️ [订单爬虫](design/订单爬虫.md) - 反爬策略 + 数据整合（11个字段）
+- 🗄️ [数据库设计](database/数据库架构.md) - ⚠️ 权威规范
+- ⚙️ [编码规范](development/编码规范.md) - ⚠️ 必须遵守
 
 #### 产品/测试
-- 🎨 [系统架构](design/architecture.md) - 业务流程
-- 📋 [API 接口设计](design/api-design.md) - 功能接口
-- 📧 [邮件解析方案](design/email-parser.md) - 可提取字段清单
-- 🕷️ [订单爬虫方案](design/order-crawler.md) - 数据能力边界
+- 🎨 [系统架构](design/系统架构.md) - 业务流程
+- 📋 [API 接口设计](design/API设计.md) - 功能接口
+- 📧 [邮件解析方案](design/邮件解析器.md) - 可提取字段清单
+- 🕷️ [订单爬虫方案](design/订单爬虫.md) - 数据能力边界
 
 ---
 
@@ -64,73 +64,73 @@ docs/
 
 ### 🎨 设计文档 (design/)
 
-#### [architecture.md](design/architecture.md)
+#### [系统架构.md](design/系统架构.md)
 - 项目背景与需求
 - 系统架构设计（邮件层 + 爬虫层 + API层）
 - 技术栈选型
 - 开发阶段规划
 
-#### [email-parser.md](design/email-parser.md)
+#### [邮件解析器.md](design/邮件解析器.md)
 - 邮件格式分析（NULL AOS Helper）
 - 字段提取规则（正则表达式）
 - 多商品订单解析（`@` 分隔符规则）
 - **数据提取能力清单**：13 个字段
 
-#### [order-crawler.md](design/order-crawler.md)
+#### [订单爬虫.md](design/订单爬虫.md)
 - Apple 官网页面分析
 - 反爬策略（代理池 + 请求延迟）
 - 数据提取实现（JSON 提取）
 - **数据提取能力清单**：11 个字段
 - **与邮件数据整合策略**
 
-#### [api-design.md](design/api-design.md)
+#### [API设计.md](design/API设计.md)
 - RESTful API 设计
 - 请求/响应格式
 - 错误处理规范
 - 接口实现示例
 
-#### [email-processing.md](design/email-processing.md)
+#### [邮件处理流程.md](design/邮件处理流程.md)
 - IMAP IDLE 实时监控
 - 邮件处理流程
 - 错误处理与重试机制
 
 ### 🗄️ 数据库文档 (database/)
 
-#### [SCHEMA.md](database/SCHEMA.md) ⚠️ **权威文档**
+#### [数据库架构.md](database/数据库架构.md) ⚠️ **权威文档**
 - 完整的数据库设计规范
 - 5 张核心表定义（apple_ids, recipients, orders, email_logs, crawl_logs）
 - 字段类型、索引、关系
 - Sequelize 模型定义参考
 - 查询示例
 
-#### [snapshot-matching.md](database/snapshot-matching.md)
+#### [快照匹配.md](database/快照匹配.md)
 - 订单数据快照机制
 - 自动匹配逻辑
 - 数据一致性保障
 
 ### 🛠️ 开发文档 (development/)
 
-#### [CODING_STANDARDS.md](development/CODING_STANDARDS.md) ⚠️ **权威文档**
+#### [编码规范.md](development/编码规范.md) ⚠️ **权威文档**
 - 命名规范（camelCase/PascalCase/UPPER_SNAKE_CASE）
 - 错误处理规范（try-catch + 结构化日志）
 - 数据库操作规范（事务 + 防 N+1）
 - 爬虫反爬规范（代理池 + 延迟）
 - 代码质量检查（lint + format + test）
 
-#### [DEVELOPMENT_PROGRESS.md](development/DEVELOPMENT_PROGRESS.md)
+#### [开发进度.md](development/开发进度.md)
 - 当前开发进度跟踪
 - 已完成功能清单
 - 下一步计划
 - 阻塞问题记录
 
-#### [NOTIFICATION_GUIDE.md](development/NOTIFICATION_GUIDE.md)
+#### [通知指南.md](development/通知指南.md)
 - 系统通知机制说明
 - 通知类型与触发条件
 - 通知渠道配置
 
 #### history/ - 历史记录归档
-- `2026H1.md` - 2026上半年开发历史
-- `technical-decisions.md` - 重要技术决策记录
+- `2026上半年.md` - 2026上半年开发历史
+- `技术决策.md` - 重要技术决策记录
 
 ---
 
@@ -138,8 +138,8 @@ docs/
 
 标记为 **⚠️ 权威** 的文档是该领域的单一真相来源（Single Source of Truth）：
 
-1. **[database/SCHEMA.md](database/SCHEMA.md)** - 所有数据库相关开发必须遵循此文档
-2. **[development/CODING_STANDARDS.md](development/CODING_STANDARDS.md)** - 所有代码必须符合此规范
+1. **[database/数据库架构.md](database/数据库架构.md)** - 所有数据库相关开发必须遵循此文档
+2. **[development/编码规范.md](development/编码规范.md)** - 所有代码必须符合此规范
 
 开发过程中如遇冲突，**以权威文档为准**。
 
@@ -239,9 +239,9 @@ node test_crawler.js
 3. 废弃的文档移入 `deprecated/` 目录，不要直接删除
 
 ### 命名规范
-- 使用英文 kebab-case：`email-parser.md`
-- 权威文档使用大写：`SCHEMA.md`, `CODING_STANDARDS.md`
-- 历史记录使用年份：`2026H1.md`
+- 使用英文 kebab-case：`邮件解析器.md`
+- 权威文档使用大写：`数据库架构.md`, `编码规范.md`
+- 历史记录使用年份：`2026上半年.md`
 
 ### 目录组织原则
 - `design/` - 架构与技术方案，面向设计阶段

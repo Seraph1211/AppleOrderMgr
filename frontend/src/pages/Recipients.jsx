@@ -5,6 +5,7 @@ import { previewImport, executeImport } from '../api/importApi'
 import { batchGenerateContact, batchGenerateAddress, batchBindAppleIds } from '../api/recipientsApi'
 import useColumnConfig from '../hooks/useColumnConfig'
 import ColumnConfigModal from '../components/ColumnConfigModal'
+import Pagination from '../components/Pagination'
 import AddRecipientModal from '../components/AddRecipientModal'
 import BatchImportModal from '../components/BatchImportModal'
 import EditRecipientModal from '../components/EditRecipientModal'
@@ -41,16 +42,24 @@ export default function Recipients() {
   const [generatingAddress, setGeneratingAddress] = useState(false)
   const { columns, saveConfig, resetConfig } = useColumnConfig('recipients', recipientsColumns)
 
+  // 分页状态
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    pageSize: 20,
+    totalItems: 0,
+    totalPages: 0
+  })
+
   useEffect(() => {
     loadRecipients()
-  }, [searchTerm, filterTag, filterStatus])
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterTag, filterStatus])
 
   const loadRecipients = async () => {
     setLoading(true)
     try {
       const params = {
-        page: 1,
-        limit: 20,
+        page: pagination.currentPage,
+        limit: pagination.pageSize,
         keyword: searchTerm || undefined,
         tag: filterTag || undefined,
         status: filterStatus || undefined
@@ -70,12 +79,33 @@ export default function Recipients() {
           orderCount: item.order_count || 0,
           createdAt: item.created_at
         })))
+
+        // 更新分页信息
+        setPagination(prev => ({
+          ...prev,
+          totalItems: res.data.total,
+          totalPages: Math.ceil(res.data.total / prev.pageSize)
+        }))
       }
     } catch (error) {
       console.error('加载取机人失败:', error)
     } finally {
       setLoading(false)
     }
+  }
+
+  // 分页处理函数
+  const handlePageChange = (page) => {
+    setPagination(prev => ({ ...prev, currentPage: page }))
+  }
+
+  const handlePageSizeChange = (size) => {
+    setPagination(prev => ({
+      ...prev,
+      pageSize: size,
+      currentPage: 1,
+      totalPages: Math.ceil(prev.totalItems / size)
+    }))
   }
 
   const filteredRecipients = recipients.filter(recipient =>
@@ -709,6 +739,19 @@ export default function Recipients() {
             executeExport()
           }}
           onCancel={() => setShowExportConfirm(false)}
+        />
+      )}
+
+      {/* 分页组件 */}
+      {!loading && pagination.totalItems > 0 && (
+        <Pagination
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          totalItems={pagination.totalItems}
+          pageSize={pagination.pageSize}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
+          pageSizeOptions={[10, 20, 50, 100]}
         />
       )}
     </div>

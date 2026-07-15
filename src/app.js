@@ -21,6 +21,7 @@ const ordersRouter = require('./routes/orders');
 const statsRouter = require('./routes/stats');
 const importRouter = require('./routes/importRoutes');
 const dashboardRouter = require('./routes/dashboardRoutes');
+const channelsRouter = require('./routes/channels');
 
 const { sequelize } = require('./models');
 const emailService = require('./services/emailService');
@@ -33,9 +34,9 @@ const app = express();
 // ---------- 基础中间件 ----------
 app.disable('x-powered-by');
 
-// 允许稍大的请求体（订单 products 可能较多）
-app.use(express.json({ limit: '1mb' }));
-app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+// 允许较大的请求体（支持上传 base64 图片，最多 10MB）
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
@@ -75,6 +76,7 @@ app.use('/api/orders', ordersRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/import', importRouter);
 app.use('/api/dashboard', dashboardRouter);
+app.use('/api/channels', channelsRouter);
 
 // ---------- 404 兜底 ----------
 app.use((req, _res, next) => {

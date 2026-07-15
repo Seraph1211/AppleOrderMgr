@@ -5,6 +5,8 @@ import Orders from './pages/Orders'
 import OrderDetail from './pages/OrderDetail'
 import AppleIds from './pages/AppleIds'
 import Recipients from './pages/Recipients'
+import Channels from './pages/Channels'
+import ChannelOrders from './pages/ChannelOrders'
 
 function App() {
   return (
@@ -15,6 +17,8 @@ function App() {
         <Route path="/orders/:id" element={<OrderDetail />} />
         <Route path="/apple-ids" element={<AppleIds />} />
         <Route path="/recipients" element={<Recipients />} />
+        <Route path="/channels" element={<Channels />} />
+        <Route path="/channels/:tag/orders" element={<ChannelOrders />} />
       </Routes>
     </Layout>
   )

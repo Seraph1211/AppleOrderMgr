@@ -36,6 +36,8 @@ function serializeOrderListItem(order) {
     status: plain.status,
     pickup_store: plain.pickupStore,
     payment_method: plain.paymentMethod,
+    payer_name: plain.payerName,
+    payment_screenshot: plain.paymentScreenshot,
     order_date: plain.orderDate,
     last_crawled_at: plain.lastCrawledAt,
     crawl_fail_count: plain.crawlFailCount,
@@ -357,11 +359,70 @@ async function batchRefresh(req, res) {
   }
 }
 
+/**
+ * PUT /api/orders/:id
+ * 更新订单信息（付款人、付款截图）
+ */
+async function updateOrder(req, res) {
+  try {
+    const orderId = parseInt(req.params.id, 10);
+    if (Number.isNaN(orderId) || orderId <= 0) {
+      throw ApiError.badRequest('订单 ID 必须是正整数', { received: req.params.id });
+    }
+
+    const order = await Order.findByPk(orderId);
+    if (!order) {
+      throw ApiError.notFound('订单不存在', { orderId });
+    }
+
+    // 允许更新的字段
+    const allowedFields = ['payerName', 'paymentScreenshot'];
+    const updates = {};
+
+    for (const field of allowedFields) {
+      if (req.body[field] !== undefined) {
+        updates[field] = req.body[field];
+      }
+    }
+
+    if (Object.keys(updates).length === 0) {
+      throw ApiError.badRequest('没有可更新的字段', { allowedFields });
+    }
+
+    await order.update(updates);
+
+    logger.info('订单更新成功', {
+      orderId,
+      orderNumber: order.orderNumber,
+      updatedFields: Object.keys(updates),
+    });
+
+    res.json({
+      success: true,
+      message: '订单更新成功',
+      data: {
+        id: order.id,
+        order_number: order.orderNumber,
+        payer_name: order.payerName,
+        payment_screenshot: order.paymentScreenshot,
+        updated_at: order.updatedAt,
+      },
+    });
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    logger.error('更新订单失败', { orderId: req.params.id, error: error.message });
+    throw ApiError.database('更新订单失败', { reason: error.message });
+  }
+}
+
 module.exports = {
   listOrders,
   getOrderDetail,
   refreshOrder,
   batchRefresh,
+  updateOrder,
 };
 
 // 防止 linter 报未使用变量（cron / EmailLog 暂未直接使用）

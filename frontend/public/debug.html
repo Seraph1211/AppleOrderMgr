@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>渠道管理数据调试</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        h1 { color: #1E3A8A; }
+        .success { color: green; }
+        .error { color: red; }
+        table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #1E3A8A; color: white; }
+        pre { background: #f5f5f5; padding: 10px; overflow-x: auto; }
+    </style>
+</head>
+<body>
+    <h1>渠道管理数据调试</h1>
+
+    <h2>测试1: 直接调用后端API (localhost:3000)</h2>
+    <div id="test1">加载中...</div>
+
+    <h2>测试2: 通过Vite代理调用 (localhost:5173/api)</h2>
+    <div id="test2">加载中...</div>
+
+    <h2>渠道列表数据</h2>
+    <div id="channels"></div>
+
+    <script>
+        // 测试1: 直接调用后端
+        fetch('http://localhost:3000/api/channels')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('test1').innerHTML =
+                    '<p class="success">✅ 成功！返回 ' + data.data.total + ' 个渠道</p>' +
+                    '<pre>' + JSON.stringify(data, null, 2) + '</pre>';
+            })
+            .catch(err => {
+                document.getElementById('test1').innerHTML =
+                    '<p class="error">❌ 失败: ' + err.message + '</p>';
+            });
+
+        // 测试2: 通过代理调用
+        fetch('http://localhost:5173/api/channels')
+            .then(res => res.json())
+            .then(data => {
+                document.getElementById('test2').innerHTML =
+                    '<p class="success">✅ 成功！返回 ' + data.data.total + ' 个渠道</p>';
+
+                // 渲染表格
+                if (data.success && data.data.channels) {
+                    let html = '<table><thead><tr>' +
+                        '<th>渠道名称</th>' +
+                        '<th>总订单数</th>' +
+                        '<th>已支付</th>' +
+                        '<th>已完成</th>' +
+                        '<th>完成率</th>' +
+                        '</tr></thead><tbody>';
+
+                    data.data.channels.forEach(channel => {
+                        const rate = (channel.deliveredOrders / channel.totalOrders * 100).toFixed(1);
+                        html += '<tr>' +
+                            '<td>' + channel.channelName + '</td>' +
+                            '<td>' + channel.totalOrders + '</td>' +
+                            '<td>' + channel.paidOrders + '</td>' +
+                            '<td>' + channel.deliveredOrders + '</td>' +
+                            '<td>' + rate + '%</td>' +
+                            '</tr>';
+                    });
+
+                    html += '</tbody></table>';
+                    document.getElementById('channels').innerHTML = html;
+                }
+            })
+            .catch(err => {
+                document.getElementById('test2').innerHTML =
+                    '<p class="error">❌ 失败: ' + err.message + '</p>';
+            });
+    </script>
+</body>
+</html>

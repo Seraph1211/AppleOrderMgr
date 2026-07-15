@@ -12,6 +12,7 @@ const router = express.Router();
 
 router.get('/', asyncHandler(orderController.listOrders));
 router.get('/:id', asyncHandler(orderController.getOrderDetail));
+router.put('/:id', asyncHandler(orderController.updateOrder));
 router.post('/:id/refresh', asyncHandler(orderController.refreshOrder));
 router.post('/batch-refresh', asyncHandler(orderController.batchRefresh));
 

@@ -4,6 +4,7 @@ import { getAppleIds, updateAppleId, deleteAppleId } from '../api'
 import { previewImport, executeImport } from '../api/importApi'
 import useColumnConfig from '../hooks/useColumnConfig'
 import ColumnConfigModal from '../components/ColumnConfigModal'
+import Pagination from '../components/Pagination'
 import AddAppleIdModal from '../components/AddAppleIdModal'
 import BatchImportModal from '../components/BatchImportModal'
 import EditAppleIdModal from '../components/EditAppleIdModal'
@@ -25,16 +26,24 @@ export default function AppleIds() {
   const [selectedItem, setSelectedItem] = useState(null)
   const { columns, saveConfig, resetConfig } = useColumnConfig('appleIds', appleIdsColumns)
 
+  // 分页状态
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    pageSize: 20,
+    totalItems: 0,
+    totalPages: 0
+  })
+
   useEffect(() => {
     loadAppleIds()
-  }, [searchTerm, filterCountry, filterStatus])
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterCountry, filterStatus])
 
   const loadAppleIds = async () => {
     setLoading(true)
     try {
       const params = {
-        page: 1,
-        limit: 100,
+        page: pagination.currentPage,
+        limit: pagination.pageSize,
         keyword: searchTerm || undefined,
         country: filterCountry || undefined,
         status: filterStatus || undefined
@@ -55,6 +64,13 @@ export default function AppleIds() {
           createdAt: item.created_at,
           updatedAt: item.updated_at
         })))
+
+        // 更新分页信息
+        setPagination(prev => ({
+          ...prev,
+          totalItems: res.data.total,
+          totalPages: Math.ceil(res.data.total / prev.pageSize)
+        }))
       }
     } catch (error) {
       console.error('加载 Apple ID 失败:', error)
@@ -63,9 +79,19 @@ export default function AppleIds() {
     }
   }
 
-  const filteredAppleIds = appleIds.filter(appleId =>
-    appleId.appleId.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  // 分页处理函数
+  const handlePageChange = (page) => {
+    setPagination(prev => ({ ...prev, currentPage: page }))
+  }
+
+  const handlePageSizeChange = (size) => {
+    setPagination(prev => ({
+      ...prev,
+      pageSize: size,
+      currentPage: 1,
+      totalPages: Math.ceil(prev.totalItems / size)
+    }))
+  }
 
   const handleSaveAppleId = async (formData) => {
     // TODO: 调用后端 API 保存 Apple ID
@@ -345,7 +371,7 @@ export default function AppleIds() {
               <p className="text-gray-500">加载中...</p>
             </div>
           </div>
-        ) : filteredAppleIds.length === 0 ? (
+        ) : appleIds.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-500">未找到 Apple ID</p>
           </div>
@@ -372,7 +398,7 @@ export default function AppleIds() {
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {filteredAppleIds.map((item) => (
+                {appleIds.map((item) => (
                   <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
                     {visibleColumns.map((col) => (
                       <td
@@ -444,6 +470,19 @@ export default function AppleIds() {
             setShowConfirmModal(false)
             setSelectedItem(null)
           }}
+        />
+      )}
+
+      {/* 分页组件 */}
+      {!loading && pagination.totalItems > 0 && (
+        <Pagination
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          totalItems={pagination.totalItems}
+          pageSize={pagination.pageSize}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
+          pageSizeOptions={[10, 20, 50, 100]}
         />
       )}
     </div>

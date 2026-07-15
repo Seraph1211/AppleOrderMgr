@@ -93,9 +93,9 @@ node test/test_crawler.js
 
 ## 数据库设计
 
-**⚠️ 权威文档: `docs/database/SCHEMA.md` 是官方数据库设计规范**
+**⚠️ 权威文档: `docs/database/数据库架构.md` 是官方数据库设计规范**
 
-所有数据库相关开发必须遵循 `docs/database/SCHEMA.md`:
+所有数据库相关开发必须遵循 `docs/database/数据库架构.md`:
 - Sequelize 模型定义
 - 迁移文件
 - 表结构查询
@@ -110,7 +110,7 @@ node test/test_crawler.js
 
 **JSONB 存储**: 商品以 JSON 数组形式存储，支持每个订单包含不同数量的商品。
 
-**快速参考**: 查看 `docs/database/SCHEMA.md` 获取完整的表定义、字段类型、索引、关系和查询示例。
+**快速参考**: 查看 `docs/database/数据库架构.md` 获取完整的表定义、字段类型、索引、关系和查询示例。
 
 ## 关键实现要点
 
@@ -144,20 +144,20 @@ PROXY_API_KEY=your_key_here
 `docs/` 目录下有完整的技术文档（按类别组织）:
 
 ### 设计文档 (`docs/design/`)
-- `architecture.md`: 系统架构和概述
-- `email-parser.md`: 邮件解析 + 数据提取能力（13 个字段）
-- `order-crawler.md`: 爬虫策略 + 数据整合（11 个字段）
-- `api-design.md`: RESTful 接口设计
-- `email-processing.md`: IMAP 监控和邮件处理流程
+- `系统架构.md`: 系统架构和概述
+- `邮件解析器.md`: 邮件解析 + 数据提取能力（13 个字段）
+- `订单爬虫.md`: 爬虫策略 + 数据整合（11 个字段）
+- `API设计.md`: RESTful 接口设计
+- `邮件处理流程.md`: IMAP 监控和邮件处理流程
 
 ### 数据库文档 (`docs/database/`)
-- **`SCHEMA.md`**: ✅ **官方数据库设计规范**（所有模型必须遵循此文档）
-- `snapshot-matching.md`: 订单快照和自动匹配机制
+- **`数据库架构.md`**: ✅ **官方数据库设计规范**（所有模型必须遵循此文档）
+- `快照匹配.md`: 订单快照和自动匹配机制
 
 ### 开发文档 (`docs/development/`)
-- **`CODING_STANDARDS.md`**: ✅ **编码规范和最佳实践**（强制遵守）
-- `DEVELOPMENT_PROGRESS.md`: 开发进度跟踪
-- `NOTIFICATION_GUIDE.md`: 通知机制指南
+- **`编码规范.md`**: ✅ **编码规范和最佳实践**（强制遵守）
+- `开发进度.md`: 开发进度跟踪
+- `通知指南.md`: 通知机制指南
 - `history/`: 历史记录和技术决策
 
 **编码前请先阅读** - 这些文档包含详细的正则表达式模式、错误处理策略和测试用例。
@@ -172,7 +172,7 @@ PROXY_API_KEY=your_key_here
 
 ## 开发进度跟踪
 
-**强制要求**: 完成每个开发阶段后，必须更新进度文档（`docs/development/DEVELOPMENT_PROGRESS.md`），包含:
+**强制要求**: 完成每个开发阶段后，必须更新进度文档（`docs/development/开发进度.md`），包含:
 
 - **当前阶段**: 刚刚完成的阶段/步骤
 - **已完成功能**: 已实现功能/模块的详细列表
@@ -199,7 +199,7 @@ PROXY_API_KEY=your_key_here
 
 ## ⚠️ 编码规范 - 强制要求
 
-**所有代码必须遵循 `docs/development/CODING_STANDARDS.md` 中定义的编码规范**
+**所有代码必须遵循 `docs/development/编码规范.md` 中定义的编码规范**
 
 这是**阻塞性要求**。任何违反这些规范的代码都将被拒绝。
 
@@ -236,7 +236,7 @@ PROXY_API_KEY=your_key_here
 ### 编写代码前快速检查
 
 实现任何功能时，请验证:
-- [ ] 阅读 `docs/development/CODING_STANDARDS.md` 了解详细规则
+- [ ] 阅读 `docs/development/编码规范.md` 了解详细规则
 - [ ] 理解本项目的特定编码模式
 - [ ] 使用 `logger` 而不是 `console.log`
 - [ ] 添加 try-catch 错误处理
@@ -340,13 +340,13 @@ npm test
 # 所有检查必须通过才能 git commit
 ```
 
-**记住**: 编码规范文档（`docs/development/CODING_STANDARDS.md`）是真相来源。有疑问时，请参考它！
+**记住**: 编码规范文档（`docs/development/编码规范.md`）是真相来源。有疑问时，请参考它！
 
 ---
 
 ## 🎨 前端开发规范 - 强制要求
 
-**所有前端代码必须遵循 `docs/development/FRONTEND_DESIGN_SPEC.md` 和 `docs/development/AGENT_FRONTEND_GUIDE.md`**
+**所有前端代码必须遵循 `docs/development/前端设计规范.md` 和 `docs/development/AI前端开发指南.md`**
 
 这是**阻塞性要求**。任何违反这些规范的前端代码都将被拒绝。
 
@@ -450,8 +450,8 @@ import { Search, Plus, Edit, Trash2, User, Mail } from 'lucide-react'
 ### 开发前检查清单
 
 在开发前端功能前，必须确认:
-- [ ] 已阅读 `docs/development/FRONTEND_DESIGN_SPEC.md`
-- [ ] 已阅读 `docs/development/AGENT_FRONTEND_GUIDE.md`
+- [ ] 已阅读 `docs/development/前端设计规范.md`
+- [ ] 已阅读 `docs/development/AI前端开发指南.md`
 - [ ] 理解配色方案（蓝色主色，紫色辅助色）
 - [ ] 理解布局规则（表格列表，非卡片网格）
 - [ ] 使用浅色主题类名
@@ -467,7 +467,7 @@ import { Search, Plus, Edit, Trash2, User, Mail } from 'lucide-react'
 - `frontend/src/pages/AppleIds.jsx` - Apple ID 管理（表格）
 - `frontend/src/pages/Recipients.jsx` - 取机人管理（表格）
 
-**记住**: 前端设计规范文档是真相来源。有疑问时，请参考 `docs/development/FRONTEND_DESIGN_SPEC.md`！
+**记住**: 前端设计规范文档是真相来源。有疑问时，请参考 `docs/development/前端设计规范.md`！
 
 ---
 
@@ -481,19 +481,19 @@ import { Search, Plus, Edit, Trash2, User, Mail } from 'lucide-react'
 
 **必须更新的文件（按顺序）**:
 
-1. **`docs/database/SCHEMA.md`** ⚠️ 权威文档 - **先更新这个**
+1. **`docs/database/数据库架构.md`** ⚠️ 权威文档 - **先更新这个**
    - 更新表定义、字段说明、约束、索引
    - 更新查询示例（如果受影响）
 
 2. **Sequelize Model 文件** (`src/models/*.js`)
-   - 更新模型定义，与 SCHEMA.md 保持一致
+   - 更新模型定义，与 数据库架构.md 保持一致
    - 更新字段验证规则
 
 3. **Migration 迁移文件** (`migrations/*.js`)
    - 创建新的迁移文件
    - 包含 up 和 down 方法
 
-4. **API 接口文档** (`docs/design/api-design.md`)
+4. **API 接口文档** (`docs/design/API设计.md`)
    - 如果字段在 API 中暴露，更新请求/响应示例
    - 更新字段说明
 
@@ -508,7 +508,7 @@ import { Search, Plus, Edit, Trash2, User, Mail } from 'lucide-react'
    - 添加新字段的单元测试
    - 更新集成测试
 
-8. **`docs/development/DEVELOPMENT_PROGRESS.md`**
+8. **`docs/development/开发进度.md`**
    - 记录变更内容、原因、影响范围
 
 **验证清单**:
@@ -523,7 +523,7 @@ npm test
 npm run lint
 
 # 4. 验证文档一致性
-# 手动对比 SCHEMA.md 与 Model 定义
+# 手动对比 数据库架构.md 与 Model 定义
 ```
 
 ### 规则 2: API 接口变更
@@ -532,7 +532,7 @@ npm run lint
 
 **必须更新的文件**:
 
-1. **`docs/design/api-design.md`** - **先更新文档**
+1. **`docs/design/API设计.md`** - **先更新文档**
    - 更新接口定义、参数说明、响应示例
 
 2. **API Router** (`src/routes/*.js`)
@@ -547,7 +547,7 @@ npm run lint
 5. **前端 API 调用** (`frontend/src/api/*.ts` - 如果有)
    - 更新 API 调用代码
 
-6. **`docs/development/DEVELOPMENT_PROGRESS.md`**
+6. **`docs/development/开发进度.md`**
    - 记录 API 变更
 
 ### 规则 3: 业务逻辑变更
@@ -556,7 +556,7 @@ npm run lint
 
 **必须更新的文件**:
 
-1. **技术方案文档** (`docs/design/email-parser.md` 或 `order-crawler.md`)
+1. **技术方案文档** (`docs/design/邮件解析器.md` 或 `订单爬虫.md`)
    - 更新解析规则、正则表达式、处理流程
 
 2. **实现代码** (`services/*.js` 或 `crawler/*.js`)
@@ -565,7 +565,7 @@ npm run lint
 3. **测试用例** (`test/**/*.js`)
    - 更新测试用例和测试数据
 
-4. **`docs/development/DEVELOPMENT_PROGRESS.md`**
+4. **`docs/development/开发进度.md`**
    - 记录逻辑变更原因
 
 ### 规则 4: 编码规范变更
@@ -574,7 +574,7 @@ npm run lint
 
 **必须更新的文件**:
 
-1. **`docs/development/CODING_STANDARDS.md`** ⚠️ 权威文档
+1. **`docs/development/编码规范.md`** ⚠️ 权威文档
    - 更新规范说明
 
 2. **配置文件** (`.eslintrc.json`, `.prettierrc`)
@@ -594,15 +594,15 @@ npm run lint
 
 ```bash
 #!/bin/sh
-# 检查 SCHEMA.md 是否比 Model 文件新
-# 如果修改了 Model 但未更新 SCHEMA.md，阻止提交
+# 检查 数据库架构.md 是否比 Model 文件新
+# 如果修改了 Model 但未更新 数据库架构.md，阻止提交
 
-SCHEMA_MODIFIED=$(git diff --cached --name-only | grep "docs/database/SCHEMA.md")
+SCHEMA_MODIFIED=$(git diff --cached --name-only | grep "docs/database/数据库架构.md")
 MODEL_MODIFIED=$(git diff --cached --name-only | grep "src/models/")
 
 if [ -n "$MODEL_MODIFIED" ] && [ -z "$SCHEMA_MODIFIED" ]; then
-  echo "❌ 错误: 修改了 Model 文件但未更新 docs/database/SCHEMA.md"
-  echo "请先更新权威文档 SCHEMA.md，然后再提交代码"
+  echo "❌ 错误: 修改了 Model 文件但未更新 docs/database/数据库架构.md"
+  echo "请先更新权威文档 数据库架构.md，然后再提交代码"
   exit 1
 fi
 ```
@@ -621,18 +621,18 @@ fi
 ## 级联更新检查清单
 
 ### 如果是数据库变更
-- [ ] 已更新 `docs/database/SCHEMA.md`
+- [ ] 已更新 `docs/database/数据库架构.md`
 - [ ] 已更新 Sequelize Model
 - [ ] 已创建 Migration 文件
 - [ ] 已更新 API 文档（如需要）
 - [ ] 已更新测试用例
-- [ ] 已更新 DEVELOPMENT_PROGRESS.md
+- [ ] 已更新 开发进度.md
 
 ### 如果是 API 变更
-- [ ] 已更新 `docs/design/api-design.md`
+- [ ] 已更新 `docs/design/API设计.md`
 - [ ] 已实现 Controller 逻辑
 - [ ] 已添加 API 测试
-- [ ] 已更新 DEVELOPMENT_PROGRESS.md
+- [ ] 已更新 开发进度.md
 
 ## 测试结果
 - [ ] 所有测试通过 (`npm test`)
@@ -656,9 +656,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       
-      - name: 检查 Model 与 SCHEMA.md 一致性
+      - name: 检查 Model 与 数据库架构.md 一致性
         run: |
-          # 提取 SCHEMA.md 中的表定义
+          # 提取 数据库架构.md 中的表定义
           # 对比 src/models/ 中的 Model 定义
           # 如果不一致，失败并输出差异
           node scripts/check-schema-consistency.js
@@ -676,14 +676,14 @@ jobs:
 ### 最佳实践
 
 1. **先文档，后代码**
-   - 修改任何权威文档（SCHEMA.md, CODING_STANDARDS.md）前，先讨论并达成一致
+   - 修改任何权威文档（数据库架构.md, 编码规范.md）前，先讨论并达成一致
    - 文档更新后，再开始写代码
 
 2. **小步提交**
    - 每次 commit 只包含一个逻辑变更
    - 便于回滚和追溯
 
-3. **使用 DEVELOPMENT_PROGRESS.md**
+3. **使用 开发进度.md**
    - 每次开发会话结束前，更新进度文档
    - 记录"为什么这样改"，不只是"改了什么"
 

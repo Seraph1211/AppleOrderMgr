@@ -1,0 +1,578 @@
+[
+  {
+    "product": "仅激活 17Pro 256G-3524-8T4/934 银色",
+    "price": 7400,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "仅激活 17Pro 512G-3524-8W4/964 银色",
+    "price": 9250,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "仅激活 17ProMax 256G-3527-034/0U4 银色",
+    "price": 8380,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "仅激活 17ProMax 256G-3527-044/0V4 星宇橙色",
+    "price": 8300,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "仅激活 17ProMax 256G-3527-054/0W4 深蓝色",
+    "price": 8350,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "仅激活 17ProMax 512G-3527-064/0X4 银色",
+    "price": 10180,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "仅激活 17ProMax 512G-3527-074/104 星宇橙色",
+    "price": 10100,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "仅激活 17ProMax 512G-3527-084/114 深蓝色",
+    "price": 10100,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "同城 17e 256G-3635-U44 黑色 限时激活",
+    "price": 3950,
+    "officialPrice": 4499,
+    "discount": -549
+  },
+  {
+    "product": "同城 17e 256G-3635-U54 白色 限时激活",
+    "price": 3950,
+    "officialPrice": 4499,
+    "discount": -549
+  },
+  {
+    "product": "同城 17e 256G-3635-U64 粉色 限时激活",
+    "price": 3950,
+    "officialPrice": 4499,
+    "discount": -549
+  },
+  {
+    "product": "同城 17e 512G-3635-U74 黑色 限时激活",
+    "price": 5650,
+    "officialPrice": 6499,
+    "discount": -849
+  },
+  {
+    "product": "同城 17e 512G-3635-U94 白色 限时激活",
+    "price": 5650,
+    "officialPrice": 6499,
+    "discount": -849
+  },
+  {
+    "product": "同城 17e 512G-3635-UA4 粉色 限时激活",
+    "price": 5650,
+    "officialPrice": 6499,
+    "discount": -849
+  },
+  {
+    "product": "同城 17 256G-3521-6W4/774 黑色 限时激活",
+    "price": 5620,
+    "officialPrice": 5999,
+    "discount": -379
+  },
+  {
+    "product": "同城 17 256G-3521-6X4/784 白色 限时激活",
+    "price": 5650,
+    "officialPrice": 5999,
+    "discount": -349
+  },
+  {
+    "product": "同城 17 256G-3521-6Y4/794 青雾蓝色 限时激活",
+    "price": 5600,
+    "officialPrice": 5999,
+    "discount": -399
+  },
+  {
+    "product": "同城 17 256G-3521-704/7A4 薰衣草紫色 限时激活",
+    "price": 5600,
+    "officialPrice": 5999,
+    "discount": -399
+  },
+  {
+    "product": "同城 17 256G-3521-714/7C4 鼠尾草绿色 限时激活",
+    "price": 5600,
+    "officialPrice": 5999,
+    "discount": -399
+  },
+  {
+    "product": "同城 17 512G-3521-724/7D4 黑色 限时激活",
+    "price": 7500,
+    "officialPrice": 7999,
+    "discount": -499
+  },
+  {
+    "product": "同城 17 512G-3521-734/7E4 白色 限时激活",
+    "price": 7500,
+    "officialPrice": 7999,
+    "discount": -499
+  },
+  {
+    "product": "同城 17 512G-3521-744/7F4 青雾蓝色 限时激活",
+    "price": 7500,
+    "officialPrice": 7999,
+    "discount": -499
+  },
+  {
+    "product": "同城 17 512G-3521-754/7G4 薰衣草紫色 限时激活",
+    "price": 7500,
+    "officialPrice": 7999,
+    "discount": -499
+  },
+  {
+    "product": "同城 17 512G-3521-764/7H4 鼠尾草绿色 限时激活",
+    "price": 7500,
+    "officialPrice": 7999,
+    "discount": -499
+  },
+  {
+    "product": "同城 17Air 256G-3518-314/3H4 深空黑色 限时激活",
+    "price": 5400,
+    "officialPrice": 7999,
+    "discount": -2599
+  },
+  {
+    "product": "同城 17Air 256G-3518-334/3K4 云白色 限时激活",
+    "price": 5400,
+    "officialPrice": 7999,
+    "discount": -2599
+  },
+  {
+    "product": "同城 17Air 256G-3518-344/3L4 浅金色 限时激活",
+    "price": 5400,
+    "officialPrice": 7999,
+    "discount": -2599
+  },
+  {
+    "product": "同城 17Air 256G-3518-364/3N4 天蓝色 限时激活",
+    "price": 5400,
+    "officialPrice": 7999,
+    "discount": -2599
+  },
+  {
+    "product": "同城 17Air 512G-3518-374/3Q4 深空黑色 限时激活",
+    "price": 7450,
+    "officialPrice": 9999,
+    "discount": -2549
+  },
+  {
+    "product": "同城 17Air 512G-3518-394/3U4 云白色 限时激活",
+    "price": 7450,
+    "officialPrice": 9999,
+    "discount": -2549
+  },
+  {
+    "product": "同城 17Air 512G-3518-3A4/3V4 浅金色 限时激活",
+    "price": 7450,
+    "officialPrice": 9999,
+    "discount": -2549
+  },
+  {
+    "product": "同城 17Air 512G-3518-3C4/3W4 天蓝色 限时激活",
+    "price": 7450,
+    "officialPrice": 9999,
+    "discount": -2549
+  },
+  {
+    "product": "同城 17Air 1TB-3518-3D4/3X4 深空黑色 限时激活",
+    "price": 8900,
+    "officialPrice": 11999,
+    "discount": -3099
+  },
+  {
+    "product": "同城 17Pro 256G-3524-8T4/934 银色 限时激活",
+    "price": 7700,
+    "officialPrice": 8999,
+    "discount": -1299
+  },
+  {
+    "product": "同城 17Pro 256G-3524-8U4/944 星宇橙色 限时激活",
+    "price": 7600,
+    "officialPrice": 8999,
+    "discount": -1399
+  },
+  {
+    "product": "同城 17Pro 256G-3524-8V4/954 深蓝色 限时激活",
+    "price": 7700,
+    "officialPrice": 8999,
+    "discount": -1299
+  },
+  {
+    "product": "同城 17Pro 512G-3524-8W4/964 银色 限时激活",
+    "price": 9750,
+    "officialPrice": 10999,
+    "discount": -1249
+  },
+  {
+    "product": "同城 17Pro 512G-3524-8X4/974 星宇橙色 限时激活",
+    "price": 9700,
+    "officialPrice": 10999,
+    "discount": -1299
+  },
+  {
+    "product": "同城 17Pro 512G-3524-8Y4/984 深蓝色 限时激活",
+    "price": 9750,
+    "officialPrice": 10999,
+    "discount": -1249
+  },
+  {
+    "product": "同城 17Pro 1TB-3524-904/994 银色 限时激活",
+    "price": 11730,
+    "officialPrice": 12999,
+    "discount": -1269
+  },
+  {
+    "product": "同城 17ProMax 256G-3527-034/0U4 银色 限时激活",
+    "price": 8630,
+    "officialPrice": 9999,
+    "discount": -1369
+  },
+  {
+    "product": "同城 17ProMax 256G-3527-044/0V4 星宇橙色 限时激活",
+    "price": 8610,
+    "officialPrice": 9999,
+    "discount": -1389
+  },
+  {
+    "product": "同城 17ProMax 256G-3527-054/0W4 深蓝色 限时激活",
+    "price": 8680,
+    "officialPrice": 9999,
+    "discount": -1319
+  },
+  {
+    "product": "同城 17ProMax 512G-3527-064/0X4 银色 限时激活",
+    "price": 10680,
+    "officialPrice": 11999,
+    "discount": -1319
+  },
+  {
+    "product": "��城 17ProMax 512G-3527-074/104 星宇橙色 限时激活",
+    "price": 10530,
+    "officialPrice": 11999,
+    "discount": -1469
+  },
+  {
+    "product": "同城 17ProMax 512G-3527-084/114 深蓝色 限时激活",
+    "price": 10700,
+    "officialPrice": 11999,
+    "discount": -1299
+  },
+  {
+    "product": "同城 17ProMax 1TB-3527-094/124 银色 限时激活",
+    "price": 12850,
+    "officialPrice": 13999,
+    "discount": -1149
+  },
+  {
+    "product": "同城 17ProMax 1TB-3527-0A4/134 星宇橙色 限时激活",
+    "price": 12830,
+    "officialPrice": 13999,
+    "discount": -1169
+  },
+  {
+    "product": "同城 17ProMax 1TB-3527-0E4/144 深蓝色 限时激活",
+    "price": 12800,
+    "officialPrice": 13999,
+    "discount": -1199
+  },
+  {
+    "product": "同城 17ProMax 2TB-3527-0F4/154 银色 限时激活",
+    "price": 15500,
+    "officialPrice": 17999,
+    "discount": -2499
+  },
+  {
+    "product": "同城 17ProMax 2TB-3527-0G4/164 星宇橙色 限时激活",
+    "price": 15700,
+    "officialPrice": 17999,
+    "discount": -2299
+  },
+  {
+    "product": "同城 17ProMax 2TB-3527-0Q4/174 深蓝色 限时激活",
+    "price": 15500,
+    "officialPrice": 17999,
+    "discount": -2499
+  },
+  {
+    "product": "同城 16e 128G-3410-2A4/2H4 黑色 限时激活",
+    "price": 3350,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "同城 16e 128G-3410-2C4/2J4 白色 限时激活",
+    "price": 3350,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "同城 16 128G-3288-EV3/FC3 黑 限时激活",
+    "price": 4300,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "同城 16 256G-3288-F33/FK3 粉 限时激活",
+    "price": 4800,
+    "officialPrice": 0,
+    "discount": null
+  },
+  {
+    "product": "同城 16PLUS 128G-3291-UA3/5H3 白 限时激活",
+    "price": 4900,
+    "officialPrice": 5999,
+    "discount": -1099
+  },
+  {
+    "product": "全国 17e 256G-3635-U44 黑色",
+    "price": 4150,
+    "officialPrice": 4499,
+    "discount": -349
+  },
+  {
+    "product": "全国 17e 256G-3635-U54 白色",
+    "price": 4150,
+    "officialPrice": 4499,
+    "discount": -349
+  },
+  {
+    "product": "全国 17e 256G-3635-U64 粉色",
+    "price": 4150,
+    "officialPrice": 4499,
+    "discount": -349
+  },
+  {
+    "product": "全国 17e 512G-3635-U74 黑色",
+    "price": 5850,
+    "officialPrice": 6499,
+    "discount": -649
+  },
+  {
+    "product": "全国 17e 512G-3635-U94 白��",
+    "price": 5850,
+    "officialPrice": 6499,
+    "discount": -649
+  },
+  {
+    "product": "全国 17e 512G-3635-UA4 粉色",
+    "price": 5850,
+    "officialPrice": 6499,
+    "discount": -649
+  },
+  {
+    "product": "全国 17 256G-3521-6W4/774 黑色",
+    "price": 5710,
+    "officialPrice": 5999,
+    "discount": -289
+  },
+  {
+    "product": "全国 17 256G-3521-6X4/784 白色",
+    "price": 5770,
+    "officialPrice": 5999,
+    "discount": -229
+  },
+  {
+    "product": "全国 17 256G-3521-6Y4/794 青雾蓝色",
+    "price": 5700,
+    "officialPrice": 5999,
+    "discount": -299
+  },
+  {
+    "product": "全国 17 256G-3521-704/7A4 薰衣草紫色",
+    "price": 5700,
+    "officialPrice": 5999,
+    "discount": -299
+  },
+  {
+    "product": "全国 17 256G-3521-714/7C4 鼠尾草绿色",
+    "price": 5700,
+    "officialPrice": 5999,
+    "discount": -299
+  },
+  {
+    "product": "全国 17 512G-3521-724/7D4 黑色",
+    "price": 7690,
+    "officialPrice": 7999,
+    "discount": -309
+  },
+  {
+    "product": "全国 17 512G-3521-734/7E4 白色",
+    "price": 7750,
+    "officialPrice": 7999,
+    "discount": -249
+  },
+  {
+    "product": "全国 17 512G-3521-744/7F4 青雾蓝色",
+    "price": 7750,
+    "officialPrice": 7999,
+    "discount": -249
+  },
+  {
+    "product": "全国 17 512G-3521-754/7G4 薰衣草紫色",
+    "price": 7750,
+    "officialPrice": 7999,
+    "discount": -249
+  },
+  {
+    "product": "全国 17 512G-3521-764/7H4 鼠尾草绿色",
+    "price": 7750,
+    "officialPrice": 7999,
+    "discount": -249
+  },
+  {
+    "product": "全国 17Air 256G-3518-314/3H4 深空黑色",
+    "price": 5500,
+    "officialPrice": 7999,
+    "discount": -2499
+  },
+  {
+    "product": "全国 17Air 256G-3518-334/3K4 云白色",
+    "price": 5500,
+    "officialPrice": 7999,
+    "discount": -2499
+  },
+  {
+    "product": "全国 17Air 256G-3518-344/3L4 浅金色",
+    "price": 5500,
+    "officialPrice": 7999,
+    "discount": -2499
+  },
+  {
+    "product": "全国 17Air 256G-3518-364/3N4 天蓝色",
+    "price": 5500,
+    "officialPrice": 7999,
+    "discount": -2499
+  },
+  {
+    "product": "全国 17Air 512G-3518-374/3Q4 深空黑色",
+    "price": 7600,
+    "officialPrice": 9999,
+    "discount": -2399
+  },
+  {
+    "product": "全国 17Air 512G-3518-394/3U4 云白色",
+    "price": 7600,
+    "officialPrice": 9999,
+    "discount": -2399
+  },
+  {
+    "product": "全国 17Air 512G-3518-3A4/3V4 浅金色",
+    "price": 7600,
+    "officialPrice": 9999,
+    "discount": -2399
+  },
+  {
+    "product": "全国 17Air 512G-3518-3C4/3W4 天蓝色",
+    "price": 7600,
+    "officialPrice": 9999,
+    "discount": -2399
+  },
+  {
+    "product": "全国 17Air 1TB-3518-3D4/3X4 深空黑色 电询 11999 全国 17Air 1TB-3518-3E4/404 云白色 电询 11999 全国 17Air 1TB-3518-3F4/434 浅金色 电询 11999 全国 17Air 1TB-3518-3G4/444 天蓝色 电询 11999 全国 17Pro 256G-3524-8T4/934 银色",
+    "price": 7920,
+    "officialPrice": 8999,
+    "discount": -1079
+  },
+  {
+    "product": "全国 17Pro 256G-3524-8U4/944 星宇橙色",
+    "price": 7710,
+    "officialPrice": 8999,
+    "discount": -1289
+  },
+  {
+    "product": "全国 17Pro 256G-3524-8V4/954 深蓝色",
+    "price": 7770,
+    "officialPrice": 8999,
+    "discount": -1229
+  },
+  {
+    "product": "全国 17Pro 512G-3524-8W4/964 银色",
+    "price": 9930,
+    "officialPrice": 10999,
+    "discount": -1069
+  },
+  {
+    "product": "全国 17Pro 512G-3524-8X4/974 星宇橙色",
+    "price": 9830,
+    "officialPrice": 10999,
+    "discount": -1169
+  },
+  {
+    "product": "全国 17Pro 512G-3524-8Y4/984 深蓝色",
+    "price": 9830,
+    "officialPrice": 10999,
+    "discount": -1169
+  },
+  {
+    "product": "全国 17Pro 1TB-3524-904/994 银色",
+    "price": 11900,
+    "officialPrice": 12999,
+    "discount": -1099
+  },
+  {
+    "product": "全国 17Pro 1TB-3524-914/9A4 星宇橙色",
+    "price": 12000,
+    "officialPrice": 12999,
+    "discount": -999
+  },
+  {
+    "product": "全国 17Pro 1TB-3524-924/9C4 深蓝色",
+    "price": 11850,
+    "officialPrice": 12999,
+    "discount": -1149
+  },
+  {
+    "product": "全国 17ProMax 256G-3527-034/0U4 银色",
+    "price": 8920,
+    "officialPrice": 9999,
+    "discount": -1079
+  },
+  {
+    "product": "全国 17ProMax 256G-3527-044/0V4 星宇橙色",
+    "price": 8700,
+    "officialPrice": 9999,
+    "discount": -1299
+  },
+  {
+    "product": "全国 17ProMax 256G-3527-054/0W4 深蓝色",
+    "price": 8760,
+    "officialPrice": 9999,
+    "discount": -1239
+  },
+  {
+    "product": "全国 17ProMax 512G-3527-064/0X4 银色",
+    "price": 10860,
+    "officialPrice": 11999,
+    "discount": -1139
+  },
+  {
+    "product": "全国 17ProMax 512G-3527-074/104 星宇橙色",
+    "price": 10570,
+    "officialPrice": 11999,
+    "discount": -1429
+  },
+  {
+    "product": "全国 17ProMax 512G-3527-084/114 深蓝色",
+    "price": 10820,
+    "officialPrice": 11999,
+    "discount": -1179
+  }
+]

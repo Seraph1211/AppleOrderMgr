@@ -161,10 +161,11 @@ module.exports = (sequelize) => {
       comment: '付款人姓名'
     },
     paymentScreenshot: {
-      type: DataTypes.TEXT,
+      type: DataTypes.JSONB,
       allowNull: true,
+      defaultValue: [],
       field: 'payment_screenshot',
-      comment: '付款截图URL或路径'
+      comment: '付款截图URL数组（支持多张图片）'
     },
     // 取货信息
     pickupStore: {

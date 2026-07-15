@@ -1,15 +1,26 @@
 import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
 import { Search, Filter, Download, RefreshCw, Settings, X } from 'lucide-react'
 import { getOrders } from '../api'
 import useColumnConfig from '../hooks/useColumnConfig'
 import ColumnConfigModal from '../components/ColumnConfigModal'
+import OrderDetailModal from '../components/OrderDetailModal'
+import Pagination from '../components/Pagination'
 import { ordersColumns } from '../constants/tableColumns'
 
 export default function Orders() {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
+  const [selectedOrder, setSelectedOrder] = useState(null)
+  const [showDetailModal, setShowDetailModal] = useState(false)
+
+  // 分页状态
+  const [pagination, setPagination] = useState({
+    currentPage: 1,
+    pageSize: 20,
+    totalItems: 0,
+    totalPages: 0
+  })
 
   // 筛选条件
   const [filters, setFilters] = useState({
@@ -33,20 +44,36 @@ export default function Orders() {
 
   useEffect(() => {
     loadOrders()
+  }, [pagination.currentPage, pagination.pageSize])
+
+  useEffect(() => {
     loadFilterOptions()
   }, [])
+
+  // 筛选/搜索改变时触发
+  useEffect(() => {
+    if (pagination.currentPage === 1) {
+      loadOrders()
+    } else {
+      setPagination(prev => ({ ...prev, currentPage: 1 }))
+    }
+  }, [searchTerm, filters.status, filters.productModel, filters.recipientName, filters.pickupStore, filters.payerName])
 
   const loadOrders = async () => {
     setLoading(true)
     try {
       const params = {
-        page: 1,
-        limit: 100,
+        page: pagination.currentPage,
+        limit: pagination.pageSize,
         keyword: searchTerm || undefined,
         ...filters
       }
+      console.log('加载订单，参数:', params)
       const res = await getOrders(params)
+      console.log('API响应:', res)
+
       if (res.success) {
+        console.log('订单数据:', res.data.orders.length, '条')
         setOrders(res.data.orders.map(order => ({
           id: order.id,
           orderNumber: order.order_number,
@@ -74,7 +101,7 @@ export default function Orders() {
           // 付款信息
           paymentMethod: order.payment_method || '-',
           payerName: order.payer_name || '-',
-          paymentScreenshot: order.payment_screenshot || '-',
+          paymentScreenshot: order.payment_screenshot || [],
           // 爬虫相关
           lastCrawledAt: order.last_crawled_at || '-',
           crawlFailCount: order.crawl_fail_count || 0,
@@ -85,6 +112,13 @@ export default function Orders() {
           createdAt: order.created_at,
           updatedAt: order.updated_at
         })))
+
+        // 更新分页信息
+        setPagination(prev => ({
+          ...prev,
+          totalItems: res.data.total,
+          totalPages: Math.ceil(res.data.total / prev.pageSize)
+        }))
       }
     } catch (error) {
       console.error('加载订单失败:', error)
@@ -106,6 +140,8 @@ export default function Orders() {
 
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }))
+    // 筛选条件变化时重置到第一页
+    setPagination(prev => ({ ...prev, currentPage: 1 }))
   }
 
   const resetFilters = () => {
@@ -117,6 +153,21 @@ export default function Orders() {
       payerName: ''
     })
     setSearchTerm('')
+    setPagination(prev => ({ ...prev, currentPage: 1 }))
+  }
+
+  // 分页处理函数
+  const handlePageChange = (page) => {
+    setPagination(prev => ({ ...prev, currentPage: page }))
+  }
+
+  const handlePageSizeChange = (size) => {
+    setPagination(prev => ({
+      ...prev,
+      pageSize: size,
+      currentPage: 1, // 改变每页条数时重置到第一页
+      totalPages: Math.ceil(prev.totalItems / size)
+    }))
   }
 
   const getStatusBadge = (status) => {
@@ -131,21 +182,7 @@ export default function Orders() {
     return badges[status] || badges.pending
   }
 
-  const filteredOrders = orders.filter(order => {
-    const matchesSearch =
-      order.orderNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.appleId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.recipientName.toLowerCase().includes(searchTerm.toLowerCase())
-
-    const matchesStatus = !filters.status || order.status === filters.status
-    const matchesRecipient = !filters.recipientName || order.recipientName.includes(filters.recipientName)
-    const matchesStore = !filters.pickupStore || order.pickupStore.includes(filters.pickupStore)
-    const matchesPayer = !filters.payerName || order.payerName.includes(filters.payerName)
-    const matchesProduct = !filters.productModel || order.products.some(p => p.name?.includes(filters.productModel))
-
-    return matchesSearch && matchesStatus && matchesRecipient && matchesStore && matchesPayer && matchesProduct
-  })
-
+  // 移除客户端过滤逻辑，现在由后端处理
   const visibleColumns = columns.filter(col => col.visible)
 
   const renderCell = (order, column) => {
@@ -163,10 +200,7 @@ export default function Orders() {
         return (
           <div className="text-sm space-y-1">
             {order.products.map((p, i) => (
-              <div key={i} className="flex items-center gap-2">
-                {p.imageUrl && (
-                  <img src={p.imageUrl} alt={p.name} className="w-8 h-8 object-cover rounded" />
-                )}
+              <div key={i}>
                 <span>{p.name} × {p.quantity}</span>
               </div>
             ))}
@@ -212,12 +246,15 @@ export default function Orders() {
 
       case 'actions':
         return (
-          <Link
-            to={`/orders/${order.id}`}
+          <button
+            onClick={() => {
+              setSelectedOrder(order)
+              setShowDetailModal(true)
+            }}
             className="text-primary hover:text-blue-700 text-sm transition-colors"
           >
             查看
-          </Link>
+          </button>
         )
 
       default:
@@ -391,7 +428,7 @@ export default function Orders() {
               <p className="text-gray-600">加载订单...</p>
             </div>
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : orders.length === 0 ? (
           <div className="text-center py-12">
             <p className="text-gray-600">未找到订单</p>
           </div>
@@ -414,7 +451,7 @@ export default function Orders() {
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {filteredOrders.map((order) => (
+                {orders.map((order) => (
                   <tr key={order.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
                     {visibleColumns.map((col) => (
                       <td
@@ -442,17 +479,33 @@ export default function Orders() {
         />
       )}
 
-      {/* 分页 */}
-      {!loading && filteredOrders.length > 0 && (
-        <div className="flex items-center justify-between">
-          <p className="text-sm text-gray-600">
-            显示 {filteredOrders.length} 条订单
-          </p>
-          <div className="flex space-x-2">
-            <button className="btn btn-secondary">上一页</button>
-            <button className="btn btn-secondary">下一页</button>
-          </div>
-        </div>
+      {/* 订单详情弹窗 */}
+      <OrderDetailModal
+        order={selectedOrder}
+        isOpen={showDetailModal}
+        onClose={() => {
+          setShowDetailModal(false)
+          setSelectedOrder(null)
+        }}
+        onUpdate={(updatedOrder) => {
+          // 更新本地订单列表
+          setOrders(prevOrders =>
+            prevOrders.map(o => o.id === updatedOrder.id ? updatedOrder : o)
+          )
+        }}
+      />
+
+      {/* 分页组件 */}
+      {!loading && pagination.totalItems > 0 && (
+        <Pagination
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          totalItems={pagination.totalItems}
+          pageSize={pagination.pageSize}
+          onPageChange={handlePageChange}
+          onPageSizeChange={handlePageSizeChange}
+          pageSizeOptions={[10, 20, 50, 100]}
+        />
       )}
     </div>
   )
