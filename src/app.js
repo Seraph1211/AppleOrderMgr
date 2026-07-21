@@ -107,13 +107,12 @@ const server = app.listen(DEFAULT_PORT, () => {
   });
 
   // 启动邮件监听服务
-  emailService.startEmailService()
-    .then(() => {
-      logger.info('📧 邮件监听服务已启动');
-    })
-    .catch((error) => {
-      logger.error('邮件监听服务启动失败', { error: error.message });
-    });
+  try {
+    emailService.startEmailService();
+    logger.info('📧 邮件监听服务启动请求已发送');
+  } catch (error) {
+    logger.error('邮件监听服务启动失败', { error: error.message });
+  }
 
   crawlerService.startAutoRefreshScheduler()
     .catch((error) => {
