@@ -25,7 +25,7 @@ const isValidOrderNumber = (orderNumber) => {
   if (!orderNumber || typeof orderNumber !== 'string') {
     return false;
   }
-  return /^W\d{9}$/.test(orderNumber);
+  return /^W\d{10}$/.test(orderNumber);
 };
 
 /**

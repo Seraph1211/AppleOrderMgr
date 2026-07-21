@@ -21,7 +21,7 @@ module.exports = (sequelize) => {
     },
     orderId: {
       type: DataTypes.INTEGER,
-      allowNull: false,
+      allowNull: true,
       field: 'order_id',
       comment: '关联的订单ID',
       references: {
@@ -38,21 +38,40 @@ module.exports = (sequelize) => {
       comment: '数据源（用于审计）：auto/manual/scheduled',
       validate: {
         isIn: {
-          args: [['auto', 'manual', 'scheduled']],
-          msg: '数据源必须是 auto、manual 或 scheduled'
+          args: [['auto', 'manual', 'scheduled', 'system']],
+          msg: '数据源必须是 auto、manual、scheduled 或 system'
         }
       }
+    },
+    severity: {
+      type: DataTypes.STRING(20),
+      allowNull: false,
+      defaultValue: 'info',
+      comment: '日志严重程度：error/warn/info/debug',
+      validate: {
+        isIn: {
+          args: [['error', 'warn', 'info', 'debug']],
+          msg: '严重程度必须是 error、warn、info 或 debug'
+        }
+      }
+    },
+    eventType: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: 'crawler',
+      field: 'event_type',
+      comment: '日志类型：crawler/proxy/wind_control/product_validation/amount_parse/scheduler'
+    },
+    event: {
+      type: DataTypes.STRING(255),
+      allowNull: true,
+      comment: '事件名称或摘要'
     },
     proxyIp: {
       type: DataTypes.STRING(50),
       allowNull: true,
       field: 'proxy_ip',
-      comment: '使用的代理IP',
-      validate: {
-        isIP: {
-          msg: '代理IP格式无效'
-        }
-      }
+      comment: '使用的代理IP或IP:端口'
     },
     rawHtml: {
       type: DataTypes.TEXT,
@@ -106,6 +125,16 @@ module.exports = (sequelize) => {
       field: 'error_stack',
       comment: '错误堆栈'
     },
+    context: {
+      type: DataTypes.JSONB,
+      allowNull: true,
+      comment: '结构化上下文'
+    },
+    result: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      comment: '处理结果摘要'
+    },
     crawledData: {
       type: DataTypes.JSONB,
       allowNull: true,
@@ -151,6 +180,14 @@ module.exports = (sequelize) => {
       {
         fields: ['source'],
         name: 'idx_crawl_logs_source'
+      },
+      {
+        fields: ['severity'],
+        name: 'idx_crawl_logs_severity'
+      },
+      {
+        fields: ['event_type'],
+        name: 'idx_crawl_logs_event_type'
       },
       {
         fields: ['success'],

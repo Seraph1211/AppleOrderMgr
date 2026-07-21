@@ -21,6 +21,14 @@ export const ordersColumns = [
     sortable: true,
     pinned: false,
   },
+  {
+    key: 'validationStatus',
+    label: '校验状态',
+    width: '120px',
+    defaultVisible: true,
+    sortable: true,
+    pinned: false,
+  },
   // Apple ID 相关
   {
     key: 'appleId',

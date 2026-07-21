@@ -18,6 +18,35 @@ const logger = require('./logger');
 const { config } = require('./config');
 
 /**
+ * 构建不含代理账号密码的响应摘要
+ * @param {Object} responseData - 代理 API 响应
+ * @returns {Object} 安全摘要
+ */
+function summarizeProxyResponse(responseData) {
+  const proxyList = responseData?.data?.proxy_list;
+  return {
+    hasData: Boolean(responseData?.data),
+    hasProxyList: Array.isArray(proxyList),
+    proxyListCount: Array.isArray(proxyList) ? proxyList.length : 0,
+    responseCode: responseData?.code,
+    hasMessage: Boolean(responseData?.msg),
+  };
+}
+
+/**
+ * 代理日志展示只保留 host:port
+ * @param {string} proxyStr - 代理字符串
+ * @returns {string} 脱敏后的代理字符串
+ */
+function maskProxyString(proxyStr) {
+  const parts = String(proxyStr || '').trim().split(':');
+  if (parts.length >= 2) {
+    return `${parts[0]}:${parts[1]}`;
+  }
+  return 'invalid_proxy';
+}
+
+/**
  * 代理池管理器类
  * 负责代理的获取、轮换、失败追踪、智能刷新
  */
@@ -124,7 +153,9 @@ class ProxyManager {
     try {
       // 快代理私密代理响应格式（f_auth=1）: { code: 0, msg: "", data: { count: 10, proxy_list: ["ip:port:user:pass", ...] } }
       if (!responseData.data || !Array.isArray(responseData.data.proxy_list)) {
-        logger.error('代理响应格式不正确', { responseData });
+        logger.error('代理响应格式不正确', {
+          responseSummary: summarizeProxyResponse(responseData),
+        });
         return [];
       }
 
@@ -133,6 +164,7 @@ class ProxyManager {
       logger.debug('解析代理列表', {
         count: proxyList.length,
         hasAuth: proxyList[0]?.split(':').length === 4,
+        firstProxy: maskProxyString(proxyList[0]),
       });
 
       // 转换为标准格式
@@ -140,7 +172,7 @@ class ProxyManager {
     } catch (error) {
       logger.error('解析代理响应失败', {
         error: error.message,
-        responseData,
+        responseSummary: summarizeProxyResponse(responseData),
       });
       return [];
     }
@@ -340,36 +372,6 @@ class ProxyManager {
   startAutoRefresh() {
     logger.warn('startAutoRefresh 已废弃，请使用 refresh() 手动刷新');
     return;
-
-    // 以下代码已禁用
-    const { refreshInterval, refreshThreshold } = config.proxy;
-
-    setInterval(async () => {
-      try {
-        // 只有需要时才刷新
-        if (this.needsRefresh()) {
-          logger.info('触发智能刷新代理池');
-          await this.loadProxies();
-        } else {
-          const status = this.getStatus();
-          logger.debug('代理池状态良好，跳过刷新', {
-            available: status.available,
-            total: status.total,
-            percentage: `${((status.available / status.total) * 100).toFixed(1)}%`,
-          });
-        }
-      } catch (error) {
-        logger.error('智能刷新代理池失败', {
-          error: error.message,
-        });
-      }
-    }, refreshInterval);
-
-    logger.info('代理池智能刷新已启动', {
-      intervalMinutes: refreshInterval / 60000,
-      refreshThreshold: `${((refreshThreshold || 0.3) * 100).toFixed(0)}%`,
-      strategy: '可用代理 < 阈值或 = 0 时刷新',
-    });
   }
 
   /**
@@ -386,3 +388,5 @@ class ProxyManager {
 const proxyManager = new ProxyManager();
 
 module.exports = proxyManager;
+module.exports.summarizeProxyResponse = summarizeProxyResponse;
+module.exports.maskProxyString = maskProxyString;

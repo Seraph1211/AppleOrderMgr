@@ -48,6 +48,14 @@ IMAP_PORT=993
 IMAP_USER=your_email@qq.com
 IMAP_PASSWORD=your_password
 
+# JWT 认证配置
+JWT_SECRET=your_jwt_secret_key_at_least_32_characters_long
+JWT_EXPIRES_IN=7d
+
+# 登录安全配置
+MAX_LOGIN_ATTEMPTS=5
+LOCK_DURATION_MINUTES=15
+
 # 代理池（可选，生产环境推荐）
 PROXY_API_URL=https://api.kdlapi.com/...
 PROXY_API_KEY=your_key_here
@@ -59,15 +67,30 @@ LOG_LEVEL=info
 PORT=3000
 ```
 
+**重要配置说明**：
+
+- `JWT_SECRET`：JWT 密钥，**生产环境必须配置**，建议使用长度 ≥ 32 位的随机字符串
+- `JWT_EXPIRES_IN`：Token 有效期，默认 7 天
+- `MAX_LOGIN_ATTEMPTS`：最大登录失败次数，默认 5 次
+- `LOCK_DURATION_MINUTES`：账号锁定时长，默认 15 分钟
+
 ### 初始化数据库
 
 ```bash
 # 运行迁移
 npx sequelize-cli db:migrate
 
+# 创建默认管理员账号（首次部署必须执行）
+npm run db:seed:admin
+
 # （可选）填充测试数据
 npx sequelize-cli db:seed:all
 ```
+
+**默认管理员账号**：
+- 用户名：`admin`
+- 密码：`admin123`
+- ⚠️ **首次登录后必须修改密码**
 
 ### 运行项目
 

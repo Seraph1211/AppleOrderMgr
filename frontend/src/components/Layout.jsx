@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Link, useLocation } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import {
   LayoutDashboard,
   Package,
@@ -8,20 +8,58 @@ import {
   Menu,
   X,
   Apple,
-  TrendingUp
+  TrendingUp,
+  Users,
+  LogOut,
+  Lock,
+  ScrollText
 } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 
-const navigation = [
+const baseNavigation = [
   { name: '仪表板', href: '/', icon: LayoutDashboard },
   { name: '订单管理', href: '/orders', icon: Package },
   { name: 'Apple ID', href: '/apple-ids', icon: Apple },
   { name: '取机人', href: '/recipients', icon: User },
   { name: '渠道管理', href: '/channels', icon: TrendingUp },
+  { name: '系统日志', href: '/system-logs', icon: ScrollText },
+]
+
+const adminNavigation = [
+  { name: '用户管理', href: '/users', icon: Users, adminOnly: true },
 ]
 
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+  const menuRef = useRef(null)
   const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout, isAdmin } = useAuth()
+
+  // 根据用户角色生成导航菜单
+  const navigation = isAdmin()
+    ? [...baseNavigation, ...adminNavigation]
+    : baseNavigation
+
+  // 处理登出
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
+  // 点击外部关闭下拉菜单
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setMenuOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -102,6 +140,7 @@ export default function Layout({ children }) {
             <div className="flex-1" />
 
             <div className="flex items-center space-x-4">
+              {/* 邮件监听状态 */}
               <div className="flex items-center space-x-2 text-sm">
                 <Mail className="w-4 h-4 text-primary" />
                 <span className="text-gray-600">邮件监听中</span>
@@ -109,6 +148,61 @@ export default function Layout({ children }) {
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
                 </span>
+              </div>
+
+              {/* 分隔线 */}
+              <div className="h-6 w-px bg-gray-200"></div>
+
+              {/* 用户信息 */}
+              <div className="flex items-center space-x-3">
+                <div className="flex items-center space-x-2">
+                  <User className="w-4 h-4 text-gray-600" />
+                  <span className="text-sm font-medium text-gray-900">{user?.username}</span>
+                  {user?.role === 'admin' ? (
+                    <span className="badge badge-error">管理员</span>
+                  ) : (
+                    <span className="badge badge-info">用户</span>
+                  )}
+                </div>
+
+                {/* 下拉菜单 */}
+                <div className="relative" ref={menuRef}>
+                  <button
+                    onClick={() => setMenuOpen((prev) => !prev)}
+                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <Menu className="w-5 h-5" />
+                  </button>
+
+                  {/* 下拉菜单内容 */}
+                  {menuOpen && (
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
+                      <div className="py-2">
+                        <button
+                          onClick={() => {
+                            setMenuOpen(false)
+                            navigate('/change-password')
+                          }}
+                          className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                          <Lock className="w-4 h-4" />
+                          <span>修改密码</span>
+                        </button>
+                        <div className="border-t border-gray-200 my-2"></div>
+                        <button
+                          onClick={() => {
+                            setMenuOpen(false)
+                            handleLogout()
+                          }}
+                          className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-error hover:bg-gray-50 transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span>退出登录</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           </div>

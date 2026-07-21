@@ -22,9 +22,13 @@ const statsRouter = require('./routes/stats');
 const importRouter = require('./routes/importRoutes');
 const dashboardRouter = require('./routes/dashboardRoutes');
 const channelsRouter = require('./routes/channels');
+const authRouter = require('./routes/auth');
+const usersRouter = require('./routes/users');
+const systemRouter = require('./routes/system');
 
 const { sequelize } = require('./models');
 const emailService = require('./services/emailService');
+const crawlerService = require('./services/crawlerService');
 
 const DEFAULT_PORT = parseInt(process.env.PORT, 10) || 3000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -70,6 +74,8 @@ app.get('/api/health', async (_req, res) => {
 });
 
 // ---------- 业务路由 ----------
+app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
 app.use('/api/apple-ids', appleIdsRouter);
 app.use('/api/recipients', recipientsRouter);
 app.use('/api/orders', ordersRouter);
@@ -77,6 +83,7 @@ app.use('/api/stats', statsRouter);
 app.use('/api/import', importRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/channels', channelsRouter);
+app.use('/api/system', systemRouter);
 
 // ---------- 404 兜底 ----------
 app.use((req, _res, next) => {
@@ -107,6 +114,11 @@ const server = app.listen(DEFAULT_PORT, () => {
     .catch((error) => {
       logger.error('邮件监听服务启动失败', { error: error.message });
     });
+
+  crawlerService.startAutoRefreshScheduler()
+    .catch((error) => {
+      logger.error('自动刷新调度器启动失败', { error: error.message });
+    });
 });
 
 // ---------- 优雅关闭 ----------
@@ -115,6 +127,7 @@ function shutdown(signal) {
 
   // 先停止邮件监听
   emailService.stopEmailService();
+  crawlerService.stopAutoRefreshScheduler();
 
   server.close(async (err) => {
     if (err) {

@@ -5,6 +5,7 @@ import { getRecipients, getRecipientDetail, createRecipient, updateRecipient, de
 import { getStats, getAppleIdStats, getRecipientStats, getProductStats } from './dashboardApi'
 import { previewImport, executeImport, downloadTemplate } from './importApi'
 import { getChannels, getChannelStats, getChannelOrders, updateChannelName } from './channelsApi'
+import { getSystemLogs, getAutoRefreshStatus, resumeAutoRefresh } from './systemApi'
 
 export {
   client,
@@ -46,4 +47,9 @@ export {
   getChannelStats,
   getChannelOrders,
   updateChannelName,
+
+  // System
+  getSystemLogs,
+  getAutoRefreshStatus,
+  resumeAutoRefresh,
 }

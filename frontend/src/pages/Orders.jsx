@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
-import { Search, Filter, Download, RefreshCw, Settings, X } from 'lucide-react'
-import { getOrders } from '../api'
+import { Search, Filter, Download, RefreshCw, Settings, X, AlertTriangle, PauseCircle } from 'lucide-react'
+import { getOrders, getAutoRefreshStatus } from '../api'
 import useColumnConfig from '../hooks/useColumnConfig'
 import ColumnConfigModal from '../components/ColumnConfigModal'
 import OrderDetailModal from '../components/OrderDetailModal'
@@ -13,6 +13,7 @@ export default function Orders() {
   const [searchTerm, setSearchTerm] = useState('')
   const [selectedOrder, setSelectedOrder] = useState(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
+  const [autoRefreshStatus, setAutoRefreshStatus] = useState(null)
 
   // 分页状态
   const [pagination, setPagination] = useState({
@@ -48,6 +49,7 @@ export default function Orders() {
 
   useEffect(() => {
     loadFilterOptions()
+    loadAutoRefreshStatus()
   }, [])
 
   // 筛选/搜索改变时触发
@@ -78,6 +80,18 @@ export default function Orders() {
           id: order.id,
           orderNumber: order.order_number,
           status: order.status,
+          validationStatus: order.validation_status || 'unchecked',
+          validationIssues: order.validation_issues || [],
+          anomalyDetectedAt: order.anomaly_detected_at || null,
+          autoRefreshEnabled: order.auto_refresh_enabled,
+          autoRefreshStopReason: order.auto_refresh_stop_reason || null,
+          autoRefreshStoppedAt: order.auto_refresh_stopped_at || null,
+          paymentStatus: order.payment_status || '-',
+          pickupStatus: order.pickup_status || '-',
+          officialOrderAmount: order.official_order_amount || null,
+          officialOrderAmountCurrency: order.official_order_amount_currency || null,
+          officialOrderAmountParseError: order.official_order_amount_parse_error || null,
+          officialProducts: order.official_products || [],
           // Apple ID 相关
           appleId: order.apple_id || '-',
           applePassword: order.apple_password || '-',
@@ -127,6 +141,17 @@ export default function Orders() {
     }
   }
 
+  const loadAutoRefreshStatus = async () => {
+    try {
+      const res = await getAutoRefreshStatus()
+      if (res.success) {
+        setAutoRefreshStatus(res.data)
+      }
+    } catch (error) {
+      console.error('加载自动刷新状态失败:', error)
+    }
+  }
+
   const loadFilterOptions = async () => {
     // TODO: 从后端 API 获取筛选选项
     // 临时使用硬编码数据
@@ -136,6 +161,16 @@ export default function Orders() {
       recipients: [],
       payers: []
     })
+  }
+
+  const getValidationBadge = (status) => {
+    const badges = {
+      unchecked: { text: '未校验', class: 'badge-info' },
+      valid: { text: '正常', class: 'badge-success' },
+      abnormal: { text: '异常', class: 'badge-error' },
+      unavailable: { text: '无法校验', class: 'badge-warning' },
+    }
+    return badges[status] || badges.unchecked
   }
 
   const handleFilterChange = (key, value) => {
@@ -177,7 +212,10 @@ export default function Orders() {
       shipped: { text: '已发货', class: 'badge-info' },
       ready_for_pickup: { text: '可取货', class: 'badge-success' },
       completed: { text: '已完成', class: 'badge-success' },
+      delivered: { text: '已送达', class: 'badge-success' },
       cancelled: { text: '已取消', class: 'badge-error' },
+      pickup_cancelled: { text: '取货已取消', class: 'badge-error' },
+      unknown: { text: '未知', class: 'badge-info' },
     }
     return badges[status] || badges.pending
   }
@@ -192,9 +230,20 @@ export default function Orders() {
       case 'orderNumber':
         return <span className="font-mono text-sm text-primary">{value}</span>
 
-      case 'status':
+      case 'status': {
         const badge = getStatusBadge(value)
         return <span className={`badge ${badge.class}`}>{badge.text}</span>
+      }
+
+      case 'validationStatus': {
+        const badge = getValidationBadge(value)
+        return (
+          <span className={`badge ${badge.class} inline-flex items-center gap-1`}>
+            {value === 'abnormal' && <AlertTriangle className="w-3 h-3" />}
+            {badge.text}
+          </span>
+        )
+      }
 
       case 'products':
         return (
@@ -281,6 +330,18 @@ export default function Orders() {
         </button>
       </div>
 
+      {autoRefreshStatus?.isPaused && (
+        <div className="border border-red-200 bg-red-50 rounded-lg px-4 py-3 flex items-start gap-3">
+          <PauseCircle className="w-5 h-5 text-red-600 mt-0.5" />
+          <div>
+            <p className="text-sm font-medium text-red-700">自动刷新已暂停</p>
+            <p className="text-sm text-red-600 mt-1">
+              {autoRefreshStatus.pauseReason || '系统检测到关键异常，需要管理员手动恢复'}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* 搜索栏 */}
       <div className="card">
         <div className="flex items-center gap-4">
@@ -351,7 +412,10 @@ export default function Orders() {
               <option value="shipped">已发货</option>
               <option value="ready_for_pickup">可取货</option>
               <option value="completed">已完成</option>
+              <option value="delivered">已送达</option>
               <option value="cancelled">已取消</option>
+              <option value="pickup_cancelled">取货已取消</option>
+              <option value="unknown">未知</option>
             </select>
           </div>
 
@@ -452,7 +516,14 @@ export default function Orders() {
               </thead>
               <tbody className="bg-white">
                 {orders.map((order) => (
-                  <tr key={order.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
+                  <tr
+                    key={order.id}
+                    className={`border-b border-gray-200 transition-colors ${
+                      order.validationStatus === 'abnormal'
+                        ? 'bg-red-50 hover:bg-red-100'
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
                     {visibleColumns.map((col) => (
                       <td
                         key={col.key}

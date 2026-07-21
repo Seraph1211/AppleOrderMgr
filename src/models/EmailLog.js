@@ -103,8 +103,8 @@ module.exports = (sequelize) => {
       comment: '关联的订单号（冗余字段，便于查询）',
       validate: {
         is: {
-          args: /^W\d{9}$/,
-          msg: '订单号必须是W开头后跟9位数字'
+          args: /^W\d{10}$/,
+          msg: '订单号必须是W开头后跟10位数字'
         }
       }
     },

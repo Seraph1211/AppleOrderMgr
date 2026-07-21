@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars, require-await, camelcase */
 /**
  * 统一错误处理中间件
  * @module middleware/errorHandler

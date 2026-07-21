@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Search, Plus, User, Package, CreditCard, Edit, Trash2, Phone, Settings, Upload, Zap, MapPin, Download, Link } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 import { getRecipients, updateRecipient, deleteRecipient } from '../api'
 import { previewImport, executeImport } from '../api/importApi'
 import { batchGenerateContact, batchGenerateAddress, batchBindAppleIds } from '../api/recipientsApi'
@@ -18,6 +19,7 @@ import { recipientsColumns } from '../constants/tableColumns'
 import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status'
 
 export default function Recipients() {
+  const { isAdmin } = useAuth()
   const [recipients, setRecipients] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -407,9 +409,10 @@ export default function Recipients() {
         return <span className="text-sm text-gray-600">{item.boundAppleId}</span>
       case 'tag':
         return item.tag !== '-' ? <span className="badge badge-info">{item.tag}</span> : <span className="text-sm text-gray-400">-</span>
-      case 'status':
+      case 'status': {
         const badge = getStatusBadge(item.status)
         return <span className={`badge ${badge.class}`}>{badge.text}</span>
+      }
       case 'orderCount':
         return (
           <div className="flex items-center justify-center space-x-2">
@@ -439,12 +442,14 @@ export default function Recipients() {
             >
               <Edit className="w-4 h-4 text-gray-400 hover:text-primary" />
             </button>
-            <button
-              onClick={() => handleDelete(item)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
-            </button>
+            {isAdmin() && (
+              <button
+                onClick={() => handleDelete(item)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
+              </button>
+            )}
           </div>
         )
       default:

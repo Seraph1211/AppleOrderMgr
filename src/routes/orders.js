@@ -6,9 +6,13 @@
 
 const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
+const { authenticate } = require('../middleware/authMiddleware');
 const orderController = require('../controllers/orderController');
 
 const router = express.Router();
+
+// 所有接口都需要认证
+router.use(authenticate);
 
 router.get('/', asyncHandler(orderController.listOrders));
 router.get('/:id', asyncHandler(orderController.getOrderDetail));

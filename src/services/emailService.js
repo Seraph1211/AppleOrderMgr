@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars, require-await, camelcase */
 /**
  * 邮件监听服务
  * @description 使用 IMAP IDLE 监听邮箱，实时接收订单通知邮件

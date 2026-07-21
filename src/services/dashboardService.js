@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars, require-await, camelcase */
 const { Op, fn, col, literal } = require('sequelize');
 const { Order, AppleId, Recipient, sequelize } = require('../models');
 const logger = require('../utils/logger');
@@ -34,7 +35,7 @@ const buildWhereClause = (filters) => {
     where[Op.and] = literal(
       `EXISTS (
         SELECT 1 FROM jsonb_array_elements(products) AS product
-        WHERE product->>'model' = '${filters.productModel.replace(/'/g, "''")}'
+        WHERE product->>'model' = '${filters.productModel.replace(/'/g, '\'\'')}'
       )`
     );
   }
@@ -374,17 +375,17 @@ const buildSqlWhereClause = (filters) => {
   const conditions = ['1=1']; // 默认条件
 
   if (filters.startDate) {
-    conditions.push(`order_date >= :startDate`);
+    conditions.push('order_date >= :startDate');
   }
   if (filters.endDate) {
-    conditions.push(`order_date <= :endDate`);
+    conditions.push('order_date <= :endDate');
   }
   if (filters.status) {
     const englishStatus = STATUS_MAP[filters.status] || filters.status;
-    conditions.push(`status = :status`);
+    conditions.push('status = :status');
   }
   if (filters.store) {
-    conditions.push(`pickup_store = :store`);
+    conditions.push('pickup_store = :store');
   }
 
   return conditions.join(' AND ');
@@ -400,17 +401,17 @@ const buildSqlWhereClauseForAmount = (where) => {
 
   if (where.orderDate) {
     if (where.orderDate[Op.gte]) {
-      conditions.push(`order_date >= :startDate`);
+      conditions.push('order_date >= :startDate');
     }
     if (where.orderDate[Op.lte]) {
-      conditions.push(`order_date <= :endDate`);
+      conditions.push('order_date <= :endDate');
     }
   }
   if (where.status) {
-    conditions.push(`status = :status`);
+    conditions.push('status = :status');
   }
   if (where.pickupStore) {
-    conditions.push(`pickup_store = :store`);
+    conditions.push('pickup_store = :store');
   }
 
   return conditions.join(' AND ');

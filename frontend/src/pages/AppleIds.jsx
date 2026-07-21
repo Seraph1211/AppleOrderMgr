@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Search, Plus, Mail, Package, Edit, Trash2, Settings, Upload } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 import { getAppleIds, updateAppleId, deleteAppleId } from '../api'
 import { previewImport, executeImport } from '../api/importApi'
 import useColumnConfig from '../hooks/useColumnConfig'
@@ -13,6 +14,7 @@ import { appleIdsColumns } from '../constants/tableColumns'
 import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status'
 
 export default function AppleIds() {
+  const { isAdmin } = useAuth()
   const [appleIds, setAppleIds] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
@@ -251,9 +253,10 @@ export default function AppleIds() {
         return <span className="text-sm text-gray-600">{item.country}</span>
       case 'isModified':
         return <span className="text-sm text-gray-600">{item.isModified}</span>
-      case 'status':
+      case 'status': {
         const badge = getStatusBadge(item.status)
         return <span className={`badge ${badge.class}`}>{badge.text}</span>
+      }
       case 'orderCount':
         return (
           <div className="flex items-center justify-center space-x-2">
@@ -276,12 +279,14 @@ export default function AppleIds() {
             >
               <Edit className="w-4 h-4 text-gray-400 hover:text-primary" />
             </button>
-            <button
-              onClick={() => handleDelete(item)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
-            </button>
+            {isAdmin() && (
+              <button
+                onClick={() => handleDelete(item)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Trash2 className="w-4 h-4 text-gray-400 hover:text-red-500" />
+              </button>
+            )}
           </div>
         )
       default:

@@ -7,7 +7,7 @@
  */
 
 const { Op } = require('sequelize');
-const { sequelize, Recipient, AppleId } = require('../models');
+const { sequelize, Recipient, AppleId, Order } = require('../models');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const {
@@ -47,6 +47,38 @@ function serializeRecipient(recipient, stats = {}) {
     created_at: recipient.createdAt,
     updated_at: recipient.updatedAt,
   };
+}
+
+/**
+ * 获取多个收件人的订单数量统计
+ * @param {Array<number>} recipientIds - 收件人 ID 数组
+ * @returns {Promise<Object>} { recipientId: { orderCount } }
+ */
+async function getOrderCountsByRecipients(recipientIds) {
+  if (!recipientIds || recipientIds.length === 0) {
+    return {};
+  }
+
+  const results = await Order.findAll({
+    attributes: [
+      'recipientRef',
+      [sequelize.fn('COUNT', sequelize.col('id')), 'orderCount'],
+    ],
+    where: {
+      recipientRef: { [Op.in]: recipientIds },
+    },
+    group: ['recipientRef'],
+    raw: true,
+  });
+
+  const statsMap = {};
+  results.forEach((row) => {
+    statsMap[row.recipientRef] = {
+      orderCount: parseInt(row.orderCount, 10) || 0,
+    };
+  });
+
+  return statsMap;
 }
 
 /**
@@ -452,10 +484,9 @@ async function batchGenerateContact(req, res) {
 
 /**
  * 生成随机详细地址
- * @param {string} city - 城市名称
  * @returns {string} 详细地址
  */
-function generateDetailAddress(city) {
+function generateDetailAddress() {
   const streetSuffixes = ['街', '路', '巷', '弄', '里', '村', '大道', '小区', '花园', '公寓', '广场'];
   const streetNames = ['建设', '人民', '中山', '解放', '和平', '新华', '光明', '胜利', '红旗', '友谊', '文化', '民主', '团结', '幸福', '安康'];
 

@@ -15,6 +15,8 @@
 
 | 模块 | 路由前缀 | 说明 |
 |------|---------|------|
+| 用户认证 | `/api/auth` | 登录、登出、修改密码 |
+| 用户管理 | `/api/users` | 用户增删改查（仅管理员） |
 | Apple ID 管理 | `/api/apple-ids` | Apple ID 的增删改查 |
 | 取机人管理 | `/api/recipients` | 取机人的增删改查 |
 | 订单管理 | `/api/orders` | 订单查询、筛选、统计 |
@@ -25,7 +27,362 @@
 
 ## 三、详细接口设计
 
-### 3.1 Apple ID 管理
+### 3.0 用户认证模块
+
+#### 3.0.1 用户登录
+
+**请求**:
+```
+POST /api/auth/login
+Content-Type: application/json
+
+{
+  "username": "admin",
+  "password": "admin123"
+}
+```
+
+**响应（成功）**:
+```json
+{
+  "success": true,
+  "data": {
+    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+    "user": {
+      "id": 1,
+      "username": "admin",
+      "role": "admin",
+      "forcePasswordChange": true
+    }
+  },
+  "message": "登录成功"
+}
+```
+
+**响应（失败 - 密码错误）**:
+```json
+{
+  "success": false,
+  "message": "用户名或密码错误",
+  "remainingAttempts": 3
+}
+```
+
+**响应（失败 - 账号锁定）**:
+```json
+{
+  "success": false,
+  "message": "账号已被锁定，请在15分钟后重试",
+  "lockedUntil": "2026-07-19T10:30:00Z"
+}
+```
+
+**错误码**:
+- `400`: 缺少必填参数
+- `401`: 用户名或密码错误
+- `403`: 账号已被锁定
+
+**权限**: 公开（无需认证）
+
+---
+
+#### 3.0.2 用户登出
+
+**请求**:
+```
+POST /api/auth/logout
+Authorization: Bearer <token>
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "message": "登出成功"
+}
+```
+
+**说明**: 前端负责清除本地存储的 token，后端无需维护黑名单（JWT 无状态）
+
+**权限**: 需要认证
+
+---
+
+#### 3.0.3 修改密码
+
+**请求**:
+```
+POST /api/auth/change-password
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "oldPassword": "admin123",
+  "newPassword": "NewPass@2026",
+  "confirmPassword": "NewPass@2026"
+}
+```
+
+**响应（成功）**:
+```json
+{
+  "success": true,
+  "message": "密码修改成功，请重新登录"
+}
+```
+
+**响应（失败）**:
+```json
+{
+  "success": false,
+  "message": "旧密码错误"
+}
+```
+
+**验证规则**:
+- `oldPassword`: 必填，验证旧密码正确性
+- `newPassword`: 必填，长度 >= 6 位
+- `confirmPassword`: 必填，必须与 newPassword 一致
+
+**权限**: 需要认证
+
+---
+
+#### 3.0.4 获取当前用户信息
+
+**请求**:
+```
+GET /api/auth/me
+Authorization: Bearer <token>
+```
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 1,
+    "username": "admin",
+    "role": "admin",
+    "status": "active",
+    "forcePasswordChange": false,
+    "lastLoginAt": "2026-07-19T09:15:30Z",
+    "createdAt": "2026-07-15T08:00:00Z"
+  }
+}
+```
+
+**权限**: 需要认证
+
+---
+
+### 3.1 用户管理模块（仅管理员）
+
+#### 3.1.1 获取用户列表
+
+**请求**:
+```
+GET /api/users?page=1&limit=20&role=admin&status=active
+```
+
+**查询参数**:
+- `page`: 页码（默认 1）
+- `limit`: 每页数量（默认 20）
+- `role`: 按角色筛选（可选，admin/user）
+- `status`: 按状态筛选（可选，active/locked）
+- `keyword`: 按用户名搜索（可选）
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "total": 10,
+    "page": 1,
+    "limit": 20,
+    "users": [
+      {
+        "id": 1,
+        "username": "admin",
+        "role": "admin",
+        "status": "active",
+        "lastLoginAt": "2026-07-19T09:15:30Z",
+        "failedLoginAttempts": 0,
+        "createdAt": "2026-07-15T08:00:00Z"
+      },
+      {
+        "id": 2,
+        "username": "user01",
+        "role": "user",
+        "status": "active",
+        "lastLoginAt": "2026-07-18T14:20:00Z",
+        "failedLoginAttempts": 0,
+        "createdAt": "2026-07-16T10:00:00Z"
+      }
+    ]
+  }
+}
+```
+
+**权限**: 需要管理员角色
+
+---
+
+#### 3.1.2 创建用户
+
+**请求**:
+```
+POST /api/users
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "username": "user02",
+  "password": "User@123",
+  "role": "user"
+}
+```
+
+**响应（成功）**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 3,
+    "username": "user02",
+    "role": "user",
+    "status": "active",
+    "createdAt": "2026-07-19T10:00:00Z"
+  },
+  "message": "用户创建成功"
+}
+```
+
+**响应（失败 - 用户名已存在）**:
+```json
+{
+  "success": false,
+  "message": "用户名已存在"
+}
+```
+
+**验证规则**:
+- `username`: 必填，3-50字符，只能包含字母、数字、下划线，全局唯一
+- `password`: 必填，长度 >= 6 位
+- `role`: 必填，只能是 admin 或 user
+
+**权限**: 需要管理员角色
+
+---
+
+#### 3.1.3 更新用户
+
+**请求**:
+```
+PUT /api/users/:id
+Authorization: Bearer <token>
+Content-Type: application/json
+
+{
+  "role": "admin",
+  "status": "active"
+}
+```
+
+**响应（成功）**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 2,
+    "username": "user01",
+    "role": "admin",
+    "status": "active",
+    "updatedAt": "2026-07-19T10:30:00Z"
+  },
+  "message": "用户更新成功"
+}
+```
+
+**说明**:
+- 不允许修改 `username`（用户名不可变）
+- 可修改字段：`role`, `status`
+- 不能通过此接口修改密码（使用修改密码接口）
+
+**权限**: 需要管理员角色
+
+---
+
+#### 3.1.4 删除用户
+
+**请求**:
+```
+DELETE /api/users/:id
+Authorization: Bearer <token>
+```
+
+**响应（成功）**:
+```json
+{
+  "success": true,
+  "message": "用户已删除"
+}
+```
+
+**响应（失败 - 不能删除自己）**:
+```json
+{
+  "success": false,
+  "message": "不能删除当前登录的用户"
+}
+```
+
+**响应（失败 - 不能删除最后一个管理员）**:
+```json
+{
+  "success": false,
+  "message": "不能删除最后一个管理员账号"
+}
+```
+
+**业务规则**:
+- 不能删除当前登录的用户（防止误操作）
+- 不能删除系统中唯一的管理员账号（保证系统可管理）
+
+**权限**: 需要管理员角色
+
+---
+
+#### 3.1.5 解锁用户
+
+**请求**:
+```
+PUT /api/users/:id/unlock
+Authorization: Bearer <token>
+```
+
+**响应（成功）**:
+```json
+{
+  "success": true,
+  "data": {
+    "id": 2,
+    "username": "user01",
+    "status": "active",
+    "failedLoginAttempts": 0,
+    "lockedUntil": null
+  },
+  "message": "用户已解锁"
+}
+```
+
+**说明**: 手动解锁被系统自动锁定的用户账号
+
+**权限**: 需要管理员角色
+
+---
+
+### 3.2 Apple ID 管理
 
 #### 3.1.1 获取所有 Apple ID
 
@@ -112,7 +469,7 @@ DELETE /api/apple-ids/:id
 
 ---
 
-### 3.2 取机人管理
+### 3.3 取机人管理
 
 #### 3.2.1 获取所有取机人
 
@@ -187,7 +544,7 @@ DELETE /api/recipients/:id
 
 ---
 
-### 3.3 订单管理
+### 3.4 订单管理
 
 #### 3.3.1 获取订单列表
 
@@ -199,7 +556,7 @@ GET /api/orders?page=1&limit=20&status=ready&apple_id=1&date_from=2025-10-01&dat
 **查询参数**:
 - `page`: 页码
 - `limit`: 每页数量
-- `status`: 订单状态筛选（submitted/ready/shipped/delivered/cancelled）
+- `status`: 订单状态筛选（pending/processing/shipped/ready_for_pickup/completed/delivered/cancelled/pickup_cancelled/unknown）
 - `apple_id`: Apple ID 筛选
 - `recipient_id`: 取机人筛选
 - `date_from`: 开始日期
@@ -229,6 +586,14 @@ GET /api/orders?page=1&limit=20&status=ready&apple_id=1&date_from=2025-10-01&dat
           }
         ],
         "status": "ready",
+        "payment_status": "paid",
+        "pickup_status": "not_picked_up",
+        "official_order_amount": "12999.00",
+        "official_order_amount_currency": "CNY",
+        "validation_status": "valid",
+        "validation_issues": [],
+        "auto_refresh_enabled": false,
+        "auto_refresh_stop_reason": "status:ready_for_pickup",
         "pickup_store": "Apple 重庆万象城",
         "payment_method": "支付宝",
         "order_date": "2025-10-08T12:21:58Z",
@@ -274,7 +639,27 @@ GET /api/orders/:id
         "imageUrl": "https://..."
       }
     ],
+    "official_products": [
+      {
+        "model": "MG714CH/A",
+        "name": "iPhone 17 Pro Max 1TB 星宇橙色",
+        "quantity": 2,
+        "status": "READY_FOR_PICKUP",
+        "deliveryType": "pickup"
+      }
+    ],
     "status": "ready",
+    "payment_status": "paid",
+    "pickup_status": "not_picked_up",
+    "official_order_amount": "12999.00",
+    "official_order_amount_currency": "CNY",
+    "official_order_amount_parse_error": null,
+    "validation_status": "valid",
+    "validation_issues": [],
+    "anomaly_detected_at": null,
+    "auto_refresh_enabled": false,
+    "auto_refresh_stop_reason": "paid_not_picked_up",
+    "auto_refresh_stopped_at": "2026-07-21T10:00:00Z",
     "order_url": "https://www.apple.com.cn/xc/cn/vieworder/W177976887/...",
     "payment_method": "支付宝",
     "pickup_store": "Apple 重庆万象城",
@@ -297,6 +682,8 @@ POST /api/orders/:id/refresh
 ```
 
 **说明**: 手动触发爬虫更新订单状态
+
+手动刷新会绕过自动刷新停止条件，但生产环境仍必须使用代理；无代理、代理池耗尽或代理 API 失败时不会直连 Apple 官网。
 
 **响应**:
 ```json
@@ -323,9 +710,74 @@ Content-Type: application/json
 }
 ```
 
+### 3.6 系统日志与自动刷新
+
+#### 3.6.1 查询系统日志
+
+**请求**:
+```
+GET /api/system/logs?page=1&limit=20&type=crawler&severity=warn&order_number=W177976887&keyword=proxy&is_wind_control=true&success=false
+```
+
+**查询参数**:
+- `date_from` / `date_to`: 日志时间范围
+- `type`: `crawler` / `proxy` / `wind_control` / `product_validation` / `amount_parse` / `scheduler`
+- `severity`: `error` / `warn` / `info` / `debug`
+- `order_number`: 订单号模糊匹配
+- `keyword`: 事件、结果或错误摘要关键词
+- `is_wind_control`: 是否风控日志
+- `success`: 是否成功
+
+**响应**:
+```json
+{
+  "success": true,
+  "data": {
+    "total": 1,
+    "page": 1,
+    "limit": 20,
+    "logs": [
+      {
+        "id": 10,
+        "time": "2026-07-21T10:00:00Z",
+        "severity": "warn",
+        "type": "product_validation",
+        "source": "scheduled",
+        "order_id": 1,
+        "order_number": "W177976887",
+        "event": "order_marked_abnormal",
+        "proxy_ip": "123.45.67.89:8080",
+        "http_status": 200,
+        "response_time": 2350,
+        "success": true,
+        "result": "abnormal",
+        "error_summary": null,
+        "context": {}
+      }
+    ]
+  }
+}
+```
+
+#### 3.6.2 查询自动刷新状态
+
+**请求**:
+```
+GET /api/system/auto-refresh
+```
+
+#### 3.6.3 管理员恢复自动刷新
+
+**请求**:
+```
+POST /api/system/auto-refresh/resume
+```
+
+**说明**: 连续 HTTP 541 等风控导致自动刷新暂停后，必须由管理员调用此接口恢复。
+
 ---
 
-### 3.4 统计分析
+### 3.5 统计分析
 
 #### 3.4.1 订单统计
 
@@ -442,7 +894,7 @@ GET /api/stats/products?date_from=2025-10-01&date_to=2025-10-31
 
 ---
 
-### 3.5 系统配置
+### 3.6 系统配置
 
 #### 3.5.1 获取邮箱配置
 

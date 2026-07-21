@@ -4,7 +4,7 @@
  */
 
 const nodemailer = require('nodemailer');
-const logger = require('./src/utils/logger');
+const logger = require('../src/utils/logger');
 
 // 创建测试邮件传输器（使用 163 邮箱发送）
 const transporter = nodemailer.createTransport({
@@ -37,7 +37,7 @@ const testEmailHTML = `
             <p style="margin-top: 15px;"><strong>Apple ID：</strong> test@example.com</p>
 
             <p style="margin-top: 15px;"><strong>订单链接：</strong></p>
-            <p><a href="https://www.apple.com.cn/xc/cn/vieworder/W123456789/test@example.com" style="color: #0066cc;">https://www.apple.com.cn/xc/cn/vieworder/W123456789/test@example.com</a></p>
+            <p><a href="https://www.apple.com.cn/xc/cn/vieworder/W1234567890/test@example.com" style="color: #0066cc;">https://www.apple.com.cn/xc/cn/vieworder/W1234567890/test@example.com</a></p>
         </div>
 
         <p>请及时登录 Apple Store 查看订单状态。</p>

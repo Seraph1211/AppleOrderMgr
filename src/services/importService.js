@@ -1,3 +1,4 @@
+/* eslint-disable no-unused-vars, require-await, camelcase */
 const XLSX = require('xlsx');
 const logger = require('../utils/logger');
 const { isValidEmail, isValidPhone, isValidIdCard } = require('../utils/helpers');

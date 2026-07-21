@@ -77,9 +77,34 @@ const config = {
     },
     maxRetry: parseInt(process.env.CRAWLER_MAX_RETRY, 10) || 3,
     timeout: parseInt(process.env.CRAWLER_TIMEOUT, 10) || 30000,
+    autoRefreshEnabled:
+      process.env.AUTO_ORDER_REFRESH_ENABLED === 'true' ||
+      (process.env.AUTO_ORDER_REFRESH_ENABLED !== 'false' &&
+        process.env.NODE_ENV === 'production'),
+    autoRefreshIntervalMs:
+      parseInt(process.env.AUTO_ORDER_REFRESH_INTERVAL_MS, 10) || 10000,
+    windControlPauseThreshold:
+      parseInt(process.env.CRAWLER_WIND_CONTROL_PAUSE_THRESHOLD, 10) || 2,
     userAgent:
       process.env.CRAWLER_USER_AGENT ||
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+  },
+
+  // Telegram 告警配置（仅从环境变量读取）
+  telegram: {
+    enabled:
+      process.env.TELEGRAM_ENABLED === 'true' ||
+      process.env.TELEGRAM_ALERT_ENABLED === 'true',
+    botToken: process.env.TELEGRAM_BOT_TOKEN,
+    chatId: process.env.TELEGRAM_CHAT_ID,
+    proxyUrl: process.env.TELEGRAM_PROXY_URL,
+    timeout: parseInt(process.env.TELEGRAM_TIMEOUT, 10) || 10000,
+    heartbeat: {
+      enabled: process.env.TELEGRAM_HEARTBEAT_ENABLED === 'true',
+      intervalMs: parseInt(process.env.TELEGRAM_HEARTBEAT_INTERVAL_MS, 10) || 300000,
+      quietStart: process.env.TELEGRAM_HEARTBEAT_QUIET_START || null,
+      quietEnd: process.env.TELEGRAM_HEARTBEAT_QUIET_END || null,
+    },
   },
 
   // 代理池配置

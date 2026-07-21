@@ -131,7 +131,17 @@ module.exports = (sequelize) => {
       comment: '订单状态',
       validate: {
         isIn: {
-          args: [['pending', 'processing', 'shipped', 'ready_for_pickup', 'completed', 'cancelled']],
+          args: [[
+            'pending',
+            'processing',
+            'shipped',
+            'ready_for_pickup',
+            'completed',
+            'delivered',
+            'cancelled',
+            'pickup_cancelled',
+            'unknown',
+          ]],
           msg: '订单状态必须是有效值'
         }
       }
@@ -154,6 +164,30 @@ module.exports = (sequelize) => {
       field: 'payment_method',
       comment: '付款方式'
     },
+    paymentStatus: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      field: 'payment_status',
+      comment: '官网支付状态'
+    },
+    officialOrderAmount: {
+      type: DataTypes.DECIMAL(12, 2),
+      allowNull: true,
+      field: 'official_order_amount',
+      comment: '官网订单金额'
+    },
+    officialOrderAmountCurrency: {
+      type: DataTypes.STRING(10),
+      allowNull: true,
+      field: 'official_order_amount_currency',
+      comment: '官网订单金额币种'
+    },
+    officialOrderAmountParseError: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'official_order_amount_parse_error',
+      comment: '官网订单金额解析失败原因'
+    },
     payerName: {
       type: DataTypes.STRING(100),
       allowNull: true,
@@ -173,6 +207,12 @@ module.exports = (sequelize) => {
       allowNull: true,
       field: 'pickup_store',
       comment: '取货门店'
+    },
+    pickupStatus: {
+      type: DataTypes.STRING(50),
+      allowNull: true,
+      field: 'pickup_status',
+      comment: '官网取货状态'
     },
     pickupStoreCode: {
       type: DataTypes.STRING(50),
@@ -218,6 +258,58 @@ module.exports = (sequelize) => {
       defaultValue: 0,
       field: 'crawl_fail_count',
       comment: '爬取失败次数'
+    },
+    officialProducts: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+      field: 'official_products',
+      comment: '官网商品列表（不含图片）'
+    },
+    validationStatus: {
+      type: DataTypes.STRING(50),
+      allowNull: false,
+      defaultValue: 'unchecked',
+      field: 'validation_status',
+      comment: '商品校验状态：unchecked/valid/abnormal/unavailable',
+      validate: {
+        isIn: {
+          args: [['unchecked', 'valid', 'abnormal', 'unavailable']],
+          msg: '商品校验状态必须是有效值'
+        }
+      }
+    },
+    validationIssues: {
+      type: DataTypes.JSONB,
+      allowNull: false,
+      defaultValue: [],
+      field: 'validation_issues',
+      comment: '商品校验异常明细'
+    },
+    anomalyDetectedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'anomaly_detected_at',
+      comment: '异常订单发现时间'
+    },
+    autoRefreshEnabled: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: true,
+      field: 'auto_refresh_enabled',
+      comment: '是否允许自动刷新'
+    },
+    autoRefreshStopReason: {
+      type: DataTypes.STRING(100),
+      allowNull: true,
+      field: 'auto_refresh_stop_reason',
+      comment: '自动刷新停止原因'
+    },
+    autoRefreshStoppedAt: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      field: 'auto_refresh_stopped_at',
+      comment: '自动刷新停止时间'
     },
     // 业务字段
     tag: {
@@ -280,6 +372,22 @@ module.exports = (sequelize) => {
         name: 'idx_orders_status'
       },
       {
+        fields: ['payment_status'],
+        name: 'idx_orders_payment_status'
+      },
+      {
+        fields: ['pickup_status'],
+        name: 'idx_orders_pickup_status'
+      },
+      {
+        fields: ['validation_status'],
+        name: 'idx_orders_validation_status'
+      },
+      {
+        fields: ['auto_refresh_enabled'],
+        name: 'idx_orders_auto_refresh_enabled'
+      },
+      {
         fields: ['order_date'],
         name: 'idx_orders_order_date'
       },
@@ -303,6 +411,11 @@ module.exports = (sequelize) => {
         using: 'GIN',
         fields: ['products'],
         name: 'idx_orders_products_gin'
+      },
+      {
+        using: 'GIN',
+        fields: ['official_products'],
+        name: 'idx_orders_official_products_gin'
       }
     ],
     comment: '订单管理表'

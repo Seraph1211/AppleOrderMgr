@@ -2,9 +2,13 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
+const { authenticate } = require('../middleware/authMiddleware');
 const { previewImport, executeImport } = require('../controllers/importController');
 
 const router = express.Router();
+
+// 所有接口都需要认证
+router.use(authenticate);
 
 // 确保上传目录存在
 const uploadDir = path.join(__dirname, '../../uploads/import');

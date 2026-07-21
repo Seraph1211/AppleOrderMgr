@@ -3,7 +3,7 @@
  * @description 测试邮件解析功能，包括单商品和多商品订单
  */
 
-const { parseOrderEmail } = require('./src/services/emailParser');
+const { parseOrderEmail } = require('../src/services/emailParser');
 
 // 测试用例 1: 单商品订单
 const testEmail1 = `From: 心选邮件通知 <noreply_12@lanu.cn>
@@ -15,7 +15,7 @@ Content-Type: text/html; charset=UTF-8
 亲爱的&nbsp;&nbsp;***test@hotmail.com：<br><br>
 恭喜您于2025/10/8 20:21:58在电脑iZa8bpucta640l0Z上预订iPhone手机成功，以下为成功预订信息：<br /><br />
 <span style='font-weight:bold'>MG0A4CH/A-iPhone 17 Pro Max 星宇橙色 1T x 2/李浩/603X/支付宝/-/指定信息/天津</span><br /><br />
-<a href="https://www.apple.com.cn/xc/cn/vieworder/W123456789/test@hotmail.com" target='_blank'>点击此处查看订单详情</a>或请查收联系人邮箱的邮件查看订单详情<br /><br />
+<a href="https://www.apple.com.cn/xc/cn/vieworder/W1234567890/test@hotmail.com" target='_blank'>点击此处查看订单详情</a>或请查收联系人邮箱的邮件查看订单详情<br /><br />
 请在相应的时间到相应的店铺领取您预订的产品!<br /><br />
 感谢您使用 NULL AOS Helper，我们一直在努力，谢谢您的支持。
 </div>`;
@@ -30,7 +30,7 @@ Content-Type: text/html; charset=UTF-8
 亲爱的&nbsp;&nbsp;***tzvcantetc8k@hotmail.com：<br><br>
 恭喜您于2025/10/8 20:30:00在电脑iZa8bpucta640l0Z上预订iPhone手机成功，以下为成功预订信息：<br /><br />
 <span style='font-weight:bold'>MG714CH/A-iPhone 17 鼠尾草绿色 256G x 2@HNPW2ZM/A-Belkin Secure Holder 挂绳 (适用于 AirTag) - 白色(98元) x 1/冉念/5904/支付宝/-/指定信息/水果惠</span><br /><br />
-<a href="https://www.apple.com.cn/xc/cn/vieworder/W177976887/18640948351@8lvv.com" target='_blank'>点击此处查看订单详情</a>或请查收联系人邮箱的邮件查看订单详情<br /><br />
+<a href="https://www.apple.com.cn/xc/cn/vieworder/W1779768870/18640948351@8lvv.com" target='_blank'>点击此处查看订单详情</a>或请查收联系人邮箱的邮件查看订单详情<br /><br />
 请在相应的时间到相应的店铺领取您预订的产品!
 </div>`;
 
@@ -52,7 +52,7 @@ async function runTests() {
 
     // 验证结果
     console.assert(result1.appleId === 'test@hotmail.com', '❌ Apple ID 不匹配');
-    console.assert(result1.orderNumber === 'W123456789', '❌ 订单号不匹配');
+    console.assert(result1.orderNumber === 'W1234567890', '❌ 订单号不匹配');
     console.assert(result1.products.length === 1, '❌ 商品数量不匹配');
     console.assert(result1.products[0].model === 'MG0A4CH/A', '❌ 商品型号不匹配');
     console.assert(result1.products[0].quantity === 2, '❌ 商品数量不匹配');
@@ -82,7 +82,7 @@ async function runTests() {
 
     // 验证结果
     console.assert(result2.appleId === 'tzvcantetc8k@hotmail.com', '❌ Apple ID 不匹配');
-    console.assert(result2.orderNumber === 'W177976887', '❌ 订单号不匹配');
+    console.assert(result2.orderNumber === 'W1779768870', '❌ 订单号不匹配');
     console.assert(result2.products.length === 2, '❌ 商品数量不匹配');
     console.assert(result2.products[0].model === 'MG714CH/A', '❌ 第一个商品型号不匹配');
     console.assert(result2.products[0].quantity === 2, '❌ 第一个商品数量不匹配');

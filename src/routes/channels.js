@@ -5,9 +5,13 @@
  */
 
 const express = require('express');
+const { authenticate } = require('../middleware/authMiddleware');
 const channelController = require('../controllers/channelController');
 
 const router = express.Router();
+
+// 所有接口都需要认证
+router.use(authenticate);
 
 /**
  * GET /api/channels

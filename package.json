@@ -17,6 +17,7 @@
     "db:migrate": "sequelize-cli db:migrate",
     "db:migrate:undo": "sequelize-cli db:migrate:undo",
     "db:seed": "sequelize-cli db:seed:all",
+    "db:seed:admin": "sequelize-cli db:seed --seed 20260719000001-create-default-admin.js",
     "db:reset": "sequelize-cli db:migrate:undo:all && sequelize-cli db:migrate"
   },
   "keywords": [
@@ -29,16 +30,22 @@
   "license": "ISC",
   "dependencies": {
     "axios": "^1.18.1",
+    "bcrypt": "^5.1.1",
+    "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "express-rate-limit": "^7.1.5",
+    "https-proxy-agent": "^9.1.0",
+    "jsonwebtoken": "^9.0.3",
     "mailparser": "^3.7.1",
     "multer": "^2.2.0",
     "node-cron": "^3.0.3",
     "node-imap": "^0.9.6",
     "pg": "^8.12.0",
     "sequelize": "^6.37.3",
+    "socks-proxy-agent": "^10.1.0",
     "winston": "^3.13.0",
     "xlsx": "^0.18.5"
   },

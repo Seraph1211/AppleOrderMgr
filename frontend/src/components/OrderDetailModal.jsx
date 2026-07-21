@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { X, Upload, Save, ExternalLink } from 'lucide-react'
-import { updateOrder } from '../api/ordersApi'
+import { X, Upload, Save, ExternalLink, AlertTriangle, RefreshCw } from 'lucide-react'
+import { updateOrder, refreshOrder } from '../api/ordersApi'
+import AlertModal from './AlertModal'
 
 /**
  * 订单详情弹窗组件
@@ -13,6 +14,8 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
   })
   const [uploading, setUploading] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
+  const [alertInfo, setAlertInfo] = useState(null)
 
   useEffect(() => {
     if (order) {
@@ -75,18 +78,21 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
     const remainingSlots = 9 - currentCount
 
     if (files.length > remainingSlots) {
-      alert(`最多只能上传 9 张截图，当前已有 ${currentCount} 张，还可上传 ${remainingSlots} 张`)
+      setAlertInfo({
+        title: '上传数量超限',
+        message: `最多只能上传 9 张截图，当前已有 ${currentCount} 张，还可上传 ${remainingSlots} 张`
+      })
       return
     }
 
     // 验证所有文件
     for (const file of files) {
       if (!file.type.startsWith('image/')) {
-        alert('请上传图片文件')
+        setAlertInfo({ title: '文件类型错误', message: '请上传图片文件' })
         return
       }
       if (file.size > 5 * 1024 * 1024) {
-        alert('图片大小不能超过 5MB')
+        setAlertInfo({ title: '文件过大', message: '图片大小不能超过 5MB' })
         return
       }
     }
@@ -130,7 +136,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
       setUploading(false)
     } catch (error) {
       console.error('上传失败:', error)
-      alert('上传失败，请重试')
+      setAlertInfo({ title: '上传失败', message: '上传失败，请重试' })
       setUploading(false)
     }
 
@@ -167,14 +173,35 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
       }
 
       console.log('更新的订单数据:', updatedOrder)
-      alert('保存成功')
+      setAlertInfo({ title: '保存成功', message: '订单付款信息已保存' })
       onUpdate && onUpdate(updatedOrder)
       setSaving(false)
-      onClose()
     } catch (error) {
       console.error('保存失败:', error)
-      alert(`保存失败：${error.message || '请重试'}`)
+      setAlertInfo({ title: '保存失败', message: `保存失败：${error.message || '请重试'}` })
       setSaving(false)
+    }
+  }
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true)
+    try {
+      const response = await refreshOrder(order.id)
+      if (response.success) {
+        const updatedOrder = {
+          ...order,
+          status: response.data.new_status || order.status,
+          validationStatus: response.data.validation_status || order.validationStatus,
+          autoRefreshStopReason: response.data.auto_refresh_stop_reason || order.autoRefreshStopReason,
+          lastCrawledAt: new Date().toISOString()
+        }
+        onUpdate && onUpdate(updatedOrder)
+        setAlertInfo({ title: '刷新完成', message: '订单已从 Apple 官网更新' })
+      }
+    } catch (error) {
+      setAlertInfo({ title: '刷新失败', message: error.message || '订单刷新失败，请稍后重试' })
+    } finally {
+      setRefreshing(false)
     }
   }
 
@@ -182,13 +209,38 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
     const statusMap = {
       'pending': { text: '待处理', class: 'badge-warning' },
       'processing': { text: '处理中', class: 'badge-info' },
+      'shipped': { text: '已发货', class: 'badge-info' },
+      'ready_for_pickup': { text: '可取货', class: 'badge-success' },
       'completed': { text: '已完成', class: 'badge-success' },
-      'cancelled': { text: '已取消', class: 'badge-error' }
+      'delivered': { text: '已送达', class: 'badge-success' },
+      'cancelled': { text: '已取消', class: 'badge-error' },
+      'pickup_cancelled': { text: '取货已取消', class: 'badge-error' },
+      'unknown': { text: '未知', class: 'badge-info' }
     }
     return statusMap[status] || { text: status, class: 'badge-info' }
   }
 
   const badge = getStatusBadge(order.status)
+  const validationIssues = order.validationIssues || []
+  const officialProducts = order.officialProducts || []
+  const comparisonRows = (order.products || []).map((product) => {
+    const normalizedName = String(product.name || '').replace(/\s+/g, '').toLowerCase()
+    const official = officialProducts.find((item) => {
+      const officialName = String(item.name || '').replace(/\s+/g, '').toLowerCase()
+      return officialName &&
+        normalizedName &&
+        (officialName.includes(normalizedName) || normalizedName.includes(officialName))
+    })
+    const emailQuantity = Number(product.quantity || 0)
+    const officialQuantity = official ? Number(official.quantity || 0) : null
+    return {
+      model: product.model || product.modelId || official?.model || '-',
+      name: product.name || official?.name || '-',
+      emailQuantity,
+      officialQuantity,
+      result: official && emailQuantity === officialQuantity ? 'valid' : 'abnormal'
+    }
+  })
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -210,6 +262,22 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
         {/* 弹窗内容 */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-6">
+            {order.validationStatus === 'abnormal' && (
+              <div className="border border-red-200 bg-red-50 rounded-lg p-4 flex gap-3">
+                <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
+                <div>
+                  <p className="text-sm font-medium text-red-700">异常订单</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {validationIssues[0]?.message || order.autoRefreshStopReason || '商品校验存在差异'}
+                  </p>
+                  <div className="text-xs text-red-500 mt-2 space-x-4">
+                    <span>发现时间: {order.anomalyDetectedAt ? new Date(order.anomalyDetectedAt).toLocaleString('zh-CN') : '-'}</span>
+                    <span>最后爬取: {order.lastCrawledAt !== '-' ? new Date(order.lastCrawledAt).toLocaleString('zh-CN') : '-'}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* 订单基本信息 */}
             <div className="card">
               <h3 className="text-lg font-semibold mb-4">基本信息</h3>
@@ -219,6 +287,14 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                   <div className="mt-1">
                     <span className={`badge ${badge.class}`}>{badge.text}</span>
                   </div>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">支付状态</label>
+                  <p className="text-sm text-gray-900 mt-1">{order.paymentStatus || '-'}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">取货状态</label>
+                  <p className="text-sm text-gray-900 mt-1">{order.pickupStatus || '-'}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">下单时间</label>
@@ -250,23 +326,40 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
 
             {/* 商品信息 */}
             <div className="card">
-              <h3 className="text-lg font-semibold mb-4">商品信息</h3>
-              <div className="space-y-2">
-                {order.products && order.products.length > 0 ? (
-                  order.products.map((product, index) => (
-                    <div key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">{product.name}</p>
-                        {product.model && (
-                          <p className="text-xs text-gray-500 mt-1">型号: {product.model}</p>
-                        )}
-                      </div>
-                      <div className="text-sm text-gray-600">× {product.quantity}</div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm text-gray-400">暂无商品信息</p>
-                )}
+              <h3 className="text-lg font-semibold mb-4">商品对比</h3>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b border-gray-200 bg-gray-50">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">型号</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">名称</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">邮件数量</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">官网数量</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">校验结果</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white">
+                    {comparisonRows.length > 0 ? comparisonRows.map((row, index) => (
+                      <tr key={index} className="border-b border-gray-200">
+                        <td className="py-3 px-4 text-sm text-gray-600 font-mono">{row.model}</td>
+                        <td className="py-3 px-4 text-sm text-gray-900">{row.name}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{row.emailQuantity}</td>
+                        <td className="py-3 px-4 text-sm text-gray-600">{row.officialQuantity ?? '-'}</td>
+                        <td className="py-3 px-4">
+                          <span className={`badge ${row.result === 'valid' ? 'badge-success' : 'badge-error'}`}>
+                            {row.result === 'valid' ? '正常' : '异常'}
+                          </span>
+                        </td>
+                      </tr>
+                    )) : (
+                      <tr>
+                        <td colSpan="5" className="py-6 px-4 text-sm text-gray-400 text-center">
+                          暂无商品信息
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               </div>
             </div>
 
@@ -321,6 +414,17 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                 <div>
                   <label className="text-sm text-gray-600">付款方式</label>
                   <p className="text-sm text-gray-900 mt-1">{order.paymentMethod}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">官网订单金额</label>
+                  <p className="text-lg font-semibold text-accent mt-1">
+                    {order.officialOrderAmount
+                      ? `${order.officialOrderAmountCurrency || 'CNY'} ${order.officialOrderAmount}`
+                      : '-'}
+                  </p>
+                  {!order.officialOrderAmount && order.officialOrderAmountParseError && (
+                    <p className="text-xs text-gray-500 mt-1">{order.officialOrderAmountParseError}</p>
+                  )}
                 </div>
                 <div>
                   <label className="text-sm text-gray-700 font-medium">付款人 *</label>
@@ -422,6 +526,14 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
             取消
           </button>
           <button
+            onClick={handleManualRefresh}
+            className="btn btn-secondary flex items-center space-x-2"
+            disabled={saving || refreshing}
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>{refreshing ? '刷新中...' : '手动刷新'}</span>
+          </button>
+          <button
             onClick={handleSave}
             className="btn btn-primary flex items-center space-x-2"
             disabled={saving}
@@ -431,6 +543,13 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
           </button>
         </div>
       </div>
+      {alertInfo && (
+        <AlertModal
+          title={alertInfo.title}
+          message={alertInfo.message}
+          onClose={() => setAlertInfo(null)}
+        />
+      )}
     </div>
   )
 }

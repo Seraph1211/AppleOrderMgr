@@ -7,7 +7,7 @@ const { previewImportData } = require('../services/importService');
  * @param {Object} req - Express request
  * @param {Object} res - Express response
  */
-async function previewImport(req, res) {
+function previewImport(req, res) {
   try {
     if (!req.file) {
       return res.status(400).json({
@@ -134,16 +134,16 @@ async function batchImportAppleIds(dataList, transaction) {
       const securityQa =
         item.question1 && item.answer1
           ? {
-              question1: item.question1,
-              answer1: item.answer1,
-              question2: item.question2,
-              answer2: item.answer2,
-              question3: item.question3,
-              answer3: item.answer3,
-            }
+            question1: item.question1,
+            answer1: item.answer1,
+            question2: item.question2,
+            answer2: item.answer2,
+            question3: item.question3,
+            answer3: item.answer3,
+          }
           : null;
 
-      const [record, created] = await AppleId.findOrCreate({
+      const [, created] = await AppleId.findOrCreate({
         where: { appleId: item.appleId },
         defaults: {
           password: item.password,
@@ -229,7 +229,7 @@ async function batchImportRecipients(dataList, transaction) {
         }
       }
 
-      const [record, created] = await Recipient.findOrCreate({
+      const [, created] = await Recipient.findOrCreate({
         where: { idCardNumber: item.idCardNumber },
         defaults: {
           lastName: item.lastName,

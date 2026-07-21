@@ -35,6 +35,7 @@ coverage/
 # Build output
 dist/
 build/
+test-artifacts/
 
 # PM2
 .pm2/
@@ -47,3 +48,6 @@ temp/
 # Database
 *.sqlite
 *.db
+
+# Claude Agents 任务状态（临时文件）
+.claude-agents/tasks/

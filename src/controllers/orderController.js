@@ -16,7 +16,17 @@ const {
   parsePositiveInt,
 } = require('../utils/apiResponse');
 
-const ORDER_STATUSES = ['pending', 'processing', 'shipped', 'ready_for_pickup', 'completed', 'cancelled'];
+const ORDER_STATUSES = [
+  'pending',
+  'processing',
+  'shipped',
+  'ready_for_pickup',
+  'completed',
+  'delivered',
+  'cancelled',
+  'pickup_cancelled',
+  'unknown',
+];
 
 /**
  * 把 Order（含 appleAccount/recipient）序列化为对外列表项
@@ -34,7 +44,29 @@ function serializeOrderListItem(order) {
       : null,
     products: plain.products,
     status: plain.status,
+    payment_status: plain.paymentStatus,
+    pickup_status: plain.pickupStatus,
+    official_order_amount: plain.officialOrderAmount,
+    official_order_amount_currency: plain.officialOrderAmountCurrency,
+    official_order_amount_parse_error: plain.officialOrderAmountParseError,
+    official_products: plain.officialProducts,
+    validation_status: plain.validationStatus,
+    validation_issues: plain.validationIssues,
+    anomaly_detected_at: plain.anomalyDetectedAt,
+    auto_refresh_enabled: plain.autoRefreshEnabled,
+    auto_refresh_stop_reason: plain.autoRefreshStopReason,
+    auto_refresh_stopped_at: plain.autoRefreshStoppedAt,
     pickup_store: plain.pickupStore,
+    recipient_id_card: plain.recipientIdCard,
+    recipient_email: plain.recipientEmail,
+    recipient_phone: plain.recipientPhone,
+    recipient_address: plain.recipientAddress,
+    apple_password: plain.applePassword,
+    order_url: plain.orderUrl,
+    pickup_store_code: plain.pickupStoreCode,
+    pickup_code: plain.pickupCode,
+    pickup_time_slot: plain.pickupTimeSlot,
+    actual_pickup_date: plain.actualPickupDate,
     payment_method: plain.paymentMethod,
     payer_name: plain.payerName,
     payment_screenshot: plain.paymentScreenshot,
@@ -75,6 +107,18 @@ function serializeOrderDetail(order) {
       : null,
     products: plain.products,
     status: plain.status,
+    payment_status: plain.paymentStatus,
+    pickup_status: plain.pickupStatus,
+    official_order_amount: plain.officialOrderAmount,
+    official_order_amount_currency: plain.officialOrderAmountCurrency,
+    official_order_amount_parse_error: plain.officialOrderAmountParseError,
+    official_products: plain.officialProducts,
+    validation_status: plain.validationStatus,
+    validation_issues: plain.validationIssues,
+    anomaly_detected_at: plain.anomalyDetectedAt,
+    auto_refresh_enabled: plain.autoRefreshEnabled,
+    auto_refresh_stop_reason: plain.autoRefreshStopReason,
+    auto_refresh_stopped_at: plain.autoRefreshStoppedAt,
     order_url: plain.orderUrl,
     payment_method: plain.paymentMethod,
     pickup_store: plain.pickupStore,
@@ -158,7 +202,7 @@ function buildListFilters(query) {
         // 此处若 keyword 命中订单号 iLike 会优先；同时模糊搜索 products[].name 在 PostgreSQL 上可行
       ];
       // 单独补充 products 容器查询：检测到数字 ID 直接精确
-      const asOrderNumber = /^W\d{9}$/.test(kw);
+      const asOrderNumber = /^W\d{10}$/.test(kw);
       if (!asOrderNumber) {
         // 模糊搜索产品名称（通过 JSONB @> 包含含此 name 字符串的条目不可行，因此退化为 iLike 整个 products JSON 文本）
         where[Op.or].push(
@@ -272,7 +316,10 @@ async function refreshOrder(req, res) {
     }
 
     const oldStatus = order.status;
-    const result = await crawlerService.crawlAndUpdateOrder(orderId);
+    const result = await crawlerService.crawlAndUpdateOrder(orderId, {
+      source: 'manual',
+      manual: true,
+    });
 
     return res.json({
       success: true,
@@ -282,6 +329,8 @@ async function refreshOrder(req, res) {
         order_number: order.orderNumber,
         old_status: oldStatus,
         new_status: result?.status ?? oldStatus,
+        validation_status: result?.validationStatus ?? order.validationStatus,
+        auto_refresh_stop_reason: result?.autoRefreshStopReason ?? null,
         updated: result || null,
       },
     });
@@ -335,10 +384,15 @@ async function batchRefresh(req, res) {
     }
 
     const orderIds = orders.map((o) => o.id);
-    const results = await crawlerService.crawlMultipleOrders(orderIds, { concurrency: 3 });
+    const results = await crawlerService.crawlMultipleOrders(orderIds, {
+      concurrency: 3,
+      source: 'manual',
+      manual: true,
+    });
 
-    const succeeded = (results.results || []).filter((r) => r.success).length;
-    const failed = (results.results || []).filter((r) => !r.success).length;
+    const detailRows = results.details || [];
+    const succeeded = detailRows.filter((r) => r.success).length;
+    const failed = detailRows.filter((r) => !r.success).length;
 
     return res.json({
       success: true,
@@ -347,7 +401,7 @@ async function batchRefresh(req, res) {
         total: orderIds.length,
         succeeded,
         failed,
-        results: results.results || [],
+        results: detailRows,
       },
     });
   } catch (error) {

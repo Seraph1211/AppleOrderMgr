@@ -134,8 +134,8 @@ function extractOrderDate(text) {
  * @returns {Object} { orderUrl, orderNumber }
  */
 function extractOrderLink(html) {
-  // 匹配格式: https://www.apple.com.cn/xc/cn/vieworder/W177976887/xxx@xxx.com
-  const regex = /https:\/\/www\.apple\.com\.cn\/xc\/cn\/vieworder\/(W\d{9})\/[^\s'"<>]+/;
+  // 匹配格式: https://www.apple.com.cn/xc/cn/vieworder/W1779769040/xxx@xxx.com
+  const regex = /https:\/\/www\.apple\.com\.cn\/xc\/cn\/vieworder\/(W\d{10})\/[^\s'"<>]+/;
   const match = html.match(regex);
 
   if (match) {
