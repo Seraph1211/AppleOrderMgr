@@ -9,6 +9,7 @@ const { Order, Recipient, AppleId, sequelize } = require('../models');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
+const { maskPhone } = require('../utils/masking');
 
 /**
  * 获取渠道列表（动态聚合统计）
@@ -24,16 +25,34 @@ exports.getChannels = async (req, res, next) => {
       attributes: [
         'tag',
         [fn('COUNT', col('id')), 'totalOrders'],
+        [fn('COUNT', literal("CASE WHEN payment_status = 'paid' THEN 1 END")), 'paidOrders'],
+        [fn('COUNT', literal("CASE WHEN status = 'completed' THEN 1 END")), 'deliveredOrders'],
+        [fn('COALESCE', fn('SUM', col('official_order_amount')), 0), 'totalAmount'],
         [
           fn(
-            'COUNT',
-            literal('CASE WHEN status IN (\'completed\', \'ready_for_pickup\') THEN 1 END')
+            'COALESCE',
+            fn(
+              'SUM',
+              literal("CASE WHEN payment_status = 'paid' THEN official_order_amount ELSE 0 END")
+            ),
+            0
           ),
-          'paidOrders',
+          'paidAmount',
         ],
         [
-          fn('COUNT', literal('CASE WHEN status = \'completed\' THEN 1 END')),
-          'deliveredOrders',
+          fn(
+            'COALESCE',
+            fn(
+              'SUM',
+              literal("CASE WHEN status = 'completed' THEN official_order_amount ELSE 0 END")
+            ),
+            0
+          ),
+          'deliveredAmount',
+        ],
+        [
+          fn('COUNT', literal('CASE WHEN official_order_amount IS NULL THEN 1 END')),
+          'missingAmountOrders',
         ],
       ],
       where: {
@@ -52,13 +71,6 @@ exports.getChannels = async (req, res, next) => {
       const paidOrders = parseInt(channel.paidOrders, 10);
       const deliveredOrders = parseInt(channel.deliveredOrders, 10);
 
-      // TODO: 后续需要在订单表添加真实金额字段，当前使用模拟数据
-      // 模拟计算：假设每个订单平均金额8000元
-      const avgOrderAmount = 8000;
-      const totalAmount = totalOrders * avgOrderAmount;
-      const paidAmount = paidOrders * avgOrderAmount;
-      const deliveredAmount = deliveredOrders * avgOrderAmount;
-
       return {
         id: index + 1, // 虚拟ID，用于前端展示
         tag: channel.tag,
@@ -66,9 +78,11 @@ exports.getChannels = async (req, res, next) => {
         totalOrders,
         paidOrders,
         deliveredOrders,
-        totalAmount,
-        paidAmount,
-        deliveredAmount,
+        totalAmount: Number(channel.totalAmount || 0),
+        paidAmount: Number(channel.paidAmount || 0),
+        deliveredAmount: Number(channel.deliveredAmount || 0),
+        missingAmountOrders: parseInt(channel.missingAmountOrders, 10),
+        amountSource: 'official_order_amount',
       };
     });
 
@@ -110,12 +124,12 @@ exports.getChannelStats = async (req, res, next) => {
     const stats = await Order.findOne({
       attributes: [
         [fn('COUNT', col('id')), 'totalOrders'],
-        [fn('COUNT', literal('CASE WHEN status = \'pending\' THEN 1 END')), 'pendingOrders'],
-        [fn('COUNT', literal('CASE WHEN status = \'processing\' THEN 1 END')), 'processingOrders'],
-        [fn('COUNT', literal('CASE WHEN status = \'shipped\' THEN 1 END')), 'shippedOrders'],
-        [fn('COUNT', literal('CASE WHEN status = \'ready_for_pickup\' THEN 1 END')), 'readyOrders'],
-        [fn('COUNT', literal('CASE WHEN status = \'completed\' THEN 1 END')), 'completedOrders'],
-        [fn('COUNT', literal('CASE WHEN status = \'cancelled\' THEN 1 END')), 'cancelledOrders'],
+        [fn('COUNT', literal("CASE WHEN status = 'pending' THEN 1 END")), 'pendingOrders'],
+        [fn('COUNT', literal("CASE WHEN status = 'processing' THEN 1 END")), 'processingOrders'],
+        [fn('COUNT', literal("CASE WHEN status = 'shipped' THEN 1 END")), 'shippedOrders'],
+        [fn('COUNT', literal("CASE WHEN status = 'ready_for_pickup' THEN 1 END")), 'readyOrders'],
+        [fn('COUNT', literal("CASE WHEN status = 'completed' THEN 1 END")), 'completedOrders'],
+        [fn('COUNT', literal("CASE WHEN status = 'cancelled' THEN 1 END")), 'cancelledOrders'],
       ],
       where: { tag },
       raw: true,
@@ -144,7 +158,11 @@ exports.getChannelStats = async (req, res, next) => {
       },
     });
   } catch (error) {
-    logger.error('获取渠道统计失败', { tag: req.params.tag, error: error.message, stack: error.stack });
+    logger.error('获取渠道统计失败', {
+      tag: req.params.tag,
+      error: error.message,
+      stack: error.stack,
+    });
     next(ApiError.internal('获取渠道统计失败', { error: error.message }));
   }
 };
@@ -165,12 +183,7 @@ exports.getChannelOrders = async (req, res, next) => {
     const DEFAULT_PAGE = 1;
     const DEFAULT_PAGE_SIZE = 20;
 
-    const {
-      page = DEFAULT_PAGE,
-      pageSize = DEFAULT_PAGE_SIZE,
-      status,
-      search,
-    } = req.query;
+    const { page = DEFAULT_PAGE, pageSize = DEFAULT_PAGE_SIZE, status, search } = req.query;
 
     if (!tag) {
       return next(ApiError.badRequest('渠道标签不能为空'));
@@ -227,7 +240,7 @@ exports.getChannelOrders = async (req, res, next) => {
     });
 
     // 序列化订单数据
-    const formattedOrders = orders.map((order) => {
+    const formattedOrders = orders.map(order => {
       const plain = order.toJSON();
       return {
         id: plain.id,
@@ -236,12 +249,12 @@ exports.getChannelOrders = async (req, res, next) => {
         recipientName: plain.recipient
           ? `${plain.recipient.lastName}${plain.recipient.firstName}`
           : plain.recipientName,
-        recipientPhone: plain.recipient?.phone || plain.recipientPhone,
+        recipientPhone: maskPhone(plain.recipient?.phone || plain.recipientPhone),
         products: plain.products,
         status: plain.status,
         pickupStore: plain.pickupStore,
         pickupTimeSlot: plain.pickupTimeSlot,
-        orderUrl: plain.orderUrl,
+        orderUrl: null,
         paymentMethod: plain.paymentMethod,
         orderDate: plain.orderDate,
         tag: plain.tag,
@@ -253,7 +266,11 @@ exports.getChannelOrders = async (req, res, next) => {
 
     res.json(paginatedResponse(formattedOrders, count, pageNum, pageSizeNum));
   } catch (error) {
-    logger.error('获取渠道订单列表失败', { tag: req.params.tag, error: error.message, stack: error.stack });
+    logger.error('获取渠道订单列表失败', {
+      tag: req.params.tag,
+      error: error.message,
+      stack: error.stack,
+    });
     next(ApiError.internal('获取渠道订单列表失败', { error: error.message }));
   }
 };

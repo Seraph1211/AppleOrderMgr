@@ -7,7 +7,7 @@
 /**
  * 构造 API 业务错误
  * @param {number} statusCode - HTTP 状态码（如 400 / 404 / 409 / 500）
- * @param {string} code - 业务错误码（与 docs/05-API接口设计方案.md 中"错误码定义"一致）
+ * @param {string} code - 业务错误码（与 docs/design/API设计.md 中的错误码定义一致）
  * @param {string} message - 面向调用方的可读错误消息
  * @param {Object} [details] - 附加上下文，可选
  */

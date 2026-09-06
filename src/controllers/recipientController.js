@@ -3,20 +3,23 @@
  * 收件人（取机人）控制器
  * @module controllers/recipientController
  * @description 收件人 CRUD + 分页 + 关键字/标签/Apple ID 过滤
- * @see docs/05-API接口设计方案.md 3.2
+ * @see docs/design/API设计.md
  */
 
 const { Op } = require('sequelize');
 const { sequelize, Recipient, AppleId, Order } = require('../models');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
-const {
-  paginatedResponse,
-  parsePositiveInt,
-} = require('../utils/apiResponse');
+const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
 const XLSX = require('xlsx');
-
-const RECIPIENT_STATUSES = ['未使用', '使用中', '已下架', '异常'];
+const { ACCOUNT_STATUSES } = require('../constants/business');
+const { blindIndex } = require('../utils/fieldEncryption');
+const {
+  maskIdCard,
+  maskPhone,
+  maskAddress,
+  escapeSpreadsheetFormula,
+} = require('../utils/masking');
 
 /**
  * 把 Recipient 实例序列化为对外对象
@@ -30,16 +33,17 @@ function serializeRecipient(recipient, stats = {}) {
     name: `${recipient.lastName || ''}${recipient.firstName || ''}`,
     last_name: recipient.lastName,
     first_name: recipient.firstName,
-    id_card_number: recipient.idCardNumber,
+    id_card_number: maskIdCard(recipient.idCardNumber),
     id_card_last4: recipient.idCardLast4,
-    phone: recipient.phone,
+    phone: maskPhone(recipient.phone),
     email: recipient.email,
     apple_id: recipient.appleId,
     apple_id_ref: recipient.appleIdRef,
     province: recipient.province,
     city: recipient.city,
     district: recipient.district,
-    street_address: recipient.streetAddress,
+    street_address: null,
+    masked_address: maskAddress(recipient),
     tag: recipient.tag,
     status: recipient.status,
     notes: recipient.notes,
@@ -60,10 +64,7 @@ async function getOrderCountsByRecipients(recipientIds) {
   }
 
   const results = await Order.findAll({
-    attributes: [
-      'recipientRef',
-      [sequelize.fn('COUNT', sequelize.col('id')), 'orderCount'],
-    ],
+    attributes: ['recipientRef', [sequelize.fn('COUNT', sequelize.col('id')), 'orderCount']],
     where: {
       recipientRef: { [Op.in]: recipientIds },
     },
@@ -72,7 +73,7 @@ async function getOrderCountsByRecipients(recipientIds) {
   });
 
   const statsMap = {};
-  results.forEach((row) => {
+  results.forEach(row => {
     statsMap[row.recipientRef] = {
       orderCount: parseInt(row.orderCount, 10) || 0,
     };
@@ -103,7 +104,7 @@ async function getOrderStatsByRecipients(ids) {
   });
 
   const out = {};
-  rows.forEach((r) => {
+  rows.forEach(r => {
     out[r.recipientRef] = {
       orderCount: parseInt(r.count, 10),
       totalAmount: 0, // 暂时为 0，后续可从 products JSONB 计算
@@ -126,18 +127,19 @@ async function listRecipients(req, res) {
       where.tag = req.query.tag;
     }
     if (req.query.status) {
-      if (!RECIPIENT_STATUSES.includes(req.query.status)) {
-        throw ApiError.badRequest(
-          `status 非法，可选值: ${RECIPIENT_STATUSES.join(', ')}`,
-          { received: req.query.status },
-        );
+      if (!ACCOUNT_STATUSES.includes(req.query.status)) {
+        throw ApiError.badRequest(`status 非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
+          received: req.query.status,
+        });
       }
       where.status = req.query.status;
     }
     if (req.query.apple_id_ref) {
       const ref = parseInt(req.query.apple_id_ref, 10);
       if (Number.isNaN(ref) || ref <= 0) {
-        throw ApiError.badRequest('apple_id_ref 必须是正整数', { received: req.query.apple_id_ref });
+        throw ApiError.badRequest('apple_id_ref 必须是正整数', {
+          received: req.query.apple_id_ref,
+        });
       }
       where.appleIdRef = ref;
     }
@@ -161,15 +163,17 @@ async function listRecipients(req, res) {
       distinct: true,
     });
 
-    const orderStats = await getOrderStatsByRecipients(rows.map((r) => r.id));
+    const orderStats = await getOrderStatsByRecipients(rows.map(r => r.id));
 
-    res.json(paginatedResponse(
-      rows.map((r) => serializeRecipient(r.toJSON(), orderStats[r.id] || {})),
-      count,
-      page,
-      limit,
-      'recipients',
-    ));
+    res.json(
+      paginatedResponse(
+        rows.map(r => serializeRecipient(r.toJSON(), orderStats[r.id] || {})),
+        count,
+        page,
+        limit,
+        'recipients'
+      )
+    );
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
@@ -219,14 +223,18 @@ async function createRecipient(req, res) {
     if (!payload.lastName || !payload.firstName) {
       throw ApiError.badRequest('lastName 与 firstName 必填');
     }
-    if (!payload.idCardNumber || !/^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/.test(payload.idCardNumber)) {
+    if (
+      !payload.idCardNumber ||
+      !/^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/.test(
+        payload.idCardNumber
+      )
+    ) {
       throw ApiError.badRequest('idCardNumber 格式无效（必须 18 位身份证号）');
     }
-    if (payload.status && !RECIPIENT_STATUSES.includes(payload.status)) {
-      throw ApiError.badRequest(
-        `status 非法，可选值: ${RECIPIENT_STATUSES.join(', ')}`,
-        { received: payload.status },
-      );
+    if (payload.status && !ACCOUNT_STATUSES.includes(payload.status)) {
+      throw ApiError.badRequest(`status 非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
+        received: payload.status,
+      });
     }
     if (payload.appleIdRef) {
       const ref = parseInt(payload.appleIdRef, 10);
@@ -237,6 +245,14 @@ async function createRecipient(req, res) {
       if (!exists) {
         throw ApiError.badRequest('关联的 Apple ID 不存在', { appleIdRef: ref });
       }
+    }
+
+    const existing = await Recipient.findOne({
+      where: { idCardHash: blindIndex(payload.idCardNumber) },
+      attributes: ['id'],
+    });
+    if (existing) {
+      throw ApiError.conflict('该身份证号已存在');
     }
 
     const created = await Recipient.create({
@@ -253,11 +269,14 @@ async function createRecipient(req, res) {
       password: payload.password || null,
       appleIdRef: payload.appleIdRef ? parseInt(payload.appleIdRef, 10) : null,
       tag: payload.tag || null,
-      status: payload.status || 'active',
+      status: payload.status || '未使用',
       notes: payload.notes || null,
     });
 
-    logger.info('收件人创建成功', { id: created.id, name: `${created.lastName}${created.firstName}` });
+    logger.info('收件人创建成功', {
+      id: created.id,
+      name: `${created.lastName}${created.firstName}`,
+    });
 
     res.status(201).json({
       success: true,
@@ -292,9 +311,21 @@ async function updateRecipient(req, res) {
 
     const payload = req.body || {};
     const allowed = [
-      'lastName', 'firstName', 'idCardNumber', 'phone', 'email',
-      'province', 'city', 'district', 'streetAddress',
-      'appleId', 'password', 'appleIdRef', 'tag', 'status', 'notes',
+      'lastName',
+      'firstName',
+      'idCardNumber',
+      'phone',
+      'email',
+      'province',
+      'city',
+      'district',
+      'streetAddress',
+      'appleId',
+      'password',
+      'appleIdRef',
+      'tag',
+      'status',
+      'notes',
     ];
     const updates = {};
     for (const key of allowed) {
@@ -303,15 +334,28 @@ async function updateRecipient(req, res) {
       }
     }
 
-    if (updates.status !== undefined && !RECIPIENT_STATUSES.includes(updates.status)) {
-      throw ApiError.badRequest(
-        `status 非法，可选值: ${RECIPIENT_STATUSES.join(', ')}`,
-        { received: updates.status },
-      );
+    if (updates.status !== undefined && !ACCOUNT_STATUSES.includes(updates.status)) {
+      throw ApiError.badRequest(`status 非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
+        received: updates.status,
+      });
     }
-    if (updates.idCardNumber !== undefined
-      && !/^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/.test(updates.idCardNumber)) {
+    if (
+      updates.idCardNumber !== undefined &&
+      !/^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/.test(
+        updates.idCardNumber
+      )
+    ) {
       throw ApiError.badRequest('idCardNumber 格式无效（必须 18 位身份证号）');
+    }
+    if (updates.idCardNumber !== undefined) {
+      const duplicate = await Recipient.findOne({
+        where: {
+          idCardHash: blindIndex(updates.idCardNumber),
+          id: { [Op.ne]: id },
+        },
+        attributes: ['id'],
+      });
+      if (duplicate) throw ApiError.conflict('该身份证号已存在');
     }
     if (updates.appleIdRef !== undefined && updates.appleIdRef !== null) {
       const ref = parseInt(updates.appleIdRef, 10);
@@ -387,10 +431,47 @@ function generatePhone() {
   // 中国联通：130-132, 145, 155-156, 166, 175-176, 185-186
   // 中国电信：133, 149, 153, 173, 177, 180-181, 189, 191, 199
   const prefixes = [
-    '134', '135', '136', '137', '138', '139', '147', '150', '151', '152',
-    '157', '158', '159', '178', '182', '183', '184', '187', '188', '198',
-    '130', '131', '132', '145', '155', '156', '166', '175', '176', '185', '186',
-    '133', '149', '153', '173', '177', '180', '181', '189', '191', '199'
+    '134',
+    '135',
+    '136',
+    '137',
+    '138',
+    '139',
+    '147',
+    '150',
+    '151',
+    '152',
+    '157',
+    '158',
+    '159',
+    '178',
+    '182',
+    '183',
+    '184',
+    '187',
+    '188',
+    '198',
+    '130',
+    '131',
+    '132',
+    '145',
+    '155',
+    '156',
+    '166',
+    '175',
+    '176',
+    '185',
+    '186',
+    '133',
+    '149',
+    '153',
+    '173',
+    '177',
+    '180',
+    '181',
+    '189',
+    '191',
+    '199',
   ];
 
   const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
@@ -453,8 +534,7 @@ async function batchGenerateContact(req, res) {
         updated++;
         logger.info('生成取机人联系方式', {
           id: recipient.id,
-          name: `${recipient.lastName}${recipient.firstName}`,
-          updates
+          updatedFields: Object.keys(updates),
         });
       }
     }
@@ -487,8 +567,36 @@ async function batchGenerateContact(req, res) {
  * @returns {string} 详细地址
  */
 function generateDetailAddress() {
-  const streetSuffixes = ['街', '路', '巷', '弄', '里', '村', '大道', '小区', '花园', '公寓', '广场'];
-  const streetNames = ['建设', '人民', '中山', '解放', '和平', '新华', '光明', '胜利', '红旗', '友谊', '文化', '民主', '团结', '幸福', '安康'];
+  const streetSuffixes = [
+    '街',
+    '路',
+    '巷',
+    '弄',
+    '里',
+    '村',
+    '大道',
+    '小区',
+    '花园',
+    '公寓',
+    '广场',
+  ];
+  const streetNames = [
+    '建设',
+    '人民',
+    '中山',
+    '解放',
+    '和平',
+    '新华',
+    '光明',
+    '胜利',
+    '红旗',
+    '友谊',
+    '文化',
+    '民主',
+    '团结',
+    '幸福',
+    '安康',
+  ];
 
   const numbers = Math.floor(Math.random() * 999) + 1;
   const buildingNum = Math.floor(Math.random() * 30) + 1;
@@ -561,8 +669,7 @@ async function batchGenerateAddress(req, res) {
       updated++;
       logger.info('生成取机人地址', {
         id: recipient.id,
-        name: `${recipient.lastName}${recipient.firstName}`,
-        address: `${province} ${city} ${district} ${updates.streetAddress}`
+        updatedFields: Object.keys(updates),
       });
     }
 
@@ -608,14 +715,15 @@ function generateImportTemplate(recipient, appleIdData) {
     lastName = '',
     firstName = '',
     idCardNumber = '',
-    tag = ''
+    tag = '',
   } = recipient;
 
   const appleId = appleIdData?.appleId || '';
   const password = appleIdData?.password || '';
 
   // Excel公式格式：A2,B2,,,1,指定地址,C2,I2,J2,,D2,E2,F2,G2,,,H2,,,,,,WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#,K2,L2,,,
-  const fixedPart = 'WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#';
+  const fixedPart =
+    'WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#';
 
   return `${appleId},${password},,,1,指定地址,${phone},${lastName},${firstName},,${email},${province},${city},${district},,,${streetAddress},,,,,,${fixedPart},${idCardNumber},${tag},,,`;
 }
@@ -626,26 +734,23 @@ function generateImportTemplate(recipient, appleIdData) {
  */
 async function exportRecipients(req, res) {
   try {
-    const {
-      status,
-      tag,
-      keyword,
-      apple_id: appleIdFilter,
-      ids,
-    } = req.query;
+    const { status, tag, keyword, apple_id: appleIdFilter, ids } = req.query;
 
     // 构建查询条件
     const where = {};
 
     // 如果提供了ID列表，优先使用ID过滤（只导出选中的）
     if (ids) {
-      const idArray = ids.split(',').map(id => parseInt(id, 10)).filter(id => !isNaN(id));
+      const idArray = ids
+        .split(',')
+        .map(id => parseInt(id, 10))
+        .filter(id => !isNaN(id));
       if (idArray.length > 0) {
         where.id = { [Op.in]: idArray };
       }
     } else {
       // 未提供ID列表时，使用其他过滤条件
-      if (status && RECIPIENT_STATUSES.includes(status)) {
+      if (status && ACCOUNT_STATUSES.includes(status)) {
         where.status = status;
       }
 
@@ -663,8 +768,12 @@ async function exportRecipients(req, res) {
           { lastName: { [Op.iLike]: `%${keyword}%` } },
           { phone: { [Op.like]: `%${keyword}%` } },
           { email: { [Op.like]: `%${keyword}%` } },
-          { idCardNumber: { [Op.like]: `%${keyword}%` } },
         ];
+        if (
+          /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/.test(keyword)
+        ) {
+          where[Op.or].push({ idCardHash: blindIndex(keyword) });
+        }
       }
     }
 
@@ -687,37 +796,46 @@ async function exportRecipients(req, res) {
     }
 
     // 构建Excel数据
+    const includeSensitive = req.user.role === 'admin' && req.query.includeSensitive === 'true';
     const excelData = recipients.map(recipient => {
       const appleIdData = recipient.appleAccount;
 
       return {
-        'Apple ID': appleIdData?.appleId || '',
-        '密码': appleIdData?.password || '',
-        '下单手机号码': recipient.phone || '',
-        'Email': recipient.email || '',
-        '省': recipient.province || '',
-        '市': recipient.city || '',
-        '区': recipient.district || '',
-        '街道地址': recipient.streetAddress || '',
-        '姓': recipient.lastName || '',
-        '名': recipient.firstName || '',
-        '身份证号码': recipient.idCardNumber || '',
-        'TAG': recipient.tag || '',
-        '信息导入模版': generateImportTemplate(
-          {
-            phone: recipient.phone,
-            email: recipient.email,
-            province: recipient.province,
-            city: recipient.city,
-            district: recipient.district,
-            streetAddress: recipient.streetAddress,
-            lastName: recipient.lastName,
-            firstName: recipient.firstName,
-            idCardNumber: recipient.idCardNumber,
-            tag: recipient.tag,
-          },
-          appleIdData
-        ),
+        'Apple ID': escapeSpreadsheetFormula(appleIdData?.appleId || ''),
+        密码: includeSensitive ? escapeSpreadsheetFormula(appleIdData?.password || '') : '******',
+        下单手机号码: includeSensitive ? recipient.phone || '' : maskPhone(recipient.phone) || '',
+        Email: escapeSpreadsheetFormula(recipient.email || ''),
+        省: escapeSpreadsheetFormula(recipient.province || ''),
+        市: escapeSpreadsheetFormula(recipient.city || ''),
+        区: escapeSpreadsheetFormula(recipient.district || ''),
+        街道地址: includeSensitive
+          ? escapeSpreadsheetFormula(recipient.streetAddress || '')
+          : '详细地址已隐藏',
+        姓: escapeSpreadsheetFormula(recipient.lastName || ''),
+        名: escapeSpreadsheetFormula(recipient.firstName || ''),
+        身份证号码: includeSensitive
+          ? recipient.idCardNumber || ''
+          : maskIdCard(recipient.idCardNumber) || '',
+        TAG: escapeSpreadsheetFormula(recipient.tag || ''),
+        信息导入模版: includeSensitive
+          ? escapeSpreadsheetFormula(
+            generateImportTemplate(
+              {
+                phone: recipient.phone,
+                email: recipient.email,
+                province: recipient.province,
+                city: recipient.city,
+                district: recipient.district,
+                streetAddress: recipient.streetAddress,
+                lastName: recipient.lastName,
+                firstName: recipient.firstName,
+                idCardNumber: recipient.idCardNumber,
+                tag: recipient.tag,
+              },
+              appleIdData
+            )
+          )
+          : '',
       };
     });
 
@@ -736,8 +854,8 @@ async function exportRecipients(req, res) {
       { wch: 10 }, // 市
       { wch: 10 }, // 区
       { wch: 30 }, // 街道地址
-      { wch: 8 },  // 姓
-      { wch: 8 },  // 名
+      { wch: 8 }, // 姓
+      { wch: 8 }, // 名
       { wch: 20 }, // 身份证号码
       { wch: 15 }, // TAG
       { wch: 150 }, // 信息导入模版
@@ -748,12 +866,22 @@ async function exportRecipients(req, res) {
 
     // 设置响应头
     const filename = `取机人数据_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);
 
     logger.info('导出取机人数据', {
       count: recipients.length,
-      filters: { status, tag, keyword, appleIdFilter },
+      includeSensitive,
+      userId: req.user.id,
+      filters: {
+        hasStatus: Boolean(status),
+        hasTag: Boolean(tag),
+        hasKeyword: Boolean(keyword),
+        hasAppleIdFilter: Boolean(appleIdFilter),
+      },
     });
 
     res.send(buffer);
@@ -824,16 +952,22 @@ async function batchBindAppleIds(req, res) {
         const appleId = availableAppleIds[i];
 
         // 更新取机人：绑定 Apple ID
-        await recipient.update({
-          appleIdRef: appleId.id,
-          appleId: appleId.appleId,
-          password: appleId.password,
-        }, { transaction });
+        await recipient.update(
+          {
+            appleIdRef: appleId.id,
+            appleId: appleId.appleId,
+            password: appleId.password,
+          },
+          { transaction }
+        );
 
         // 更新 Apple ID：状态改为使用中
-        await appleId.update({
-          status: '使用中',
-        }, { transaction });
+        await appleId.update(
+          {
+            status: '使用中',
+          },
+          { transaction }
+        );
 
         boundRecipients.push({
           recipientId: recipient.id,
@@ -843,9 +977,7 @@ async function batchBindAppleIds(req, res) {
 
         logger.info('绑定 Apple ID 成功', {
           recipientId: recipient.id,
-          recipientName: `${recipient.lastName}${recipient.firstName}`,
           appleIdId: appleId.id,
-          appleId: appleId.appleId,
         });
       } else {
         // 超出可用数量

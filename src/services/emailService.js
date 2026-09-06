@@ -16,6 +16,7 @@ const { saveOrderFromEmail } = require('./orderService');
 let imapConnection = null;
 let isConnected = false;
 let reconnectTimer = null;
+let shouldReconnect = false;
 
 // 并发控制标志
 let isProcessing = false;
@@ -28,6 +29,7 @@ const emailRetryCount = new Map();
  */
 function startEmailService() {
   try {
+    shouldReconnect = true;
     logger.info('启动邮件监听服务...');
 
     // 创建 IMAP 连接
@@ -37,10 +39,10 @@ function startEmailService() {
       host: config.imap.host,
       port: config.imap.port,
       tls: config.imap.tls,
-      tlsOptions: { rejectUnauthorized: false },
+      tlsOptions: config.imap.tlsOptions,
       keepalive: true,
       connTimeout: 30000, // 连接超时 30秒
-      authTimeout: 10000  // 认证超时 10秒
+      authTimeout: 10000, // 认证超时 10秒
     });
 
     // 绑定事件监听器
@@ -52,7 +54,7 @@ function startEmailService() {
     logger.info('IMAP 连接请求已发送', {
       host: config.imap.host,
       port: config.imap.port,
-      user: config.imap.user
+      user: config.imap.user,
     });
   } catch (error) {
     logger.error('启动邮件服务失败', { error: error.message, stack: error.stack });
@@ -64,6 +66,7 @@ function startEmailService() {
  * 停止邮件监听服务
  */
 function stopEmailService() {
+  shouldReconnect = false;
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
@@ -107,11 +110,11 @@ function onConnectionReady() {
       name: 'AppleOrderManager',
       version: '1.0.0',
       vendor: 'Seraph',
-      'support-email': config.imap.user
+      'support-email': config.imap.user,
     };
 
     // 使用 id() 方法发送 ID 命令
-    imapConnection.id(clientId, (err) => {
+    imapConnection.id(clientId, err => {
       if (err) {
         logger.warn('发送 IMAP ID 失败', { error: err.message });
       } else {
@@ -141,7 +144,7 @@ function openMailbox() {
     logger.info('✅ 邮箱已打开', {
       mailbox: config.imap.mailbox,
       totalMessages: box.messages.total,
-      newMessages: box.messages.new
+      newMessages: box.messages.new,
     });
 
     // 监听新邮件
@@ -159,7 +162,7 @@ function onConnectionError(err) {
   logger.error('IMAP 连接错误', {
     error: err.message,
     code: err.code,
-    stack: err.stack
+    stack: err.stack,
   });
 
   // 连接失败后尝试重连
@@ -172,6 +175,7 @@ function onConnectionError(err) {
 function onConnectionEnd() {
   logger.warn('IMAP 连接已结束');
   isConnected = false;
+  scheduleReconnect();
 }
 
 /**
@@ -181,9 +185,7 @@ function onConnectionClose(hadError) {
   logger.warn('IMAP 连接已关闭', { hadError });
   isConnected = false;
 
-  if (hadError) {
-    scheduleReconnect();
-  }
+  scheduleReconnect();
 }
 
 /**
@@ -236,7 +238,7 @@ async function processUnreadEmails() {
       // 批量获取邮件（不自动标记已读）
       const fetch = imapConnection.fetch(results, {
         bodies: '',
-        markSeen: false // 不自动标记已读
+        markSeen: false, // 不自动标记已读
       });
 
       let processedCount = 0;
@@ -260,7 +262,7 @@ async function processUnreadEmails() {
         });
       });
 
-      fetch.once('error', (err) => {
+      fetch.once('error', err => {
         logger.error('获取邮件失败', { error: err.message });
         isProcessing = false;
       });
@@ -285,7 +287,7 @@ function onMessageFetch(msg, seqno, onComplete) {
   let emailBuffer = Buffer.alloc(0);
 
   // 获取邮件 UID
-  msg.once('attributes', (attrs) => {
+  msg.once('attributes', attrs => {
     emailUid = attrs.uid;
     logger.debug('邮件 UID 获取成功', { seqno, uid: emailUid });
   });
@@ -294,7 +296,7 @@ function onMessageFetch(msg, seqno, onComplete) {
   msg.on('body', (stream, _info) => {
     const chunks = [];
 
-    stream.on('data', (chunk) => {
+    stream.on('data', chunk => {
       chunks.push(chunk);
     });
 
@@ -303,7 +305,7 @@ function onMessageFetch(msg, seqno, onComplete) {
       logger.debug('邮件内容下载完成', {
         seqno,
         uid: emailUid,
-        size: emailBuffer.length
+        size: emailBuffer.length,
       });
     });
   });
@@ -322,7 +324,7 @@ function onMessageFetch(msg, seqno, onComplete) {
         uid: emailUid,
         from: metadata.from,
         subject: metadata.subject,
-        date: metadata.date
+        date: metadata.date,
       });
 
       // 过滤邮件（只处理 NULL AOS Helper 的邮件）
@@ -330,11 +332,10 @@ function onMessageFetch(msg, seqno, onComplete) {
         logger.info('跳过非订单邮件', {
           uid: emailUid,
           from: metadata.from,
-          subject: metadata.subject
+          subject: metadata.subject,
         });
-        // 非订单邮件也标记已读，避免重复处理
-        shouldMarkAsRead = true;
-        onComplete && onComplete();
+        // 是否标记已读由显式配置决定；完成回调统一在 finally 触发一次。
+        shouldMarkAsRead = config.imap.markSeen;
         return;
       }
 
@@ -346,21 +347,20 @@ function onMessageFetch(msg, seqno, onComplete) {
 
       logger.info('✅ 订单处理成功', {
         uid: emailUid,
-        orderNumber: orderData.orderNumber
+        orderNumber: orderData.orderNumber,
       });
 
       // 成功处理的订单邮件标记为已读
-      shouldMarkAsRead = true;
+      shouldMarkAsRead = config.imap.markSeen;
 
       // 清除重试计数
       emailRetryCount.delete(emailUid);
-
     } catch (error) {
       logger.error('邮件处理失败', {
         seqno,
         uid: emailUid,
         error: error.message,
-        stack: error.stack
+        stack: error.stack,
       });
 
       // 判断错误类型和重试次数
@@ -372,18 +372,18 @@ function onMessageFetch(msg, seqno, onComplete) {
         logger.error('检测到永久性错误，标记已读', {
           uid: emailUid,
           errorType: error.name,
-          errorMessage: error.message
+          errorMessage: error.message,
         });
-        shouldMarkAsRead = true;
+        shouldMarkAsRead = config.imap.markSeen;
         emailRetryCount.delete(emailUid);
       } else if (retryCount >= 3) {
         // 临时性错误但重试次数超限：标记已读
         logger.error('重试次数超限，标记已读', {
           uid: emailUid,
           retryCount,
-          errorType: error.name
+          errorType: error.name,
         });
-        shouldMarkAsRead = true;
+        shouldMarkAsRead = config.imap.markSeen;
         emailRetryCount.delete(emailUid);
       } else {
         // 临时性错误且未超限：保持未读，等待重试
@@ -392,7 +392,7 @@ function onMessageFetch(msg, seqno, onComplete) {
           uid: emailUid,
           retryCount,
           maxRetry: 3,
-          errorType: error.name
+          errorType: error.name,
         });
         shouldMarkAsRead = false;
       }
@@ -443,16 +443,22 @@ function isPermanentError(error) {
  * @returns {boolean}
  */
 function isOrderEmail(metadata) {
-  const { from, subject } = metadata;
+  const { subject = '', fromAddresses = [] } = metadata;
 
   // 检查主题是否包含关键词
-  const hasOrderKeyword = subject.includes('NULL') ||
-    subject.includes('预订助手') ||
-    subject.includes('预订成功');
+  const hasOrderKeyword =
+    subject.includes('NULL') || subject.includes('预订助手') || subject.includes('预订成功');
 
-  // 测试阶段：只要主题符合就处理
-  // 生产环境需要加上发件人验证
-  return hasOrderKeyword;
+  if (!hasOrderKeyword) {
+    return false;
+  }
+
+  if (config.imap.allowedSenders.length === 0) {
+    // 生产环境会在 validateConfig 阶段拒绝缺少白名单的配置。
+    return config.app.env !== 'production';
+  }
+
+  return fromAddresses.some(address => config.imap.allowedSenders.includes(address));
 }
 
 /**
@@ -461,7 +467,7 @@ function isOrderEmail(metadata) {
  */
 function markEmailAsRead(uid) {
   try {
-    imapConnection.addFlags(uid, '\\Seen', (err) => {
+    imapConnection.addFlags(uid, '\\Seen', err => {
       if (err) {
         logger.error('标记邮件已读失败', { uid, error: err.message });
       } else {
@@ -503,6 +509,10 @@ function checkForMoreUnreadEmails() {
  * 安排重连
  */
 function scheduleReconnect() {
+  if (!shouldReconnect) {
+    return;
+  }
+
   if (reconnectTimer) {
     return; // 已经在重连中
   }
@@ -531,12 +541,13 @@ function getServiceStatus() {
     host: config.imap.host,
     port: config.imap.port,
     user: config.imap.user,
-    mailbox: config.imap.mailbox
+    mailbox: config.imap.mailbox,
   };
 }
 
 module.exports = {
   startEmailService,
   stopEmailService,
-  getServiceStatus
+  getServiceStatus,
+  isOrderEmail,
 };

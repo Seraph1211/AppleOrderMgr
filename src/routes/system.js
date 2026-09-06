@@ -5,15 +5,17 @@
 
 const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
-const { authenticate, requireRole } = require('../middleware/authMiddleware');
+const { requireRole } = require('../middleware/authMiddleware');
 const systemController = require('../controllers/systemController');
 
 const router = express.Router();
 
-router.use(authenticate);
-
-router.get('/logs', asyncHandler(systemController.listSystemLogs));
-router.get('/auto-refresh', asyncHandler(systemController.getAutoRefreshStatus));
+router.get('/logs', requireRole(['admin']), asyncHandler(systemController.listSystemLogs));
+router.get(
+  '/auto-refresh',
+  requireRole(['admin']),
+  asyncHandler(systemController.getAutoRefreshStatus)
+);
 router.post(
   '/auto-refresh/resume',
   requireRole(['admin']),

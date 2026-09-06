@@ -20,7 +20,7 @@ NC='\033[0m' # No Color
 
 # 检查是否修改了 Model 文件
 MODEL_MODIFIED=$(git diff --cached --name-only | grep "src/models/")
-SCHEMA_MODIFIED=$(git diff --cached --name-only | grep "docs/database/SCHEMA.md")
+SCHEMA_MODIFIED=$(git diff --cached --name-only | grep "docs/database/数据库架构.md")
 
 if [ -n "$MODEL_MODIFIED" ]; then
   echo "📦 检测到 Model 文件变更："
@@ -28,26 +28,26 @@ if [ -n "$MODEL_MODIFIED" ]; then
 
   if [ -z "$SCHEMA_MODIFIED" ]; then
     echo ""
-    echo "${RED}❌ 错误: 修改了 Model 文件但未更新 docs/database/SCHEMA.md${NC}"
+    echo "${RED}❌ 错误: 修改了 Model 文件但未更新 docs/database/数据库架构.md${NC}"
     echo ""
     echo "📋 级联更新规则："
-    echo "  1. 先更新权威文档 docs/database/SCHEMA.md"
+    echo "  1. 先更新权威文档 docs/database/数据库架构.md"
     echo "  2. 然后更新 src/models/*.js"
     echo "  3. 创建 Migration 文件"
     echo "  4. 更新测试用例"
-    echo "  5. 更新 docs/development/DEVELOPMENT_PROGRESS.md"
+    echo "  5. 更新 docs/development/开发进度.md"
     echo ""
-    echo "💡 提示: 查看 CLAUDE.md 中的'文件变更级联规则'章节"
+    echo "💡 提示: 查看 AGENTS.md 中的'文件变更级联规则'章节"
     echo ""
     exit 1
   else
-    echo "${GREEN}✅ 已更新 SCHEMA.md${NC}"
+    echo "${GREEN}✅ 已更新数据库架构.md${NC}"
   fi
 fi
 
 # 检查是否修改了 API Controller
 CONTROLLER_MODIFIED=$(git diff --cached --name-only | grep "src/controllers/")
-API_DOC_MODIFIED=$(git diff --cached --name-only | grep "docs/design/api-design.md")
+API_DOC_MODIFIED=$(git diff --cached --name-only | grep "docs/design/API设计.md")
 
 if [ -n "$CONTROLLER_MODIFIED" ]; then
   echo "🔌 检测到 Controller 文件变更："
@@ -55,7 +55,7 @@ if [ -n "$CONTROLLER_MODIFIED" ]; then
 
   if [ -z "$API_DOC_MODIFIED" ]; then
     echo ""
-    echo "${YELLOW}⚠️  警告: 修改了 Controller 但未更新 docs/design/api-design.md${NC}"
+    echo "${YELLOW}⚠️  警告: 修改了 Controller 但未更新 docs/design/API设计.md${NC}"
     echo ""
     echo "💡 如果涉及 API 接口变更，请同时更新 API 文档"
     echo ""
@@ -65,34 +65,23 @@ if [ -n "$CONTROLLER_MODIFIED" ]; then
   fi
 fi
 
-# 检查是否更新了 DEVELOPMENT_PROGRESS.md
-PROGRESS_MODIFIED=$(git diff --cached --name-only | grep "docs/development/DEVELOPMENT_PROGRESS.md")
+# 检查是否更新了 开发进度.md
+PROGRESS_MODIFIED=$(git diff --cached --name-only | grep "docs/development/开发进度.md")
 CODE_MODIFIED=$(git diff --cached --name-only | grep -E "\.(js|ts)$" | grep -v "test/")
 
 if [ -n "$CODE_MODIFIED" ] && [ -z "$PROGRESS_MODIFIED" ]; then
   echo ""
   echo "${YELLOW}⚠️  提醒: 修改了代码但未更新开发进度文档${NC}"
   echo ""
-  echo "💡 建议在完成开发后更新 docs/development/DEVELOPMENT_PROGRESS.md"
+  echo "💡 建议在完成开发后更新 docs/development/开发进度.md"
   echo ""
   # 这里只是提醒，不阻止提交
 fi
 
-# 运行文档一致性检查（如果 src/models 存在）
-if [ -d "src/models" ] && [ -n "$MODEL_MODIFIED" ]; then
-  echo ""
-  echo "🔍 运行文档一致性检查..."
-
-  if node scripts/check-doc-consistency.js; then
-    echo "${GREEN}✅ 文档一致性检查通过${NC}"
-  else
-    echo ""
-    echo "${RED}❌ 文档一致性检查失败${NC}"
-    echo ""
-    echo "💡 请修复上述问题后再提交"
-    echo ""
-    exit 1
-  fi
+# 所有提交检查文档结构及模型字段覆盖。
+if ! npm run docs:check --silent; then
+  echo "文档检查失败，请修复索引、链接或字段文档后重试"
+  exit 1
 fi
 
 # 运行代码规范检查

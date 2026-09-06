@@ -27,4 +27,12 @@ describe('config telegram environment variables', () => {
 
     expect(config.telegram.enabled).toBe(true);
   });
+
+  test('解析邮件发件人白名单并标准化大小写', () => {
+    process.env.IMAP_ALLOWED_SENDERS = ' Orders@Example.com,helper@example.com ';
+
+    const { config } = require('../src/utils/config');
+
+    expect(config.imap.allowedSenders).toEqual(['orders@example.com', 'helper@example.com']);
+  });
 });

@@ -3,7 +3,7 @@
  * @module api/recipientsApi
  */
 
-import client from './client'
+import client from './client';
 
 /**
  * 获取取机人列表
@@ -16,17 +16,17 @@ import client from './client'
  * @returns {Promise<Object>} 取机人列表
  */
 export const getRecipients = (params = {}) => {
-  return client.get('/recipients', { params })
-}
+  return client.get('/recipients', { params });
+};
 
 /**
  * 获取取机人详情
  * @param {number} id - 取机人 ID
  * @returns {Promise<Object>} 取机人详情
  */
-export const getRecipientDetail = (id) => {
-  return client.get(`/recipients/${id}`)
-}
+export const getRecipientDetail = id => {
+  return client.get(`/recipients/${id}`);
+};
 
 /**
  * 创建取机人
@@ -43,9 +43,9 @@ export const getRecipientDetail = (id) => {
  * @param {string} data.tag - 标签
  * @returns {Promise<Object>} 创建结果
  */
-export const createRecipient = (data) => {
-  return client.post('/recipients', data)
-}
+export const createRecipient = data => {
+  return client.post('/recipients', data);
+};
 
 /**
  * 更新取机人
@@ -54,28 +54,40 @@ export const createRecipient = (data) => {
  * @returns {Promise<Object>} 更新结果
  */
 export const updateRecipient = (id, data) => {
-  return client.put(`/recipients/${id}`, data)
-}
+  return client.put(`/recipients/${id}`, data);
+};
 
 /**
  * 删除取机人
  * @param {number} id - 取机人 ID
  * @returns {Promise<Object>} 删除结果
  */
-export const deleteRecipient = (id) => {
-  return client.delete(`/recipients/${id}`)
-}
+export const deleteRecipient = id => {
+  return client.delete(`/recipients/${id}`);
+};
+
+/**
+ * 导出取机人数据
+ * @param {Object} params - 导出筛选参数
+ * @returns {Promise<Blob>} Excel 文件内容
+ */
+export const exportRecipients = (params = {}) => {
+  return client.get('/recipients/export', {
+    params,
+    responseType: 'blob',
+  });
+};
 
 /**
  * 批量生成取机人联系方式（电话和邮箱）
  * @param {Array<number>} recipientIds - 取机人ID数组
  * @returns {Promise<Object>} 生成结果
  */
-export const batchGenerateContact = (recipientIds) => {
+export const batchGenerateContact = recipientIds => {
   return client.post('/recipients/batch-generate-contact', {
-    recipient_ids: recipientIds
-  })
-}
+    recipient_ids: recipientIds,
+  });
+};
 
 /**
  * 批量生成地址
@@ -90,17 +102,17 @@ export const batchGenerateAddress = (recipientIds, province, city, district) => 
     recipient_ids: recipientIds,
     province,
     city,
-    district
-  })
-}
+    district,
+  });
+};
 
 /**
  * 批量绑定 Apple ID
  * @param {Array<number>} recipientIds - 取机人ID数组
  * @returns {Promise<Object>} 绑定结果
  */
-export const batchBindAppleIds = (recipientIds) => {
+export const batchBindAppleIds = recipientIds => {
   return client.post('/recipients/bind-apple-ids', {
-    recipientIds
-  })
-}
+    recipientIds,
+  });
+};

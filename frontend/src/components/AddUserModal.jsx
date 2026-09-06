@@ -1,104 +1,104 @@
-import { useState } from 'react'
-import { X, User, Lock } from 'lucide-react'
-import client from '../api/client'
-import AlertModal from './AlertModal'
+import { useState } from 'react';
+import { X, User, Lock } from 'lucide-react';
+import client from '../api/client';
+import AlertModal from './AlertModal';
 
 export default function AddUserModal({ onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
     confirmPassword: '',
-    role: 'user',
-  })
+    role: 'operator',
+  });
 
-  const [loading, setLoading] = useState(false)
-  const [alertModal, setAlertModal] = useState(null)
+  const [loading, setLoading] = useState(false);
+  const [alertModal, setAlertModal] = useState(null);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({
+  const handleChange = e => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
       ...prev,
       [name]: value,
-    }))
-  }
+    }));
+  };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async e => {
+    e.preventDefault();
 
     // 前端验证
     if (!formData.username.trim()) {
       setAlertModal({
         title: '提示',
         message: '请输入用户名',
-      })
-      return
+      });
+      return;
     }
 
     if (formData.username.length < 3) {
       setAlertModal({
         title: '提示',
         message: '用户名长度至少为 3 位',
-      })
-      return
+      });
+      return;
     }
 
     if (!formData.password) {
       setAlertModal({
         title: '提示',
         message: '请输入密码',
-      })
-      return
+      });
+      return;
     }
 
-    if (formData.password.length < 6) {
+    if (formData.password.length < 12) {
       setAlertModal({
         title: '提示',
-        message: '密码长度至少为 6 位',
-      })
-      return
+        message: '密码长度至少为 12 位',
+      });
+      return;
     }
 
     if (formData.password !== formData.confirmPassword) {
       setAlertModal({
         title: '提示',
         message: '密码与确认密码不一致',
-      })
-      return
+      });
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
 
     try {
       const response = await client.post('/users', {
         username: formData.username,
         password: formData.password,
         role: formData.role,
-      })
+      });
 
       if (response.success) {
         setAlertModal({
           title: '成功',
           message: '用户创建成功',
           onClose: () => {
-            setAlertModal(null)
-            onSuccess()
+            setAlertModal(null);
+            onSuccess();
           },
-        })
+        });
       } else {
         setAlertModal({
           title: '创建失败',
           message: response.message || '用户创建失败',
-        })
+        });
       }
     } catch (error) {
       setAlertModal({
         title: '创建失败',
         message: error.message || '用户创建失败',
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -154,7 +154,7 @@ export default function AddUserModal({ onClose, onSuccess }) {
                   value={formData.password}
                   onChange={handleChange}
                   className="input pl-10"
-                  placeholder="请输入密码（至少6位）"
+                  placeholder="请输入密码（至少12位）"
                   disabled={loading}
                 />
               </div>
@@ -162,7 +162,10 @@ export default function AddUserModal({ onClose, onSuccess }) {
 
             {/* 确认密码 */}
             <div>
-              <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+              <label
+                htmlFor="confirmPassword"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
                 确认密码
               </label>
               <div className="relative">
@@ -195,7 +198,8 @@ export default function AddUserModal({ onClose, onSuccess }) {
                 className="input"
                 disabled={loading}
               >
-                <option value="user">普通用户</option>
+                <option value="operator">业务操作员</option>
+                <option value="readOnly">只读用户</option>
                 <option value="admin">管理员</option>
               </select>
             </div>
@@ -210,11 +214,7 @@ export default function AddUserModal({ onClose, onSuccess }) {
               >
                 取消
               </button>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={loading}
-              >
+              <button type="submit" className="btn btn-primary" disabled={loading}>
                 {loading ? '创建中...' : '确认创建'}
               </button>
             </div>
@@ -229,13 +229,13 @@ export default function AddUserModal({ onClose, onSuccess }) {
           message={alertModal.message}
           onClose={() => {
             if (alertModal.onClose) {
-              alertModal.onClose()
+              alertModal.onClose();
             } else {
-              setAlertModal(null)
+              setAlertModal(null);
             }
           }}
         />
       )}
     </div>
-  )
+  );
 }

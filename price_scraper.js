@@ -21,16 +21,17 @@ function fetchHTML(url) {
       hostname: urlObj.hostname,
       path: urlObj.pathname + urlObj.search,
       method: 'GET',
-      rejectUnauthorized: false, // 忽略SSL证书验证
+      rejectUnauthorized: process.env.TLS_REJECT_UNAUTHORIZED !== 'false',
       headers: {
-        'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1'
-      }
+        'User-Agent':
+          'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1',
+      },
     };
 
-    const req = protocol.request(options, (res) => {
+    const req = protocol.request(options, res => {
       let data = '';
 
-      res.on('data', (chunk) => {
+      res.on('data', chunk => {
         data += chunk;
       });
 
@@ -39,7 +40,7 @@ function fetchHTML(url) {
       });
     });
 
-    req.on('error', (error) => {
+    req.on('error', error => {
       reject(error);
     });
 
@@ -56,7 +57,7 @@ function cleanText(text) {
   return text
     .replace(/<[^>]*>/g, '') // 移除HTML标签
     .replace(/&nbsp;/g, ' ') // 替换&nbsp;
-    .replace(/\s+/g, ' ')    // 合并多个空白字符
+    .replace(/\s+/g, ' ') // 合并多个空白字符
     .trim();
 }
 
@@ -70,7 +71,8 @@ function parsePrice(html) {
 
   // 正则表达式匹配每一行数据
   // 结构: <div class="row"> ... 商品名称 ... 价格 ... 官网价 ... </div>
-  const rowPattern = /<div class="row">\s*<div class="col-xs-4 view-goods-type view-goods-padding">\s*([\s\S]*?)\s*<\/div>\s*<div class="col-xs-3 red view-quote view-goods-padding">\s*(\d+)\s*<\/div>\s*<div class="col-xs-3 view-goods-padding"[^>]*>\s*(\d+)\s*<\/div>/g;
+  const rowPattern =
+    /<div class="row">\s*<div class="col-xs-4 view-goods-type view-goods-padding">\s*([\s\S]*?)\s*<\/div>\s*<div class="col-xs-3 red view-quote view-goods-padding">\s*(\d+)\s*<\/div>\s*<div class="col-xs-3 view-goods-padding"[^>]*>\s*(\d+)\s*<\/div>/g;
 
   let match;
   while ((match = rowPattern.exec(html)) !== null) {
@@ -83,7 +85,7 @@ function parsePrice(html) {
         product: productName,
         price: price,
         officialPrice: officialPrice || 0,
-        discount: officialPrice > 0 ? price - officialPrice : null
+        discount: officialPrice > 0 ? price - officialPrice : null,
       });
     }
   }
@@ -95,7 +97,8 @@ function parsePrice(html) {
  * 主函数
  */
 async function main() {
-  const url = 'http://www.hnmwdx.com/m/ykbjdQuoteList.action?is_spqc=Y&is_dls=N&gsdm=60858&pp=&km=%E8%8B%B9%E6%9E%9C&network=&bj=&tykhgsdm=&datetime=1783928121128';
+  const url =
+    'http://www.hnmwdx.com/m/ykbjdQuoteList.action?is_spqc=Y&is_dls=N&gsdm=60858&pp=&km=%E8%8B%B9%E6%9E%9C&network=&bj=&tykhgsdm=&datetime=1783928121128';
 
   console.log('开始爬取价格数据...');
   console.log('URL:', url);
@@ -136,7 +139,9 @@ async function main() {
 
     // 统计信息
     if (priceData.length > 0) {
-      const avgPrice = Math.round(priceData.reduce((sum, item) => sum + item.price, 0) / priceData.length);
+      const avgPrice = Math.round(
+        priceData.reduce((sum, item) => sum + item.price, 0) / priceData.length
+      );
       const maxPrice = Math.max(...priceData.map(item => item.price));
       const minPrice = Math.min(...priceData.map(item => item.price));
 
@@ -147,7 +152,6 @@ async function main() {
     }
 
     return priceData;
-
   } catch (error) {
     console.error('❌ 爬取失败:', error.message);
     throw error;

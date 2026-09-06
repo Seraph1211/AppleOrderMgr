@@ -1,6 +1,6 @@
-import { useState } from 'react'
-import { X } from 'lucide-react'
-import { STATUS_OPTIONS } from '../constants/status'
+import { useState } from 'react';
+import { X } from 'lucide-react';
+import { STATUS_OPTIONS } from '../constants/status';
 
 export default function EditAppleIdModal({ appleId, onClose, onSave }) {
   const [formData, setFormData] = useState({
@@ -15,26 +15,26 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
     question2: appleId.securityQa?.question2 || '',
     answer2: appleId.securityQa?.answer2 || '',
     question3: appleId.securityQa?.question3 || '',
-    answer3: appleId.securityQa?.answer3 || ''
-  })
+    answer3: appleId.securityQa?.answer3 || '',
+  });
 
-  const [saving, setSaving] = useState(false)
+  const [saving, setSaving] = useState(false);
 
   const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }))
-  }
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
 
   const handleSubmit = async () => {
-    setSaving(true)
+    setSaving(true);
     try {
-      await onSave(appleId.id, formData)
-      onClose()
+      await onSave(appleId.id, formData);
+      onClose();
     } catch (error) {
-      alert(error.message || '保存失败')
+      alert(error.message || '保存失败');
     } finally {
-      setSaving(false)
+      setSaving(false);
     }
-  }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
@@ -42,10 +42,7 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
         {/* 标题栏 */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200 flex-shrink-0">
           <h2 className="text-xl font-semibold text-gray-900">编辑 Apple ID</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
             <X className="w-5 h-5 text-gray-400" />
           </button>
         </div>
@@ -68,15 +65,13 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
-                  密码 <span className="text-red-500">*</span>
-                </label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">密码</label>
                 <input
-                  type="text"
+                  type="password"
                   value={formData.password}
-                  onChange={(e) => handleChange('password', e.target.value)}
+                  onChange={e => handleChange('password', e.target.value)}
                   className="input"
-                  placeholder="请输入密码"
+                  placeholder="留空表示不修改"
                 />
               </div>
               <div>
@@ -84,7 +79,7 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
                 <input
                   type="text"
                   value={formData.nickname}
-                  onChange={(e) => handleChange('nickname', e.target.value)}
+                  onChange={e => handleChange('nickname', e.target.value)}
                   className="input"
                   placeholder="请输入备注名称"
                 />
@@ -93,7 +88,7 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
                 <label className="block text-sm font-medium text-gray-700 mb-2">国家地区</label>
                 <select
                   value={formData.country}
-                  onChange={(e) => handleChange('country', e.target.value)}
+                  onChange={e => handleChange('country', e.target.value)}
                   className="input"
                 >
                   <option value="">请选择</option>
@@ -107,7 +102,7 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
                 <label className="block text-sm font-medium text-gray-700 mb-2">状态</label>
                 <select
                   value={formData.status}
-                  onChange={(e) => handleChange('status', e.target.value)}
+                  onChange={e => handleChange('status', e.target.value)}
                   className="input"
                 >
                   {STATUS_OPTIONS.map(option => (
@@ -122,7 +117,7 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
                   <input
                     type="checkbox"
                     checked={formData.isModified}
-                    onChange={(e) => handleChange('isModified', e.target.checked)}
+                    onChange={e => handleChange('isModified', e.target.checked)}
                     className="w-4 h-4 text-primary border-gray-300 rounded focus:ring-primary"
                   />
                   <span className="text-sm text-gray-700">已修改密码</span>
@@ -144,7 +139,7 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
                     <input
                       type="text"
                       value={formData[`question${num}`]}
-                      onChange={(e) => handleChange(`question${num}`, e.target.value)}
+                      onChange={e => handleChange(`question${num}`, e.target.value)}
                       className="input"
                       placeholder={`请输入密保问题 ${num}`}
                     />
@@ -156,7 +151,7 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
                     <input
                       type="text"
                       value={formData[`answer${num}`]}
-                      onChange={(e) => handleChange(`answer${num}`, e.target.value)}
+                      onChange={e => handleChange(`answer${num}`, e.target.value)}
                       className="input"
                       placeholder={`请输入答案 ${num}`}
                     />
@@ -169,22 +164,14 @@ export default function EditAppleIdModal({ appleId, onClose, onSave }) {
 
         {/* 按钮 */}
         <div className="flex items-center justify-end space-x-3 px-6 py-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="btn btn-secondary"
-            disabled={saving}
-          >
+          <button onClick={onClose} className="btn btn-secondary" disabled={saving}>
             取消
           </button>
-          <button
-            onClick={handleSubmit}
-            disabled={saving}
-            className="btn btn-primary"
-          >
+          <button onClick={handleSubmit} disabled={saving} className="btn btn-primary">
             {saving ? '保存中...' : '保存'}
           </button>
         </div>
       </div>
     </div>
-  )
+  );
 }

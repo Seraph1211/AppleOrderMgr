@@ -10,7 +10,7 @@
   },
   "rules": {
     "indent": ["error", 2],
-    "quotes": ["error", "single"],
+    "quotes": ["error", "single", { "avoidEscape": true }],
     "semi": ["error", "always"],
     "camelcase": ["error", { "properties": "always" }],
     "no-console": "warn",

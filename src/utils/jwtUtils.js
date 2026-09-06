@@ -1,5 +1,4 @@
 const jwt = require('jsonwebtoken');
-const crypto = require('crypto');
 const logger = require('./logger');
 
 /**
@@ -8,18 +7,16 @@ const logger = require('./logger');
  * @description 提供 JWT token 的生成、验证和解析功能
  */
 
-// JWT 密钥（从环境变量读取，如未配置则生成随机密钥并警告）
-let JWT_SECRET = process.env.JWT_SECRET;
-
-if (!JWT_SECRET) {
-  JWT_SECRET = crypto.randomBytes(64).toString('hex');
-  logger.warn('JWT_SECRET 未配置，已生成随机密钥。生产环境请在 .env 中配置 JWT_SECRET', {
-    generatedSecret: JWT_SECRET.substring(0, 16) + '...'
-  });
-}
-
 // JWT 有效期（从环境变量读取，默认 7 天）
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+
+function getJwtSecret() {
+  const secret = process.env.JWT_SECRET;
+  if (!secret || secret.length < 32 || secret.includes('your_jwt_secret')) {
+    throw new Error('JWT_SECRET 必须显式配置且至少 32 个字符');
+  }
+  return secret;
+}
 
 /**
  * 生成 JWT token
@@ -43,11 +40,11 @@ function generateToken(payload) {
         userId,
         username,
         role,
-        iat: Math.floor(Date.now() / 1000)
+        iat: Math.floor(Date.now() / 1000),
       },
-      JWT_SECRET,
+      getJwtSecret(),
       {
-        expiresIn: JWT_EXPIRES_IN
+        expiresIn: JWT_EXPIRES_IN,
       }
     );
 
@@ -55,14 +52,14 @@ function generateToken(payload) {
       userId,
       username,
       role,
-      expiresIn: JWT_EXPIRES_IN
+      expiresIn: JWT_EXPIRES_IN,
     });
 
     return token;
   } catch (error) {
     logger.error('JWT token 生成失败', {
       error: error.message,
-      payload
+      payload,
     });
     throw error;
   }
@@ -79,27 +76,27 @@ function verifyToken(token) {
       return null;
     }
 
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, getJwtSecret());
 
     logger.debug('JWT token 验证成功', {
       userId: decoded.userId,
       username: decoded.username,
-      role: decoded.role
+      role: decoded.role,
     });
 
     return decoded;
   } catch (error) {
     if (error.name === 'TokenExpiredError') {
       logger.warn('JWT token 已过期', {
-        expiredAt: error.expiredAt
+        expiredAt: error.expiredAt,
       });
     } else if (error.name === 'JsonWebTokenError') {
       logger.warn('JWT token 无效', {
-        error: error.message
+        error: error.message,
       });
     } else {
       logger.error('JWT token 验证失败', {
-        error: error.message
+        error: error.message,
       });
     }
 
@@ -143,7 +140,7 @@ function decodeToken(token) {
     return jwt.decode(token);
   } catch (error) {
     logger.error('JWT token 解码失败', {
-      error: error.message
+      error: error.message,
     });
     return null;
   }
@@ -154,6 +151,5 @@ module.exports = {
   verifyToken,
   extractTokenFromHeader,
   decodeToken,
-  JWT_SECRET,
-  JWT_EXPIRES_IN
+  JWT_EXPIRES_IN,
 };

@@ -5,13 +5,11 @@
  */
 
 const express = require('express');
-const { authenticate } = require('../middleware/authMiddleware');
+const { requirePermission } = require('../middleware/authMiddleware');
+const { PERMISSIONS } = require('../constants/business');
 const channelController = require('../controllers/channelController');
 
 const router = express.Router();
-
-// 所有接口都需要认证
-router.use(authenticate);
 
 /**
  * GET /api/channels
@@ -35,6 +33,6 @@ router.get('/:tag/orders', channelController.getChannelOrders);
  * PUT /api/channels/:tag
  * 修改渠道名称（级联更新）
  */
-router.put('/:tag', channelController.updateChannelName);
+router.put('/:tag', requirePermission(PERMISSIONS.WRITE), channelController.updateChannelName);
 
 module.exports = router;

@@ -2,6 +2,7 @@
 const XLSX = require('xlsx');
 const logger = require('../utils/logger');
 const { isValidEmail, isValidPhone, isValidIdCard } = require('../utils/helpers');
+const { ACCOUNT_STATUSES } = require('../constants/business');
 
 /**
  * 列名到字段名的映射
@@ -9,32 +10,32 @@ const { isValidEmail, isValidPhone, isValidIdCard } = require('../utils/helpers'
 const COLUMN_MAPPING = {
   apple_ids: {
     'Apple ID': 'appleId',
-    '密码': 'password',
-    '备注名称': 'nickname',
-    '国家地区': 'country',
-    '是否已修改': 'isModified',
-    '状态': 'status',
-    '密保问题1': 'question1',
-    '密保答案1': 'answer1',
-    '密保问题2': 'question2',
-    '密保答案2': 'answer2',
-    '密保问题3': 'question3',
-    '密保答案3': 'answer3',
+    密码: 'password',
+    备注名称: 'nickname',
+    国家地区: 'country',
+    是否已修改: 'isModified',
+    状态: 'status',
+    密保问题1: 'question1',
+    密保答案1: 'answer1',
+    密保问题2: 'question2',
+    密保答案2: 'answer2',
+    密保问题3: 'question3',
+    密保答案3: 'answer3',
   },
   recipients: {
-    '姓': 'lastName',
-    '名': 'firstName',
-    '身份证号': 'idCardNumber',
-    '手机号': 'phone',
-    '邮箱': 'email',
-    '省': 'province',
-    '市': 'city',
-    '区': 'district',
-    '街道地址': 'streetAddress',
+    姓: 'lastName',
+    名: 'firstName',
+    身份证号: 'idCardNumber',
+    手机号: 'phone',
+    邮箱: 'email',
+    省: 'province',
+    市: 'city',
+    区: 'district',
+    街道地址: 'streetAddress',
     '绑定 Apple ID': 'appleId',
-    '标签': 'tag',
-    '状态': 'status',
-    '备注': 'notes',
+    标签: 'tag',
+    状态: 'status',
+    备注: 'notes',
   },
 };
 
@@ -148,10 +149,10 @@ function validateAppleId(data) {
     });
   }
 
-  if (data.status && !['active', 'inactive'].includes(data.status)) {
+  if (data.status && !ACCOUNT_STATUSES.includes(data.status)) {
     errors.push({
       field: 'status',
-      message: '状态必须是 active 或 inactive',
+      message: `状态必须是 ${ACCOUNT_STATUSES.join('、')}`,
     });
   }
 
@@ -207,10 +208,10 @@ function validateRecipient(data) {
   }
 
   // 枚举值校验
-  if (data.status && !['active', 'inactive'].includes(data.status)) {
+  if (data.status && !ACCOUNT_STATUSES.includes(data.status)) {
     errors.push({
       field: 'status',
-      message: '状态必须是 active 或 inactive',
+      message: `状态必须是 ${ACCOUNT_STATUSES.join('、')}`,
     });
   }
 

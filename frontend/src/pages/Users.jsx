@@ -1,165 +1,171 @@
-import { useState, useEffect } from 'react'
-import { Plus, Edit, Trash2, Unlock, Users as UsersIcon } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
-import client from '../api/client'
-import AlertModal from '../components/AlertModal'
-import ConfirmModal from '../components/ConfirmModal'
-import AddUserModal from '../components/AddUserModal'
-import EditUserModal from '../components/EditUserModal'
+import { useState, useEffect } from 'react';
+import { Plus, Edit, Trash2, Unlock, Users as UsersIcon } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import client from '../api/client';
+import AlertModal from '../components/AlertModal';
+import ConfirmModal from '../components/ConfirmModal';
+import AddUserModal from '../components/AddUserModal';
+import EditUserModal from '../components/EditUserModal';
 
 export default function Users() {
-  const { isAdmin } = useAuth()
-  const [users, setUsers] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [alertModal, setAlertModal] = useState(null)
-  const [confirmModal, setConfirmModal] = useState(null)
-  const [addModalOpen, setAddModalOpen] = useState(false)
-  const [editModalOpen, setEditModalOpen] = useState(false)
-  const [selectedUser, setSelectedUser] = useState(null)
+  const { isAdmin } = useAuth();
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [alertModal, setAlertModal] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
 
-  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10 })
+  const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10 });
 
   // 获取用户列表
   const fetchUsers = async (page = 1) => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const response = await client.get(`/users?page=${page}&limit=${pagination.limit}`)
+      const response = await client.get(`/users?page=${page}&limit=${pagination.limit}`);
       if (response.success && response.data) {
-        setUsers(response.data.users)
-        setPagination((prev) => ({
+        setUsers(response.data.users);
+        setPagination(prev => ({
           ...prev,
           total: response.data.total ?? prev.total,
           page: response.data.page ?? page,
           limit: response.data.limit ?? prev.limit,
-        }))
+        }));
       }
     } catch (error) {
       setAlertModal({
         title: '加载失败',
         message: error.message || '获取用户列表失败',
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   useEffect(() => {
     if (!isAdmin()) {
       setAlertModal({
         title: '权限不足',
         message: '您没有权限访问此页面',
-      })
-      return
+      });
+      return;
     }
-    fetchUsers(1)
-  }, [])
+    fetchUsers(1);
+  }, []);
 
   // 打开新增用户Modal
   const handleAdd = () => {
-    setAddModalOpen(true)
-  }
+    setAddModalOpen(true);
+  };
 
   // 打开编辑用户Modal
-  const handleEdit = (user) => {
-    setSelectedUser(user)
-    setEditModalOpen(true)
-  }
+  const handleEdit = user => {
+    setSelectedUser(user);
+    setEditModalOpen(true);
+  };
 
   // 删除用户
-  const handleDelete = (user) => {
+  const handleDelete = user => {
     setConfirmModal({
       title: '确认删除',
       message: `确定要删除用户 "${user.username}" 吗？此操作不可恢复。`,
       onConfirm: async () => {
         try {
-          const response = await client.delete(`/users/${user.id}`)
+          const response = await client.delete(`/users/${user.id}`);
           if (response.success) {
             setAlertModal({
               title: '成功',
               message: '用户删除成功',
-            })
-            fetchUsers(1)
+            });
+            fetchUsers(1);
           } else {
             setAlertModal({
               title: '删除失败',
               message: response.message || '用户删除失败',
-            })
+            });
           }
         } catch (error) {
           setAlertModal({
             title: '删除失败',
             message: error.message || '用户删除失败',
-          })
+          });
         }
-        setConfirmModal(null)
+        setConfirmModal(null);
       },
       onCancel: () => setConfirmModal(null),
-    })
-  }
+    });
+  };
 
   // 解锁用户
-  const handleUnlock = (user) => {
+  const handleUnlock = user => {
     setConfirmModal({
       title: '确认解锁',
       message: `确定要解锁用户 "${user.username}" 吗？解锁后该用户可以正常登录。`,
       onConfirm: async () => {
         try {
-          const response = await client.put(`/users/${user.id}/unlock`)
+          const response = await client.put(`/users/${user.id}/unlock`);
           if (response.success) {
             setAlertModal({
               title: '成功',
               message: '用户解锁成功',
-            })
-            fetchUsers(1)
+            });
+            fetchUsers(1);
           } else {
             setAlertModal({
               title: '解锁失败',
               message: response.message || '用户解锁失败',
-            })
+            });
           }
         } catch (error) {
           setAlertModal({
             title: '解锁失败',
             message: error.message || '用户解锁失败',
-          })
+          });
         }
-        setConfirmModal(null)
+        setConfirmModal(null);
       },
       onCancel: () => setConfirmModal(null),
-    })
-  }
+    });
+  };
 
   // 格式化日期
-  const formatDate = (dateString) => {
-    if (!dateString) return '-'
-    const date = new Date(dateString)
+  const formatDate = dateString => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
     return date.toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
       hour: '2-digit',
       minute: '2-digit',
-    })
-  }
+    });
+  };
 
   // 渲染角色徽章
-  const renderRoleBadge = (role) => {
+  const renderRoleBadge = role => {
     if (role === 'admin') {
-      return <span className="badge badge-error">管理员</span>
+      return <span className="badge badge-error">管理员</span>;
     }
-    return <span className="badge badge-info">普通用户</span>
-  }
+    if (role === 'readOnly') {
+      return <span className="badge badge-info">只读用户</span>;
+    }
+    if (role === 'operator') {
+      return <span className="badge badge-success">业务操作员</span>;
+    }
+    return <span className="badge badge-info">普通用户</span>;
+  };
 
   // 渲染状态徽章
-  const renderStatusBadge = (status) => {
+  const renderStatusBadge = status => {
     if (status === 'active') {
-      return <span className="badge badge-success">正常</span>
+      return <span className="badge badge-success">正常</span>;
     }
-    return <span className="badge badge-warning">锁定</span>
-  }
+    return <span className="badge badge-warning">锁定</span>;
+  };
 
   if (!isAdmin()) {
-    return null
+    return null;
   }
 
   return (
@@ -199,17 +205,25 @@ export default function Users() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">用户名</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                      用户名
+                    </th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">角色</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">状态</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">最后登录</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">失败次数</th>
-                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">创建时间</th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                      最后登录
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                      失败次数
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                      创建时间
+                    </th>
                     <th className="text-right py-3 px-4 text-sm font-medium text-gray-500">操作</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white">
-                  {users.map((user) => (
+                  {users.map(user => (
                     <tr
                       key={user.id}
                       className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
@@ -279,14 +293,12 @@ export default function Users() {
                   {Array.from(
                     { length: Math.ceil(pagination.total / pagination.limit) },
                     (_, i) => i + 1
-                  ).map((pageNum) => (
+                  ).map(pageNum => (
                     <button
                       key={pageNum}
                       onClick={() => fetchUsers(pageNum)}
                       className={`px-3 py-1 text-sm rounded-lg transition-colors ${
-                        pageNum === pagination.page
-                          ? 'btn btn-primary'
-                          : 'btn btn-secondary'
+                        pageNum === pagination.page ? 'btn btn-primary' : 'btn btn-secondary'
                       }`}
                     >
                       {pageNum}
@@ -311,8 +323,8 @@ export default function Users() {
         <AddUserModal
           onClose={() => setAddModalOpen(false)}
           onSuccess={() => {
-            setAddModalOpen(false)
-            fetchUsers(1)
+            setAddModalOpen(false);
+            fetchUsers(1);
           }}
         />
       )}
@@ -321,13 +333,13 @@ export default function Users() {
         <EditUserModal
           user={selectedUser}
           onClose={() => {
-            setEditModalOpen(false)
-            setSelectedUser(null)
+            setEditModalOpen(false);
+            setSelectedUser(null);
           }}
           onSuccess={() => {
-            setEditModalOpen(false)
-            setSelectedUser(null)
-            fetchUsers(1)
+            setEditModalOpen(false);
+            setSelectedUser(null);
+            fetchUsers(1);
           }}
         />
       )}
@@ -349,5 +361,5 @@ export default function Users() {
         />
       )}
     </div>
-  )
+  );
 }

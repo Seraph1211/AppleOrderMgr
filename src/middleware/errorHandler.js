@@ -2,7 +2,7 @@
 /**
  * 统一错误处理中间件
  * @module middleware/errorHandler
- * @description 捕获下游抛出的 ApiError / Sequelize 错误 / 通用 Error，返回 docs/05-API接口设计方案.md 第 4 节定义的统一错误格式
+ * @description 捕获下游抛出的 ApiError / Sequelize 错误 / 通用 Error，返回 docs/design/API设计.md 定义的统一错误格式
  */
 
 const logger = require('../utils/logger');
@@ -28,15 +28,12 @@ function mapSequelizeError(err) {
 
   // Validation error
   if (err.name === 'SequelizeValidationError') {
-    return ApiError.badRequest(
-      '参数验证失败',
-      {
-        errors: err.errors?.map((e) => ({
-          field: e.path,
-          message: e.message,
-        })),
-      },
-    );
+    return ApiError.badRequest('参数验证失败', {
+      errors: err.errors?.map(e => ({
+        field: e.path,
+        message: e.message,
+      })),
+    });
   }
 
   // Foreign key constraint
@@ -90,12 +87,10 @@ function errorHandler(err, req, res, _next) {
       });
     }
 
-    return res
-      .status(err.statusCode)
-      .json({
-        success: false,
-        error: err.toJSON(isDev),
-      });
+    return res.status(err.statusCode).json({
+      success: false,
+      error: err.toJSON(isDev),
+    });
   }
 
   // Sequelize 错误
@@ -107,12 +102,10 @@ function errorHandler(err, req, res, _next) {
       message: seqError.message,
       details: seqError.details,
     });
-    return res
-      .status(seqError.statusCode)
-      .json({
-        success: false,
-        error: seqError.toJSON(isDev),
-      });
+    return res.status(seqError.statusCode).json({
+      success: false,
+      error: seqError.toJSON(isDev),
+    });
   }
 
   // body-parser JSON 解析错误

@@ -25,12 +25,17 @@ async function login(username, password, loginIp = null) {
 
     // 查找用户
     const user = await User.findOne({
-      where: { username }
+      where: { username },
     });
 
     if (!user) {
       logger.warn('登录失败：用户不存在', { username, loginIp });
       throw new Error('用户名或密码错误');
+    }
+
+    // 临时锁定到期后先恢复账号状态，避免签发无法使用的 token。
+    if (user.status === 'locked' && user.lockedUntil && user.lockedUntil <= new Date()) {
+      await user.unlockAccount();
     }
 
     // 检查账号是否被锁定
@@ -40,7 +45,7 @@ async function login(username, password, loginIp = null) {
         userId: user.id,
         username: user.username,
         lockedUntil: user.lockedUntil,
-        loginIp
+        loginIp,
       });
 
       throw new Error(`账号已被锁定，请在 ${lockedMinutes} 分钟后重试`);
@@ -53,14 +58,15 @@ async function login(username, password, loginIp = null) {
       // 密码错误，递增失败次数
       await user.incrementFailedAttempts();
 
-      const remainingAttempts = parseInt(process.env.MAX_LOGIN_ATTEMPTS || '5', 10) - user.failedLoginAttempts;
+      const remainingAttempts =
+        parseInt(process.env.MAX_LOGIN_ATTEMPTS || '5', 10) - user.failedLoginAttempts;
 
       logger.warn('登录失败：密码错误', {
         userId: user.id,
         username: user.username,
         failedAttempts: user.failedLoginAttempts,
         remainingAttempts,
-        loginIp
+        loginIp,
       });
 
       if (remainingAttempts > 0) {
@@ -84,14 +90,14 @@ async function login(username, password, loginIp = null) {
     const token = generateToken({
       userId: user.id,
       username: user.username,
-      role: user.role
+      role: user.role,
     });
 
     logger.info('用户登录成功', {
       userId: user.id,
       username: user.username,
       role: user.role,
-      loginIp
+      loginIp,
     });
 
     return {
@@ -100,14 +106,14 @@ async function login(username, password, loginIp = null) {
         id: user.id,
         username: user.username,
         role: user.role,
-        forcePasswordChange: user.forcePasswordChange
-      }
+        forcePasswordChange: user.forcePasswordChange,
+      },
     };
   } catch (error) {
     logger.error('登录服务执行失败', {
       username,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -128,8 +134,8 @@ async function changePassword(userId, oldPassword, newPassword) {
       throw new Error('旧密码和新密码不能为空');
     }
 
-    if (newPassword.length < 6) {
-      throw new Error('新密码长度不能少于 6 位');
+    if (newPassword.length < 12) {
+      throw new Error('新密码长度不能少于 12 位');
     }
 
     if (oldPassword === newPassword) {
@@ -149,7 +155,7 @@ async function changePassword(userId, oldPassword, newPassword) {
     if (!isOldPasswordValid) {
       logger.warn('修改密码失败：旧密码错误', {
         userId: user.id,
-        username: user.username
+        username: user.username,
       });
       throw new Error('旧密码错误');
     }
@@ -161,13 +167,13 @@ async function changePassword(userId, oldPassword, newPassword) {
 
     logger.info('用户密码修改成功', {
       userId: user.id,
-      username: user.username
+      username: user.username,
     });
   } catch (error) {
     logger.error('修改密码服务执行失败', {
       userId,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -193,7 +199,7 @@ async function unlockUser(userId) {
 
     logger.info('用户账号已解锁', {
       userId: user.id,
-      username: user.username
+      username: user.username,
     });
 
     return {
@@ -201,13 +207,13 @@ async function unlockUser(userId) {
       username: user.username,
       status: user.status,
       failedLoginAttempts: user.failedLoginAttempts,
-      lockedUntil: user.lockedUntil
+      lockedUntil: user.lockedUntil,
     };
   } catch (error) {
     logger.error('解锁用户服务执行失败', {
       userId,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -230,8 +236,8 @@ async function getUserInfo(userId) {
         'forcePasswordChange',
         'lastLoginAt',
         'lastLoginIp',
-        'createdAt'
-      ]
+        'createdAt',
+      ],
     });
 
     if (!user) {
@@ -246,13 +252,13 @@ async function getUserInfo(userId) {
       forcePasswordChange: user.forcePasswordChange,
       lastLoginAt: user.lastLoginAt,
       lastLoginIp: user.lastLoginIp,
-      createdAt: user.createdAt
+      createdAt: user.createdAt,
     };
   } catch (error) {
     logger.error('获取用户信息失败', {
       userId,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -262,5 +268,5 @@ module.exports = {
   login,
   changePassword,
   unlockUser,
-  getUserInfo
+  getUserInfo,
 };

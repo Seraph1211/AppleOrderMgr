@@ -1,101 +1,101 @@
-import { useState } from 'react'
-import { X, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react'
+import { useState } from 'react';
+import { X, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
+import { downloadTemplate } from '../api/importApi';
 
 export default function BatchImportModal({ type, onClose, onImport }) {
-  const [file, setFile] = useState(null)
-  const [importing, setImporting] = useState(false)
-  const [result, setResult] = useState(null)
+  const [file, setFile] = useState(null);
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState(null);
 
   const config = {
     appleIds: {
       title: '批量导入 Apple ID',
       templateUrl: '/templates/apple_ids_import_template.xlsx',
       templateName: 'apple_ids_import_template.xlsx',
-      acceptFormats: '.xlsx, .xls',
+      acceptFormats: '.xlsx',
       instructions: [
         '1. 下载导入模板，按照格式填写数据',
         '2. Apple ID 和密码为必填项',
         '3. 国家地区、密保问答为可选项',
         '4. 密保问答需成对填写（问题+答案）',
-        '5. 系统将自动设置状态为"活跃"'
-      ]
+        '5. 系统将自动设置状态为"活跃"',
+      ],
     },
     recipients: {
       title: '批量导入取机人',
       templateUrl: '/templates/recipients_import_template.xlsx',
       templateName: 'recipients_import_template.xlsx',
-      acceptFormats: '.xlsx, .xls',
+      acceptFormats: '.xlsx',
       instructions: [
         '1. 下载导入模板，按照格式填写数据',
         '2. 姓、名、身份证号为必填项',
         '3. 标签为可选项',
         '4. 身份证号必须为18位有效号码',
-        '5. 邮箱和手机号将由系统自动生成'
-      ]
-    }
-  }
+        '5. 邮箱和手机号将由系统自动生成',
+      ],
+    },
+  };
 
-  const currentConfig = config[type]
+  const currentConfig = config[type];
 
-  const handleFileChange = (e) => {
-    const selectedFile = e.target.files[0]
+  const handleFileChange = e => {
+    const selectedFile = e.target.files[0];
     if (selectedFile) {
       // 验证文件类型
-      const fileExtension = selectedFile.name.split('.').pop().toLowerCase()
-      if (!['xlsx', 'xls'].includes(fileExtension)) {
-        alert('请上传 Excel 文件（.xlsx 或 .xls）')
-        return
+      const fileExtension = selectedFile.name.split('.').pop().toLowerCase();
+      if (fileExtension !== 'xlsx') {
+        alert('请上传 .xlsx 文件');
+        return;
       }
-      setFile(selectedFile)
-      setResult(null)
+      setFile(selectedFile);
+      setResult(null);
     }
-  }
+  };
 
-  const handleDownloadTemplate = () => {
-    // 创建下载链接
-    const link = document.createElement('a')
-    link.href = currentConfig.templateUrl
-    link.download = currentConfig.templateName
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-  }
+  const handleDownloadTemplate = async () => {
+    try {
+      await downloadTemplate(type === 'appleIds' ? 'apple_ids' : 'recipients');
+    } catch (error) {
+      setResult({ success: false, message: error.message || '模板下载失败', details: [] });
+    }
+  };
 
   const handleImport = async () => {
     if (!file) {
-      alert('请先选择要导入的文件')
-      return
+      alert('请先选择要导入的文件');
+      return;
     }
 
-    setImporting(true)
-    setResult(null)
+    setImporting(true);
+    setResult(null);
 
     try {
-      const formData = new FormData()
-      formData.append('file', file)
+      const formData = new FormData();
+      formData.append('file', file);
 
-      const res = await onImport(formData)
+      const res = await onImport(formData);
 
       setResult({
         success: true,
         message: `成功导入 ${res.imported || 0} 条数据${res.skipped > 0 ? `，跳过 ${res.skipped} 条` : ''}`,
-        details: res.errors?.length > 0 ? res.errors.map(e => `行 ${e.rowNumber || '?'}: ${e.error}`) : []
-      })
+        details:
+          res.errors?.length > 0 ? res.errors.map(e => `行 ${e.rowNumber || '?'}: ${e.error}`) : [],
+      });
 
       // 3秒后自动关闭
       setTimeout(() => {
-        onClose()
-      }, 3000)
+        onClose();
+      }, 3000);
     } catch (error) {
       setResult({
         success: false,
         message: error.message || '导入失败，请检查文件格式',
-        details: error.details || []
-      })
+        details: error.details || [],
+      });
     } finally {
-      setImporting(false)
+      setImporting(false);
     }
-  }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
@@ -103,10 +103,7 @@ export default function BatchImportModal({ type, onClose, onImport }) {
         {/* 标题栏 */}
         <div className="flex items-center justify-between p-6 border-b border-gray-200">
           <h2 className="text-xl font-semibold text-gray-900">{currentConfig.title}</h2>
-          <button
-            onClick={onClose}
-            className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-          >
+          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
             <X className="w-5 h-5 text-gray-400" />
           </button>
         </div>
@@ -165,19 +162,17 @@ export default function BatchImportModal({ type, onClose, onImport }) {
                   已选择：<span className="font-medium">{file.name}</span>
                 </p>
               )}
-              <p className="mt-2 text-xs text-gray-500">
-                支持格式：{currentConfig.acceptFormats}
-              </p>
+              <p className="mt-2 text-xs text-gray-500">支持格式：{currentConfig.acceptFormats}</p>
             </div>
           </div>
 
           {/* 导入结果 */}
           {result && (
-            <div className={`border rounded-lg p-4 ${
-              result.success
-                ? 'bg-green-50 border-green-200'
-                : 'bg-red-50 border-red-200'
-            }`}>
+            <div
+              className={`border rounded-lg p-4 ${
+                result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
+              }`}
+            >
               <div className="flex items-start space-x-3">
                 {result.success ? (
                   <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
@@ -185,9 +180,11 @@ export default function BatchImportModal({ type, onClose, onImport }) {
                   <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
                 )}
                 <div className="flex-1">
-                  <p className={`text-sm font-medium ${
-                    result.success ? 'text-green-900' : 'text-red-900'
-                  }`}>
+                  <p
+                    className={`text-sm font-medium ${
+                      result.success ? 'text-green-900' : 'text-red-900'
+                    }`}
+                  >
                     {result.message}
                   </p>
                   {result.details && result.details.length > 0 && (
@@ -235,5 +232,5 @@ export default function BatchImportModal({ type, onClose, onImport }) {
         </div>
       </div>
     </div>
-  )
+  );
 }

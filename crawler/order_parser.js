@@ -16,11 +16,13 @@ function parseAppleOrderPage(html) {
     if (scriptContent && scriptContent.includes('orderItem-')) {
       try {
         // 清理 JSON 中的控制字符
-        const cleaned = scriptContent.trim()
+        const cleaned = scriptContent
+          .trim()
+          // eslint-disable-next-line no-control-regex
           .replace(/[\x00-\x1F\x7F]/g, '') // 移除控制字符
-          .replace(/\n/g, ' ')              // 替换换行符
-          .replace(/\r/g, '')               // 移除回车符
-          .replace(/\t/g, ' ');             // 替换制表符
+          .replace(/\n/g, ' ') // 替换换行符
+          .replace(/\r/g, '') // 移除回车符
+          .replace(/\t/g, ' '); // 替换制表符
 
         orderJson = JSON.parse(cleaned);
       } catch (e) {
@@ -32,7 +34,8 @@ function parseAppleOrderPage(html) {
   // 1. 提取订单号
   let orderNumber = null;
   if (orderJson && orderJson.orderDetail && orderJson.orderDetail.d) {
-    orderNumber = orderJson.orderDetail.d.orderNumber || orderJson.orderDetail.orderHeader?.d?.orderNumber;
+    orderNumber =
+      orderJson.orderDetail.d.orderNumber || orderJson.orderDetail.orderHeader?.d?.orderNumber;
   }
   if (!orderNumber) {
     const orderNumberMatch = bodyText.match(/W\d{10}/);
@@ -58,14 +61,14 @@ function parseAppleOrderPage(html) {
   // 3. 提取订单状态
   let orderStatus = 'unknown';
   const statusKeywords = {
-    '已取消': 'cancelled',
-    '取货已取消': 'pickup_cancelled',
-    '准备就绪': 'ready',
-    '处理中': 'processing',
-    '已发货': 'shipped',
-    '已送达': 'delivered',
-    'Ready': 'ready',
-    'Processing': 'processing'
+    已取消: 'cancelled',
+    取货已取消: 'pickup_cancelled',
+    准备就绪: 'ready',
+    处理中: 'processing',
+    已发货: 'shipped',
+    已送达: 'delivered',
+    Ready: 'ready',
+    Processing: 'processing',
   };
 
   for (const [keyword, status] of Object.entries(statusKeywords)) {
@@ -94,7 +97,7 @@ function parseAppleOrderPage(html) {
             quantity: itemDetails.quantity || 0,
             deliveryType: item.d?.deliveryType || 'unknown',
             status: item.orderItemStatusTracker?.d?.currentStatus || 'unknown',
-            imageUrl: itemDetails.imageData?.src || null
+            imageUrl: itemDetails.imageData?.src || null,
           });
         }
       }
@@ -103,7 +106,8 @@ function parseAppleOrderPage(html) {
 
   // 如果 JSON 解析失败，回退到 HTML 解析
   if (products.length === 0) {
-    const productRegex = /(iPhone[^\n已取消]+?(?:Pro Max|Pro|Air|Plus)?[^\n已取消]*?(?:\d+TB|\d+GB)[^\n已取消]*?[一-龥]+色)\s*已取消/g;
+    const productRegex =
+      /(iPhone[^\n已取消]+?(?:Pro Max|Pro|Air|Plus)?[^\n已取消]*?(?:\d+TB|\d+GB)[^\n已取消]*?[一-龥]+色)\s*已取消/g;
     let match;
     while ((match = productRegex.exec(bodyText)) !== null) {
       const productName = match[1].trim();
@@ -111,7 +115,7 @@ function parseAppleOrderPage(html) {
         products.push({
           name: productName,
           quantity: 1, // HTML 解析无法获取数量，默认为 1
-          status: orderStatus
+          status: orderStatus,
         });
       }
     }
@@ -148,7 +152,7 @@ function parseAppleOrderPage(html) {
     orderStatus,
     products,
     pickupStore,
-    rawJson: orderDataJson
+    rawJson: orderDataJson,
   };
 }
 

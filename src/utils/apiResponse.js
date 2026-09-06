@@ -1,7 +1,7 @@
 /**
  * API 统一响应格式工具
  * @module utils/apiResponse
- * @description 封装 { success, data | error } 标准格式，保持与 docs/05-API接口设计方案.md 一致
+ * @description 封装 { success, data | error } 标准格式，保持与 docs/design/API设计.md 一致
  */
 
 const ApiError = require('./ApiError');

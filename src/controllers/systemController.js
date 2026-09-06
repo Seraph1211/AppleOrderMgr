@@ -114,15 +114,17 @@ async function listSystemLogs(req, res) {
       }
     }
 
-    const include = [{
-      model: Order,
-      as: 'order',
-      attributes: ['id', 'orderNumber'],
-      required: Boolean(req.query['order_number']),
-      where: req.query['order_number']
-        ? { orderNumber: { [Op.iLike]: `%${String(req.query['order_number']).trim()}%` } }
-        : undefined,
-    }];
+    const include = [
+      {
+        model: Order,
+        as: 'order',
+        attributes: ['id', 'orderNumber'],
+        required: Boolean(req.query['order_number']),
+        where: req.query['order_number']
+          ? { orderNumber: { [Op.iLike]: `%${String(req.query['order_number']).trim()}%` } }
+          : undefined,
+      },
+    ];
 
     const { count, rows } = await CrawlLog.findAndCountAll({
       where,
@@ -133,13 +135,7 @@ async function listSystemLogs(req, res) {
       distinct: true,
     });
 
-    return res.json(paginatedResponse(
-      rows.map(serializeSystemLog),
-      count,
-      page,
-      limit,
-      'logs',
-    ));
+    return res.json(paginatedResponse(rows.map(serializeSystemLog), count, page, limit, 'logs'));
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
@@ -152,11 +148,60 @@ async function listSystemLogs(req, res) {
 /**
  * GET /api/system/auto-refresh
  */
-function getAutoRefreshStatus(_req, res) {
+async function getAutoRefreshStatus(_req, res) {
   try {
+    const localStatus = crawlerService.getAutoRefreshStatus();
+    if (process.env.RUN_WORKERS_IN_API === 'true') {
+      return res.json({
+        success: true,
+        data: {
+          ...localStatus,
+          controlMode: 'in_process',
+          controlAvailable: true,
+          statusSource: 'process_memory',
+        },
+      });
+    }
+
+    const [latestStateLog, latestScanLog] = await Promise.all([
+      CrawlLog.findOne({
+        where: {
+          event: {
+            [Op.in]: [
+              'auto_refresh_started',
+              'auto_refresh_paused',
+              'auto_refresh_resumed',
+              'auto_refresh_start_failed',
+            ],
+          },
+        },
+        order: [['createdAt', 'DESC']],
+      }),
+      CrawlLog.findOne({
+        where: { event: 'auto_refresh_scan' },
+        order: [['createdAt', 'DESC']],
+      }),
+    ]);
+    const stateLog = latestStateLog?.toJSON ? latestStateLog.toJSON() : latestStateLog;
+    const scanLog = latestScanLog?.toJSON ? latestScanLog.toJSON() : latestScanLog;
+    const isPaused = stateLog ? stateLog.event === 'auto_refresh_paused' : null;
+
     return res.json({
       success: true,
-      data: crawlerService.getAutoRefreshStatus(),
+      data: {
+        ...localStatus,
+        isRunning: null,
+        isPaused,
+        pausedAt: isPaused ? stateLog.createdAt : null,
+        pauseReason: isPaused ? stateLog.errorMessage : null,
+        lastScanAt: scanLog?.createdAt || null,
+        nextScanAt: null,
+        observedStateEvent: stateLog?.event || null,
+        observedStateAt: stateLog?.createdAt || null,
+        controlMode: 'external_worker',
+        controlAvailable: false,
+        statusSource: 'crawl_logs',
+      },
     });
   } catch (error) {
     logger.error('查询自动刷新状态失败', { error: error.message });
@@ -169,6 +214,15 @@ function getAutoRefreshStatus(_req, res) {
  */
 async function resumeAutoRefresh(req, res) {
   try {
+    if (process.env.RUN_WORKERS_IN_API !== 'true') {
+      throw ApiError.conflict(
+        '爬虫调度器运行在独立 Worker，当前 API 无法直接恢复该进程',
+        {
+          requiredAction: '确认风控或代理问题已解决后，由授权运维人员重启 crawler-worker',
+        },
+        'WORKER_CONTROL_UNAVAILABLE'
+      );
+    }
     const status = await crawlerService.resumeAutoRefresh(req.user);
     return res.json({
       success: true,
@@ -176,6 +230,9 @@ async function resumeAutoRefresh(req, res) {
       data: status,
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
     logger.error('恢复自动刷新失败', { error: error.message });
     throw ApiError.internal('恢复自动刷新失败', { reason: error.message });
   }

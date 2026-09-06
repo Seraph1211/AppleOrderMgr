@@ -3,30 +3,18 @@
  * 订单控制器
  * @module controllers/orderController
  * @description 订单列表 / 详情 / 手动刷新 / 批量刷新四个端点
- * @see docs/05-API接口设计方案.md 3.3
+ * @see docs/design/API设计.md
  */
 
 const { Op } = require('sequelize');
+const XLSX = require('xlsx');
 const { Order, AppleId, Recipient, EmailLog } = require('../models');
 const crawlerService = require('../services/crawlerService');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
-const {
-  paginatedResponse,
-  parsePositiveInt,
-} = require('../utils/apiResponse');
-
-const ORDER_STATUSES = [
-  'pending',
-  'processing',
-  'shipped',
-  'ready_for_pickup',
-  'completed',
-  'delivered',
-  'cancelled',
-  'pickup_cancelled',
-  'unknown',
-];
+const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
+const { ORDER_STATUSES } = require('../constants/business');
+const { maskIdCard, maskPhone, escapeSpreadsheetFormula } = require('../utils/masking');
 
 /**
  * 把 Order（含 appleAccount/recipient）序列化为对外列表项
@@ -57,12 +45,12 @@ function serializeOrderListItem(order) {
     auto_refresh_stop_reason: plain.autoRefreshStopReason,
     auto_refresh_stopped_at: plain.autoRefreshStoppedAt,
     pickup_store: plain.pickupStore,
-    recipient_id_card: plain.recipientIdCard,
+    recipient_id_card: maskIdCard(plain.recipientIdCard),
     recipient_email: plain.recipientEmail,
-    recipient_phone: plain.recipientPhone,
-    recipient_address: plain.recipientAddress,
-    apple_password: plain.applePassword,
-    order_url: plain.orderUrl,
+    recipient_phone: maskPhone(plain.recipientPhone),
+    recipient_address: plain.recipientAddress ? '详细地址已隐藏' : null,
+    apple_password: null,
+    order_url: null,
     pickup_store_code: plain.pickupStoreCode,
     pickup_code: plain.pickupCode,
     pickup_time_slot: plain.pickupTimeSlot,
@@ -102,7 +90,7 @@ function serializeOrderDetail(order) {
         name: `${plain.recipient.lastName}${plain.recipient.firstName}`,
         id_card_last4: plain.recipient.idCardLast4,
         tag: plain.recipient.tag,
-        phone: plain.recipient.phone,
+        phone: maskPhone(plain.recipient.phone),
       }
       : null,
     products: plain.products,
@@ -119,7 +107,7 @@ function serializeOrderDetail(order) {
     auto_refresh_enabled: plain.autoRefreshEnabled,
     auto_refresh_stop_reason: plain.autoRefreshStopReason,
     auto_refresh_stopped_at: plain.autoRefreshStoppedAt,
-    order_url: plain.orderUrl,
+    order_url: null,
     payment_method: plain.paymentMethod,
     pickup_store: plain.pickupStore,
     pickup_code: plain.pickupCode,
@@ -149,10 +137,9 @@ function buildListFilters(query) {
 
   if (query.status) {
     if (!ORDER_STATUSES.includes(query.status)) {
-      throw ApiError.badRequest(
-        `订单状态非法，可选值: ${ORDER_STATUSES.join(', ')}`,
-        { received: query.status },
-      );
+      throw ApiError.badRequest(`订单状态非法，可选值: ${ORDER_STATUSES.join(', ')}`, {
+        received: query.status,
+      });
     }
     where.status = query.status;
   }
@@ -171,6 +158,28 @@ function buildListFilters(query) {
       throw ApiError.badRequest('recipient_id 必须是正整数', { received: query.recipient_id });
     }
     where.recipientRef = recipientInt;
+  }
+
+  if (query.pickupStore)
+    where.pickupStore = { [Op.iLike]: `%${String(query.pickupStore).trim()}%` };
+  if (query.payerName) where.payerName = { [Op.iLike]: `%${String(query.payerName).trim()}%` };
+  if (query.productModel) {
+    where[Op.and] = [sequelizeJsonbTextSearch('products', String(query.productModel).trim())];
+  }
+  if (query.recipientName) {
+    const { Sequelize } = require('sequelize');
+    const recipientName = String(query.recipientName).trim();
+    const currentAnd = where[Op.and] || [];
+    where[Op.and] = currentAnd.concat(
+      Sequelize.where(
+        Sequelize.fn(
+          'concat',
+          Sequelize.col('recipient.last_name'),
+          Sequelize.col('recipient.first_name')
+        ),
+        { [Op.iLike]: `%${recipientName}%` }
+      )
+    );
   }
 
   if (query.date_from || query.date_to) {
@@ -194,20 +203,18 @@ function buildListFilters(query) {
   if (query.keyword) {
     const kw = String(query.keyword).trim();
     if (kw.length > 0) {
-      // 订单号精确匹配（订单号是 ^W\\d{9}$）+ 产品名模糊匹配
+      // 订单号精确匹配（订单号是 ^W\\d{10}$）+ 产品名模糊匹配
       where[Op.or] = [
         { orderNumber: { [Op.iLike]: `%${kw}%` } },
         // Sequelize JSONB 容器查询（依赖 pg 的 @> 操作符）
-        // 见 docs/DATABASE_SCHEMA.md：products 已建 GIN 索引
+        // 见 docs/database/数据库架构.md：products 已建 GIN 索引
         // 此处若 keyword 命中订单号 iLike 会优先；同时模糊搜索 products[].name 在 PostgreSQL 上可行
       ];
       // 单独补充 products 容器查询：检测到数字 ID 直接精确
       const asOrderNumber = /^W\d{10}$/.test(kw);
       if (!asOrderNumber) {
         // 模糊搜索产品名称（通过 JSONB @> 包含含此 name 字符串的条目不可行，因此退化为 iLike 整个 products JSON 文本）
-        where[Op.or].push(
-          sequelizeJsonbTextSearch('products', kw),
-        );
+        where[Op.or].push(sequelizeJsonbTextSearch('products', kw));
       }
     }
   }
@@ -224,13 +231,11 @@ function buildListFilters(query) {
  * @returns {Object} Sequelize where 条件
  */
 function sequelizeJsonbTextSearch(_fieldName, kw) {
-  // 使用 PostgreSQL 函数 cast(products::text as text) iLike '%kw%'，
-  // Sequelize 通过 literal 完成
+  // 使用 Sequelize.cast 生成 PostgreSQL CAST(products AS TEXT)。
   const { Sequelize } = require('sequelize');
-  return Sequelize.where(
-    Sequelize.fn('cast', Sequelize.col('products'), 'text'),
-    { [Op.iLike]: `%${kw}%` },
-  );
+  return Sequelize.where(Sequelize.cast(Sequelize.col('products'), 'text'), {
+    [Op.iLike]: `%${kw}%`,
+  });
 }
 
 /**
@@ -244,21 +249,22 @@ async function listOrders(req, res) {
       where,
       include: [
         { model: AppleId, as: 'appleAccount', attributes: ['id', 'appleId', 'nickname'] },
-        { model: Recipient, as: 'recipient', attributes: ['id', 'lastName', 'firstName', 'idCardLast4', 'tag'] },
+        {
+          model: Recipient,
+          as: 'recipient',
+          attributes: ['id', 'lastName', 'firstName', 'idCardLast4', 'tag'],
+        },
       ],
-      order: [['orderDate', 'DESC'], ['id', 'DESC']],
+      order: [
+        ['orderDate', 'DESC'],
+        ['id', 'DESC'],
+      ],
       limit,
       offset: (page - 1) * limit,
       distinct: true,
     });
 
-    res.json(paginatedResponse(
-      rows.map(serializeOrderListItem),
-      count,
-      page,
-      limit,
-      'orders',
-    ));
+    res.json(paginatedResponse(rows.map(serializeOrderListItem), count, page, limit, 'orders'));
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
@@ -338,7 +344,10 @@ async function refreshOrder(req, res) {
     if (error instanceof ApiError) {
       throw error;
     }
-    logger.error('刷新订单失败', { orderId: req.params?.params?.id || req.params?.id, error: error.message });
+    logger.error('刷新订单失败', {
+      orderId: req.params?.params?.id || req.params?.id,
+      error: error.message,
+    });
     throw ApiError.crawler('刷新订单失败', { reason: error.message });
   }
 }
@@ -350,23 +359,47 @@ async function refreshOrder(req, res) {
 async function batchRefresh(req, res) {
   try {
     const where = {};
-    if (req.body.status) {
+    const hasExplicitIds = Boolean(req.body.orderIds || req.body.order_ids);
+    let explicitIds = [];
+    if (hasExplicitIds) {
+      const rawIds = req.body.orderIds || req.body.order_ids;
+      if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > 100) {
+        throw ApiError.badRequest('orderIds 必须是 1-100 个订单 ID 的数组');
+      }
+      explicitIds = rawIds.map(id => parseInt(id, 10));
+      if (explicitIds.some(id => Number.isNaN(id) || id <= 0)) {
+        throw ApiError.badRequest('orderIds 包含无效订单 ID');
+      }
+      explicitIds = [...new Set(explicitIds)];
+      where.id = { [Op.in]: explicitIds };
+    } else if (req.body.status) {
       if (!ORDER_STATUSES.includes(req.body.status)) {
-        throw ApiError.badRequest(
-          `订单状态非法，可选值: ${ORDER_STATUSES.join(', ')}`,
-          { received: req.body.status },
-        );
+        throw ApiError.badRequest(`订单状态非法，可选值: ${ORDER_STATUSES.join(', ')}`, {
+          received: req.body.status,
+        });
       }
       where.status = req.body.status;
     }
-    if (req.body.apple_id) {
-      where.appleIdRef = parseInt(req.body.apple_id, 10);
-    }
-    if (req.body.recipient_id) {
-      where.recipientRef = parseInt(req.body.recipient_id, 10);
+    if (!hasExplicitIds) {
+      if (req.body.apple_id) {
+        const appleIdRef = parseInt(req.body.apple_id, 10);
+        if (Number.isNaN(appleIdRef) || appleIdRef <= 0) {
+          throw ApiError.badRequest('apple_id 必须是正整数');
+        }
+        where.appleIdRef = appleIdRef;
+      }
+      if (req.body.recipient_id) {
+        const recipientRef = parseInt(req.body.recipient_id, 10);
+        if (Number.isNaN(recipientRef) || recipientRef <= 0) {
+          throw ApiError.badRequest('recipient_id 必须是正整数');
+        }
+        where.recipientRef = recipientRef;
+      }
     }
 
-    const limit = parsePositiveInt(req.body.limit, { defaultValue: 20, min: 1, max: 100 });
+    const limit = hasExplicitIds
+      ? explicitIds.length
+      : parsePositiveInt(req.body.limit, { defaultValue: 20, min: 1, max: 100 });
 
     const orders = await Order.findAll({
       where,
@@ -383,7 +416,7 @@ async function batchRefresh(req, res) {
       });
     }
 
-    const orderIds = orders.map((o) => o.id);
+    const orderIds = orders.map(o => o.id);
     const results = await crawlerService.crawlMultipleOrders(orderIds, {
       concurrency: 3,
       source: 'manual',
@@ -391,8 +424,8 @@ async function batchRefresh(req, res) {
     });
 
     const detailRows = results.details || [];
-    const succeeded = detailRows.filter((r) => r.success).length;
-    const failed = detailRows.filter((r) => !r.success).length;
+    const succeeded = detailRows.filter(r => r.success).length;
+    const failed = detailRows.filter(r => !r.success).length;
 
     return res.json({
       success: true,
@@ -410,6 +443,101 @@ async function batchRefresh(req, res) {
     }
     logger.error('批量刷新订单失败', { error: error.message });
     throw ApiError.crawler('批量刷新订单失败', { reason: error.message });
+  }
+}
+
+/**
+ * GET /api/orders/export
+ * 按当前筛选条件导出脱敏订单。
+ */
+async function exportOrders(req, res) {
+  try {
+    const { where } = buildListFilters(req.query);
+    const rows = await Order.findAll({
+      where,
+      include: [
+        { model: AppleId, as: 'appleAccount', attributes: ['appleId'] },
+        { model: Recipient, as: 'recipient', attributes: ['lastName', 'firstName'] },
+      ],
+      order: [
+        ['orderDate', 'DESC'],
+        ['id', 'DESC'],
+      ],
+      limit: 5000,
+    });
+    const data = rows.map(order => {
+      const item = serializeOrderListItem(order);
+      return {
+        订单号: escapeSpreadsheetFormula(item.order_number || ''),
+        'Apple ID': escapeSpreadsheetFormula(item.apple_id || ''),
+        取机人: escapeSpreadsheetFormula(item.recipient_name || ''),
+        订单状态: item.status || '',
+        支付状态: item.payment_status || '',
+        取货状态: item.pickup_status || '',
+        官网金额: item.official_order_amount || '',
+        币种: item.official_order_amount_currency || '',
+        取货门店: escapeSpreadsheetFormula(item.pickup_store || ''),
+        标签: escapeSpreadsheetFormula(item.tag || ''),
+        下单时间: item.order_date || '',
+      };
+    });
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '订单');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const filename = `orders_${new Date().toISOString().slice(0, 10)}.xlsx`;
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    logger.info('订单导出完成', { userId: req.user.id, count: rows.length });
+    res.send(buffer);
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    logger.error('订单导出失败', { userId: req.user?.id, error: error.message });
+    throw ApiError.internal('订单导出失败', { reason: error.message });
+  }
+}
+
+/**
+ * 获取订单筛选项，数据只来自真实订单。
+ * @param {Object} _req - Express request
+ * @param {Object} res - Express response
+ * @returns {Promise<void>}
+ */
+async function getFilterOptions(_req, res) {
+  try {
+    const rows = await Order.findAll({
+      attributes: ['products', 'pickupStore', 'payerName', 'recipientName'],
+      order: [['updatedAt', 'DESC']],
+      limit: 5000,
+      raw: true,
+    });
+    const productModels = new Set();
+    const stores = new Set();
+    const recipients = new Set();
+    const payers = new Set();
+    rows.forEach(row => {
+      (row.products || []).forEach(product => {
+        if (product.model || product.modelId) productModels.add(product.model || product.modelId);
+      });
+      if (row.pickupStore) stores.add(row.pickupStore);
+      if (row.recipientName) recipients.add(row.recipientName);
+      if (row.payerName) payers.add(row.payerName);
+    });
+    res.json({
+      success: true,
+      data: {
+        productModels: [...productModels].sort(),
+        stores: [...stores].sort(),
+        recipients: [...recipients].sort(),
+        payers: [...payers].sort(),
+      },
+    });
+  } catch (error) {
+    logger.error('获取订单筛选项失败', { error: error.message });
+    throw ApiError.database('获取订单筛选项失败', { reason: error.message });
   }
 }
 
@@ -476,6 +604,8 @@ module.exports = {
   getOrderDetail,
   refreshOrder,
   batchRefresh,
+  exportOrders,
+  getFilterOptions,
   updateOrder,
 };
 

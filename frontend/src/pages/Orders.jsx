@@ -1,27 +1,36 @@
-import { useState, useEffect } from 'react'
-import { Search, Filter, Download, RefreshCw, Settings, X, AlertTriangle, PauseCircle } from 'lucide-react'
-import { getOrders, getAutoRefreshStatus } from '../api'
-import useColumnConfig from '../hooks/useColumnConfig'
-import ColumnConfigModal from '../components/ColumnConfigModal'
-import OrderDetailModal from '../components/OrderDetailModal'
-import Pagination from '../components/Pagination'
-import { ordersColumns } from '../constants/tableColumns'
+import { useState, useEffect } from 'react';
+import {
+  Search,
+  Filter,
+  Download,
+  RefreshCw,
+  Settings,
+  X,
+  AlertTriangle,
+  PauseCircle,
+} from 'lucide-react';
+import { getOrders, getOrderFilterOptions, exportOrders, getAutoRefreshStatus } from '../api';
+import useColumnConfig from '../hooks/useColumnConfig';
+import ColumnConfigModal from '../components/ColumnConfigModal';
+import OrderDetailModal from '../components/OrderDetailModal';
+import Pagination from '../components/Pagination';
+import { ordersColumns } from '../constants/tableColumns';
 
 export default function Orders() {
-  const [orders, setOrders] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedOrder, setSelectedOrder] = useState(null)
-  const [showDetailModal, setShowDetailModal] = useState(false)
-  const [autoRefreshStatus, setAutoRefreshStatus] = useState(null)
+  const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [showDetailModal, setShowDetailModal] = useState(false);
+  const [autoRefreshStatus, setAutoRefreshStatus] = useState(null);
 
   // 分页状态
   const [pagination, setPagination] = useState({
     currentPage: 1,
     pageSize: 20,
     totalItems: 0,
-    totalPages: 0
-  })
+    totalPages: 0,
+  });
 
   // 筛选条件
   const [filters, setFilters] = useState({
@@ -29,155 +38,166 @@ export default function Orders() {
     productModel: '',
     recipientName: '',
     pickupStore: '',
-    payerName: ''
-  })
+    payerName: '',
+  });
 
-  const [showColumnConfig, setShowColumnConfig] = useState(false)
-  const { columns, saveConfig, resetConfig } = useColumnConfig('orders', ordersColumns)
+  const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const { columns, saveConfig, resetConfig } = useColumnConfig('orders', ordersColumns);
 
   // 筛选选项（从后端获取或硬编码）
   const [filterOptions, setFilterOptions] = useState({
     productModels: [],
     stores: [],
     recipients: [],
-    payers: []
-  })
+    payers: [],
+  });
 
   useEffect(() => {
-    loadOrders()
-  }, [pagination.currentPage, pagination.pageSize])
+    loadOrders();
+  }, [pagination.currentPage, pagination.pageSize]);
 
   useEffect(() => {
-    loadFilterOptions()
-    loadAutoRefreshStatus()
-  }, [])
+    loadFilterOptions();
+    loadAutoRefreshStatus();
+  }, []);
 
   // 筛选/搜索改变时触发
   useEffect(() => {
     if (pagination.currentPage === 1) {
-      loadOrders()
+      loadOrders();
     } else {
-      setPagination(prev => ({ ...prev, currentPage: 1 }))
+      setPagination(prev => ({ ...prev, currentPage: 1 }));
     }
-  }, [searchTerm, filters.status, filters.productModel, filters.recipientName, filters.pickupStore, filters.payerName])
+  }, [
+    searchTerm,
+    filters.status,
+    filters.productModel,
+    filters.recipientName,
+    filters.pickupStore,
+    filters.payerName,
+  ]);
 
   const loadOrders = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
       const params = {
         page: pagination.currentPage,
         limit: pagination.pageSize,
         keyword: searchTerm || undefined,
-        ...filters
-      }
-      console.log('加载订单，参数:', params)
-      const res = await getOrders(params)
-      console.log('API响应:', res)
+        ...filters,
+      };
+      console.log('加载订单，参数:', params);
+      const res = await getOrders(params);
+      console.log('API响应:', res);
 
       if (res.success) {
-        console.log('订单数据:', res.data.orders.length, '条')
-        setOrders(res.data.orders.map(order => ({
-          id: order.id,
-          orderNumber: order.order_number,
-          status: order.status,
-          validationStatus: order.validation_status || 'unchecked',
-          validationIssues: order.validation_issues || [],
-          anomalyDetectedAt: order.anomaly_detected_at || null,
-          autoRefreshEnabled: order.auto_refresh_enabled,
-          autoRefreshStopReason: order.auto_refresh_stop_reason || null,
-          autoRefreshStoppedAt: order.auto_refresh_stopped_at || null,
-          paymentStatus: order.payment_status || '-',
-          pickupStatus: order.pickup_status || '-',
-          officialOrderAmount: order.official_order_amount || null,
-          officialOrderAmountCurrency: order.official_order_amount_currency || null,
-          officialOrderAmountParseError: order.official_order_amount_parse_error || null,
-          officialProducts: order.official_products || [],
-          // Apple ID 相关
-          appleId: order.apple_id || '-',
-          applePassword: order.apple_password || '-',
-          // 收件人相关
-          recipientName: order.recipient_name || '-',
-          recipientIdCard: order.recipient_id_card || '-',
-          recipientEmail: order.recipient_email || '-',
-          recipientPhone: order.recipient_phone || '-',
-          recipientAddress: order.recipient_address || '-',
-          // 产品信息
-          products: order.products || [],
-          // 订单信息
-          orderUrl: order.order_url || '-',
-          orderDate: order.order_date || '-',
-          // 取货信息
-          pickupStore: order.pickup_store || '-',
-          pickupStoreCode: order.pickup_store_code || '-',
-          pickupCode: order.pickup_code || '-',
-          pickupTimeSlot: order.pickup_time_slot || '-',
-          actualPickupDate: order.actual_pickup_date || '-',
-          // 付款信息
-          paymentMethod: order.payment_method || '-',
-          payerName: order.payer_name || '-',
-          paymentScreenshot: order.payment_screenshot || [],
-          // 爬虫相关
-          lastCrawledAt: order.last_crawled_at || '-',
-          crawlFailCount: order.crawl_fail_count || 0,
-          // 业务字段
-          tag: order.tag || '-',
-          notes: order.notes || '-',
-          // 时间戳
-          createdAt: order.created_at,
-          updatedAt: order.updated_at
-        })))
+        console.log('订单数据:', res.data.orders.length, '条');
+        setOrders(
+          res.data.orders.map(order => ({
+            id: order.id,
+            orderNumber: order.order_number,
+            status: order.status,
+            validationStatus: order.validation_status || 'unchecked',
+            validationIssues: order.validation_issues || [],
+            anomalyDetectedAt: order.anomaly_detected_at || null,
+            autoRefreshEnabled: order.auto_refresh_enabled,
+            autoRefreshStopReason: order.auto_refresh_stop_reason || null,
+            autoRefreshStoppedAt: order.auto_refresh_stopped_at || null,
+            paymentStatus: order.payment_status || '-',
+            pickupStatus: order.pickup_status || '-',
+            officialOrderAmount: order.official_order_amount || null,
+            officialOrderAmountCurrency: order.official_order_amount_currency || null,
+            officialOrderAmountParseError: order.official_order_amount_parse_error || null,
+            officialProducts: order.official_products || [],
+            // Apple ID 相关
+            appleId: order.apple_id || '-',
+            applePassword: order.apple_password || '-',
+            // 收件人相关
+            recipientName: order.recipient_name || '-',
+            recipientIdCard: order.recipient_id_card || '-',
+            recipientEmail: order.recipient_email || '-',
+            recipientPhone: order.recipient_phone || '-',
+            recipientAddress: order.recipient_address || '-',
+            // 产品信息
+            products: order.products || [],
+            // 订单信息
+            orderUrl: order.order_url || '-',
+            orderDate: order.order_date || '-',
+            // 取货信息
+            pickupStore: order.pickup_store || '-',
+            pickupStoreCode: order.pickup_store_code || '-',
+            pickupCode: order.pickup_code || '-',
+            pickupTimeSlot: order.pickup_time_slot || '-',
+            actualPickupDate: order.actual_pickup_date || '-',
+            // 付款信息
+            paymentMethod: order.payment_method || '-',
+            payerName: order.payer_name || '-',
+            paymentScreenshot: order.payment_screenshot || [],
+            // 爬虫相关
+            lastCrawledAt: order.last_crawled_at || '-',
+            crawlFailCount: order.crawl_fail_count || 0,
+            // 业务字段
+            tag: order.tag || '-',
+            notes: order.notes || '-',
+            // 时间戳
+            createdAt: order.created_at,
+            updatedAt: order.updated_at,
+          }))
+        );
 
         // 更新分页信息
         setPagination(prev => ({
           ...prev,
           totalItems: res.data.total,
-          totalPages: Math.ceil(res.data.total / prev.pageSize)
-        }))
+          totalPages: Math.ceil(res.data.total / prev.pageSize),
+        }));
       }
     } catch (error) {
-      console.error('加载订单失败:', error)
+      console.error('加载订单失败:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const loadAutoRefreshStatus = async () => {
     try {
-      const res = await getAutoRefreshStatus()
+      const res = await getAutoRefreshStatus();
       if (res.success) {
-        setAutoRefreshStatus(res.data)
+        setAutoRefreshStatus(res.data);
       }
     } catch (error) {
-      console.error('加载自动刷新状态失败:', error)
+      console.error('加载自动刷新状态失败:', error);
     }
-  }
+  };
 
   const loadFilterOptions = async () => {
-    // TODO: 从后端 API 获取筛选选项
-    // 临时使用硬编码数据
-    setFilterOptions({
-      productModels: ['iPhone 15 Pro', 'iPhone 15', 'iPhone 15 Pro Max', 'MacBook Pro', 'AirPods Pro'],
-      stores: ['Apple 上海国金中心', 'Apple 北京三里屯', 'Apple 深圳万象城', 'Apple 广州天环', 'Apple 杭州湖滨银泰'],
-      recipients: [],
-      payers: []
-    })
-  }
+    try {
+      const response = await getOrderFilterOptions();
+      if (response.success) setFilterOptions(response.data);
+    } catch (_error) {
+      setFilterOptions({ productModels: [], stores: [], recipients: [], payers: [] });
+    }
+  };
 
-  const getValidationBadge = (status) => {
+  const handleExport = async () => {
+    await exportOrders({ keyword: searchTerm || undefined, ...filters });
+  };
+
+  const getValidationBadge = status => {
     const badges = {
       unchecked: { text: '未校验', class: 'badge-info' },
       valid: { text: '正常', class: 'badge-success' },
       abnormal: { text: '异常', class: 'badge-error' },
       unavailable: { text: '无法校验', class: 'badge-warning' },
-    }
-    return badges[status] || badges.unchecked
-  }
+    };
+    return badges[status] || badges.unchecked;
+  };
 
   const handleFilterChange = (key, value) => {
-    setFilters(prev => ({ ...prev, [key]: value }))
+    setFilters(prev => ({ ...prev, [key]: value }));
     // 筛选条件变化时重置到第一页
-    setPagination(prev => ({ ...prev, currentPage: 1 }))
-  }
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+  };
 
   const resetFilters = () => {
     setFilters({
@@ -185,27 +205,27 @@ export default function Orders() {
       productModel: '',
       recipientName: '',
       pickupStore: '',
-      payerName: ''
-    })
-    setSearchTerm('')
-    setPagination(prev => ({ ...prev, currentPage: 1 }))
-  }
+      payerName: '',
+    });
+    setSearchTerm('');
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
+  };
 
   // 分页处理函数
-  const handlePageChange = (page) => {
-    setPagination(prev => ({ ...prev, currentPage: page }))
-  }
+  const handlePageChange = page => {
+    setPagination(prev => ({ ...prev, currentPage: page }));
+  };
 
-  const handlePageSizeChange = (size) => {
+  const handlePageSizeChange = size => {
     setPagination(prev => ({
       ...prev,
       pageSize: size,
       currentPage: 1, // 改变每页条数时重置到第一页
-      totalPages: Math.ceil(prev.totalItems / size)
-    }))
-  }
+      totalPages: Math.ceil(prev.totalItems / size),
+    }));
+  };
 
-  const getStatusBadge = (status) => {
+  const getStatusBadge = status => {
     const badges = {
       pending: { text: '待处理', class: 'badge-warning' },
       processing: { text: '处理中', class: 'badge-info' },
@@ -216,33 +236,33 @@ export default function Orders() {
       cancelled: { text: '已取消', class: 'badge-error' },
       pickup_cancelled: { text: '取货已取消', class: 'badge-error' },
       unknown: { text: '未知', class: 'badge-info' },
-    }
-    return badges[status] || badges.pending
-  }
+    };
+    return badges[status] || badges.pending;
+  };
 
   // 移除客户端过滤逻辑，现在由后端处理
-  const visibleColumns = columns.filter(col => col.visible)
+  const visibleColumns = columns.filter(col => col.visible);
 
   const renderCell = (order, column) => {
-    const value = order[column.key]
+    const value = order[column.key];
 
     switch (column.key) {
       case 'orderNumber':
-        return <span className="font-mono text-sm text-primary">{value}</span>
+        return <span className="font-mono text-sm text-primary">{value}</span>;
 
       case 'status': {
-        const badge = getStatusBadge(value)
-        return <span className={`badge ${badge.class}`}>{badge.text}</span>
+        const badge = getStatusBadge(value);
+        return <span className={`badge ${badge.class}`}>{badge.text}</span>;
       }
 
       case 'validationStatus': {
-        const badge = getValidationBadge(value)
+        const badge = getValidationBadge(value);
         return (
           <span className={`badge ${badge.class} inline-flex items-center gap-1`}>
             {value === 'abnormal' && <AlertTriangle className="w-3 h-3" />}
             {badge.text}
           </span>
-        )
+        );
       }
 
       case 'products':
@@ -250,68 +270,88 @@ export default function Orders() {
           <div className="text-sm space-y-1">
             {order.products.map((p, i) => (
               <div key={i}>
-                <span>{p.name} × {p.quantity}</span>
+                <span>
+                  {p.name} × {p.quantity}
+                </span>
               </div>
             ))}
           </div>
-        )
+        );
 
       case 'orderUrl':
         return value !== '-' ? (
-          <a href={value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-sm">
+          <a
+            href={value}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline text-sm"
+          >
             查看
           </a>
-        ) : <span className="text-gray-400">-</span>
+        ) : (
+          <span className="text-gray-400">-</span>
+        );
 
       case 'orderDate':
       case 'lastCrawledAt':
       case 'createdAt':
       case 'updatedAt':
         return value !== '-' ? (
-          <span className="text-sm text-gray-600">
-            {new Date(value).toLocaleString('zh-CN')}
-          </span>
-        ) : <span className="text-gray-400">-</span>
+          <span className="text-sm text-gray-600">{new Date(value).toLocaleString('zh-CN')}</span>
+        ) : (
+          <span className="text-gray-400">-</span>
+        );
 
       case 'actualPickupDate':
         return value !== '-' ? (
           <span className="text-sm text-gray-600">
             {new Date(value).toLocaleDateString('zh-CN')}
           </span>
-        ) : <span className="text-gray-400">-</span>
+        ) : (
+          <span className="text-gray-400">-</span>
+        );
 
       case 'paymentScreenshot':
         return value !== '-' ? (
-          <a href={value} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-sm">
+          <a
+            href={value}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary hover:underline text-sm"
+          >
             查看
           </a>
-        ) : <span className="text-gray-400">-</span>
+        ) : (
+          <span className="text-gray-400">-</span>
+        );
 
       case 'applePassword':
       case 'recipientIdCard':
         return column.sensitive ? (
           <span className="text-sm text-gray-600 font-mono">******</span>
-        ) : <span className="text-sm text-gray-600">{value}</span>
+        ) : (
+          <span className="text-sm text-gray-600">{value}</span>
+        );
 
       case 'actions':
         return (
           <button
             onClick={() => {
-              setSelectedOrder(order)
-              setShowDetailModal(true)
+              setSelectedOrder(order);
+              setShowDetailModal(true);
             }}
             className="text-primary hover:text-blue-700 text-sm transition-colors"
           >
             查看
           </button>
-        )
+        );
 
       default:
-        return <span className="text-sm text-gray-600">{value}</span>
+        return <span className="text-sm text-gray-600">{value}</span>;
     }
-  }
+  };
 
-  const activeFiltersCount = Object.values(filters).filter(v => v !== '').length
+  const activeFiltersCount = Object.values(filters).filter(v => v !== '').length;
 
   return (
     <div className="space-y-6">
@@ -321,10 +361,7 @@ export default function Orders() {
           <h1 className="text-3xl font-bold">订单管理</h1>
           <p className="text-gray-600 mt-1">管理所有 Apple 订单</p>
         </div>
-        <button
-          onClick={loadOrders}
-          className="btn btn-primary flex items-center space-x-2"
-        >
+        <button onClick={loadOrders} className="btn btn-primary flex items-center space-x-2">
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           <span>刷新</span>
         </button>
@@ -352,13 +389,13 @@ export default function Orders() {
               type="text"
               placeholder="搜索订单号、Apple ID 或取机人..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               className="input pl-10"
             />
           </div>
 
           {/* 导出按钮 */}
-          <button className="btn btn-secondary flex items-center space-x-2">
+          <button onClick={handleExport} className="btn btn-secondary flex items-center space-x-2">
             <Download className="w-4 h-4" />
             <span>导出</span>
           </button>
@@ -398,12 +435,10 @@ export default function Orders() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           {/* 订单状态 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              订单状态
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">订单状态</label>
             <select
               value={filters.status}
-              onChange={(e) => handleFilterChange('status', e.target.value)}
+              onChange={e => handleFilterChange('status', e.target.value)}
               className="input"
             >
               <option value="">全部状态</option>
@@ -421,62 +456,58 @@ export default function Orders() {
 
           {/* 产品型号 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              产品型号
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">产品型号</label>
             <select
               value={filters.productModel}
-              onChange={(e) => handleFilterChange('productModel', e.target.value)}
+              onChange={e => handleFilterChange('productModel', e.target.value)}
               className="input"
             >
               <option value="">全部型号</option>
-              {filterOptions.productModels.map((model) => (
-                <option key={model} value={model}>{model}</option>
+              {filterOptions.productModels.map(model => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
               ))}
             </select>
           </div>
 
           {/* 取件人 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              取件人
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">取件人</label>
             <input
               type="text"
               placeholder="输入姓名"
               value={filters.recipientName}
-              onChange={(e) => handleFilterChange('recipientName', e.target.value)}
+              onChange={e => handleFilterChange('recipientName', e.target.value)}
               className="input"
             />
           </div>
 
           {/* 取货门店 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              取货门店
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">取货门店</label>
             <select
               value={filters.pickupStore}
-              onChange={(e) => handleFilterChange('pickupStore', e.target.value)}
+              onChange={e => handleFilterChange('pickupStore', e.target.value)}
               className="input"
             >
               <option value="">全部门店</option>
-              {filterOptions.stores.map((store) => (
-                <option key={store} value={store}>{store}</option>
+              {filterOptions.stores.map(store => (
+                <option key={store} value={store}>
+                  {store}
+                </option>
               ))}
             </select>
           </div>
 
           {/* 付款人 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              付款人
-            </label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">付款人</label>
             <input
               type="text"
               placeholder="输入付款人"
               value={filters.payerName}
-              onChange={(e) => handleFilterChange('payerName', e.target.value)}
+              onChange={e => handleFilterChange('payerName', e.target.value)}
               className="input"
             />
           </div>
@@ -501,7 +532,7 @@ export default function Orders() {
             <table className="w-full min-w-max">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  {visibleColumns.map((col) => (
+                  {visibleColumns.map(col => (
                     <th
                       key={col.key}
                       className={`text-left py-3 px-4 text-sm font-medium text-gray-500 whitespace-nowrap ${
@@ -515,7 +546,7 @@ export default function Orders() {
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {orders.map((order) => (
+                {orders.map(order => (
                   <tr
                     key={order.id}
                     className={`border-b border-gray-200 transition-colors ${
@@ -524,7 +555,7 @@ export default function Orders() {
                         : 'hover:bg-gray-50'
                     }`}
                   >
-                    {visibleColumns.map((col) => (
+                    {visibleColumns.map(col => (
                       <td
                         key={col.key}
                         className={`py-4 px-4 ${col.key === 'actions' ? 'text-right' : ''}`}
@@ -555,14 +586,14 @@ export default function Orders() {
         order={selectedOrder}
         isOpen={showDetailModal}
         onClose={() => {
-          setShowDetailModal(false)
-          setSelectedOrder(null)
+          setShowDetailModal(false);
+          setSelectedOrder(null);
         }}
-        onUpdate={(updatedOrder) => {
+        onUpdate={updatedOrder => {
           // 更新本地订单列表
           setOrders(prevOrders =>
-            prevOrders.map(o => o.id === updatedOrder.id ? updatedOrder : o)
-          )
+            prevOrders.map(o => (o.id === updatedOrder.id ? updatedOrder : o))
+          );
         }}
       />
 
@@ -579,5 +610,5 @@ export default function Orders() {
         />
       )}
     </div>
-  )
+  );
 }

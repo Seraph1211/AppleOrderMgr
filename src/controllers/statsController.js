@@ -3,7 +3,7 @@
  * 统计分析控制器
  * @module controllers/statsController
  * @description overview / 按 Apple ID / 按收件人 / 按产品 4 类统计
- * @see docs/05-API接口设计方案.md 3.4
+ * @see docs/design/API设计.md
  */
 
 const { Op, fn, col, literal } = require('sequelize');
@@ -80,14 +80,14 @@ async function getOverview(_req, res) {
       ],
       raw: true,
     });
-    const totalProducts = parseInt(productSumRow?.get?.('totalProducts') ?? productSumRow?.totalProducts ?? 0, 10);
+    const totalProducts = parseInt(
+      productSumRow?.get?.('totalProducts') ?? productSumRow?.totalProducts ?? 0,
+      10
+    );
 
     // 状态分布
     const statusRows = await Order.findAll({
-      attributes: [
-        'status',
-        [fn('COUNT', col('id')), 'count'],
-      ],
+      attributes: ['status', [fn('COUNT', col('id')), 'count']],
       group: ['status'],
       raw: true,
     });
@@ -95,7 +95,7 @@ async function getOverview(_req, res) {
       acc[s] = 0;
       return acc;
     }, {});
-    statusRows.forEach((r) => {
+    statusRows.forEach(r => {
       statusDistribution[r.status] = parseInt(r.count, 10);
     });
 
@@ -147,7 +147,7 @@ async function getAppleIdStats(_req, res) {
 
     res.json({
       success: true,
-      data: rows.map((r) => ({
+      data: rows.map(r => ({
         apple_id_ref: r.appleIdRef,
         apple_id: r.appleAccount?.appleId || null,
         nickname: r.appleAccount?.nickname || null,
@@ -190,11 +190,9 @@ async function getRecipientStats(_req, res) {
 
     res.json({
       success: true,
-      data: rows.map((r) => ({
+      data: rows.map(r => ({
         recipient_id: r.recipientRef,
-        name: r.recipient
-          ? `${r.recipient.lastName || ''}${r.recipient.firstName || ''}`
-          : null,
+        name: r.recipient ? `${r.recipient.lastName || ''}${r.recipient.firstName || ''}` : null,
         tag: r.recipient?.tag || null,
         order_count: parseInt(r.orderCount, 10) || 0,
         product_count: parseInt(r.productCount, 10) || 0,
@@ -216,7 +214,7 @@ const PRODUCT_STATS_SQL = `
   SELECT
     COALESCE(elem->>'name', '') AS name,
     SUM(COALESCE((elem->>'quantity')::int, 0)) AS total_quantity,
-    COUNT(DISTINCT "orderId") AS order_count
+    COUNT(DISTINCT o.id) AS order_count
   FROM "orders" o,
        jsonb_array_elements(o.products) AS elem
   WHERE ($1::timestamp IS NULL OR o.order_date >= $1)
@@ -231,7 +229,18 @@ const PRODUCT_STATS_SQL = `
  * 颜色 / 容量分布正则（来自设计文档示例的关键词）
  * 注意：这是 MVP 阶段基于关键词匹配的启发式实现，颜色 / 容量词库有限
  */
-const COLOR_KEYWORDS = ['星宇橙色', '鼠尾草绿色', '钛金属', '黑色', '白色', '蓝色', '粉色', '黄色', '午夜色', '星光色'];
+const COLOR_KEYWORDS = [
+  '星宇橙色',
+  '鼠尾草绿色',
+  '钛金属',
+  '黑色',
+  '白色',
+  '蓝色',
+  '粉色',
+  '黄色',
+  '午夜色',
+  '星光色',
+];
 const CAPACITY_KEYWORDS = ['1TB', '512GB', '256GB', '128GB', '2TB'];
 
 /**
@@ -277,7 +286,7 @@ async function getProductStats(req, res) {
 
     const colorDistribution = {};
     const capacityDistribution = {};
-    detailRows.forEach((row) => {
+    detailRows.forEach(row => {
       const name = row.name || '';
       const color = matchKeyword(name, COLOR_KEYWORDS);
       if (color) {
@@ -292,7 +301,7 @@ async function getProductStats(req, res) {
     res.json({
       success: true,
       data: {
-        top_products: topProducts.map((r) => ({
+        top_products: topProducts.map(r => ({
           name: r.name,
           total_quantity: parseInt(r.total_quantity, 10) || 0,
           order_count: parseInt(r.order_count, 10) || 0,

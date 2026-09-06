@@ -14,8 +14,8 @@ const logger = require('./logger');
  * @param {string[]} requiredVars - 必需的环境变量列表
  * @throws {Error} 当必需的环境变量缺失时抛出异常
  */
-const validateRequiredEnvVars = (requiredVars) => {
-  const missing = requiredVars.filter((varName) => !process.env[varName]);
+const validateRequiredEnvVars = requiredVars => {
+  const missing = requiredVars.filter(varName => !process.env[varName]);
 
   if (missing.length > 0) {
     const errorMsg = `缺少必需的环境变量: ${missing.join(', ')}`;
@@ -42,7 +42,7 @@ const config = {
     host: process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT, 10) || 5432,
     name: process.env.DB_NAME || 'apple_order_manager',
-    username: process.env.DB_USERNAME || 'postgres',
+    username: process.env.DB_USER || process.env.DB_USERNAME || 'postgres',
     password: process.env.DB_PASSWORD,
     dialect: 'postgres',
     pool: {
@@ -67,6 +67,10 @@ const config = {
     mailbox: process.env.IMAP_MAILBOX || 'INBOX',
     searchCriteria: ['UNSEEN'],
     markSeen: process.env.IMAP_MARK_SEEN !== 'false',
+    allowedSenders: (process.env.IMAP_ALLOWED_SENDERS || '')
+      .split(',')
+      .map(sender => sender.trim().toLowerCase())
+      .filter(Boolean),
   },
 
   // 爬虫配置
@@ -79,12 +83,9 @@ const config = {
     timeout: parseInt(process.env.CRAWLER_TIMEOUT, 10) || 30000,
     autoRefreshEnabled:
       process.env.AUTO_ORDER_REFRESH_ENABLED === 'true' ||
-      (process.env.AUTO_ORDER_REFRESH_ENABLED !== 'false' &&
-        process.env.NODE_ENV === 'production'),
-    autoRefreshIntervalMs:
-      parseInt(process.env.AUTO_ORDER_REFRESH_INTERVAL_MS, 10) || 10000,
-    windControlPauseThreshold:
-      parseInt(process.env.CRAWLER_WIND_CONTROL_PAUSE_THRESHOLD, 10) || 2,
+      (process.env.AUTO_ORDER_REFRESH_ENABLED !== 'false' && process.env.NODE_ENV === 'production'),
+    autoRefreshIntervalMs: parseInt(process.env.AUTO_ORDER_REFRESH_INTERVAL_MS, 10) || 300000,
+    windControlPauseThreshold: parseInt(process.env.CRAWLER_WIND_CONTROL_PAUSE_THRESHOLD, 10) || 2,
     userAgent:
       process.env.CRAWLER_USER_AGENT ||
       'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -93,8 +94,7 @@ const config = {
   // Telegram 告警配置（仅从环境变量读取）
   telegram: {
     enabled:
-      process.env.TELEGRAM_ENABLED === 'true' ||
-      process.env.TELEGRAM_ALERT_ENABLED === 'true',
+      process.env.TELEGRAM_ENABLED === 'true' || process.env.TELEGRAM_ALERT_ENABLED === 'true',
     botToken: process.env.TELEGRAM_BOT_TOKEN,
     chatId: process.env.TELEGRAM_CHAT_ID,
     proxyUrl: process.env.TELEGRAM_PROXY_URL,
@@ -133,11 +133,17 @@ const validateConfig = () => {
 
   // 数据库配置必需（除非提供了 DATABASE_URL）
   if (!config.database.url) {
-    requiredVars.push('DB_HOST', 'DB_NAME', 'DB_USERNAME', 'DB_PASSWORD');
+    requiredVars.push('DB_HOST', 'DB_NAME', 'DB_PASSWORD');
+    if (!process.env.DB_USER && !process.env.DB_USERNAME) {
+      requiredVars.push('DB_USER');
+    }
   }
 
   // IMAP 配置必需
   requiredVars.push('IMAP_HOST', 'IMAP_USER', 'IMAP_PASSWORD');
+  if (config.app.env === 'production') {
+    requiredVars.push('IMAP_ALLOWED_SENDERS');
+  }
 
   // 生产环境下，代理配置必需
   if (config.app.env === 'production' && config.proxy.enabled) {

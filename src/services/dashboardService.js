@@ -8,7 +8,7 @@ const logger = require('../utils/logger');
  * @param {Object} filters - 筛选参数
  * @returns {Object} Sequelize where 条件
  */
-const buildWhereClause = (filters) => {
+const buildWhereClause = filters => {
   const where = {};
 
   // 日期范围
@@ -35,7 +35,7 @@ const buildWhereClause = (filters) => {
     where[Op.and] = literal(
       `EXISTS (
         SELECT 1 FROM jsonb_array_elements(products) AS product
-        WHERE product->>'model' = '${filters.productModel.replace(/'/g, '\'\'')}'
+        WHERE product->>'model' = '${filters.productModel.replace(/'/g, '\x27\x27')}'
       )`
     );
   }
@@ -52,12 +52,12 @@ const buildWhereClause = (filters) => {
  * 状态映射（中文 -> 英文）
  */
 const STATUS_MAP = {
-  '待处理': 'pending',
-  '处理中': 'processing',
-  '已发货': 'shipped',
-  '可取货': 'ready_for_pickup',
-  '已完成': 'completed',
-  '已取消': 'cancelled'
+  待处理: 'pending',
+  处理中: 'processing',
+  已发货: 'shipped',
+  可取货: 'ready_for_pickup',
+  已完成: 'completed',
+  已取消: 'cancelled',
 };
 
 /**
@@ -65,7 +65,7 @@ const STATUS_MAP = {
  * @param {Object} filters - 筛选参数
  * @returns {Promise<Object>} 统计数据
  */
-const getStats = async (filters) => {
+const getStats = async filters => {
   try {
     const where = buildWhereClause(filters);
 
@@ -78,19 +78,19 @@ const getStats = async (filters) => {
       Order.count({
         where: {
           ...where,
-          status: { [Op.in]: ['pending', 'processing', 'ready_for_pickup'] }
-        }
+          status: { [Op.in]: ['pending', 'processing', 'ready_for_pickup'] },
+        },
       }),
 
       // 活跃收件人数（有订单的收件人）
       Order.count({
         where,
         distinct: true,
-        col: 'recipient_ref'
-      })
+        col: 'recipient_ref',
+      }),
     ]);
 
-    // 计算订单总额（从 products JSONB 中动态计算）
+    // 计算官网解析的订单总额
     const totalAmount = await calculateTotalAmount(where);
     const previousAmount = await calculateTotalAmount(buildPreviousPeriodWhere(filters));
 
@@ -107,48 +107,32 @@ const getStats = async (filters) => {
       pendingOrders: pendingOrders || 0,
       activeRecipients: activeRecipients || 0,
       orderGrowth,
-      amountGrowth
+      amountGrowth,
     };
   } catch (error) {
     logger.error('获取仪表板统计数据失败', {
       error: error.message,
       stack: error.stack,
-      filters
+      filters,
     });
     throw error;
   }
 };
 
 /**
- * 计算订单总额（从 products JSONB 中提取价格并累加）
+ * 计算官网订单总额
  * @param {Object} where - 查询条件
  * @returns {Promise<number>} 订单总额
  */
-const calculateTotalAmount = async (where) => {
+const calculateTotalAmount = async where => {
   try {
-    // 从 products JSONB 中提取价格并求和
-    // 注意：这里假设 products 数组中每个产品有 price 和 quantity 字段
-    const result = await sequelize.query(
-      `
-      SELECT COALESCE(SUM(
-        (product->>'price')::numeric * (product->>'quantity')::integer
-      ), 0) AS total
-      FROM orders, jsonb_array_elements(products) AS product
-      WHERE ${buildSqlWhereClauseForAmount(where)}
-        AND product->>'price' IS NOT NULL
-        AND product->>'quantity' IS NOT NULL
-      `,
-      {
-        type: sequelize.QueryTypes.SELECT,
-        replacements: getReplacementsFromWhere(where)
-      }
-    );
-
-    return parseFloat(result[0]?.total || 0);
+    // products 不包含可靠的单价字段，金额必须使用爬虫解析后的官网订单总额。
+    const total = await Order.sum('officialOrderAmount', { where });
+    return Number(total || 0);
   } catch (error) {
     logger.error('计算订单总额失败', {
       error: error.message,
-      where
+      where,
     });
     return 0;
   }
@@ -159,7 +143,7 @@ const calculateTotalAmount = async (where) => {
  * @param {Object} filters - 当前筛选参数
  * @returns {Object} 上一周期的 where 条件
  */
-const buildPreviousPeriodWhere = (filters) => {
+const buildPreviousPeriodWhere = filters => {
   const where = { ...buildWhereClause(filters) };
 
   if (filters.startDate && filters.endDate) {
@@ -172,7 +156,7 @@ const buildPreviousPeriodWhere = (filters) => {
 
     where.orderDate = {
       [Op.gte]: previousStart,
-      [Op.lte]: previousEnd
+      [Op.lte]: previousEnd,
     };
   }
 
@@ -197,43 +181,39 @@ const calculateGrowth = (current, previous) => {
  * @param {Object} filters - 筛选参数
  * @returns {Promise<Array>} 每日订单数据
  */
-const getDailyTrend = async (filters) => {
+const getDailyTrend = async filters => {
   try {
     const where = buildWhereClause(filters);
 
-    // 按日期分组统计订单数量（使用数据库字段名 order_date）
+    // 按日期分组统计订单数量。使用与其他分布统计一致的过滤参数。
     const dailyData = await sequelize.query(
       `
       SELECT
         DATE(order_date) AS date,
         COUNT(*) AS count
       FROM orders
-      WHERE ${buildSqlWhereClauseForAmount(where)}
+      WHERE ${buildSqlWhereClause(filters)}
       GROUP BY DATE(order_date)
       ORDER BY DATE(order_date) ASC
       `,
       {
         type: sequelize.QueryTypes.SELECT,
-        replacements: getReplacementsFromWhere(where)
+        replacements: getReplacements(filters),
       }
     );
 
     // 填充缺失日期（确保每天都有数据）
-    const filledData = fillMissingDates(
-      dailyData,
-      filters.startDate,
-      filters.endDate
-    );
+    const filledData = fillMissingDates(dailyData, filters.startDate, filters.endDate);
 
     return filledData.map(item => ({
       date: formatDate(item.date),
-      count: parseInt(item.count) || 0
+      count: parseInt(item.count) || 0,
     }));
   } catch (error) {
     logger.error('获取每日订单趋势失败', {
       error: error.message,
       stack: error.stack,
-      filters
+      filters,
     });
     throw error;
   }
@@ -259,9 +239,7 @@ const fillMissingDates = (data, startDate, endDate) => {
 
   while (current <= end) {
     const dateStr = current.toISOString().split('T')[0];
-    result.push(
-      dataMap.get(dateStr) || { date: dateStr, count: 0 }
-    );
+    result.push(dataMap.get(dateStr) || { date: dateStr, count: 0 });
     current.setDate(current.getDate() + 1);
   }
 
@@ -273,7 +251,7 @@ const fillMissingDates = (data, startDate, endDate) => {
  * @param {string} dateStr - ISO 日期字符串
  * @returns {string} 格式化后的日期
  */
-const formatDate = (dateStr) => {
+const formatDate = dateStr => {
   const date = new Date(dateStr);
   const month = date.getMonth() + 1;
   const day = date.getDate();
@@ -287,7 +265,7 @@ const formatDate = (dateStr) => {
  * @param {Object} filters - 筛选参数
  * @returns {Promise<Array>} 产品型号分布数据
  */
-const getProductDistribution = async (filters) => {
+const getProductDistribution = async filters => {
   try {
     const where = buildWhereClause(filters);
 
@@ -310,19 +288,19 @@ const getProductDistribution = async (filters) => {
       `,
       {
         type: sequelize.QueryTypes.SELECT,
-        replacements: getReplacements(filters)
+        replacements: getReplacements(filters),
       }
     );
 
     return result.map(item => ({
       name: item.name || '未知型号',
-      value: parseInt(item.value)
+      value: parseInt(item.value),
     }));
   } catch (error) {
     logger.error('获取产品型号分布失败', {
       error: error.message,
       stack: error.stack,
-      filters
+      filters,
     });
     throw error;
   }
@@ -333,34 +311,31 @@ const getProductDistribution = async (filters) => {
  * @param {Object} filters - 筛选参数
  * @returns {Promise<Array>} 门店分布数据
  */
-const getStoreDistribution = async (filters) => {
+const getStoreDistribution = async filters => {
   try {
     const where = buildWhereClause(filters);
 
     const result = await Order.findAll({
-      attributes: [
-        'pickupStore',
-        [fn('COUNT', col('id')), 'value']
-      ],
+      attributes: ['pickupStore', [fn('COUNT', col('id')), 'value']],
       where: {
         ...where,
-        pickupStore: { [Op.ne]: null }
+        pickupStore: { [Op.ne]: null },
       },
       group: ['pickupStore'],
       order: [[fn('COUNT', col('id')), 'DESC']],
       limit: 10,
-      raw: true
+      raw: true,
     });
 
     return result.map(item => ({
       name: item.pickupStore || '未知门店',
-      value: parseInt(item.value)
+      value: parseInt(item.value),
     }));
   } catch (error) {
     logger.error('获取取货门店分布失败', {
       error: error.message,
       stack: error.stack,
-      filters
+      filters,
     });
     throw error;
   }
@@ -371,7 +346,7 @@ const getStoreDistribution = async (filters) => {
  * @param {Object} filters - 筛选参数
  * @returns {string} SQL WHERE 子句
  */
-const buildSqlWhereClause = (filters) => {
+const buildSqlWhereClause = filters => {
   const conditions = ['1=1']; // 默认条件
 
   if (filters.startDate) {
@@ -387,60 +362,15 @@ const buildSqlWhereClause = (filters) => {
   if (filters.store) {
     conditions.push('pickup_store = :store');
   }
-
-  return conditions.join(' AND ');
-};
-
-/**
- * 构建用于金额计算的 SQL WHERE 子句
- * @param {Object} where - Sequelize where 对象
- * @returns {string} SQL WHERE 子句
- */
-const buildSqlWhereClauseForAmount = (where) => {
-  const conditions = ['1=1'];
-
-  if (where.orderDate) {
-    if (where.orderDate[Op.gte]) {
-      conditions.push('order_date >= :startDate');
-    }
-    if (where.orderDate[Op.lte]) {
-      conditions.push('order_date <= :endDate');
-    }
-  }
-  if (where.status) {
-    conditions.push('status = :status');
-  }
-  if (where.pickupStore) {
-    conditions.push('pickup_store = :store');
+  if (filters.productModel) {
+    conditions.push(`EXISTS (
+      SELECT 1
+      FROM jsonb_array_elements(products) AS product_filter
+      WHERE product_filter->>'model' = :productModel
+    )`);
   }
 
   return conditions.join(' AND ');
-};
-
-/**
- * 从 where 对象提取 SQL 参数
- * @param {Object} where - Sequelize where 对象
- * @returns {Object} 参数对象
- */
-const getReplacementsFromWhere = (where) => {
-  const replacements = {};
-
-  if (where.orderDate) {
-    if (where.orderDate[Op.gte]) {
-      replacements.startDate = where.orderDate[Op.gte];
-    }
-    if (where.orderDate[Op.lte]) {
-      replacements.endDate = where.orderDate[Op.lte];
-    }
-  }
-  if (where.status) {
-    replacements.status = where.status;
-  }
-  if (where.pickupStore) {
-    replacements.store = where.pickupStore;
-  }
-
-  return replacements;
 };
 
 /**
@@ -448,7 +378,7 @@ const getReplacementsFromWhere = (where) => {
  * @param {Object} filters - 筛选参数
  * @returns {Object} 参数对象
  */
-const getReplacements = (filters) => {
+const getReplacements = filters => {
   const replacements = {};
 
   if (filters.startDate) {
@@ -465,6 +395,9 @@ const getReplacements = (filters) => {
   }
   if (filters.store) {
     replacements.store = filters.store;
+  }
+  if (filters.productModel) {
+    replacements.productModel = filters.productModel;
   }
 
   return replacements;
@@ -500,12 +433,12 @@ const getFilterOptions = async () => {
 
     return {
       productModels: productModels.map(item => item.model).filter(Boolean),
-      stores: stores.map(item => item.store).filter(Boolean)
+      stores: stores.map(item => item.store).filter(Boolean),
     };
   } catch (error) {
     logger.error('获取筛选器选项失败', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -516,5 +449,5 @@ module.exports = {
   getDailyTrend,
   getProductDistribution,
   getStoreDistribution,
-  getFilterOptions
+  getFilterOptions,
 };

@@ -1,208 +1,218 @@
-import { useState, useEffect } from 'react'
-import { Search, Plus, Mail, Package, Edit, Trash2, Settings, Upload } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
-import { getAppleIds, updateAppleId, deleteAppleId } from '../api'
-import { previewImport, executeImport } from '../api/importApi'
-import useColumnConfig from '../hooks/useColumnConfig'
-import ColumnConfigModal from '../components/ColumnConfigModal'
-import Pagination from '../components/Pagination'
-import AddAppleIdModal from '../components/AddAppleIdModal'
-import BatchImportModal from '../components/BatchImportModal'
-import EditAppleIdModal from '../components/EditAppleIdModal'
-import ConfirmModal from '../components/ConfirmModal'
-import { appleIdsColumns } from '../constants/tableColumns'
-import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status'
+import { useState, useEffect } from 'react';
+import { Search, Plus, Mail, Package, Edit, Trash2, Settings, Upload } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { getAppleIds, createAppleId, updateAppleId, deleteAppleId } from '../api';
+import { previewImport, executeImport } from '../api/importApi';
+import useColumnConfig from '../hooks/useColumnConfig';
+import ColumnConfigModal from '../components/ColumnConfigModal';
+import Pagination from '../components/Pagination';
+import AddAppleIdModal from '../components/AddAppleIdModal';
+import BatchImportModal from '../components/BatchImportModal';
+import EditAppleIdModal from '../components/EditAppleIdModal';
+import ConfirmModal from '../components/ConfirmModal';
+import { appleIdsColumns } from '../constants/tableColumns';
+import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status';
 
 export default function AppleIds() {
-  const { isAdmin } = useAuth()
-  const [appleIds, setAppleIds] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [filterCountry, setFilterCountry] = useState('')
-  const [filterStatus, setFilterStatus] = useState('')
-  const [showColumnConfig, setShowColumnConfig] = useState(false)
-  const [showAddModal, setShowAddModal] = useState(false)
-  const [showBatchImport, setShowBatchImport] = useState(false)
-  const [showEditModal, setShowEditModal] = useState(false)
-  const [showConfirmModal, setShowConfirmModal] = useState(false)
-  const [selectedItem, setSelectedItem] = useState(null)
-  const { columns, saveConfig, resetConfig } = useColumnConfig('appleIds', appleIdsColumns)
+  const { isAdmin } = useAuth();
+  const [appleIds, setAppleIds] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterCountry, setFilterCountry] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showBatchImport, setShowBatchImport] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const { columns, saveConfig, resetConfig } = useColumnConfig('appleIds', appleIdsColumns);
 
   // 分页状态
   const [pagination, setPagination] = useState({
     currentPage: 1,
     pageSize: 20,
     totalItems: 0,
-    totalPages: 0
-  })
+    totalPages: 0,
+  });
 
   useEffect(() => {
-    loadAppleIds()
-  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterCountry, filterStatus])
+    loadAppleIds();
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterCountry, filterStatus]);
 
   const loadAppleIds = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
       const params = {
         page: pagination.currentPage,
         limit: pagination.pageSize,
         keyword: searchTerm || undefined,
         country: filterCountry || undefined,
-        status: filterStatus || undefined
-      }
-      const res = await getAppleIds(params)
+        status: filterStatus || undefined,
+      };
+      const res = await getAppleIds(params);
       if (res.success) {
-        setAppleIds(res.data.apple_ids.map(item => ({
-          id: item.id,
-          appleId: item.apple_id,
-          password: item.password || '-',
-          nickname: item.nickname || '-',
-          securityQa: item.security_qa || null,
-          country: item.country || '-',
-          isModified: item.is_modified ? '是' : '否',
-          status: item.status,
-          orderCount: item.order_count || 0,
-          lastOrderDate: item.last_order_date ? new Date(item.last_order_date).toLocaleDateString('zh-CN') : '-',
-          createdAt: item.created_at,
-          updatedAt: item.updated_at
-        })))
+        setAppleIds(
+          res.data.apple_ids.map(item => ({
+            id: item.id,
+            appleId: item.apple_id,
+            password: item.password || '-',
+            nickname: item.nickname || '-',
+            securityQa: item.security_qa || null,
+            country: item.country || '-',
+            isModified: item.is_modified ? '是' : '否',
+            status: item.status,
+            orderCount: item.order_count || 0,
+            lastOrderDate: item.last_order_date
+              ? new Date(item.last_order_date).toLocaleDateString('zh-CN')
+              : '-',
+            createdAt: item.created_at,
+            updatedAt: item.updated_at,
+          }))
+        );
 
         // 更新分页信息
         setPagination(prev => ({
           ...prev,
           totalItems: res.data.total,
-          totalPages: Math.ceil(res.data.total / prev.pageSize)
-        }))
+          totalPages: Math.ceil(res.data.total / prev.pageSize),
+        }));
       }
     } catch (error) {
-      console.error('加载 Apple ID 失败:', error)
+      console.error('加载 Apple ID 失败:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   // 分页处理函数
-  const handlePageChange = (page) => {
-    setPagination(prev => ({ ...prev, currentPage: page }))
-  }
+  const handlePageChange = page => {
+    setPagination(prev => ({ ...prev, currentPage: page }));
+  };
 
-  const handlePageSizeChange = (size) => {
+  const handlePageSizeChange = size => {
     setPagination(prev => ({
       ...prev,
       pageSize: size,
       currentPage: 1,
-      totalPages: Math.ceil(prev.totalItems / size)
-    }))
-  }
+      totalPages: Math.ceil(prev.totalItems / size),
+    }));
+  };
 
-  const handleSaveAppleId = async (formData) => {
-    // TODO: 调用后端 API 保存 Apple ID
-    console.log('保存 Apple ID:', formData)
-    // const response = await createAppleId(formData)
-    // if (response.success) {
-    //   await loadAppleIds()
-    // }
-    alert('保存成功！（演示模式）')
-    await loadAppleIds()
-  }
+  const handleSaveAppleId = async formData => {
+    const response = await createAppleId({
+      apple_id: formData.appleId,
+      password: formData.password,
+      nickname: formData.nickname || null,
+      country: formData.country || null,
+      status: formData.status,
+      security_qa: formData.securityQa,
+    });
+    if (!response.success) throw new Error(response.error?.message || '保存失败');
+    await loadAppleIds();
+  };
 
-  const handleEdit = (item) => {
-    setSelectedItem(item)
-    setShowEditModal(true)
-  }
+  const handleEdit = item => {
+    setSelectedItem(item);
+    setShowEditModal(true);
+  };
 
   const handleSaveEdit = async (id, formData) => {
     try {
       // 构建密保 JSONB 对象
-      const securityQa = (formData.question1 && formData.answer1) ? {
-        question1: formData.question1,
-        answer1: formData.answer1,
-        question2: formData.question2 || null,
-        answer2: formData.answer2 || null,
-        question3: formData.question3 || null,
-        answer3: formData.answer3 || null,
-      } : null
+      const securityQa =
+        formData.question1 && formData.answer1
+          ? {
+              question1: formData.question1,
+              answer1: formData.answer1,
+              question2: formData.question2 || null,
+              answer2: formData.answer2 || null,
+              question3: formData.question3 || null,
+              answer3: formData.answer3 || null,
+            }
+          : null;
 
       // 调用后端 API 更新
-      const response = await updateAppleId(id, {
-        password: formData.password,
+      const payload = {
         nickname: formData.nickname || null,
         country: formData.country || null,
         status: formData.status,
-        security_qa: securityQa,
         is_modified: formData.isModified,
-      })
+      };
+      if (formData.password) payload.password = formData.password;
+      if (securityQa) payload.security_qa = securityQa;
+      const response = await updateAppleId(id, payload);
 
       if (response.success) {
-        await loadAppleIds()
+        await loadAppleIds();
       } else {
-        throw new Error(response.error || '更新失败')
+        throw new Error(response.error || '更新失败');
       }
     } catch (error) {
-      console.error('更新 Apple ID 失败:', error)
-      throw error
+      console.error('更新 Apple ID 失败:', error);
+      throw error;
     }
-  }
+  };
 
-  const handleDelete = (item) => {
-    setSelectedItem(item)
-    setShowConfirmModal(true)
-  }
+  const handleDelete = item => {
+    setSelectedItem(item);
+    setShowConfirmModal(true);
+  };
 
   const handleConfirmDelete = async () => {
     try {
       // 调用后端 API 删除
-      const response = await deleteAppleId(selectedItem.id)
+      const response = await deleteAppleId(selectedItem.id);
 
       if (response.success) {
-        setShowConfirmModal(false)
-        setSelectedItem(null)
-        await loadAppleIds()
+        setShowConfirmModal(false);
+        setSelectedItem(null);
+        await loadAppleIds();
       } else {
-        throw new Error(response.error || '删除失败')
+        throw new Error(response.error || '删除失败');
       }
     } catch (error) {
-      console.error('删除 Apple ID 失败:', error)
-      alert(error.message || '删除失败')
+      console.error('删除 Apple ID 失败:', error);
+      alert(error.message || '删除失败');
     }
-  }
+  };
 
-  const handleBatchImport = async (formData) => {
+  const handleBatchImport = async formData => {
     try {
       // 第一步：预览导入数据
-      const file = formData.get('file')
-      const previewRes = await previewImport(file, 'apple_ids')
+      const file = formData.get('file');
+      const previewRes = await previewImport(file, 'apple_ids');
 
       if (!previewRes.success) {
-        throw new Error(previewRes.error || '数据预览失败')
+        throw new Error(previewRes.error || '数据预览失败');
       }
 
       // 第二步：执行导入
-      const executeRes = await executeImport('apple_ids', previewRes.data.preview)
+      const executeRes = await executeImport(previewRes.data.sessionToken);
 
       if (!executeRes.success) {
-        throw new Error(executeRes.error || '导入失败')
+        throw new Error(executeRes.error || '导入失败');
       }
 
       // 导入成功后重新加载列表
-      await loadAppleIds()
+      await loadAppleIds();
 
       return {
         imported: executeRes.data.imported || 0,
         skipped: executeRes.data.skipped || 0,
-        errors: executeRes.data.errors || []
-      }
+        errors: executeRes.data.errors || [],
+      };
     } catch (error) {
-      console.error('批量导入失败:', error)
-      throw error
+      console.error('批量导入失败:', error);
+      throw error;
     }
-  }
+  };
 
-  const visibleColumns = columns.filter(col => col.visible)
+  const visibleColumns = columns.filter(col => col.visible);
 
-  const getStatusBadge = (status) => {
-    return STATUS_BADGE_MAP[status] || { text: status, class: 'badge-secondary' }
-  }
+  const getStatusBadge = status => {
+    return STATUS_BADGE_MAP[status] || { text: status, class: 'badge-secondary' };
+  };
 
   const renderCell = (item, column) => {
     switch (column.key) {
@@ -218,44 +228,47 @@ export default function AppleIds() {
               <p className="text-sm font-medium text-gray-900">{item.appleId}</p>
             </div>
           </div>
-        )
+        );
       case 'password':
-        return <span className="text-sm text-gray-900 font-mono">{item.password}</span>
+        return <span className="text-sm text-gray-900 font-mono">{item.password}</span>;
       case 'nickname':
-        return <span className="text-sm text-gray-900">{item.nickname}</span>
+        return <span className="text-sm text-gray-900">{item.nickname}</span>;
       case 'securityQa':
         if (!item.securityQa) {
-          return <span className="text-sm text-gray-400">未设置</span>
+          return <span className="text-sm text-gray-400">未设置</span>;
         }
         return (
           <div className="text-xs space-y-1">
             {item.securityQa.question1 && (
               <div>
                 <span className="text-gray-500">问题1:</span> {item.securityQa.question1}
-                <span className="text-gray-500 ml-2">答案:</span> <span className="font-mono">{item.securityQa.answer1}</span>
+                <span className="text-gray-500 ml-2">答案:</span>{' '}
+                <span className="font-mono">{item.securityQa.answer1}</span>
               </div>
             )}
             {item.securityQa.question2 && (
               <div>
                 <span className="text-gray-500">问题2:</span> {item.securityQa.question2}
-                <span className="text-gray-500 ml-2">答案:</span> <span className="font-mono">{item.securityQa.answer2}</span>
+                <span className="text-gray-500 ml-2">答案:</span>{' '}
+                <span className="font-mono">{item.securityQa.answer2}</span>
               </div>
             )}
             {item.securityQa.question3 && (
               <div>
                 <span className="text-gray-500">问题3:</span> {item.securityQa.question3}
-                <span className="text-gray-500 ml-2">答案:</span> <span className="font-mono">{item.securityQa.answer3}</span>
+                <span className="text-gray-500 ml-2">答案:</span>{' '}
+                <span className="font-mono">{item.securityQa.answer3}</span>
               </div>
             )}
           </div>
-        )
+        );
       case 'country':
-        return <span className="text-sm text-gray-600">{item.country}</span>
+        return <span className="text-sm text-gray-600">{item.country}</span>;
       case 'isModified':
-        return <span className="text-sm text-gray-600">{item.isModified}</span>
+        return <span className="text-sm text-gray-600">{item.isModified}</span>;
       case 'status': {
-        const badge = getStatusBadge(item.status)
-        return <span className={`badge ${badge.class}`}>{badge.text}</span>
+        const badge = getStatusBadge(item.status);
+        return <span className={`badge ${badge.class}`}>{badge.text}</span>;
       }
       case 'orderCount':
         return (
@@ -263,13 +276,21 @@ export default function AppleIds() {
             <Package className="w-4 h-4 text-gray-400" />
             <span className="text-lg font-semibold text-primary">{item.orderCount}</span>
           </div>
-        )
+        );
       case 'lastOrderDate':
-        return <span className="text-sm text-gray-600">{item.lastOrderDate}</span>
+        return <span className="text-sm text-gray-600">{item.lastOrderDate}</span>;
       case 'createdAt':
-        return <span className="text-sm text-gray-600">{new Date(item.createdAt).toLocaleDateString('zh-CN')}</span>
+        return (
+          <span className="text-sm text-gray-600">
+            {new Date(item.createdAt).toLocaleDateString('zh-CN')}
+          </span>
+        );
       case 'updatedAt':
-        return <span className="text-sm text-gray-600">{new Date(item.updatedAt).toLocaleDateString('zh-CN')}</span>
+        return (
+          <span className="text-sm text-gray-600">
+            {new Date(item.updatedAt).toLocaleDateString('zh-CN')}
+          </span>
+        );
       case 'actions':
         return (
           <div className="flex items-center justify-end space-x-2">
@@ -288,11 +309,11 @@ export default function AppleIds() {
               </button>
             )}
           </div>
-        )
+        );
       default:
-        return null
+        return null;
     }
-  }
+  };
 
   return (
     <div className="space-y-6">
@@ -329,13 +350,13 @@ export default function AppleIds() {
               type="text"
               placeholder="搜索 Apple ID..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               className="input pl-10 w-full"
             />
           </div>
           <select
             value={filterCountry}
-            onChange={(e) => setFilterCountry(e.target.value)}
+            onChange={e => setFilterCountry(e.target.value)}
             className="input flex-shrink-0"
             style={{ width: 'auto' }}
           >
@@ -348,13 +369,15 @@ export default function AppleIds() {
           </select>
           <select
             value={filterStatus}
-            onChange={(e) => setFilterStatus(e.target.value)}
+            onChange={e => setFilterStatus(e.target.value)}
             className="input flex-shrink-0"
             style={{ width: 'auto' }}
           >
             <option value="">全部状态</option>
             {STATUS_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>{option.label}</option>
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
             ))}
           </select>
           <button
@@ -385,15 +408,17 @@ export default function AppleIds() {
             <table className="w-full min-w-max">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  {visibleColumns.map((col) => (
+                  {visibleColumns.map(col => (
                     <th
                       key={col.key}
                       className={`py-3 px-4 text-sm font-medium text-gray-500 whitespace-nowrap ${
-                        col.key === 'orderCount' || col.key === 'lastOrderDate' || col.key === 'status'
+                        col.key === 'orderCount' ||
+                        col.key === 'lastOrderDate' ||
+                        col.key === 'status'
                           ? 'text-center'
                           : col.key === 'actions'
-                          ? 'text-right'
-                          : 'text-left'
+                            ? 'text-right'
+                            : 'text-left'
                       }`}
                       style={{ minWidth: col.width }}
                     >
@@ -403,13 +428,18 @@ export default function AppleIds() {
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {appleIds.map((item) => (
-                  <tr key={item.id} className="border-b border-gray-200 hover:bg-gray-50 transition-colors">
-                    {visibleColumns.map((col) => (
+                {appleIds.map(item => (
+                  <tr
+                    key={item.id}
+                    className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
+                  >
+                    {visibleColumns.map(col => (
                       <td
                         key={col.key}
                         className={`py-4 px-4 ${
-                          col.key === 'orderCount' || col.key === 'lastOrderDate' || col.key === 'status'
+                          col.key === 'orderCount' ||
+                          col.key === 'lastOrderDate' ||
+                          col.key === 'status'
                             ? 'text-center'
                             : ''
                         }`}
@@ -437,10 +467,7 @@ export default function AppleIds() {
 
       {/* 添加 Apple ID 弹窗 */}
       {showAddModal && (
-        <AddAppleIdModal
-          onClose={() => setShowAddModal(false)}
-          onSave={handleSaveAppleId}
-        />
+        <AddAppleIdModal onClose={() => setShowAddModal(false)} onSave={handleSaveAppleId} />
       )}
 
       {/* 批量导入弹窗 */}
@@ -457,8 +484,8 @@ export default function AppleIds() {
         <EditAppleIdModal
           appleId={selectedItem}
           onClose={() => {
-            setShowEditModal(false)
-            setSelectedItem(null)
+            setShowEditModal(false);
+            setSelectedItem(null);
           }}
           onSave={handleSaveEdit}
         />
@@ -472,8 +499,8 @@ export default function AppleIds() {
           type="danger"
           onConfirm={handleConfirmDelete}
           onCancel={() => {
-            setShowConfirmModal(false)
-            setSelectedItem(null)
+            setShowConfirmModal(false);
+            setSelectedItem(null);
           }}
         />
       )}
@@ -491,5 +518,5 @@ export default function AppleIds() {
         />
       )}
     </div>
-  )
+  );
 }

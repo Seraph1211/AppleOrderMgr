@@ -1,125 +1,122 @@
-import { useState, useEffect } from 'react'
-import { Link } from 'react-router-dom'
-import { Search, Edit, TrendingUp } from 'lucide-react'
-import { getChannels, updateChannelName } from '../api'
-import EditChannelModal from '../components/EditChannelModal'
-import Pagination from '../components/Pagination'
+import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
+import { Search, Edit, TrendingUp } from 'lucide-react';
+import { getChannels, updateChannelName } from '../api';
+import EditChannelModal from '../components/EditChannelModal';
+import Pagination from '../components/Pagination';
 
 export default function Channels() {
-  const [channels, setChannels] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [editingChannel, setEditingChannel] = useState(null)
+  const [channels, setChannels] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [editingChannel, setEditingChannel] = useState(null);
 
   // 分页状态
   const [pagination, setPagination] = useState({
     currentPage: 1,
     pageSize: 20,
     totalItems: 0,
-    totalPages: 0
-  })
+    totalPages: 0,
+  });
 
   useEffect(() => {
-    loadChannels()
-  }, [])
+    loadChannels();
+  }, []);
 
   const loadChannels = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
-      const res = await getChannels()
-      console.log('API响应:', res)
+      const res = await getChannels();
+      console.log('API响应:', res);
       if (res.success) {
-        console.log('渠道数据:', res.data.channels)
-        setChannels(res.data.channels)
+        console.log('渠道数据:', res.data.channels);
+        setChannels(res.data.channels);
       } else {
-        console.error('API返回success=false')
+        console.error('API返回success=false');
       }
     } catch (error) {
-      console.error('加载渠道列表失败:', error)
+      console.error('加载渠道列表失败:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
-  const handleEditChannel = (channel) => {
-    setEditingChannel(channel)
-  }
+  const handleEditChannel = channel => {
+    setEditingChannel(channel);
+  };
 
   const handleSaveChannel = async (oldTag, newTag) => {
     try {
-      const res = await updateChannelName(oldTag, newTag)
+      const res = await updateChannelName(oldTag, newTag);
       if (res.success) {
         // 刷新列表
-        await loadChannels()
-        setEditingChannel(null)
+        await loadChannels();
+        setEditingChannel(null);
       }
     } catch (error) {
-      console.error('修改渠道名称失败:', error)
-      throw error
+      console.error('修改渠道名称失败:', error);
+      throw error;
     }
-  }
+  };
 
   // 搜索过滤
   const filteredChannels = channels.filter(channel =>
     channel.channelName.toLowerCase().includes(searchTerm.toLowerCase())
-  )
+  );
 
   // 前端分页（因为后端返回全部数据）
   const paginatedChannels = filteredChannels.slice(
     (pagination.currentPage - 1) * pagination.pageSize,
     pagination.currentPage * pagination.pageSize
-  )
+  );
 
   // 更新总数
   useEffect(() => {
     setPagination(prev => ({
       ...prev,
       totalItems: filteredChannels.length,
-      totalPages: Math.ceil(filteredChannels.length / prev.pageSize)
-    }))
-  }, [filteredChannels.length, pagination.pageSize])
+      totalPages: Math.ceil(filteredChannels.length / prev.pageSize),
+    }));
+  }, [filteredChannels.length, pagination.pageSize]);
 
   // 分页处理函数
-  const handlePageChange = (page) => {
-    setPagination(prev => ({ ...prev, currentPage: page }))
-  }
+  const handlePageChange = page => {
+    setPagination(prev => ({ ...prev, currentPage: page }));
+  };
 
-  const handlePageSizeChange = (size) => {
+  const handlePageSizeChange = size => {
     setPagination(prev => ({
       ...prev,
       pageSize: size,
       currentPage: 1,
-      totalPages: Math.ceil(filteredChannels.length / size)
-    }))
-  }
-
-  console.log('当前channels:', channels)
-  console.log('过滤后channels:', filteredChannels)
-  console.log('分页后channels:', paginatedChannels)
+      totalPages: Math.ceil(filteredChannels.length / size),
+    }));
+  };
 
   // 计算总计（基于过滤后的全部数据）
-  const totals = filteredChannels.reduce((acc, channel) => ({
-    totalOrders: acc.totalOrders + channel.totalOrders,
-    paidOrders: acc.paidOrders + channel.paidOrders,
-    deliveredOrders: acc.deliveredOrders + channel.deliveredOrders,
-    totalAmount: acc.totalAmount + (channel.totalAmount || 0),
-    paidAmount: acc.paidAmount + (channel.paidAmount || 0),
-    deliveredAmount: acc.deliveredAmount + (channel.deliveredAmount || 0),
-  }), {
-    totalOrders: 0,
-    paidOrders: 0,
-    deliveredOrders: 0,
-    totalAmount: 0,
-    paidAmount: 0,
-    deliveredAmount: 0
-  })
-
-  console.log('统计totals:', totals)
+  const totals = filteredChannels.reduce(
+    (acc, channel) => ({
+      totalOrders: acc.totalOrders + channel.totalOrders,
+      paidOrders: acc.paidOrders + channel.paidOrders,
+      deliveredOrders: acc.deliveredOrders + channel.deliveredOrders,
+      totalAmount: acc.totalAmount + (channel.totalAmount || 0),
+      paidAmount: acc.paidAmount + (channel.paidAmount || 0),
+      deliveredAmount: acc.deliveredAmount + (channel.deliveredAmount || 0),
+    }),
+    {
+      totalOrders: 0,
+      paidOrders: 0,
+      deliveredOrders: 0,
+      totalAmount: 0,
+      paidAmount: 0,
+      deliveredAmount: 0,
+    }
+  );
 
   // 格式化金额
-  const formatAmount = (amount) => {
-    return `¥${amount.toLocaleString('zh-CN')}`
-  }
+  const formatAmount = amount => {
+    return `¥${amount.toLocaleString('zh-CN')}`;
+  };
 
   return (
     <div className="space-y-6">
@@ -127,9 +124,7 @@ export default function Channels() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">渠道管理</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            基于订单标签的渠道统计和管理
-          </p>
+          <p className="text-sm text-gray-500 mt-1">基于订单标签的渠道统计和管理</p>
         </div>
       </div>
 
@@ -174,8 +169,10 @@ export default function Channels() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">总订单金额</p>
-              <p className="text-2xl font-bold text-gray-900 mt-2">{formatAmount(totals.totalAmount)}</p>
+              <p className="text-sm text-gray-500">官网订单金额（已解析）</p>
+              <p className="text-2xl font-bold text-gray-900 mt-2">
+                {formatAmount(totals.totalAmount)}
+              </p>
             </div>
             <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center">
               <TrendingUp className="w-6 h-6 text-orange-600" />
@@ -193,7 +190,7 @@ export default function Channels() {
               type="text"
               placeholder="搜索渠道名称..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={e => setSearchTerm(e.target.value)}
               className="input pl-10 w-full"
             />
           </div>
@@ -215,19 +212,35 @@ export default function Channels() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">渠道名称</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">总订单数</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">总订单金额</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">已支付订单</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">已支付金额</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">已取货订单</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">已取货金额</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">渠道订单明细</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    渠道名称
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    总订单数
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    官网订单金额
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    官网已支付订单
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    官网已支付金额
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    已取货订单
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    已取货金额
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    渠道订单明细
+                  </th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">操作</th>
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {paginatedChannels.map((channel) => {
+                {paginatedChannels.map(channel => {
                   return (
                     <tr
                       key={channel.tag}
@@ -242,19 +255,25 @@ export default function Channels() {
                         <span className="text-gray-900">{channel.totalOrders}</span>
                       </td>
                       <td className="py-4 px-4">
-                        <span className="text-gray-900 font-medium">{formatAmount(channel.totalAmount || 0)}</span>
+                        <span className="text-gray-900 font-medium">
+                          {formatAmount(channel.totalAmount || 0)}
+                        </span>
                       </td>
                       <td className="py-4 px-4">
                         <span className="text-gray-900">{channel.paidOrders}</span>
                       </td>
                       <td className="py-4 px-4">
-                        <span className="text-gray-900 font-medium">{formatAmount(channel.paidAmount || 0)}</span>
+                        <span className="text-gray-900 font-medium">
+                          {formatAmount(channel.paidAmount || 0)}
+                        </span>
                       </td>
                       <td className="py-4 px-4">
                         <span className="text-gray-900">{channel.deliveredOrders}</span>
                       </td>
                       <td className="py-4 px-4">
-                        <span className="text-gray-900 font-medium">{formatAmount(channel.deliveredAmount || 0)}</span>
+                        <span className="text-gray-900 font-medium">
+                          {formatAmount(channel.deliveredAmount || 0)}
+                        </span>
                       </td>
                       <td className="py-4 px-4">
                         <Link
@@ -274,7 +293,7 @@ export default function Channels() {
                         </button>
                       </td>
                     </tr>
-                  )
+                  );
                 })}
               </tbody>
             </table>
@@ -304,5 +323,5 @@ export default function Channels() {
         />
       )}
     </div>
-  )
+  );
 }

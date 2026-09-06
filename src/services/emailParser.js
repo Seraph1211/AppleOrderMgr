@@ -37,7 +37,7 @@ async function parseOrderEmail(rawEmail, emailUid) {
     logger.debug('邮件内容清理完成', {
       emailUid,
       textLength: cleanText.length,
-      htmlLength: cleanHtml.length
+      htmlLength: cleanHtml.length,
     });
 
     // 4. 提取各个字段
@@ -59,20 +59,19 @@ async function parseOrderEmail(rawEmail, emailUid) {
       recipient: {
         name: productInfo.recipientName,
         idLast4: productInfo.recipientIdLast4,
-        tag: productInfo.recipientTag
+        tag: productInfo.recipientTag,
       },
       paymentMethod: productInfo.paymentMethod,
       emailSubject: parsed.subject || '',
       emailFrom: parsed.from?.text || '',
       emailDate: parsed.date || new Date(),
-      rawContent: rawEmail.toString('base64') // 保存原始邮件的Base64编码
+      rawContent: rawEmail.toString('base64'), // 保存原始邮件的Base64编码
     };
 
     logger.info('邮件解析成功', {
       emailUid,
       orderNumber: result.orderNumber,
-      appleId: result.appleId,
-      productCount: result.products.length
+      productCount: result.products.length,
     });
 
     return result;
@@ -80,7 +79,7 @@ async function parseOrderEmail(rawEmail, emailUid) {
     logger.error('邮件解析失败', {
       emailUid,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     throw error;
   }
@@ -97,7 +96,7 @@ function extractAppleId(text) {
   const match = text.match(regex);
 
   if (match) {
-    logger.debug('Apple ID 提取成功', { appleId: match[1] });
+    logger.debug('Apple ID 提取成功');
     return match[1].trim();
   }
 
@@ -142,7 +141,7 @@ function extractOrderLink(html) {
     const orderUrl = match[0];
     const orderNumber = match[1];
 
-    logger.debug('订单链接提取成功', { orderNumber, orderUrl });
+    logger.debug('订单链接提取成功', { orderNumber });
     return { orderUrl, orderNumber };
   }
 
@@ -177,7 +176,7 @@ function extractProductInfo(text) {
     recipientName,
     recipientIdLast4,
     paymentMethod,
-    recipientTag
+    recipientTag,
   });
 
   // 解析多个商品（按 @ 分割）
@@ -188,7 +187,7 @@ function extractProductInfo(text) {
     recipientName,
     recipientIdLast4,
     paymentMethod,
-    recipientTag
+    recipientTag,
   };
 }
 
@@ -205,7 +204,7 @@ function parseProducts(productsSection) {
 
   logger.debug('商品分割完成', {
     productCount: productItems.length,
-    items: productItems.map((item, i) => `${i}: ${item}`)
+    items: productItems.map((item, i) => `${i}: ${item}`),
   });
 
   productItems.forEach((item, index) => {
@@ -217,7 +216,7 @@ function parseProducts(productsSection) {
     logger.debug('商品解析尝试', {
       index: index + 1,
       item: trimmedItem,
-      matched: !!match
+      matched: !!match,
     });
 
     if (match) {
@@ -225,7 +224,7 @@ function parseProducts(productsSection) {
         model: match[1].trim(),
         name: match[2].trim(),
         quantity: parseInt(match[3], 10),
-        image: null // 图片需要从官网爬取
+        image: null, // 图片需要从官网爬取
       };
 
       products.push(product);
@@ -234,7 +233,7 @@ function parseProducts(productsSection) {
         index: index + 1,
         model: product.model,
         name: product.name,
-        quantity: product.quantity
+        quantity: product.quantity,
       });
     } else {
       logger.warn('商品解析失败', { index: index + 1, item: trimmedItem });
@@ -291,20 +290,24 @@ async function extractEmailMetadata(rawEmail) {
     const parsed = await simpleParser(rawEmail);
     return {
       from: parsed.from?.text || '',
+      fromAddresses: (parsed.from?.value || [])
+        .map(sender => sender.address?.trim().toLowerCase())
+        .filter(Boolean),
       subject: parsed.subject || '',
-      date: parsed.date || new Date()
+      date: parsed.date || new Date(),
     };
   } catch (error) {
     logger.error('提取邮件元数据失败', { error: error.message });
     return {
       from: '',
+      fromAddresses: [],
       subject: '',
-      date: new Date()
+      date: new Date(),
     };
   }
 }
 
 module.exports = {
   parseOrderEmail,
-  extractEmailMetadata
+  extractEmailMetadata,
 };

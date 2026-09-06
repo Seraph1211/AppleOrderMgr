@@ -21,14 +21,17 @@ async function parseOrderEmail(rawEmail) {
   const orderDate = dateMatch ? new Date(dateMatch[1].replace(/\//g, '-')) : null;
 
   // 3. 提取订单链接和订单号
-  const linkMatch = textBody.match(/https:\/\/www\.apple\.com\.cn\/xc\/cn\/vieworder\/([^\/'"]+)\/[^\s]+/);
+  const linkMatch = textBody.match(
+    /https:\/\/www\.apple\.com\.cn\/xc\/cn\/vieworder\/([^/'"]+)\/[^\s]+/
+  );
   const orderUrl = linkMatch ? linkMatch[0] : null;
   const orderNumber = linkMatch ? linkMatch[1] : null;
 
   // 4. 提取产品信息（支持多商品，用 @ 分隔）
   // 格式: 型号-产品详情 x 数量@型号-产品详情 x 数量/取机人/身份证/付款方式/-/-/标签
-  const productRegex = /([A-Z0-9]+\/[A-Z])\s*-\s*(.+?)\s+x\s+(\d+)(?:@|\/)/g;
-  const fullInfoMatch = textBody.match(/([A-Z0-9\/]+-.+?)\/([^\/]+)\/([^\/]+)\/([^\/]+)\/[^\/]+\/[^\/]+\/(.+)/);
+  const fullInfoMatch = textBody.match(
+    /([A-Z0-9/]+-.+?)\/([^/]+)\/([^/]+)\/([^/]+)\/[^/]+\/[^/]+\/(.+)/
+  );
 
   if (!fullInfoMatch) {
     throw new Error('无法解析邮件中的产品信息');
@@ -52,7 +55,7 @@ async function parseOrderEmail(rawEmail) {
       products.push({
         modelId: productMatch[1].trim(),
         name: productMatch[2].trim(),
-        quantity: parseInt(productMatch[3])
+        quantity: parseInt(productMatch[3]),
       });
     }
   });
@@ -66,10 +69,10 @@ async function parseOrderEmail(rawEmail) {
     recipient: {
       name: recipientName,
       idLast4: recipientIdLast4,
-      tag: recipientTag
+      tag: recipientTag,
     },
     paymentMethod,
-    emailRaw: rawEmail
+    emailRaw: rawEmail,
   };
 }
 

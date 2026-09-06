@@ -20,11 +20,11 @@ module.exports = {
     max: 10,
     min: 0,
     acquire: 30000,
-    idle: 10000
+    idle: 10000,
   },
 
   // 日志配置
-  logging: process.env.NODE_ENV === 'production' ? false : console.log,
+  logging: false,
 
   // 模型默认配置
   define: {
@@ -32,19 +32,22 @@ module.exports = {
     underscored: true,
     freezeTableName: true,
     charset: 'utf8mb4',
-    collate: 'utf8mb4_unicode_ci'
+    collate: 'utf8mb4_unicode_ci',
   },
 
   // PostgreSQL特定配置
   dialectOptions: {
-    ssl: process.env.DB_SSL === 'true' ? {
-      require: true,
-      rejectUnauthorized: false
-    } : false,
+    ssl:
+      process.env.DB_SSL === 'true'
+        ? {
+          require: true,
+          rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
+        }
+        : false,
     supportBigNumbers: true,
-    bigNumberStrings: true
+    bigNumberStrings: true,
   },
 
   // 时区配置
-  timezone: '+08:00'
+  timezone: '+08:00',
 };

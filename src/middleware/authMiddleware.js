@@ -1,6 +1,7 @@
 const { verifyToken, extractTokenFromHeader } = require('../utils/jwtUtils');
 const { User } = require('../models');
 const logger = require('../utils/logger');
+const { ROLE_PERMISSIONS } = require('../constants/business');
 
 /**
  * 认证中间件
@@ -24,12 +25,12 @@ async function authenticate(req, res, next) {
       logger.warn('认证失败：缺少 token', {
         path: req.path,
         method: req.method,
-        ip: req.ip
+        ip: req.ip,
       });
 
       return res.status(401).json({
         success: false,
-        message: '未提供认证令牌，请先登录'
+        message: '未提供认证令牌，请先登录',
       });
     }
 
@@ -40,41 +41,41 @@ async function authenticate(req, res, next) {
       logger.warn('认证失败：token 无效或已过期', {
         path: req.path,
         method: req.method,
-        ip: req.ip
+        ip: req.ip,
       });
 
       return res.status(401).json({
         success: false,
-        message: '认证令牌无效或已过期，请重新登录'
+        message: '认证令牌无效或已过期，请重新登录',
       });
     }
 
     // 从数据库查询用户信息（验证用户是否仍然存在且状态正常）
     const user = await User.findByPk(decoded.userId, {
-      attributes: ['id', 'username', 'role', 'status', 'forcePasswordChange']
+      attributes: ['id', 'username', 'role', 'status', 'forcePasswordChange'],
     });
 
     if (!user) {
       logger.warn('认证失败：用户不存在', {
         userId: decoded.userId,
-        path: req.path
+        path: req.path,
       });
 
       return res.status(401).json({
         success: false,
-        message: '用户不存在或已被删除'
+        message: '用户不存在或已被删除',
       });
     }
 
     if (user.status === 'locked') {
       logger.warn('认证失败：用户账号已被锁定', {
         userId: user.id,
-        username: user.username
+        username: user.username,
       });
 
       return res.status(403).json({
         success: false,
-        message: '账号已被锁定，请联系管理员'
+        message: '账号已被锁定，请联系管理员',
       });
     }
 
@@ -83,14 +84,14 @@ async function authenticate(req, res, next) {
       id: user.id,
       username: user.username,
       role: user.role,
-      forcePasswordChange: user.forcePasswordChange
+      forcePasswordChange: user.forcePasswordChange,
     };
 
     logger.debug('用户认证成功', {
       userId: user.id,
       username: user.username,
       role: user.role,
-      path: req.path
+      path: req.path,
     });
 
     next();
@@ -98,12 +99,12 @@ async function authenticate(req, res, next) {
     logger.error('认证中间件执行失败', {
       error: error.message,
       stack: error.stack,
-      path: req.path
+      path: req.path,
     });
 
     return res.status(500).json({
       success: false,
-      message: '认证过程中发生错误'
+      message: '认证过程中发生错误',
     });
   }
 }
@@ -122,12 +123,12 @@ function requireRole(allowedRoles) {
       // 确保已经过 authenticate 中间件
       if (!req.user) {
         logger.error('角色检查失败：用户未认证', {
-          path: req.path
+          path: req.path,
         });
 
         return res.status(401).json({
           success: false,
-          message: '请先登录'
+          message: '请先登录',
         });
       }
 
@@ -138,19 +139,19 @@ function requireRole(allowedRoles) {
           username: req.user.username,
           userRole: req.user.role,
           requiredRoles: allowedRoles,
-          path: req.path
+          path: req.path,
         });
 
         return res.status(403).json({
           success: false,
-          message: '权限不足，需要管理员权限'
+          message: '权限不足，需要管理员权限',
         });
       }
 
       logger.debug('角色权限检查通过', {
         userId: req.user.id,
         role: req.user.role,
-        path: req.path
+        path: req.path,
       });
 
       next();
@@ -158,12 +159,50 @@ function requireRole(allowedRoles) {
       logger.error('角色检查中间件执行失败', {
         error: error.message,
         stack: error.stack,
-        path: req.path
+        path: req.path,
       });
 
       return res.status(500).json({
         success: false,
-        message: '权限检查过程中发生错误'
+        message: '权限检查过程中发生错误',
+      });
+    }
+  };
+}
+
+/**
+ * 权限检查中间件工厂。
+ * @param {string} permission - 需要的权限
+ * @returns {Function} Express 中间件
+ */
+function requirePermission(permission) {
+  return (req, res, next) => {
+    try {
+      if (!req.user) {
+        return res.status(401).json({
+          success: false,
+          error: { code: 'UNAUTHORIZED', message: '请先登录' },
+        });
+      }
+      const permissions = ROLE_PERMISSIONS[req.user.role] || [];
+      if (!permissions.includes(permission)) {
+        logger.warn('权限不足', {
+          userId: req.user.id,
+          role: req.user.role,
+          permission,
+          path: req.path,
+        });
+        return res.status(403).json({
+          success: false,
+          error: { code: 'FORBIDDEN', message: '当前角色无权执行此操作' },
+        });
+      }
+      next();
+    } catch (error) {
+      logger.error('权限检查失败', { permission, path: req.path, error: error.message });
+      return res.status(500).json({
+        success: false,
+        error: { code: 'INTERNAL_ERROR', message: '权限检查失败' },
       });
     }
   };
@@ -182,45 +221,35 @@ function checkPasswordChangeRequired(req, res, next) {
     if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: '请先登录'
+        message: '请先登录',
       });
     }
 
-    // 如果需要强制修改密码
+    // 该中间件只挂载在业务 API 前；改密、登出和当前用户接口已先行挂载。
     if (req.user.forcePasswordChange) {
-      // 允许访问的路径白名单
-      const allowedPaths = [
-        '/api/auth/change-password',
-        '/api/auth/logout',
-        '/api/auth/me'
-      ];
+      logger.warn('强制修改密码检查：用户尝试访问业务接口', {
+        userId: req.user.id,
+        username: req.user.username,
+        path: req.path,
+      });
 
-      // 检查当前请求路径是否在白名单中
-      if (!allowedPaths.includes(req.path)) {
-        logger.warn('强制修改密码检查：用户尝试访问其他接口', {
-          userId: req.user.id,
-          username: req.user.username,
-          path: req.path
-        });
-
-        return res.status(403).json({
-          success: false,
-          message: '首次登录需要修改密码，请先修改密码后再使用系统',
-          forcePasswordChange: true
-        });
-      }
+      return res.status(403).json({
+        success: false,
+        message: '首次登录需要修改密码，请先修改密码后再使用系统',
+        forcePasswordChange: true,
+      });
     }
 
     next();
   } catch (error) {
     logger.error('密码修改检查中间件执行失败', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     return res.status(500).json({
       success: false,
-      message: '密码修改检查过程中发生错误'
+      message: '密码修改检查过程中发生错误',
     });
   }
 }
@@ -228,5 +257,6 @@ function checkPasswordChangeRequired(req, res, next) {
 module.exports = {
   authenticate,
   requireRole,
-  checkPasswordChangeRequired
+  requirePermission,
+  checkPasswordChangeRequired,
 };

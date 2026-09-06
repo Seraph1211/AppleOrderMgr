@@ -3,7 +3,7 @@
  * Apple ID 控制器
  * @module controllers/appleIdController
  * @description Apple ID CRUD，含 order_count / recipient_count 聚合字段
- * @see docs/05-API接口设计方案.md 3.1
+ * @see docs/design/API设计.md
  */
 
 const { Op } = require('sequelize');
@@ -11,12 +11,8 @@ const { sequelize, AppleId } = require('../models');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const { isValidEmail } = require('../utils/helpers');
-const {
-  paginatedResponse,
-  parsePositiveInt,
-} = require('../utils/apiResponse');
-
-const APPLE_ID_STATUSES = ['未使用', '使用中', '已下架', '异常'];
+const { ACCOUNT_STATUSES } = require('../constants/business');
+const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
 
 /**
  * 把 AppleId 实例序列化为对外对象
@@ -25,7 +21,7 @@ const APPLE_ID_STATUSES = ['未使用', '使用中', '已下架', '异常'];
  * @param {boolean} includeSecrets - 是否包含密码和密保（管理接口需要）
  * @returns {Object} 对外对象
  */
-function serializeAppleId(appleId, stats = {}, includeSecrets = false) {
+function serializeAppleId(appleId, stats = {}) {
   const result = {
     id: appleId.id,
     apple_id: appleId.appleId,
@@ -40,12 +36,6 @@ function serializeAppleId(appleId, stats = {}, includeSecrets = false) {
     updated_at: appleId.updatedAt,
   };
 
-  // 管理接口需要返回密码和密保
-  if (includeSecrets) {
-    result.password = appleId.password;
-    result.security_qa = appleId.securityQa;
-  }
-
   return result;
 }
 
@@ -59,11 +49,10 @@ async function listAppleIds(req, res) {
 
     const where = {};
     if (req.query.status) {
-      if (!APPLE_ID_STATUSES.includes(req.query.status)) {
-        throw ApiError.badRequest(
-          `Apple ID 状态非法，可选值: ${APPLE_ID_STATUSES.join(', ')}`,
-          { received: req.query.status },
-        );
+      if (!ACCOUNT_STATUSES.includes(req.query.status)) {
+        throw ApiError.badRequest(`Apple ID 状态非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
+          received: req.query.status,
+        });
       }
       where.status = req.query.status;
     }
@@ -89,21 +78,25 @@ async function listAppleIds(req, res) {
     });
 
     // 聚合每个 Apple ID 的订单数、收件人数、最后下单日期（一次性 in 查询，避免 N+1）
-    const ids = rows.map((r) => r.id);
+    const ids = rows.map(r => r.id);
     const orderStats = await getOrderStatsByAppleIds(ids);
     const recipientCounts = await getRecipientCountsByAppleIds(ids);
 
-    res.json(paginatedResponse(
-      rows.map((row) => serializeAppleId(row.toJSON(), {
-        orderCount: orderStats[row.id]?.orderCount || 0,
-        recipientCount: recipientCounts[row.id] || 0,
-        lastOrderDate: orderStats[row.id]?.lastOrderDate || null,
-      }, true)), // 列表接口返回密码和密保
-      count,
-      page,
-      limit,
-      'apple_ids',
-    ));
+    res.json(
+      paginatedResponse(
+        rows.map(row =>
+          serializeAppleId(row.toJSON(), {
+            orderCount: orderStats[row.id]?.orderCount || 0,
+            recipientCount: recipientCounts[row.id] || 0,
+            lastOrderDate: orderStats[row.id]?.lastOrderDate || null,
+          })
+        ),
+        count,
+        page,
+        limit,
+        'apple_ids'
+      )
+    );
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
@@ -132,7 +125,7 @@ async function getOrderStatsByAppleIds(ids) {
     raw: true,
   });
   const out = {};
-  rows.forEach((r) => {
+  rows.forEach(r => {
     out[r.appleIdRef] = {
       orderCount: parseInt(r.count, 10),
       lastOrderDate: r.lastOrderDate,
@@ -149,16 +142,13 @@ async function getRecipientCountsByAppleIds(ids) {
   if (ids.length === 0) return {};
   const { Recipient } = require('../models');
   const rows = await Recipient.findAll({
-    attributes: [
-      'appleIdRef',
-      [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-    ],
+    attributes: ['appleIdRef', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
     where: { appleIdRef: { [Op.in]: ids } },
     group: ['appleIdRef'],
     raw: true,
   });
   const out = {};
-  rows.forEach((r) => {
+  rows.forEach(r => {
     out[r.appleIdRef] = parseInt(r.count, 10);
   });
   return out;
@@ -189,11 +179,14 @@ async function getAppleIdDetail(req, res) {
 
     res.json({
       success: true,
-      data: serializeAppleId({ ...plain, password: undefined }, {
-        orderCount: orderStats[id]?.orderCount || 0,
-        recipientCount: recipientCounts[id] || 0,
-        lastOrderDate: orderStats[id]?.lastOrderDate || null,
-      }),
+      data: serializeAppleId(
+        { ...plain, password: undefined },
+        {
+          orderCount: orderStats[id]?.orderCount || 0,
+          recipientCount: recipientCounts[id] || 0,
+          lastOrderDate: orderStats[id]?.lastOrderDate || null,
+        }
+      ),
     });
   } catch (error) {
     if (error instanceof ApiError) {
@@ -210,7 +203,7 @@ async function getAppleIdDetail(req, res) {
  */
 async function createAppleId(req, res) {
   try {
-    const { apple_id, password, nickname, country, status } = req.body || {};
+    const { apple_id, password, nickname, country, status, security_qa } = req.body || {};
 
     if (!isValidEmail(apple_id)) {
       throw ApiError.badRequest('apple_id 必须是合法邮箱', { received: apple_id });
@@ -218,11 +211,10 @@ async function createAppleId(req, res) {
     if (!password || typeof password !== 'string' || password.length === 0) {
       throw ApiError.badRequest('password 不能为空');
     }
-    if (status && !APPLE_ID_STATUSES.includes(status)) {
-      throw ApiError.badRequest(
-        `status 非法，可选值: ${APPLE_ID_STATUSES.join(', ')}`,
-        { received: status },
-      );
+    if (status && !ACCOUNT_STATUSES.includes(status)) {
+      throw ApiError.badRequest(`status 非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
+        received: status,
+      });
     }
 
     const existing = await AppleId.findOne({ where: { appleId: apple_id } });
@@ -235,10 +227,11 @@ async function createAppleId(req, res) {
       password,
       nickname: nickname || null,
       country: country || null,
-      status: status || 'active',
+      status: status || '未使用',
+      securityQa: security_qa || null,
     });
 
-    logger.info('Apple ID 创建成功', { id: created.id, apple_id });
+    logger.info('Apple ID 创建成功', { id: created.id });
 
     const plain = created.toJSON();
     delete plain.password;
@@ -272,11 +265,10 @@ async function updateAppleId(req, res) {
 
     const { password, nickname, country, status, security_qa, is_modified } = req.body || {};
 
-    if (status !== undefined && !APPLE_ID_STATUSES.includes(status)) {
-      throw ApiError.badRequest(
-        `status 非法，可选值: ${APPLE_ID_STATUSES.join(', ')}`,
-        { received: status },
-      );
+    if (status !== undefined && !ACCOUNT_STATUSES.includes(status)) {
+      throw ApiError.badRequest(`status 非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
+        received: status,
+      });
     }
     if (password !== undefined && (typeof password !== 'string' || password.length === 0)) {
       throw ApiError.badRequest('password 必须是非空字符串');

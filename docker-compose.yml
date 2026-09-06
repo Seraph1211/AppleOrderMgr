@@ -1,29 +1,50 @@
-version: '3.8'
-
 services:
-  app:
+  api:
     build: .
-    container_name: apple-order-mgr
-    restart: always
+    restart: unless-stopped
+    command: npm start
     ports:
-      - "3000:3000"
+      - '3000:3000'
+    env_file:
+      - .env
     environment:
-      - NODE_ENV=production
-      - PORT=3000
-      - DB_HOST=host.docker.internal
-      - DB_PORT=5432
-      - DB_NAME=apple_order_mgr
-      - DB_USER=apple_user
-      - DB_PASSWORD=AppleOrder2024!
-      - JWT_SECRET=AppleOrderJWTSecret2024SecureKey!
-      - LOG_LEVEL=info
+      NODE_ENV: production
+      PORT: 3000
+      RUN_WORKERS_IN_API: 'false'
     volumes:
       - ./logs:/app/logs
       - ./uploads:/app/uploads
     extra_hosts:
-      - "host.docker.internal:host-gateway"
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - 'host.docker.internal:host-gateway'
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://localhost:3000/api/health/ready']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  email-worker:
+    build: .
+    restart: unless-stopped
+    command: npm run start:email-worker
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    volumes:
+      - ./logs:/app/logs
+      - ./uploads:/app/uploads
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
+  crawler-worker:
+    build: .
+    restart: unless-stopped
+    command: npm run start:crawler-worker
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+    volumes:
+      - ./logs:/app/logs
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'

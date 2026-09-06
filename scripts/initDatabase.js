@@ -14,15 +14,7 @@ async function initDatabase() {
     await sequelize.authenticate();
     logger.info('数据库连接成功！');
 
-    // 2. 同步模型到数据库（开发环境使用）
-    // 注意：生产环境应该使用迁移文件
-    if (process.env.NODE_ENV === 'development') {
-      logger.info('同步数据库模型...');
-      await sequelize.sync({ alter: true });
-      logger.info('数据库模型同步完成！');
-    }
-
-    logger.info('数据库初始化完成！');
+    logger.info('数据库连接验证完成；表结构请使用 npm run db:migrate 更新');
     process.exit(0);
   } catch (error) {
     logger.error('数据库初始化失败', { error: error.message, stack: error.stack });

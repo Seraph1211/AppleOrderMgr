@@ -2,6 +2,7 @@ const { User } = require('../models');
 const { Op } = require('sequelize');
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
+const { USER_ROLES } = require('../constants/business');
 
 /**
  * 用户管理控制器
@@ -17,13 +18,7 @@ const logger = require('../utils/logger');
  */
 async function listUsers(req, res) {
   try {
-    const {
-      page = 1,
-      limit = 20,
-      role,
-      status,
-      keyword
-    } = req.query;
+    const { page = 1, limit = 20, role, status, keyword } = req.query;
 
     // 构建查询条件
     const where = {};
@@ -38,7 +33,7 @@ async function listUsers(req, res) {
 
     if (keyword) {
       where.username = {
-        [Op.iLike]: `%${keyword}%`
+        [Op.iLike]: `%${keyword}%`,
       };
     }
 
@@ -59,18 +54,18 @@ async function listUsers(req, res) {
         'lastLoginAt',
         'lastLoginIp',
         'createdAt',
-        'updatedAt'
+        'updatedAt',
       ],
       order: [['createdAt', 'DESC']],
       limit: limitNum,
-      offset
+      offset,
     });
 
     logger.info('查询用户列表成功', {
       total: count,
       page: pageNum,
       limit: limitNum,
-      filters: { role, status, keyword }
+      filters: { role, status, keyword },
     });
 
     return res.status(200).json({
@@ -79,18 +74,18 @@ async function listUsers(req, res) {
         total: count,
         page: pageNum,
         limit: limitNum,
-        users: rows
-      }
+        users: rows,
+      },
     });
   } catch (error) {
     logger.error('查询用户列表失败', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     return res.status(500).json({
       success: false,
-      message: '查询用户列表失败'
+      message: '查询用户列表失败',
     });
   }
 }
@@ -103,53 +98,53 @@ async function listUsers(req, res) {
  */
 async function createUser(req, res) {
   try {
-    const { username, password, role = 'user' } = req.body;
+    const { username, password, role = 'operator' } = req.body;
 
     // 输入验证
     if (!username || !password) {
       return res.status(400).json({
         success: false,
-        message: '用户名和密码不能为空'
+        message: '用户名和密码不能为空',
       });
     }
 
     if (username.length < 3 || username.length > 50) {
       return res.status(400).json({
         success: false,
-        message: '用户名长度必须在 3-50 个字符之间'
+        message: '用户名长度必须在 3-50 个字符之间',
       });
     }
 
     if (!/^[a-zA-Z0-9_]+$/.test(username)) {
       return res.status(400).json({
         success: false,
-        message: '用户名只能包含字母、数字和下划线'
+        message: '用户名只能包含字母、数字和下划线',
       });
     }
 
-    if (password.length < 6) {
+    if (password.length < 12) {
       return res.status(400).json({
         success: false,
-        message: '密码长度不能少于 6 位'
+        message: '密码长度不能少于 12 位',
       });
     }
 
-    if (!['admin', 'user'].includes(role)) {
+    if (!USER_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: '角色必须是 admin 或 user'
+        message: '角色必须是 admin、operator 或 readOnly',
       });
     }
 
     // 检查用户名是否已存在
     const existingUser = await User.findOne({
-      where: { username }
+      where: { username },
     });
 
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: '用户名已存在'
+        message: '用户名已存在',
       });
     }
 
@@ -158,14 +153,15 @@ async function createUser(req, res) {
       username,
       password,
       role,
-      status: 'active'
+      status: 'active',
+      forcePasswordChange: true,
     });
 
     logger.info('创建用户成功', {
       userId: user.id,
       username: user.username,
       role: user.role,
-      createdBy: req.user.username
+      createdBy: req.user.username,
     });
 
     return res.status(201).json({
@@ -175,19 +171,19 @@ async function createUser(req, res) {
         username: user.username,
         role: user.role,
         status: user.status,
-        createdAt: user.createdAt
+        createdAt: user.createdAt,
       },
-      message: '用户创建成功'
+      message: '用户创建成功',
     });
   } catch (error) {
     logger.error('创建用户失败', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     return res.status(500).json({
       success: false,
-      message: '创建用户失败'
+      message: '创建用户失败',
     });
   }
 }
@@ -209,22 +205,22 @@ async function updateUser(req, res) {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: '用户不存在'
+        message: '用户不存在',
       });
     }
 
     // 验证更新字段
-    if (role && !['admin', 'user'].includes(role)) {
+    if (role && !USER_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: '角色必须是 admin 或 user'
+        message: '角色必须是 admin、operator 或 readOnly',
       });
     }
 
     if (status && !['active', 'locked'].includes(status)) {
       return res.status(400).json({
         success: false,
-        message: '状态必须是 active 或 locked'
+        message: '状态必须是 active 或 locked',
       });
     }
 
@@ -243,7 +239,7 @@ async function updateUser(req, res) {
       userId: user.id,
       username: user.username,
       updatedFields: { role, status },
-      updatedBy: req.user.username
+      updatedBy: req.user.username,
     });
 
     return res.status(200).json({
@@ -253,20 +249,20 @@ async function updateUser(req, res) {
         username: user.username,
         role: user.role,
         status: user.status,
-        updatedAt: user.updatedAt
+        updatedAt: user.updatedAt,
       },
-      message: '用户更新成功'
+      message: '用户更新成功',
     });
   } catch (error) {
     logger.error('更新用户失败', {
       userId: req.params.id,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     return res.status(500).json({
       success: false,
-      message: '更新用户失败'
+      message: '更新用户失败',
     });
   }
 }
@@ -286,7 +282,7 @@ async function deleteUser(req, res) {
     if (parseInt(id, 10) === currentUserId) {
       return res.status(400).json({
         success: false,
-        message: '不能删除当前登录的用户'
+        message: '不能删除当前登录的用户',
       });
     }
 
@@ -296,20 +292,20 @@ async function deleteUser(req, res) {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: '用户不存在'
+        message: '用户不存在',
       });
     }
 
     // 检查是否是最后一个管理员
     if (user.role === 'admin') {
       const adminCount = await User.count({
-        where: { role: 'admin' }
+        where: { role: 'admin' },
       });
 
       if (adminCount <= 1) {
         return res.status(400).json({
           success: false,
-          message: '不能删除最后一个管理员账号'
+          message: '不能删除最后一个管理员账号',
         });
       }
     }
@@ -321,23 +317,23 @@ async function deleteUser(req, res) {
       userId: user.id,
       username: user.username,
       role: user.role,
-      deletedBy: req.user.username
+      deletedBy: req.user.username,
     });
 
     return res.status(200).json({
       success: true,
-      message: '用户已删除'
+      message: '用户已删除',
     });
   } catch (error) {
     logger.error('删除用户失败', {
       userId: req.params.id,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     return res.status(500).json({
       success: false,
-      message: '删除用户失败'
+      message: '删除用户失败',
     });
   }
 }
@@ -358,31 +354,31 @@ async function unlockUser(req, res) {
     logger.info('解锁用户成功', {
       userId: user.id,
       username: user.username,
-      unlockedBy: req.user.username
+      unlockedBy: req.user.username,
     });
 
     return res.status(200).json({
       success: true,
       data: user,
-      message: '用户已解锁'
+      message: '用户已解锁',
     });
   } catch (error) {
     logger.error('解锁用户失败', {
       userId: req.params.id,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     if (error.message === '用户不存在') {
       return res.status(404).json({
         success: false,
-        message: error.message
+        message: error.message,
       });
     }
 
     return res.status(500).json({
       success: false,
-      message: '解锁用户失败'
+      message: '解锁用户失败',
     });
   }
 }
@@ -392,5 +388,5 @@ module.exports = {
   createUser,
   updateUser,
   deleteUser,
-  unlockUser
+  unlockUser,
 };

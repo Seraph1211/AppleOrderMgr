@@ -1,86 +1,86 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Lock, ArrowLeft } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
-import client from '../api/client'
-import AlertModal from '../components/AlertModal'
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Lock, ArrowLeft } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import client from '../api/client';
+import AlertModal from '../components/AlertModal';
 
 export default function ChangePassword() {
-  const navigate = useNavigate()
-  const { user, logout } = useAuth()
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
   const [formData, setFormData] = useState({
     oldPassword: '',
     newPassword: '',
     confirmPassword: '',
-  })
+  });
 
-  const [loading, setLoading] = useState(false)
-  const [alertModal, setAlertModal] = useState(null)
+  const [loading, setLoading] = useState(false);
+  const [alertModal, setAlertModal] = useState(null);
 
   // 判断是否是强制修改密码
-  const isForceChange = user?.forcePasswordChange === true
+  const isForceChange = user?.forcePasswordChange === true;
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({
+  const handleChange = e => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
       ...prev,
       [name]: value,
-    }))
-  }
+    }));
+  };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async e => {
+    e.preventDefault();
 
     // 前端验证
     if (!formData.oldPassword) {
       setAlertModal({
         title: '提示',
         message: '请输入旧密码',
-      })
-      return
+      });
+      return;
     }
 
     if (!formData.newPassword) {
       setAlertModal({
         title: '提示',
         message: '请输入新密码',
-      })
-      return
+      });
+      return;
     }
 
-    if (formData.newPassword.length < 6) {
+    if (formData.newPassword.length < 12) {
       setAlertModal({
         title: '提示',
-        message: '新密码长度至少为 6 位',
-      })
-      return
+        message: '新密码长度至少为 12 位',
+      });
+      return;
     }
 
     if (formData.newPassword !== formData.confirmPassword) {
       setAlertModal({
         title: '提示',
         message: '新密码与确认密码不一致',
-      })
-      return
+      });
+      return;
     }
 
     if (formData.oldPassword === formData.newPassword) {
       setAlertModal({
         title: '提示',
         message: '新密码不能与旧密码相同',
-      })
-      return
+      });
+      return;
     }
 
-    setLoading(true)
+    setLoading(true);
 
     try {
       const response = await client.post('/auth/change-password', {
         oldPassword: formData.oldPassword,
         newPassword: formData.newPassword,
         confirmPassword: formData.confirmPassword,
-      })
+      });
 
       if (response.success) {
         setAlertModal({
@@ -90,48 +90,48 @@ export default function ChangePassword() {
             // 如果是强制修改密码，需要更新用户信息
             if (isForceChange) {
               // 清除 forcePasswordChange 标志（后端已更新，前端也需同步）
-              const storage = user.storageType === 'localStorage' ? localStorage : sessionStorage
-              const storedUser = JSON.parse(storage.getItem('user'))
-              storedUser.forcePasswordChange = false
-              storage.setItem('user', JSON.stringify(storedUser))
+              const storage = user.storageType === 'localStorage' ? localStorage : sessionStorage;
+              const storedUser = JSON.parse(storage.getItem('user'));
+              storedUser.forcePasswordChange = false;
+              storage.setItem('user', JSON.stringify(storedUser));
             }
             // 返回首页
-            navigate('/')
+            navigate('/');
           },
-        })
+        });
       } else {
         setAlertModal({
           title: '修改失败',
           message: response.message || '密码修改失败，请重试',
-        })
+        });
       }
     } catch (error) {
-      let errorMessage = '密码修改失败，请重试'
+      let errorMessage = '密码修改失败，请重试';
 
       if (error.message) {
-        errorMessage = error.message
+        errorMessage = error.message;
       } else if (typeof error === 'string') {
-        errorMessage = error
+        errorMessage = error;
       }
 
       setAlertModal({
         title: '修改失败',
         message: errorMessage,
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleBack = () => {
     // 如果是强制修改密码，不允许返回，只能登出
     if (isForceChange) {
-      logout()
-      navigate('/login')
+      logout();
+      navigate('/login');
     } else {
-      navigate(-1)
+      navigate(-1);
     }
-  }
+  };
 
   return (
     <div className="max-w-2xl mx-auto">
@@ -151,9 +151,7 @@ export default function ChangePassword() {
       {/* 强制修改密码提示 */}
       {isForceChange && (
         <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 mb-6">
-          <p className="text-sm text-yellow-800">
-            首次登录需要修改密码，修改后才能继续使用系统。
-          </p>
+          <p className="text-sm text-yellow-800">首次登录需要修改密码，修改后才能继续使用系统。</p>
         </div>
       )}
 
@@ -200,16 +198,19 @@ export default function ChangePassword() {
                 value={formData.newPassword}
                 onChange={handleChange}
                 className="input pl-10"
-                placeholder="请输入新密码（至少6位）"
+                placeholder="请输入新密码（至少12位）"
                 disabled={loading}
               />
             </div>
-            <p className="text-sm text-gray-500 mt-1">密码长度至少为 6 位</p>
+            <p className="text-sm text-gray-500 mt-1">密码长度至少为 12 位</p>
           </div>
 
           {/* 确认密码 */}
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-2">
+            <label
+              htmlFor="confirmPassword"
+              className="block text-sm font-medium text-gray-700 mb-2"
+            >
               确认密码
             </label>
             <div className="relative">
@@ -240,11 +241,7 @@ export default function ChangePassword() {
             >
               {isForceChange ? '登出' : '取消'}
             </button>
-            <button
-              type="submit"
-              className="btn btn-primary"
-              disabled={loading}
-            >
+            <button type="submit" className="btn btn-primary" disabled={loading}>
               {loading ? '提交中...' : '确认修改'}
             </button>
           </div>
@@ -258,12 +255,12 @@ export default function ChangePassword() {
           message={alertModal.message}
           onClose={() => {
             if (alertModal.onClose) {
-              alertModal.onClose()
+              alertModal.onClose();
             }
-            setAlertModal(null)
+            setAlertModal(null);
           }}
         />
       )}
     </div>
-  )
+  );
 }

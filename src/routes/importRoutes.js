@@ -2,13 +2,12 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { authenticate } = require('../middleware/authMiddleware');
+const { requirePermission } = require('../middleware/authMiddleware');
+const { PERMISSIONS } = require('../constants/business');
 const { previewImport, executeImport } = require('../controllers/importController');
+const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
-
-// 所有接口都需要认证
-router.use(authenticate);
 
 // 确保上传目录存在
 const uploadDir = path.join(__dirname, '../../uploads/import');
@@ -46,14 +45,19 @@ const upload = multer({
  * @desc 预览导入数据
  * @access Public
  */
-router.post('/preview', upload.single('file'), previewImport);
+router.post(
+  '/preview',
+  requirePermission(PERMISSIONS.WRITE),
+  upload.single('file'),
+  asyncHandler(previewImport)
+);
 
 /**
  * @route POST /api/import/execute
  * @desc 执行批量导入
  * @access Public
  */
-router.post('/execute', executeImport);
+router.post('/execute', requirePermission(PERMISSIONS.WRITE), asyncHandler(executeImport));
 
 /**
  * @route GET /api/import/template/:type
@@ -71,9 +75,7 @@ router.get('/template/:type', (req, res) => {
   }
 
   const templateName =
-    type === 'apple_ids'
-      ? 'apple_ids_import_template.xlsx'
-      : 'recipients_import_template.xlsx';
+    type === 'apple_ids' ? 'apple_ids_import_template.xlsx' : 'recipients_import_template.xlsx';
   const templatePath = path.join(__dirname, '../../templates', templateName);
 
   if (!fs.existsSync(templatePath)) {

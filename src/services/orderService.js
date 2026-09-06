@@ -22,7 +22,6 @@ async function saveOrderFromEmail(emailData, emailUid) {
     logger.info('开始保存订单', {
       emailUid,
       orderNumber: emailData.orderNumber,
-      appleId: emailData.appleId
     });
 
     // 1. 验证订单号格式
@@ -38,13 +37,13 @@ async function saveOrderFromEmail(emailData, emailUid) {
     // 3. 检查订单是否已存在
     const existingOrder = await Order.findOne({
       where: { orderNumber: emailData.orderNumber },
-      transaction
+      transaction,
     });
 
     if (existingOrder) {
       logger.warn('订单已存在，跳过创建', {
         orderNumber: emailData.orderNumber,
-        existingOrderId: existingOrder.id
+        existingOrderId: existingOrder.id,
       });
 
       // 更新邮件日志
@@ -61,7 +60,7 @@ async function saveOrderFromEmail(emailData, emailUid) {
       recipientIdCard: null,
       recipientEmail: null,
       recipientPhone: null,
-      recipientAddress: null
+      recipientAddress: null,
     };
 
     if (emailData.recipient?.name && emailData.recipient?.idLast4) {
@@ -70,9 +69,9 @@ async function saveOrderFromEmail(emailData, emailUid) {
           // 姓名匹配：拆分姓和名
           lastName: emailData.recipient.name.substring(0, 1),
           firstName: emailData.recipient.name.substring(1),
-          idCardLast4: emailData.recipient.idLast4
+          idCardLast4: emailData.recipient.idLast4,
         },
-        transaction
+        transaction,
       });
 
       if (recipient) {
@@ -85,12 +84,12 @@ async function saveOrderFromEmail(emailData, emailUid) {
         logger.info('收件人信息自动匹配成功', {
           recipientId: recipient.id,
           name: emailData.recipient.name,
-          idLast4: emailData.recipient.idLast4
+          idLast4: emailData.recipient.idLast4,
         });
       } else {
         logger.warn('未找到匹配的收件人', {
           name: emailData.recipient.name,
-          idLast4: emailData.recipient.idLast4
+          idLast4: emailData.recipient.idLast4,
         });
       }
     }
@@ -99,12 +98,12 @@ async function saveOrderFromEmail(emailData, emailUid) {
     let appleData = {
       appleIdRef: null,
       appleId: emailData.appleId,
-      applePassword: null
+      applePassword: null,
     };
 
     const appleAccount = await AppleId.findOne({
       where: { appleId: emailData.appleId },
-      transaction
+      transaction,
     });
 
     if (appleAccount) {
@@ -112,44 +111,43 @@ async function saveOrderFromEmail(emailData, emailUid) {
       appleData.applePassword = appleAccount.password;
 
       logger.info('Apple ID 自动匹配成功', {
-        appleId: emailData.appleId,
-        appleIdId: appleAccount.id
+        appleIdId: appleAccount.id,
       });
     } else {
-      logger.warn('未找到匹配的 Apple ID', {
-        appleId: emailData.appleId
-      });
+      logger.warn('未找到匹配的 Apple ID', { orderNumber: emailData.orderNumber });
     }
 
     // 6. 直接创建订单，保存快照数据
-    // 调试日志：记录即将保存的数据
-    logger.info('准备创建订单，数据如下：', {
+    logger.info('准备创建订单', {
       orderNumber: emailData.orderNumber,
-      ...appleData,
-      ...recipientData,
-      tag: emailData.recipient?.tag,
-      tagLength: emailData.recipient?.tag?.length
+      appleIdRef: appleData.appleIdRef,
+      recipientRef: recipientData.recipientRef,
+      productCount: emailData.products.length,
+      hasTag: Boolean(emailData.recipient?.tag),
     });
 
-    const order = await Order.create({
-      orderNumber: emailData.orderNumber,
-      // Apple ID 信息
-      ...appleData,
-      // 收件人信息（快照）
-      ...recipientData,
-      // 订单信息
-      products: emailData.products, // JSONB 数组
-      status: 'pending', // 初始状态为待处理
-      orderUrl: emailData.orderUrl,
-      paymentMethod: emailData.paymentMethod || null,
-      orderDate: emailData.orderDate,
-      tag: emailData.recipient?.tag || null
-    }, { transaction });
+    const order = await Order.create(
+      {
+        orderNumber: emailData.orderNumber,
+        // Apple ID 信息
+        ...appleData,
+        // 收件人信息（快照）
+        ...recipientData,
+        // 订单信息
+        products: emailData.products, // JSONB 数组
+        status: 'pending', // 初始状态为待处理
+        orderUrl: emailData.orderUrl,
+        paymentMethod: emailData.paymentMethod || null,
+        orderDate: emailData.orderDate,
+        tag: emailData.recipient?.tag || null,
+      },
+      { transaction }
+    );
 
     logger.info('订单创建成功', {
       orderId: order.id,
       orderNumber: order.orderNumber,
-      productCount: order.products.length
+      productCount: order.products.length,
     });
 
     // 7. 创建邮件日志
@@ -162,7 +160,6 @@ async function saveOrderFromEmail(emailData, emailUid) {
       emailUid,
       orderId: order.id,
       orderNumber: order.orderNumber,
-      appleId: emailData.appleId
     });
 
     return order;
@@ -174,7 +171,7 @@ async function saveOrderFromEmail(emailData, emailUid) {
       emailUid,
       orderNumber: emailData.orderNumber,
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
 
     // 记录失败的邮件日志
@@ -198,7 +195,14 @@ async function saveOrderFromEmail(emailData, emailUid) {
  * @param {string|null} errorMessage - 错误信息（可选）
  * @returns {Promise<Object>} 创建的邮件日志对象
  */
-async function createEmailLog(emailUid, emailData, success, _orderId = null, transaction = null, errorMessage = null) {
+async function createEmailLog(
+  emailUid,
+  emailData,
+  success,
+  _orderId = null,
+  transaction = null,
+  errorMessage = null
+) {
   const logData = {
     emailUid: emailUid,
     emailSubject: emailData.emailSubject || '',
@@ -210,15 +214,17 @@ async function createEmailLog(emailUid, emailData, success, _orderId = null, tra
     processedAt: new Date(),
     success: success,
     errorMessage: errorMessage || null,
-    parsedData: success ? {
-      appleId: emailData.appleId,
-      orderNumber: emailData.orderNumber,
-      products: emailData.products,
-      recipient: emailData.recipient,
-      paymentMethod: emailData.paymentMethod
-    } : null,
+    parsedData: success
+      ? {
+        appleId: emailData.appleId,
+        orderNumber: emailData.orderNumber,
+        products: emailData.products,
+        recipient: emailData.recipient,
+        paymentMethod: emailData.paymentMethod,
+      }
+      : null,
     orderNumber: emailData.orderNumber || null,
-    retryCount: 0
+    retryCount: 0,
   };
 
   if (transaction) {
@@ -239,15 +245,15 @@ async function getOrderByNumber(orderNumber) {
       where: { orderNumber },
       include: [
         { model: AppleId, as: 'appleAccount' },
-        { model: Recipient, as: 'recipient' }
-      ]
+        { model: Recipient, as: 'recipient' },
+      ],
     });
 
     return order;
   } catch (error) {
     logger.error('查询订单失败', {
       orderNumber,
-      error: error.message
+      error: error.message,
     });
     throw error;
   }
@@ -261,10 +267,7 @@ async function getOrderByNumber(orderNumber) {
  */
 async function updateOrderStatus(orderNumber, status) {
   try {
-    const [updatedCount] = await Order.update(
-      { status },
-      { where: { orderNumber } }
-    );
+    const [updatedCount] = await Order.update({ status }, { where: { orderNumber } });
 
     if (updatedCount > 0) {
       logger.info('订单状态更新成功', { orderNumber, status });
@@ -277,7 +280,7 @@ async function updateOrderStatus(orderNumber, status) {
     logger.error('更新订单状态失败', {
       orderNumber,
       status,
-      error: error.message
+      error: error.message,
     });
     throw error;
   }
@@ -293,10 +296,10 @@ async function getPendingOrders(limit = 10) {
     const orders = await Order.findAll({
       where: {
         status: 'pending',
-        lastCrawledAt: null
+        lastCrawledAt: null,
       },
       limit,
-      order: [['createdAt', 'ASC']]
+      order: [['createdAt', 'ASC']],
     });
 
     return orders;
@@ -310,5 +313,5 @@ module.exports = {
   saveOrderFromEmail,
   getOrderByNumber,
   updateOrderStatus,
-  getPendingOrders
+  getPendingOrders,
 };

@@ -1,60 +1,60 @@
-import { useState } from 'react'
-import { X } from 'lucide-react'
-import client from '../api/client'
-import AlertModal from './AlertModal'
+import { useState } from 'react';
+import { X } from 'lucide-react';
+import client from '../api/client';
+import AlertModal from './AlertModal';
 
 export default function EditUserModal({ user, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     role: user.role,
     status: user.status,
-  })
+  });
 
-  const [loading, setLoading] = useState(false)
-  const [alertModal, setAlertModal] = useState(null)
+  const [loading, setLoading] = useState(false);
+  const [alertModal, setAlertModal] = useState(null);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({
+  const handleChange = e => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
       ...prev,
       [name]: value,
-    }))
-  }
+    }));
+  };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async e => {
+    e.preventDefault();
 
-    setLoading(true)
+    setLoading(true);
 
     try {
       const response = await client.put(`/users/${user.id}`, {
         role: formData.role,
         status: formData.status,
-      })
+      });
 
       if (response.success) {
         setAlertModal({
           title: '成功',
           message: '用户信息更新成功',
           onClose: () => {
-            setAlertModal(null)
-            onSuccess()
+            setAlertModal(null);
+            onSuccess();
           },
-        })
+        });
       } else {
         setAlertModal({
           title: '更新失败',
           message: response.message || '用户信息更新失败',
-        })
+        });
       }
     } catch (error) {
       setAlertModal({
         title: '更新失败',
         message: error.message || '用户信息更新失败',
-      })
+      });
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -74,15 +74,8 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* 用户名（只读） */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                用户名
-              </label>
-              <input
-                type="text"
-                value={user.username}
-                className="input bg-gray-50"
-                disabled
-              />
+              <label className="block text-sm font-medium text-gray-700 mb-2">用户名</label>
+              <input type="text" value={user.username} className="input bg-gray-50" disabled />
               <p className="text-sm text-gray-500 mt-1">用户名不可修改</p>
             </div>
 
@@ -99,7 +92,8 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
                 className="input"
                 disabled={loading}
               >
-                <option value="user">普通用户</option>
+                <option value="operator">业务操作员</option>
+                <option value="readOnly">只读用户</option>
                 <option value="admin">管理员</option>
               </select>
             </div>
@@ -132,11 +126,7 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
               >
                 取消
               </button>
-              <button
-                type="submit"
-                className="btn btn-primary"
-                disabled={loading}
-              >
+              <button type="submit" className="btn btn-primary" disabled={loading}>
                 {loading ? '保存中...' : '确认保存'}
               </button>
             </div>
@@ -151,13 +141,13 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
           message={alertModal.message}
           onClose={() => {
             if (alertModal.onClose) {
-              alertModal.onClose()
+              alertModal.onClose();
             } else {
-              setAlertModal(null)
+              setAlertModal(null);
             }
           }}
         />
       )}
     </div>
-  )
+  );
 }

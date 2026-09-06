@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { useState, useEffect, useRef } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Package,
@@ -12,9 +12,9 @@ import {
   Users,
   LogOut,
   Lock,
-  ScrollText
-} from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
+  ScrollText,
+} from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
 const baseNavigation = [
   { name: '仪表板', href: '/', icon: LayoutDashboard },
@@ -23,43 +23,39 @@ const baseNavigation = [
   { name: '取机人', href: '/recipients', icon: User },
   { name: '渠道管理', href: '/channels', icon: TrendingUp },
   { name: '系统日志', href: '/system-logs', icon: ScrollText },
-]
+];
 
-const adminNavigation = [
-  { name: '用户管理', href: '/users', icon: Users, adminOnly: true },
-]
+const adminNavigation = [{ name: '用户管理', href: '/users', icon: Users, adminOnly: true }];
 
 export default function Layout({ children }) {
-  const [sidebarOpen, setSidebarOpen] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
-  const menuRef = useRef(null)
-  const location = useLocation()
-  const navigate = useNavigate()
-  const { user, logout, isAdmin } = useAuth()
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user, logout, isAdmin } = useAuth();
 
   // 根据用户角色生成导航菜单
-  const navigation = isAdmin()
-    ? [...baseNavigation, ...adminNavigation]
-    : baseNavigation
+  const navigation = isAdmin() ? [...baseNavigation, ...adminNavigation] : baseNavigation;
 
   // 处理登出
   const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
+    logout();
+    navigate('/login');
+  };
 
   // 点击外部关闭下拉菜单
   useEffect(() => {
-    const handleClickOutside = (event) => {
+    const handleClickOutside = event => {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
-        setMenuOpen(false)
+        setMenuOpen(false);
       }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
+    };
+    document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [])
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -72,11 +68,13 @@ export default function Layout({ children }) {
       )}
 
       {/* 侧边栏 */}
-      <aside className={`
+      <aside
+        className={`
         fixed inset-y-0 left-0 z-20 w-64 bg-white border-r border-gray-200
         transform transition-transform duration-200 ease-in-out lg:translate-x-0
         ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+      `}
+      >
         <div className="flex flex-col h-full">
           {/* Logo */}
           <div className="flex items-center justify-between h-16 px-6">
@@ -94,24 +92,25 @@ export default function Layout({ children }) {
 
           {/* 导航 */}
           <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-            {navigation.map((item) => {
-              const isActive = location.pathname === item.href
+            {navigation.map(item => {
+              const isActive = location.pathname === item.href;
               return (
                 <Link
                   key={item.name}
                   to={item.href}
                   className={`
                     flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200
-                    ${isActive
-                      ? 'bg-primary text-white shadow-sm'
-                      : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    ${
+                      isActive
+                        ? 'bg-primary text-white shadow-sm'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
                     }
                   `}
                 >
                   <item.icon className="w-5 h-5" />
                   <span className="font-medium">{item.name}</span>
                 </Link>
-              )
+              );
             })}
           </nav>
 
@@ -140,14 +139,13 @@ export default function Layout({ children }) {
             <div className="flex-1" />
 
             <div className="flex items-center space-x-4">
-              {/* 邮件监听状态 */}
-              <div className="flex items-center space-x-2 text-sm">
-                <Mail className="w-4 h-4 text-primary" />
-                <span className="text-gray-600">邮件监听中</span>
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-primary"></span>
-                </span>
+              {/* 当前没有邮件 Worker 心跳接口，不展示无法证实的“监听中”状态 */}
+              <div
+                className="flex items-center space-x-2 text-sm"
+                title="邮件 Worker 心跳接口待实现"
+              >
+                <Mail className="w-4 h-4 text-gray-400" />
+                <span className="text-gray-500">邮件监听状态未接入</span>
               </div>
 
               {/* 分隔线 */}
@@ -168,7 +166,7 @@ export default function Layout({ children }) {
                 {/* 下拉菜单 */}
                 <div className="relative" ref={menuRef}>
                   <button
-                    onClick={() => setMenuOpen((prev) => !prev)}
+                    onClick={() => setMenuOpen(prev => !prev)}
                     className="text-gray-400 hover:text-gray-600 transition-colors"
                   >
                     <Menu className="w-5 h-5" />
@@ -180,8 +178,8 @@ export default function Layout({ children }) {
                       <div className="py-2">
                         <button
                           onClick={() => {
-                            setMenuOpen(false)
-                            navigate('/change-password')
+                            setMenuOpen(false);
+                            navigate('/change-password');
                           }}
                           className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                         >
@@ -191,8 +189,8 @@ export default function Layout({ children }) {
                         <div className="border-t border-gray-200 my-2"></div>
                         <button
                           onClick={() => {
-                            setMenuOpen(false)
-                            handleLogout()
+                            setMenuOpen(false);
+                            handleLogout();
                           }}
                           className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-error hover:bg-gray-50 transition-colors"
                         >
@@ -209,10 +207,8 @@ export default function Layout({ children }) {
         </header>
 
         {/* 页面内容 */}
-        <main className="p-6">
-          {children}
-        </main>
+        <main className="p-6">{children}</main>
       </div>
     </div>
-  )
+  );
 }

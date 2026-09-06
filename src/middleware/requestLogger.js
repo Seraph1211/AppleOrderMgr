@@ -5,6 +5,7 @@
  */
 
 const logger = require('../utils/logger');
+const crypto = require('crypto');
 
 /**
  * 构造 HTTP 访问日志中间件
@@ -13,6 +14,8 @@ const logger = require('../utils/logger');
 function requestLogger() {
   return function requestLoggerMiddleware(req, res, next) {
     const startTime = process.hrtime.bigint();
+    req.requestId = req.headers['x-request-id'] || crypto.randomUUID();
+    res.setHeader('X-Request-Id', req.requestId);
 
     res.on('finish', () => {
       const costMs = Number(process.hrtime.bigint() - startTime) / 1e6;
@@ -24,6 +27,7 @@ function requestLogger() {
         costMs: Math.round(costMs * 100) / 100,
         ip: req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
         userAgent: req.headers['user-agent'],
+        requestId: req.requestId,
       };
 
       if (res.statusCode >= 500) {

@@ -1,17 +1,20 @@
 'use strict';
+/* eslint-disable camelcase */
 
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 /**
  * 创建默认管理员账号
- * @description 初始化系统默认管理员账号（username: admin, password: admin123）
- * 不强制修改密码（根据用户需求）
+ * @description 仅在显式配置 ADMIN_INITIAL_PASSWORD 时创建管理员
  */
 module.exports = {
-  up: async (queryInterface, Sequelize) => {
-    // 生成密码哈希（admin123）
+  up: async (queryInterface, _Sequelize) => {
+    const initialPassword = process.env.ADMIN_INITIAL_PASSWORD;
+    if (!initialPassword || initialPassword.length < 12) {
+      throw new Error('ADMIN_INITIAL_PASSWORD 必须显式配置且至少 12 位');
+    }
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash('admin123', salt);
+    const passwordHash = await bcrypt.hash(initialPassword, salt);
 
     // 检查是否已存在 admin 用户
     const [users] = await queryInterface.sequelize.query(
@@ -28,26 +31,20 @@ module.exports = {
           status: 'active',
           failed_login_attempts: 0,
           locked_until: null,
-          force_password_change: false,  // 不强制修改密码
+          force_password_change: true,
           last_login_at: null,
           last_login_ip: null,
           created_at: new Date(),
-          updated_at: new Date()
-        }
+          updated_at: new Date(),
+        },
       ]);
-
-      console.log('✅ 默认管理员账号创建成功');
-      console.log('   用户名: admin');
-      console.log('   密码: admin123');
-    } else {
-      console.log('ℹ️  管理员账号已存在，跳过创建');
     }
   },
 
-  down: async (queryInterface, Sequelize) => {
+  down: async (queryInterface, _Sequelize) => {
     // 删除默认管理员账号
     await queryInterface.bulkDelete('users', {
-      username: 'admin'
+      username: 'admin',
     });
-  }
+  },
 };

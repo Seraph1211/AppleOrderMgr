@@ -1,10 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../middleware/authMiddleware');
 const dashboardController = require('../controllers/dashboardController');
-
-// 所有接口都需要认证
-router.use(authenticate);
 
 /**
  * @route GET /api/dashboard/stats

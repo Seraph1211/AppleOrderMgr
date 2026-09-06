@@ -22,12 +22,7 @@ const { Order, CrawlLog, sequelize } = require('../models');
 const { config } = require('../utils/config');
 const { sendTelegramAlert } = require('../utils/telegramNotifier');
 
-const AUTO_STOP_STATUSES = new Set([
-  'completed',
-  'cancelled',
-  'pickup_cancelled',
-  'delivered',
-]);
+const AUTO_STOP_STATUSES = new Set(['completed', 'cancelled', 'pickup_cancelled', 'delivered']);
 const AUTO_STOP_PAYMENT_PICKUP = {
   paymentStatus: 'paid',
   pickupStatus: 'not_picked_up',
@@ -59,7 +54,7 @@ function summarizeOrderUrl(orderUrl) {
   try {
     const parsedUrl = new URL(orderUrl);
     const pathParts = parsedUrl.pathname.split('/').filter(Boolean);
-    const orderNumber = pathParts.find((part) => /^W\d{10}$/.test(part)) || null;
+    const orderNumber = pathParts.find(part => /^W\d{10}$/.test(part)) || null;
     return {
       host: parsedUrl.host,
       orderNumber,
@@ -74,12 +69,74 @@ function summarizeOrderUrl(orderUrl) {
 }
 
 /**
+ * 验证待访问的 Apple 订单 URL 与本地订单身份一致。
+ * @param {string} orderUrl - 订单 URL
+ * @param {string} expectedOrderNumber - 期望订单号
+ * @param {string} expectedAppleId - 期望 Apple ID
+ * @returns {URL} 验证后的 URL
+ * @throws {Error} URL 来源或身份不匹配时抛出异常
+ */
+function validateOrderUrl(orderUrl, expectedOrderNumber, expectedAppleId) {
+  try {
+    const parsedUrl = new URL(orderUrl);
+    const pathParts = parsedUrl.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    const isExpectedPath =
+      pathParts.length === 5 &&
+      pathParts[0] === 'xc' &&
+      pathParts[1] === 'cn' &&
+      pathParts[2] === 'vieworder';
+    const isExpectedIdentity =
+      pathParts[3] === expectedOrderNumber &&
+      pathParts[4]?.toLowerCase() === String(expectedAppleId).toLowerCase();
+
+    if (
+      parsedUrl.protocol !== 'https:' ||
+      parsedUrl.hostname !== 'www.apple.com.cn' ||
+      parsedUrl.port ||
+      parsedUrl.username ||
+      parsedUrl.password ||
+      !isExpectedPath ||
+      !isExpectedIdentity
+    ) {
+      const error = new Error('订单 URL 来源或身份与本地订单不一致');
+      error.eventType = 'order_identity';
+      throw error;
+    }
+
+    return parsedUrl;
+  } catch (error) {
+    if (error.eventType === 'order_identity') {
+      throw error;
+    }
+    const invalidUrlError = new Error('订单 URL 格式无效');
+    invalidUrlError.eventType = 'order_identity';
+    throw invalidUrlError;
+  }
+}
+
+/**
+ * 校验官网返回的订单号。
+ * @param {Object} crawledData - 官网解析结果
+ * @param {string} expectedOrderNumber - 本地订单号
+ * @returns {void}
+ * @throws {Error} 身份缺失或不匹配时抛出异常
+ */
+function validateCrawledOrderIdentity(crawledData, expectedOrderNumber) {
+  if (!crawledData.orderNumber || crawledData.orderNumber !== expectedOrderNumber) {
+    const error = new Error('官网返回的订单身份与本地订单不一致');
+    error.eventType = 'order_identity';
+    error.skipFailureIncrement = true;
+    throw error;
+  }
+}
+
+/**
  * 延迟函数
  * @param {number} ms - 延迟毫秒数
  * @returns {Promise<void>}
  */
 function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 /**
@@ -87,7 +144,9 @@ function sleep(ms) {
  * @returns {number} 延迟毫秒数
  */
 function getRandomDelay() {
-  return Math.floor(Math.random() * 5000) + 5000; // 5000-10000ms
+  const minDelay = config.crawler.requestDelay?.min || 5000;
+  const maxDelay = config.crawler.requestDelay?.max || 10000;
+  return Math.floor(Math.random() * (maxDelay - minDelay)) + minDelay;
 }
 
 /**
@@ -227,24 +286,27 @@ function inferPickupStatus(bodyText, orderStatus = null) {
  * 比对邮件商品和官网商品
  * @param {Array<Object>} emailProducts - 邮件导入商品
  * @param {Array<Object>} officialProducts - 官网商品
+ * @param {Object} options - 校验上下文
  * @returns {Object} 校验结果
  */
-function validateProducts(emailProducts = [], officialProducts = []) {
+function validateProducts(emailProducts = [], officialProducts = [], options = {}) {
   try {
     if (!Array.isArray(officialProducts) || officialProducts.length === 0) {
       return {
         status: VALIDATION_STATUS.UNAVAILABLE,
-        issues: [{
-          type: 'official_products_missing',
-          message: '官网商品信息为空，无法完成交叉验证',
-        }],
+        issues: [
+          {
+            type: 'official_products_missing',
+            message: '官网商品信息为空，无法完成交叉验证',
+          },
+        ],
         comparisons: [],
       };
     }
 
     const matchedOfficialIndexes = new Set();
     const issues = [];
-    const comparisons = emailProducts.map((emailProduct) => {
+    const comparisons = emailProducts.map(emailProduct => {
       const emailModel = normalizeProductText(emailProduct.model || emailProduct.modelId);
       const emailName = normalizeProductText(emailProduct.name);
 
@@ -253,16 +315,20 @@ function validateProducts(emailProducts = [], officialProducts = []) {
           return false;
         }
 
-        const officialModel = normalizeProductText(officialProduct.model || officialProduct.modelId);
+        const officialModel = normalizeProductText(
+          officialProduct.model || officialProduct.modelId
+        );
         const officialName = normalizeProductText(officialProduct.name);
 
         if (emailModel && officialModel && emailModel === officialModel) {
           return true;
         }
 
-        return emailName &&
+        return (
+          emailName &&
           officialName &&
-          (officialName.includes(emailName) || emailName.includes(officialName));
+          (officialName.includes(emailName) || emailName.includes(officialName))
+        );
       });
 
       if (officialIndex === -1) {
@@ -287,7 +353,9 @@ function validateProducts(emailProducts = [], officialProducts = []) {
       const officialProduct = officialProducts[officialIndex];
       const emailQuantity = Number(emailProduct.quantity || 0);
       const officialQuantity = Number(officialProduct.quantity || 0);
-      const isQuantityMatched = emailQuantity === officialQuantity;
+      const isCancellationQuantity =
+        ['cancelled', 'pickup_cancelled'].includes(options.orderStatus) && officialQuantity === 0;
+      const isQuantityMatched = emailQuantity === officialQuantity || isCancellationQuantity;
 
       if (!isQuantityMatched) {
         issues.push({
@@ -307,6 +375,7 @@ function validateProducts(emailProducts = [], officialProducts = []) {
         officialQuantity,
         result: isQuantityMatched ? 'valid' : 'abnormal',
         issue: isQuantityMatched ? null : '数量不一致',
+        quantityCheckSkipped: isCancellationQuantity ? 'official_cancelled_order' : null,
       };
     });
 
@@ -668,7 +737,7 @@ function parseOrderData(orderJson, html) {
     const orderItems = orderJson.orderDetail?.orderItems || {};
     const products = [];
 
-    Object.keys(orderItems).forEach((key) => {
+    Object.keys(orderItems).forEach(key => {
       if (key.startsWith('orderItem-') && key.match(/orderItem-\d+/)) {
         const item = orderItems[key];
         const itemDetails = item.orderItemDetails?.d;
@@ -677,7 +746,8 @@ function parseOrderData(orderJson, html) {
         if (itemDetails) {
           products.push({
             name: itemDetails.productName || '',
-            model: itemDetails.partNumber ||
+            model:
+              itemDetails.partNumber ||
               itemDetails.sku ||
               itemDetails.productId ||
               itemDetails.modelNumber ||
@@ -855,8 +925,9 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
           error.proxyIp = `${currentProxy.host}:${currentProxy.port}`;
           error.eventType = 'wind_control';
 
-          if (schedulerState.consecutiveWindControlCount >=
-            config.crawler.windControlPauseThreshold) {
+          if (
+            schedulerState.consecutiveWindControlCount >= config.crawler.windControlPauseThreshold
+          ) {
             await pauseAutoRefresh('连续触发 Apple 风控', {
               urlSummary: summarizeOrderUrl(orderUrl),
               proxyIp: error.proxyIp,
@@ -895,8 +966,8 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
   const retryError = new Error(`爬取订单失败，已重试 ${maxRetries} 次: ${lastError.message}`);
   retryError.isWindControl = Boolean(lastError.isWindControl);
   retryError.httpStatus = lastError.httpStatus || lastError.response?.status;
-  retryError.proxyIp = lastError.proxyIp ||
-    (currentProxy ? `${currentProxy.host}:${currentProxy.port}` : null);
+  retryError.proxyIp =
+    lastError.proxyIp || (currentProxy ? `${currentProxy.host}:${currentProxy.port}` : null);
   retryError.eventType = lastError.eventType || 'crawler';
   throw retryError;
 }
@@ -908,13 +979,14 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
  * @throws {Error} 当爬取或更新失败时抛出异常
  */
 async function crawlAndUpdateOrder(orderId, options = {}) {
-  const transaction = await sequelize.transaction();
+  let transaction = null;
+  let order = null;
   const startTime = Date.now();
   const source = options.source || (options.manual ? 'manual' : 'auto');
 
   try {
     // 1. 查询订单信息
-    const order = await Order.findByPk(orderId, {
+    order = await Order.findByPk(orderId, {
       include: [
         {
           association: 'appleAccount',
@@ -937,8 +1009,12 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
 
     // 2. 构建订单详情页 URL
     const appleId = order.appleAccount?.appleId || order.appleId;
-    const orderUrl = order.orderUrl ||
-      `https://www.apple.com.cn/xc/cn/vieworder/${order.orderNumber}/${appleId}`;
+    const orderUrl =
+      order.orderUrl ||
+      `https://www.apple.com.cn/xc/cn/vieworder/${order.orderNumber}/${encodeURIComponent(appleId)}`;
+    validateOrderUrl(orderUrl, order.orderNumber, appleId);
+    const expectedOrderNumber = order.orderNumber;
+    const initialUpdatedAt = order.updatedAt ? new Date(order.updatedAt).getTime() : null;
 
     logger.info('开始爬取订单数据', {
       orderId: order.id,
@@ -948,15 +1024,44 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     });
 
     // 3. 爬取订单数据（带重试）
-    const crawlResult = await fetchWithRetry(orderUrl);
+    const crawlResult = await fetchWithRetry(orderUrl, config.crawler.maxRetry);
     const { data: crawledData, proxy } = crawlResult;
-    const validationResult = validateProducts(order.products, crawledData.products);
+    validateCrawledOrderIdentity(crawledData, expectedOrderNumber);
+    const validationResult = validateProducts(order.products, crawledData.products, {
+      orderStatus: crawledData.orderStatus,
+    });
     const autoRefreshStopReason = getAutoRefreshStopReason({
       status: crawledData.orderStatus,
       paymentStatus: crawledData.paymentStatus,
       pickupStatus: crawledData.pickupStatus,
       validationStatus: validationResult.status,
     });
+
+    // 网络请求结束后才开启短事务，并在写入前锁定目标行。
+    transaction = await sequelize.transaction();
+    const lockedOrder = await Order.findByPk(orderId, {
+      transaction,
+      lock: transaction.LOCK?.UPDATE || true,
+    });
+    if (!lockedOrder) {
+      throw new Error(`订单不存在: ID ${orderId}`);
+    }
+    const lockedUpdatedAt = lockedOrder.updatedAt
+      ? new Date(lockedOrder.updatedAt).getTime()
+      : null;
+    if (initialUpdatedAt !== null && lockedUpdatedAt !== initialUpdatedAt) {
+      const concurrentUpdateError = new Error('订单在爬取期间已被其他任务更新，本次结果已放弃');
+      concurrentUpdateError.eventType = 'concurrency';
+      concurrentUpdateError.skipFailureIncrement = true;
+      throw concurrentUpdateError;
+    }
+    if (lockedOrder.orderNumber !== expectedOrderNumber) {
+      const identityChangedError = new Error('订单身份在爬取期间已变更，本次结果已放弃');
+      identityChangedError.eventType = 'concurrency';
+      identityChangedError.skipFailureIncrement = true;
+      throw identityChangedError;
+    }
+    order = lockedOrder;
 
     // 4. 更新订单数据
     const updateData = {
@@ -988,10 +1093,12 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
 
     // 更新商品信息（合并邮件数据和爬取数据）
     if (crawledData.products.length > 0) {
-      updateData.products = order.products.map((emailProduct) => {
+      updateData.products = order.products.map(emailProduct => {
         // 尝试通过型号匹配爬取的商品
         const crawledProduct = crawledData.products.find(
-          (p) => p.model === emailProduct.model || p.name.includes(emailProduct.name)
+          p =>
+            p.model === emailProduct.model ||
+            (p.name && emailProduct.name && p.name.includes(emailProduct.name))
         );
 
         if (crawledProduct) {
@@ -1013,33 +1120,37 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
 
     // 5. 记录爬取日志
     const responseTime = Date.now() - startTime;
-    await CrawlLog.create({
-      orderId: order.id,
-      source,
-      severity: validationResult.status === VALIDATION_STATUS.ABNORMAL ? 'warn' : 'info',
-      eventType: validationResult.status === VALIDATION_STATUS.ABNORMAL
-        ? 'product_validation'
-        : 'crawler',
-      event: validationResult.status === VALIDATION_STATUS.ABNORMAL
-        ? 'order_marked_abnormal'
-        : 'order_sync_success',
-      proxyIp: proxy,
-      success: true,
-      responseTime,
-      errorMessage: null,
-      crawledData: crawledData.rawJson,
-      context: {
-        orderNumber: order.orderNumber,
-        officialProductCount: crawledData.products.length,
-        validationStatus: validationResult.status,
-        validationIssues: validationResult.issues,
-        amountParseError: crawledData.officialOrderAmountParseError,
-        autoRefreshStopReason,
+    await CrawlLog.create(
+      {
+        orderId: order.id,
+        source,
+        severity: validationResult.status === VALIDATION_STATUS.ABNORMAL ? 'warn' : 'info',
+        eventType:
+          validationResult.status === VALIDATION_STATUS.ABNORMAL ? 'product_validation' : 'crawler',
+        event:
+          validationResult.status === VALIDATION_STATUS.ABNORMAL
+            ? 'order_marked_abnormal'
+            : 'order_sync_success',
+        proxyIp: proxy,
+        success: true,
+        responseTime,
+        errorMessage: null,
+        crawledData: crawledData.rawJson,
+        context: {
+          orderNumber: order.orderNumber,
+          officialProductCount: crawledData.products.length,
+          validationStatus: validationResult.status,
+          validationIssues: validationResult.issues,
+          amountParseError: crawledData.officialOrderAmountParseError,
+          autoRefreshStopReason,
+        },
+        result: validationResult.status,
       },
-      result: validationResult.status,
-    }, { transaction });
+      { transaction }
+    );
 
     await transaction.commit();
+    transaction = null;
 
     if (validationResult.status === VALIDATION_STATUS.ABNORMAL) {
       await sendTelegramAlert('订单商品校验异常', {
@@ -1092,7 +1203,16 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       responseTime,
     };
   } catch (error) {
-    await transaction.rollback();
+    if (transaction && !transaction.finished) {
+      try {
+        await transaction.rollback();
+      } catch (rollbackError) {
+        logger.error('回滚订单爬取事务失败', {
+          orderId,
+          error: rollbackError.message,
+        });
+      }
+    }
 
     // 记录失败日志
     const responseTime = Date.now() - startTime;
@@ -1115,13 +1235,15 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       result: 'failed',
     });
 
-    try {
-      await Order.increment('crawlFailCount', { where: { id: orderId } });
-    } catch (incrementError) {
-      logger.error('更新爬取失败次数失败', {
-        orderId,
-        error: incrementError.message,
-      });
+    if (!error.skipFailureIncrement) {
+      try {
+        await Order.increment('crawlFailCount', { where: { id: orderId } });
+      } catch (incrementError) {
+        logger.error('更新爬取失败次数失败', {
+          orderId,
+          error: incrementError.message,
+        });
+      }
     }
 
     logger.error('订单爬取更新失败', {
@@ -1263,10 +1385,7 @@ async function scanAndRefreshEligibleOrders() {
   try {
     const orders = await Order.findAll({
       where: {
-        [Op.or]: [
-          { orderUrl: { [Op.ne]: null } },
-          { orderNumber: { [Op.ne]: null } },
-        ],
+        [Op.or]: [{ orderUrl: { [Op.ne]: null } }, { orderNumber: { [Op.ne]: null } }],
       },
       attributes: [
         'id',
@@ -1278,7 +1397,10 @@ async function scanAndRefreshEligibleOrders() {
         'validationStatus',
         'autoRefreshEnabled',
       ],
-      order: [['lastCrawledAt', 'ASC'], ['id', 'ASC']],
+      order: [
+        ['lastCrawledAt', 'ASC'],
+        ['id', 'ASC'],
+      ],
     });
 
     const eligibleOrders = orders.filter(isOrderEligibleForAutoRefresh);
@@ -1377,7 +1499,7 @@ async function startAutoRefreshScheduler() {
     schedulerState.isRunning = true;
     schedulerState.nextScanAt = new Date(Date.now() + config.crawler.autoRefreshIntervalMs);
     schedulerState.timer = setInterval(() => {
-      scanAndRefreshEligibleOrders().catch((error) => {
+      scanAndRefreshEligibleOrders().catch(error => {
         logger.error('自动刷新调度任务执行失败', { error: error.message });
       });
     }, config.crawler.autoRefreshIntervalMs);
@@ -1447,6 +1569,8 @@ module.exports = {
   extractOrderJson,
   parseOrderData,
   summarizeOrderUrl,
+  validateOrderUrl,
+  validateCrawledOrderIdentity,
   extractOfficialAmount,
   fetchWithRetry,
   crawlAndUpdateOrder,
