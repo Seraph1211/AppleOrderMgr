@@ -1,22 +1,39 @@
-FROM node:20-alpine
+ARG NODE_IMAGE=node:20-alpine
 
-# 设置工作目录
+FROM ${NODE_IMAGE} AS runtime-dependencies
 WORKDIR /app
+ENV NODE_ENV=production \
+    PUPPETEER_SKIP_DOWNLOAD=true
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
-# 复制 package.json 和 package-lock.json
-COPY package*.json ./
-
-# 安装依赖
-RUN npm ci --omit=dev
-
-# 复制应用代码
-COPY . .
-
-# 创建必要的目录
-RUN mkdir -p logs uploads/import
-
-# 暴露端口
+FROM ${NODE_IMAGE} AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=runtime-dependencies --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node package.json ./
+COPY --chown=node:node src ./src
+COPY --chown=node:node templates ./templates
+RUN mkdir -p /app/logs /app/uploads/import && chown -R node:node /app/logs /app/uploads
+USER node
 EXPOSE 3000
-
-# 启动命令
 CMD ["node", "src/app.js"]
+
+FROM ${NODE_IMAGE} AS migrator-dependencies
+WORKDIR /app
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev --no-audit --no-fund && npm cache clean --force
+
+FROM ${NODE_IMAGE} AS migrator
+WORKDIR /app
+ENV NODE_ENV=production
+COPY --from=migrator-dependencies --chown=node:node /app/node_modules ./node_modules
+COPY --chown=node:node package.json ./
+COPY --chown=node:node config ./config
+COPY --chown=node:node migrations ./migrations
+COPY --chown=node:node scripts ./scripts
+COPY --chown=node:node src ./src
+USER node
+ENTRYPOINT []
+CMD ["npx", "sequelize-cli", "db:migrate"]

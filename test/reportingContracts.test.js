@@ -5,6 +5,8 @@ const mockOrderSum = jest.fn();
 const mockOrderFindAll = jest.fn();
 const mockOrderFindAndCountAll = jest.fn();
 const mockSequelizeQuery = jest.fn();
+const mockRecipientCount = jest.fn();
+const AVAILABLE_RECIPIENT_COUNT = 16; // eslint-disable-line no-magic-numbers
 
 jest.mock('../src/models', () => ({
   Order: {
@@ -14,7 +16,7 @@ jest.mock('../src/models', () => ({
     findAndCountAll: mockOrderFindAndCountAll,
   },
   AppleId: {},
-  Recipient: { count: jest.fn() },
+  Recipient: { count: mockRecipientCount },
   sequelize: {
     query: mockSequelizeQuery,
     QueryTypes: { SELECT: 'SELECT' },
@@ -39,6 +41,7 @@ describe('统计口径契约', () => {
 
   test('仪表板金额必须汇总官网订单金额字段', async () => {
     mockOrderCount.mockResolvedValue(4);
+    mockRecipientCount.mockResolvedValue(AVAILABLE_RECIPIENT_COUNT);
     mockOrderSum.mockResolvedValueOnce('600.50').mockResolvedValueOnce('300.25');
 
     const result = await dashboardService.getStats({
@@ -52,6 +55,10 @@ describe('统计口径契约', () => {
     );
     expect(result.totalAmount).toBe(600.5);
     expect(result.amountGrowth).toBeCloseTo(100);
+    expect(result.availableRecipients).toBe(AVAILABLE_RECIPIENT_COUNT);
+    expect(result).not.toHaveProperty('activeRecipients');
+    const recipientStatus = mockRecipientCount.mock.calls[0][0].where.status;
+    expect(recipientStatus[require('sequelize').Op.in]).toEqual(['使用中', '未使用']);
   });
 
   test('渠道金额必须使用查询返回值而不是固定客单价', async () => {

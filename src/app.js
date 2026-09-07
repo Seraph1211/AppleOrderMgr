@@ -37,6 +37,13 @@ const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
 
 const app = express();
 
+if (process.env.TRUST_PROXY) {
+  const trustProxy = /^\d+$/.test(process.env.TRUST_PROXY)
+    ? Number(process.env.TRUST_PROXY)
+    : process.env.TRUST_PROXY;
+  app.set('trust proxy', trustProxy);
+}
+
 if (
   !process.env.JWT_SECRET ||
   process.env.JWT_SECRET.length < 32 ||

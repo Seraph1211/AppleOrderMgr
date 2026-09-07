@@ -1,5 +1,6 @@
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
+const { MIN_PASSWORD_LENGTH } = require('../constants/business');
 
 /**
  * 认证控制器
@@ -32,10 +33,10 @@ async function login(req, res) {
       });
     }
 
-    if (password.length < 6) {
+    if (password.length < MIN_PASSWORD_LENGTH) {
       return res.status(400).json({
         success: false,
-        message: '密码长度不能少于 6 位',
+        message: `密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`,
       });
     }
 
@@ -129,10 +130,10 @@ async function changePassword(req, res) {
       });
     }
 
-    if (newPassword.length < 12) {
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
       return res.status(400).json({
         success: false,
-        message: '新密码长度不能少于 12 位',
+        message: `新密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`,
       });
     }
 

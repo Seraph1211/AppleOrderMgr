@@ -4,6 +4,7 @@ import { Lock, ArrowLeft } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import client from '../api/client';
 import AlertModal from '../components/AlertModal';
+import { MIN_PASSWORD_LENGTH } from '../constants/auth';
 
 export default function ChangePassword() {
   const navigate = useNavigate();
@@ -49,10 +50,10 @@ export default function ChangePassword() {
       return;
     }
 
-    if (formData.newPassword.length < 12) {
+    if (formData.newPassword.length < MIN_PASSWORD_LENGTH) {
       setAlertModal({
         title: '提示',
-        message: '新密码长度至少为 12 位',
+        message: `新密码长度至少为 ${MIN_PASSWORD_LENGTH} 位`,
       });
       return;
     }
@@ -198,11 +199,14 @@ export default function ChangePassword() {
                 value={formData.newPassword}
                 onChange={handleChange}
                 className="input pl-10"
-                placeholder="请输入新密码（至少12位）"
+                placeholder={`请输入新密码（至少${MIN_PASSWORD_LENGTH}位）`}
+                minLength={MIN_PASSWORD_LENGTH}
                 disabled={loading}
               />
             </div>
-            <p className="text-sm text-gray-500 mt-1">密码长度至少为 12 位</p>
+            <p className="text-sm text-gray-500 mt-1">
+              密码长度至少为 {MIN_PASSWORD_LENGTH} 位
+            </p>
           </div>
 
           {/* 确认密码 */}
@@ -226,6 +230,7 @@ export default function ChangePassword() {
                 onChange={handleChange}
                 className="input pl-10"
                 placeholder="请再次输入新密码"
+                minLength={MIN_PASSWORD_LENGTH}
                 disabled={loading}
               />
             </div>

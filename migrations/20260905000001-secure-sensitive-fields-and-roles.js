@@ -13,6 +13,14 @@ module.exports = {
       await queryInterface.sequelize.query('DROP FUNCTION IF EXISTS auto_extract_id_card_last4()', {
         transaction,
       });
+      await queryInterface.sequelize.query(
+        'DROP TRIGGER IF EXISTS trigger_sync_password_to_recipients ON apple_ids',
+        { transaction }
+      );
+      await queryInterface.sequelize.query(
+        'DROP TRIGGER IF EXISTS trigger_sync_bound_apple_id ON recipients',
+        { transaction }
+      );
 
       await queryInterface.changeColumn(
         'apple_ids',
@@ -101,11 +109,35 @@ module.exports = {
         { type: Sequelize.STRING(20), allowNull: false, defaultValue: 'operator' },
         { transaction }
       );
+
+      await queryInterface.sequelize.query(
+        `CREATE TRIGGER trigger_sync_bound_apple_id
+         BEFORE INSERT OR UPDATE OF apple_id_ref ON recipients
+         FOR EACH ROW
+         EXECUTE FUNCTION sync_bound_apple_id_info()`,
+        { transaction }
+      );
+      await queryInterface.sequelize.query(
+        `CREATE TRIGGER trigger_sync_password_to_recipients
+         AFTER UPDATE OF apple_id, password ON apple_ids
+         FOR EACH ROW
+         EXECUTE FUNCTION sync_apple_password_to_recipients()`,
+        { transaction }
+      );
     });
   },
 
   async down(queryInterface, Sequelize) {
     await queryInterface.sequelize.transaction(async transaction => {
+      await queryInterface.sequelize.query(
+        'DROP TRIGGER IF EXISTS trigger_sync_password_to_recipients ON apple_ids',
+        { transaction }
+      );
+      await queryInterface.sequelize.query(
+        'DROP TRIGGER IF EXISTS trigger_sync_bound_apple_id ON recipients',
+        { transaction }
+      );
+
       await queryInterface.sequelize.query(
         `ALTER TABLE users DROP CONSTRAINT IF EXISTS chk_users_role;
          UPDATE users SET role = 'user' WHERE role IN ('operator', 'readOnly');
@@ -176,6 +208,21 @@ module.exports = {
         'orders',
         'recipient_id_card',
         { type: Sequelize.STRING(18), allowNull: true },
+        { transaction }
+      );
+
+      await queryInterface.sequelize.query(
+        `CREATE TRIGGER trigger_sync_bound_apple_id
+         BEFORE INSERT OR UPDATE OF apple_id_ref ON recipients
+         FOR EACH ROW
+         EXECUTE FUNCTION sync_bound_apple_id_info()`,
+        { transaction }
+      );
+      await queryInterface.sequelize.query(
+        `CREATE TRIGGER trigger_sync_password_to_recipients
+         AFTER UPDATE OF apple_id, password ON apple_ids
+         FOR EACH ROW
+         EXECUTE FUNCTION sync_apple_password_to_recipients()`,
         { transaction }
       );
     });

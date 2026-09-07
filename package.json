@@ -21,6 +21,7 @@
     "db:migrate:undo": "sequelize-cli db:migrate:undo",
     "db:seed": "sequelize-cli db:seed:all",
     "db:seed:admin": "sequelize-cli db:seed --seed 20260719000001-create-default-admin.js",
+    "db:seed:local-mock": "node scripts/generateLocalMockData.js",
     "db:reset": "sequelize-cli db:migrate:undo:all && sequelize-cli db:migrate",
     "security:migrate": "node scripts/migrateSensitiveData.js",
     "docs:check:links": "node scripts/checkDocLinks.js",

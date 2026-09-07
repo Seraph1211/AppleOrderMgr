@@ -15,13 +15,15 @@ const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
 const { ORDER_STATUSES } = require('../constants/business');
 const { maskIdCard, maskPhone, escapeSpreadsheetFormula } = require('../utils/masking');
+const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
 
 /**
  * 把 Order（含 appleAccount/recipient）序列化为对外列表项
  * @param {Order} order - Sequelize Order 实例
+ * @param {boolean} includeRecipientPhone - 是否包含取机人手机号明文
  * @returns {Object} 列表项
  */
-function serializeOrderListItem(order) {
+function serializeOrderListItem(order, includeRecipientPhone = false) {
   const plain = order.toJSON();
   return {
     id: plain.id,
@@ -47,7 +49,7 @@ function serializeOrderListItem(order) {
     pickup_store: plain.pickupStore,
     recipient_id_card: maskIdCard(plain.recipientIdCard),
     recipient_email: plain.recipientEmail,
-    recipient_phone: maskPhone(plain.recipientPhone),
+    recipient_phone: includeRecipientPhone ? plain.recipientPhone : maskPhone(plain.recipientPhone),
     recipient_address: plain.recipientAddress ? '详细地址已隐藏' : null,
     apple_password: null,
     order_url: null,
@@ -70,9 +72,10 @@ function serializeOrderListItem(order) {
 /**
  * 完整订单详情序列化
  * @param {Order} order - Sequelize Order 实例
+ * @param {boolean} includeRecipientPhone - 是否包含取机人手机号明文
  * @returns {Object} 详情对象
  */
-function serializeOrderDetail(order) {
+function serializeOrderDetail(order, includeRecipientPhone = false) {
   const plain = order.toJSON();
   return {
     id: plain.id,
@@ -90,7 +93,7 @@ function serializeOrderDetail(order) {
         name: `${plain.recipient.lastName}${plain.recipient.firstName}`,
         id_card_last4: plain.recipient.idCardLast4,
         tag: plain.recipient.tag,
-        phone: maskPhone(plain.recipient.phone),
+        phone: includeRecipientPhone ? plain.recipient.phone : maskPhone(plain.recipient.phone),
       }
       : null,
     products: plain.products,
@@ -264,7 +267,16 @@ async function listOrders(req, res) {
       distinct: true,
     });
 
-    res.json(paginatedResponse(rows.map(serializeOrderListItem), count, page, limit, 'orders'));
+    const includeRecipientPhone = canDisplayLocalSensitiveFields(req);
+    res.json(
+      paginatedResponse(
+        rows.map(order => serializeOrderListItem(order, includeRecipientPhone)),
+        count,
+        page,
+        limit,
+        'orders'
+      )
+    );
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
@@ -296,7 +308,10 @@ async function getOrderDetail(req, res) {
       throw ApiError.notFound('订单不存在', { orderId });
     }
 
-    res.json({ success: true, data: serializeOrderDetail(order) });
+    res.json({
+      success: true,
+      data: serializeOrderDetail(order, canDisplayLocalSensitiveFields(req)),
+    });
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;

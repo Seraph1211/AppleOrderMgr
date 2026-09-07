@@ -13,15 +13,16 @@ const ApiError = require('../utils/ApiError');
 const { isValidEmail } = require('../utils/helpers');
 const { ACCOUNT_STATUSES } = require('../constants/business');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
+const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
 
 /**
  * 把 AppleId 实例序列化为对外对象
  * @param {Object} appleId - Sequelize AppleId JSON 形态
  * @param {Object} stats - 统计数据 { orderCount, recipientCount, lastOrderDate }
- * @param {boolean} includeSecrets - 是否包含密码和密保（管理接口需要）
+ * @param {boolean} includePassword - 是否包含密码
  * @returns {Object} 对外对象
  */
-function serializeAppleId(appleId, stats = {}) {
+function serializeAppleId(appleId, stats = {}, includePassword = false) {
   const result = {
     id: appleId.id,
     apple_id: appleId.appleId,
@@ -35,6 +36,10 @@ function serializeAppleId(appleId, stats = {}) {
     created_at: appleId.createdAt,
     updated_at: appleId.updatedAt,
   };
+
+  if (includePassword) {
+    result.password = appleId.password;
+  }
 
   return result;
 }
@@ -81,15 +86,20 @@ async function listAppleIds(req, res) {
     const ids = rows.map(r => r.id);
     const orderStats = await getOrderStatsByAppleIds(ids);
     const recipientCounts = await getRecipientCountsByAppleIds(ids);
+    const includePassword = canDisplayLocalSensitiveFields(req);
 
     res.json(
       paginatedResponse(
         rows.map(row =>
-          serializeAppleId(row.toJSON(), {
-            orderCount: orderStats[row.id]?.orderCount || 0,
-            recipientCount: recipientCounts[row.id] || 0,
-            lastOrderDate: orderStats[row.id]?.lastOrderDate || null,
-          })
+          serializeAppleId(
+            row.toJSON(),
+            {
+              orderCount: orderStats[row.id]?.orderCount || 0,
+              recipientCount: recipientCounts[row.id] || 0,
+              lastOrderDate: orderStats[row.id]?.lastOrderDate || null,
+            },
+            includePassword
+          )
         ),
         count,
         page,
@@ -172,20 +182,21 @@ async function getAppleIdDetail(req, res) {
     const orderStats = await getOrderStatsByAppleIds([id]);
     const recipientCounts = await getRecipientCountsByAppleIds([id]);
 
-    // 安全设计：密码不返回
+    const includePassword = canDisplayLocalSensitiveFields(req);
     const plain = appleId.toJSON();
-    delete plain.password;
+    if (!includePassword) delete plain.password;
     delete plain.securityQa;
 
     res.json({
       success: true,
       data: serializeAppleId(
-        { ...plain, password: undefined },
+        plain,
         {
           orderCount: orderStats[id]?.orderCount || 0,
           recipientCount: recipientCounts[id] || 0,
           lastOrderDate: orderStats[id]?.lastOrderDate || null,
-        }
+        },
+        includePassword
       ),
     });
   } catch (error) {

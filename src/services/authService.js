@@ -1,6 +1,7 @@
 const { User } = require('../models');
 const { generateToken } = require('../utils/jwtUtils');
 const logger = require('../utils/logger');
+const { MIN_PASSWORD_LENGTH } = require('../constants/business');
 
 /**
  * 认证服务层
@@ -134,8 +135,8 @@ async function changePassword(userId, oldPassword, newPassword) {
       throw new Error('旧密码和新密码不能为空');
     }
 
-    if (newPassword.length < 12) {
-      throw new Error('新密码长度不能少于 12 位');
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new Error(`新密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`);
     }
 
     if (oldPassword === newPassword) {

@@ -7,6 +7,7 @@ require('dotenv').config();
  */
 
 module.exports = {
+  url: process.env.DATABASE_URL || null,
   // 数据库连接信息
   database: process.env.DB_NAME || 'apple_order_mgr',
   username: process.env.DB_USER || 'postgres',
@@ -17,10 +18,10 @@ module.exports = {
 
   // 连接池配置
   pool: {
-    max: 10,
-    min: 0,
-    acquire: 30000,
-    idle: 10000,
+    max: parseInt(process.env.DB_POOL_MAX || '5', 10),
+    min: parseInt(process.env.DB_POOL_MIN || '0', 10),
+    acquire: parseInt(process.env.DB_POOL_ACQUIRE || '30000', 10),
+    idle: parseInt(process.env.DB_POOL_IDLE || '10000', 10),
   },
 
   // 日志配置

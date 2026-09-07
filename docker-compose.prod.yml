@@ -1,0 +1,118 @@
+name: apple-order-mgr-prod
+
+x-service-defaults: &service-defaults
+  image: ${RUNTIME_IMAGE:?请在发布环境文件中设置 RUNTIME_IMAGE}
+  env_file:
+    - ${APP_ENV_FILE:?请设置 APP_ENV_FILE}
+  environment:
+    NODE_ENV: production
+    LOG_TO_FILES: 'false'
+    RUN_WORKERS_IN_API: 'false'
+  extra_hosts:
+    - 'host.docker.internal:host-gateway'
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+    - /app/logs:size=32m,uid=1000,gid=1000
+    - /app/uploads/import:size=64m,uid=1000,gid=1000
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  restart: unless-stopped
+  stop_grace_period: 20s
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: '5'
+  networks:
+    - app
+
+services:
+  api:
+    <<: *service-defaults
+    command: ['node', 'src/app.js']
+    environment:
+      NODE_ENV: production
+      LOG_TO_FILES: 'false'
+      RUN_WORKERS_IN_API: 'false'
+      TRUST_PROXY: '1'
+      DB_POOL_MAX: '8'
+    ports:
+      - '${API_BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:-3001}:3000'
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "require('http').get('http://127.0.0.1:3000/api/health/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 20s
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+
+  email-worker:
+    <<: *service-defaults
+    command: ['node', 'src/workers/emailWorker.js']
+    environment:
+      NODE_ENV: production
+      LOG_TO_FILES: 'false'
+      DB_POOL_MAX: '3'
+    mem_limit: 512m
+    cpus: 0.75
+    pids_limit: 192
+
+  crawler-worker:
+    <<: *service-defaults
+    command: ['node', 'src/workers/crawlerWorker.js']
+    environment:
+      NODE_ENV: production
+      LOG_TO_FILES: 'false'
+      DB_POOL_MAX: '3'
+    mem_limit: 768m
+    cpus: 1.0
+    pids_limit: 256
+
+  migrate:
+    image: ${MIGRATOR_IMAGE:?请在发布环境文件中设置 MIGRATOR_IMAGE}
+    profiles: ['tools']
+    command: ['npx', 'sequelize-cli', 'db:migrate']
+    env_file:
+      - ${APP_ENV_FILE:?请设置 APP_ENV_FILE}
+    environment:
+      NODE_ENV: production
+      LOG_TO_FILES: 'false'
+      DB_POOL_MAX: '2'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+    init: true
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+      - /app/logs:size=16m,uid=1000,gid=1000
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: 'no'
+    networks:
+      - app
+
+  security-migrate:
+    extends: migrate
+    command: ['node', 'scripts/migrateSensitiveData.js', '--execute']
+
+networks:
+  app:
+    name: apple-order-mgr-prod-app
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.240.0/24

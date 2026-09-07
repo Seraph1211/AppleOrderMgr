@@ -54,7 +54,7 @@ function startEmailService() {
     logger.info('IMAP 连接请求已发送', {
       host: config.imap.host,
       port: config.imap.port,
-      user: config.imap.user,
+      userConfigured: Boolean(config.imap.user),
     });
   } catch (error) {
     logger.error('启动邮件服务失败', { error: error.message, stack: error.stack });
@@ -322,8 +322,8 @@ function onMessageFetch(msg, seqno, onComplete) {
 
       logger.debug('邮件元数据', {
         uid: emailUid,
-        from: metadata.from,
-        subject: metadata.subject,
+        senderCount: metadata.fromAddresses.length,
+        subjectPresent: Boolean(metadata.subject),
         date: metadata.date,
       });
 
@@ -331,8 +331,13 @@ function onMessageFetch(msg, seqno, onComplete) {
       if (!isOrderEmail(metadata)) {
         logger.info('跳过非订单邮件', {
           uid: emailUid,
-          from: metadata.from,
-          subject: metadata.subject,
+          senderAllowed: metadata.fromAddresses.some(address =>
+            config.imap.allowedSenders.includes(address)
+          ),
+          orderKeywordMatched:
+            metadata.subject.includes('NULL') ||
+            metadata.subject.includes('预订助手') ||
+            metadata.subject.includes('预订成功'),
         });
         // 是否标记已读由显式配置决定；完成回调统一在 finally 触发一次。
         shouldMarkAsRead = config.imap.markSeen;

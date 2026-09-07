@@ -4,6 +4,7 @@ import { Apple, Lock, User } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 import client from '../api/client'
 import AlertModal from '../components/AlertModal'
+import { MIN_PASSWORD_LENGTH } from '../constants/auth'
 
 export default function Login() {
   const navigate = useNavigate()
@@ -66,6 +67,14 @@ export default function Login() {
       setAlertModal({
         title: '提示',
         message: '请输入密码',
+      })
+      return
+    }
+
+    if (formData.password.length < MIN_PASSWORD_LENGTH) {
+      setAlertModal({
+        title: '提示',
+        message: `密码长度至少为 ${MIN_PASSWORD_LENGTH} 位`,
       })
       return
     }
@@ -201,6 +210,7 @@ export default function Login() {
                   onChange={handleChange}
                   className="input pl-10"
                   placeholder="请输入密码"
+                  minLength={MIN_PASSWORD_LENGTH}
                   disabled={loading}
                 />
               </div>

@@ -1,0 +1,175 @@
+name: apple-order-mgr-dev
+
+x-backend-service: &backend-service
+  image: apple-order-mgr-dev-backend:local
+  build:
+    context: .
+    dockerfile: Dockerfile.dev
+    args:
+      NODE_IMAGE: ${DEV_NODE_IMAGE:-node:20-alpine}
+  env_file:
+    - .env
+  environment:
+    NODE_ENV: development
+    DB_HOST: postgres
+    DB_PORT: 5432
+    DB_SSL: 'false'
+    RUN_WORKERS_IN_API: 'false'
+    ALLOW_LOCAL_SENSITIVE_DISPLAY: 'true'
+  volumes:
+    - ./src:/app/src
+    - ./config:/app/config
+    - ./migrations:/app/migrations
+    - ./seeds:/app/seeds
+    - ./scripts:/app/scripts
+    - ./test:/app/test
+    - ./docs:/app/docs
+    - ./frontend:/app/frontend:ro
+    - ./README.md:/app/README.md:ro
+    - ./AGENTS.md:/app/AGENTS.md:ro
+    - ./Dockerfile:/app/Dockerfile:ro
+    - ./docker-compose.dev.yml:/app/docker-compose.dev.yml:ro
+    - ./docker-compose.prod.yml:/app/docker-compose.prod.yml:ro
+    - ./nginx-apple-order-mgr.conf:/app/nginx-apple-order-mgr.conf:ro
+    - ./package.json:/app/package.json:ro
+    - ./.sequelizerc:/app/.sequelizerc:ro
+    - ./.eslintrc.json:/app/.eslintrc.json:ro
+    - ./.eslintignore:/app/.eslintignore:ro
+    - ./.prettierrc:/app/.prettierrc:ro
+    - app_logs:/app/logs
+    - uploads_data:/app/uploads
+    - backend_coverage:/app/coverage
+  init: true
+
+services:
+  postgres:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    environment:
+      POSTGRES_DB: ${DB_NAME:-apple_order_mgr}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?请先在 .env 配置 DB_PASSWORD}
+    ports:
+      - '127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+    restart: unless-stopped
+
+  migrate:
+    <<: *backend-service
+    command: npm run db:migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  seed-admin:
+    <<: *backend-service
+    profiles: ['tools']
+    command: npm run db:seed:admin
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: 'no'
+
+  api:
+    <<: *backend-service
+    command: npm run dev -- --legacy-watch --watch src --watch config
+    ports:
+      - '127.0.0.1:3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:3000/api/health/ready').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    stop_grace_period: 15s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+      args:
+        NODE_IMAGE: ${DEV_NODE_IMAGE:-node:20-alpine}
+    environment:
+      VITE_API_PROXY_TARGET: http://api:3000
+      CHOKIDAR_USEPOLLING: 'true'
+    command: npm run dev -- --host 0.0.0.0
+    ports:
+      - '127.0.0.1:5173:5173'
+    volumes:
+      - ./frontend/src:/app/src
+      - ./frontend/public:/app/public
+      - ./frontend/index.html:/app/index.html
+      - ./frontend/vite.config.js:/app/vite.config.js
+      - ./frontend/postcss.config.js:/app/postcss.config.js
+      - ./frontend/tailwind.config.js:/app/tailwind.config.js
+      - ./frontend/.eslintrc.json:/app/.eslintrc.json:ro
+      - ./frontend/.eslintignore:/app/.eslintignore:ro
+      - frontend_dist:/app/dist
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://localhost:5173').then(response => process.exit(response.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    init: true
+    stop_grace_period: 10s
+
+  email-worker:
+    <<: *backend-service
+    profiles: ['email', 'workers']
+    command: npm run start:email-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  crawler-worker:
+    <<: *backend-service
+    profiles: ['crawler', 'workers']
+    command: npm run start:crawler-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+volumes:
+  postgres_data:
+  frontend_dist:
+  app_logs:
+  uploads_data:
+  backend_coverage:

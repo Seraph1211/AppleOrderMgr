@@ -1,9 +1,11 @@
 const mockGenerateToken = jest.fn(() => 'signed-token');
 const mockFindOne = jest.fn();
+const mockFindByPk = jest.fn();
 
 jest.mock('../src/models', () => ({
   User: {
     findOne: mockFindOne,
+    findByPk: mockFindByPk,
   },
 }));
 jest.mock('../src/utils/jwtUtils', () => ({
@@ -51,5 +53,36 @@ describe('账户锁定恢复', () => {
     expect(user.comparePassword).toHaveBeenCalledWith('correct-password');
     expect(mockGenerateToken).toHaveBeenCalledTimes(1);
     expect(result.token).toBe('signed-token');
+  });
+});
+
+describe('密码长度策略', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  test('修改密码时拒绝 7 位新密码', async () => {
+    await expect(authService.changePassword(1, 'old-password', '1234567')).rejects.toThrow(
+      '新密码长度不能少于 8 位'
+    );
+    expect(mockFindByPk).not.toHaveBeenCalled();
+  });
+
+  test('修改密码时接受 8 位新密码', async () => {
+    const user = {
+      id: 1,
+      username: 'operator',
+      password: 'old-hash',
+      forcePasswordChange: true,
+      comparePassword: jest.fn(() => Promise.resolve(true)),
+      save: jest.fn(() => Promise.resolve()),
+    };
+    mockFindByPk.mockResolvedValue(user);
+
+    await authService.changePassword(1, 'old-password', '12345678');
+
+    expect(user.password).toBe('12345678');
+    expect(user.forcePasswordChange).toBe(false);
+    expect(user.save).toHaveBeenCalledTimes(1);
   });
 });

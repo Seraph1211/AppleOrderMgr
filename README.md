@@ -2,33 +2,24 @@
 
 通过邮件解析、Apple 官网详情补全和状态同步，管理 Apple ID、取机人、订单、渠道和统计数据。
 
-系统已有 React 管理台、Express API、PostgreSQL/Sequelize 数据层及独立邮件、爬虫 Worker。当前为持续完善中的 MVP，真实数据迁移、集成测试和生产验收尚未完成，详见[开发进度](docs/development/开发进度.md)。
+系统已有 React 管理台、Express API、PostgreSQL/Sequelize 数据层及独立邮件、爬虫 Worker。当前为持续完善中的 MVP；生产技术部署和存量敏感数据转换已完成，真实订单邮件与 Apple 官网同步仍需业务验收，详见[开发进度](docs/development/开发进度.md)。
 
 ## 快速开始
 
-需要 Node.js 20+ 和 PostgreSQL 14+。从仓库根目录安装依赖：
+本地开发只要求 Docker Engine 或 Docker Desktop，以及 Docker Compose。从仓库根目录准备配置并启动完整开发栈：
 
 ```bash
-npm ci
-npm --prefix frontend ci
 cp .env.example .env
+docker compose -f docker-compose.dev.yml up --build -d
 ```
 
-填写 `.env` 中的数据库 `DB_*`、JWT 和字段加密密钥。首次初始化、管理员创建及各进程启动步骤见[本地开发指南](docs/development/本地开发指南.md)。
-
-已完成初始化后，在两个终端分别启动 API 和前端：
+启动前填写 `.env` 中的数据库密码、JWT、字段加密密钥和首次管理员密码。Compose 会启动本地 PostgreSQL、自动 Migration、API 和 Vite 前端；首次创建管理员显式执行：
 
 ```bash
-# 终端一，仓库根目录
-npm run dev
+docker compose -f docker-compose.dev.yml --profile tools run --rm seed-admin
 ```
 
-```bash
-# 终端二，仓库根目录
-npm --prefix frontend run dev
-```
-
-前端默认端口 5173，API 默认端口 3000。邮件和爬虫 Worker 独立启动，会访问外部服务，不属于仅查看前端的必要步骤。
+前端默认端口 5173，API 默认端口 3000，PostgreSQL 默认映射到宿主机 5433。邮件和爬虫 Worker 通过 profile 按需启动，不会随默认开发栈连接外部服务。完整命令见[本地开发指南](docs/development/本地开发指南.md)。
 
 ## 文档入口
 
@@ -44,24 +35,33 @@ npm --prefix frontend run dev
 
 ## 代码入口
 
-| 目录                              | 职责                                       |
-| --------------------------------- | ------------------------------------------ |
-| `frontend/src/`                   | 页面、组件、API 客户端                     |
-| `src/routes/`、`src/controllers/` | HTTP 路由与接口处理                        |
-| `src/services/`                   | 邮件处理、订单保存、爬虫和统计服务         |
-| `src/models/`、`migrations/`      | 模型与数据库迁移                           |
-| `src/workers/`                    | 邮件、爬虫独立进程入口                     |
-| `services/`、`crawler/`           | 历史独立邮件与爬虫解析实现，关系见架构文档 |
-| `test/`、`scripts/`               | 测试和开发维护工具                         |
+| 目录                              | 职责                               |
+| --------------------------------- | ---------------------------------- |
+| `frontend/src/`                   | 页面、组件、API 客户端             |
+| `src/routes/`、`src/controllers/` | HTTP 路由与接口处理                |
+| `src/services/`                   | 邮件处理、订单保存、爬虫和统计服务 |
+| `src/models/`、`migrations/`      | 模型与数据库迁移                   |
+| `src/workers/`                    | 邮件、爬虫独立进程入口             |
+| `test/`、`scripts/`               | 测试和开发维护工具                 |
 
 ## 本地检查
 
 ```bash
-npm run lint
-npm test -- --runInBand
-npm run docs:check
-npm --prefix frontend run lint
-npm --prefix frontend run build
+docker compose -f docker-compose.dev.yml exec api npm run lint
+docker compose -f docker-compose.dev.yml exec api npm test -- --runInBand
+docker compose -f docker-compose.dev.yml exec api npm run docs:check
+docker compose -f docker-compose.dev.yml exec frontend npm run lint
+docker compose -f docker-compose.dev.yml exec frontend npx vite build
 ```
+
+## 生产发布
+
+生产环境保留宿主机 PostgreSQL 与共享 Nginx，应用的 API、邮件 Worker 和爬虫 Worker 由 `docker-compose.prod.yml` 管理。发布制品只允许从本地 `main` 构建为 `linux/amd64`：
+
+```bash
+./scripts/buildProductionRelease.sh
+```
+
+制品输出到忽略追踪的 `release-artifacts/`，包含镜像归档、前端静态文件、Compose、版本清单和校验和。数据库备份、隔离迁移演练、切换和回滚步骤见[生产环境部署指南](docs/deployment/生产环境部署指南.md)。
 
 本地检查通过不等于真实数据库、邮箱、官网或生产业务验收通过。许可证口径待项目负责人确认：根目录历史 README 标注 MIT，而当前 package.json 标注 ISC；本轮未变更授权条款。

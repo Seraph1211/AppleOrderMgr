@@ -16,3 +16,5 @@ frontend
 database_backup.sql
 ecosystem.config.js
 nginx-*.conf
+Dockerfile.dev*
+docker-compose*.yml

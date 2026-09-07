@@ -14,6 +14,8 @@ const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
 const XLSX = require('xlsx');
 const { ACCOUNT_STATUSES } = require('../constants/business');
 const { blindIndex } = require('../utils/fieldEncryption');
+const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
+const { generatePhone } = require('../utils/contactGenerator');
 const {
   maskIdCard,
   maskPhone,
@@ -25,24 +27,25 @@ const {
  * 把 Recipient 实例序列化为对外对象
  * @param {Object} recipient - JSON 形态的 Recipient
  * @param {Object} stats - 统计数据 { orderCount, totalAmount, lastOrderDate }
+ * @param {boolean} includeSensitive - 是否包含身份证号和手机号明文
  * @returns {Object} 对外对象
  */
-function serializeRecipient(recipient, stats = {}) {
+function serializeRecipient(recipient, stats = {}, includeSensitive = false) {
   return {
     id: recipient.id,
     name: `${recipient.lastName || ''}${recipient.firstName || ''}`,
     last_name: recipient.lastName,
     first_name: recipient.firstName,
-    id_card_number: maskIdCard(recipient.idCardNumber),
+    id_card_number: includeSensitive ? recipient.idCardNumber : maskIdCard(recipient.idCardNumber),
     id_card_last4: recipient.idCardLast4,
-    phone: maskPhone(recipient.phone),
+    phone: includeSensitive ? recipient.phone : maskPhone(recipient.phone),
     email: recipient.email,
     apple_id: recipient.appleId,
     apple_id_ref: recipient.appleIdRef,
     province: recipient.province,
     city: recipient.city,
     district: recipient.district,
-    street_address: null,
+    street_address: includeSensitive ? recipient.streetAddress : null,
     masked_address: maskAddress(recipient),
     tag: recipient.tag,
     status: recipient.status,
@@ -164,10 +167,11 @@ async function listRecipients(req, res) {
     });
 
     const orderStats = await getOrderStatsByRecipients(rows.map(r => r.id));
+    const includeSensitive = canDisplayLocalSensitiveFields(req);
 
     res.json(
       paginatedResponse(
-        rows.map(r => serializeRecipient(r.toJSON(), orderStats[r.id] || {})),
+        rows.map(r => serializeRecipient(r.toJSON(), orderStats[r.id] || {}, includeSensitive)),
         count,
         page,
         limit,
@@ -201,9 +205,10 @@ async function getRecipientDetail(req, res) {
     }
 
     const orderCounts = await getOrderCountsByRecipients([id]);
+    const includeSensitive = canDisplayLocalSensitiveFields(req);
     res.json({
       success: true,
-      data: serializeRecipient(recipient.toJSON(), orderCounts[id] || 0),
+      data: serializeRecipient(recipient.toJSON(), orderCounts[id] || {}, includeSensitive),
     });
   } catch (error) {
     if (error instanceof ApiError) {
@@ -423,65 +428,8 @@ async function deleteRecipient(req, res) {
 }
 
 /**
- * 生成随机11位电话号码
- * @returns {string} 随机11位手机号
- */
-function generatePhone() {
-  // 中国移动：134-139, 147, 150-152, 157-159, 178, 182-184, 187-188, 198
-  // 中国联通：130-132, 145, 155-156, 166, 175-176, 185-186
-  // 中国电信：133, 149, 153, 173, 177, 180-181, 189, 191, 199
-  const prefixes = [
-    '134',
-    '135',
-    '136',
-    '137',
-    '138',
-    '139',
-    '147',
-    '150',
-    '151',
-    '152',
-    '157',
-    '158',
-    '159',
-    '178',
-    '182',
-    '183',
-    '184',
-    '187',
-    '188',
-    '198',
-    '130',
-    '131',
-    '132',
-    '145',
-    '155',
-    '156',
-    '166',
-    '175',
-    '176',
-    '185',
-    '186',
-    '133',
-    '149',
-    '153',
-    '173',
-    '177',
-    '180',
-    '181',
-    '189',
-    '191',
-    '199',
-  ];
-
-  const prefix = prefixes[Math.floor(Math.random() * prefixes.length)];
-  const suffix = Math.floor(10000000 + Math.random() * 90000000).toString();
-  return prefix + suffix;
-}
-
-/**
  * POST /api/recipients/batch-generate-contact
- * 批量生成取机人的电话和邮箱
+ * 为选中的取机人重新生成电话和邮箱
  */
 async function batchGenerateContact(req, res) {
   const transaction = await sequelize.transaction();
@@ -512,43 +460,31 @@ async function batchGenerateContact(req, res) {
       throw ApiError.notFound('未找到任何匹配的取机人');
     }
 
-    // 批量更新
-    let updated = 0;
+    // 选中的记录均重新生成，避免已有联系方式导致按钮无可见变化。
     for (const recipient of recipients) {
-      const updates = {};
+      const phone = generatePhone();
+      const updates = {
+        phone,
+        email: `${phone}@8lvv.com`,
+      };
 
-      // 先生成电话号码（如果需要）
-      let phone = recipient.phone;
-      if (!phone) {
-        phone = generatePhone();
-        updates.phone = phone;
-      }
-
-      // 使用电话号码生成邮箱（如果需要）
-      if (!recipient.email) {
-        updates.email = `${phone}@8lvv.com`;
-      }
-
-      if (Object.keys(updates).length > 0) {
-        await recipient.update(updates, { transaction });
-        updated++;
-        logger.info('生成取机人联系方式', {
-          id: recipient.id,
-          updatedFields: Object.keys(updates),
-        });
-      }
+      await recipient.update(updates, { transaction });
+      logger.info('生成取机人联系方式', {
+        id: recipient.id,
+        updatedFields: Object.keys(updates),
+      });
     }
 
     await transaction.commit();
 
     res.json({
       success: true,
-      message: `成功生成 ${updated} 个取机人的联系方式`,
+      message: `成功生成 ${recipients.length} 个取机人的联系方式`,
       data: {
         total: ids.length,
         found: recipients.length,
-        updated,
-        skipped: recipients.length - updated,
+        updated: recipients.length,
+        skipped: 0,
       },
     });
   } catch (error) {

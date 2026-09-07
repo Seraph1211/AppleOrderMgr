@@ -2,6 +2,7 @@
 /* eslint-disable camelcase */
 
 const bcrypt = require('bcryptjs');
+const { MIN_PASSWORD_LENGTH } = require('../src/constants/business');
 
 /**
  * 创建默认管理员账号
@@ -10,8 +11,8 @@ const bcrypt = require('bcryptjs');
 module.exports = {
   up: async (queryInterface, _Sequelize) => {
     const initialPassword = process.env.ADMIN_INITIAL_PASSWORD;
-    if (!initialPassword || initialPassword.length < 12) {
-      throw new Error('ADMIN_INITIAL_PASSWORD 必须显式配置且至少 12 位');
+    if (!initialPassword || initialPassword.length < MIN_PASSWORD_LENGTH) {
+      throw new Error(`ADMIN_INITIAL_PASSWORD 必须显式配置且至少 ${MIN_PASSWORD_LENGTH} 位`);
     }
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(initialPassword, salt);

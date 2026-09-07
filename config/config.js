@@ -20,6 +20,9 @@ module.exports = {
     logging: false,
   },
   production: {
+    // Sequelize CLI 要求使用此固定 snake_case 配置键。
+    // eslint-disable-next-line camelcase
+    use_env_variable: process.env.DATABASE_URL ? 'DATABASE_URL' : undefined,
     username: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
@@ -35,6 +38,12 @@ module.exports = {
             rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false',
           }
           : false,
+    },
+    pool: {
+      max: parseInt(process.env.DB_POOL_MAX || '5', 10),
+      min: parseInt(process.env.DB_POOL_MIN || '0', 10),
+      acquire: parseInt(process.env.DB_POOL_ACQUIRE || '30000', 10),
+      idle: parseInt(process.env.DB_POOL_IDLE || '10000', 10),
     },
   },
 };

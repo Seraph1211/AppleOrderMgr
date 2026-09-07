@@ -70,7 +70,7 @@ const getStats = async filters => {
     const where = buildWhereClause(filters);
 
     // 获取当前周期统计
-    const [totalOrders, pendingOrders, activeRecipients] = await Promise.all([
+    const [totalOrders, pendingOrders, availableRecipients] = await Promise.all([
       // 总订单量
       Order.count({ where }),
 
@@ -82,11 +82,11 @@ const getStats = async filters => {
         },
       }),
 
-      // 活跃收件人数（有订单的收件人）
-      Order.count({
-        where,
-        distinct: true,
-        col: 'recipient_ref',
+      // 可用取机人数独立于订单筛选，按当前取机人状态统计。
+      Recipient.count({
+        where: {
+          status: { [Op.in]: ['使用中', '未使用'] },
+        },
       }),
     ]);
 
@@ -105,7 +105,7 @@ const getStats = async filters => {
       totalOrders: totalOrders || 0,
       totalAmount: totalAmount || 0,
       pendingOrders: pendingOrders || 0,
-      activeRecipients: activeRecipients || 0,
+      availableRecipients: availableRecipients || 0,
       orderGrowth,
       amountGrowth,
     };

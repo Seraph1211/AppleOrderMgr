@@ -1,0 +1,19 @@
+ARG NODE_IMAGE=node:20-alpine
+FROM ${NODE_IMAGE}
+
+WORKDIR /app
+
+ENV PUPPETEER_SKIP_DOWNLOAD=true
+
+COPY --chown=node:node package.json package-lock.json ./
+
+RUN mkdir -p logs uploads/import coverage \
+    && chown -R node:node /app
+
+USER node
+
+RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000 npm ci
+
+COPY --chown=node:node . .
+
+CMD ["npm", "run", "dev"]

@@ -2,9 +2,9 @@
 
 > 状态：当前有效
 >
-> 最近核对：2026-09-06
+> 最近核对：2026-09-07
 >
-> 基线：main@0fd7f80 与当前未提交工作树
+> 基线：main@1757928 与当前未提交工作树
 >
 > 验证范围：本地工作树静态核对；未验证真实数据库、邮箱、官网和生产环境
 
@@ -89,16 +89,17 @@
 
 ## 认证与用户
 
-- 登录提交 username、password，返回 Token 与用户信息；账号/IP 限流与锁定分别生效。
-- 改密提交 oldPassword、newPassword、confirmPassword，首次改密完成后才可访问业务 API。
+- 登录提交 username、password，密码至少 8 位，返回 Token 与用户信息；账号/IP 限流与锁定分别生效。
+- 改密提交 oldPassword、newPassword、confirmPassword；新密码至少 8 位，首次改密完成后才可访问业务 API。
 - 登出目前由客户端移除 Token，不能理解成服务端已维护 JWT 撤销名单。
-- 用户管理的 role 必须使用当前三个枚举。用户列表、增改、删除、解锁输入以[userController.js](../../src/controllers/userController.js)为准；解锁方法是 PUT。
+- 用户管理的 role 必须使用当前三个枚举，创建用户的初始密码至少 8 位。用户列表、增改、删除、解锁输入以[userController.js](../../src/controllers/userController.js)为准；解锁方法是 PUT。
 
 ## Apple ID 与取机人
 
-- Apple ID 列表 query 为 page、limit、status、country、keyword；新增接收 apple_id、password、nickname、country、status、security_qa，更新另支持 is_modified。返回使用 snake_case，默认不含密码/密保。
+- Apple ID 列表 query 为 page、limit、status、country、keyword；新增接收 apple_id、password、nickname、country、status、security_qa，更新另支持 is_modified。返回使用 snake_case，默认不含密码/密保。本地开发 Compose 显式开启 `ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时，列表和详情额外返回解密后的 `password`；production、非 admin 或未开启配置时均不返回。
 - 取机人列表 query 包含 page、limit、tag、status、apple_id_ref、keyword；新增必须 lastName、firstName、idCardNumber，关联写入使用 appleIdRef。写入为 camelCase，不按列表字段直接回传。
-- 联系方式/地址批量生成接收 recipient_ids；绑定 Apple ID 使用 recipientIds，保留现状差异，不能统一猜测。
+- 取机人列表和详情默认返回脱敏的 `id_card_number`、`phone` 且 `street_address=null`；仅在上述本地开发 admin 门禁同时满足时返回完整身份证号、手机号和详细地址。
+- 联系方式/地址批量生成接收 recipient_ids；联系方式生成会覆盖选中记录已有的电话和邮箱，电话满足 `^1[3-9]\\d{9}$`，邮箱为“电话@8lvv.com”。前端在生成意图首次确认后，若选中记录已有对应数据，必须再次确认覆盖；取消二次确认不得调用生成接口。绑定 Apple ID 使用 recipientIds，保留现状差异，不能统一猜测。
 - 取机人导出需要 export 权限；admin 显式 includeSensitive=true 存在敏感字段导出分支，此行为需要受控授权与验收。默认导出脱敏并处理公式注入。
 
 来源：[Apple ID 控制器](../../src/controllers/appleIdController.js)、[取机人控制器](../../src/controllers/recipientController.js)。
@@ -108,7 +109,7 @@
 - 列表和详情由不同序列化函数构建；详情中的 apple_id 是关联对象或 null，不能套用列表的字符串类型。
 - 批量刷新传 orderIds 时仅对目标集合操作；未传时才使用受限筛选与 limit。详见[orderController.js](../../src/controllers/orderController.js)。
 - PUT /api/orders/:id 当前只允许 payerName、paymentScreenshot，不提供任意状态/商品字段更新。
-- 官网金额、支付与取货状态是独立字段。列表、详情不返回 Apple 密码/原始订单链接，手机号、身份证和地址脱敏。
+- 官网金额、支付与取货状态是独立字段。列表、详情不返回 Apple 密码/原始订单链接，身份证和地址保持脱敏；`recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
 - 导出使用当前筛选条件，下载按 Blob 处理；不能以固定价格代替缺失官网金额。
 
 ## 专题协议
@@ -116,6 +117,7 @@
 - [Excel 导入](Excel导入规范.md)：模板、上传预览、15 分钟用户绑定会话、单次消费令牌。
 - [渠道管理](渠道管理说明.md)：标签聚合、分页、newTag 事务改名。
 - [仪表板](仪表板说明.md)：图表与指标口径；stats 独立统计入口见[statsController.js](../../src/controllers/statsController.js)。
+- 仪表板 `GET /api/dashboard/stats` 返回 `availableRecipients`，统计状态为“使用中”或“未使用”的取机人总数，不受订单筛选影响。
 - 系统自动刷新在独立 Worker 模式为日志观测；resume 返回 409，不把 API 内存状态当作 Worker 真实状态，见[systemController.js](../../src/controllers/systemController.js)。
 
 ## 维护与验证

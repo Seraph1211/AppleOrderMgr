@@ -2,7 +2,7 @@ const { User } = require('../models');
 const { Op } = require('sequelize');
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
-const { USER_ROLES } = require('../constants/business');
+const { MIN_PASSWORD_LENGTH, USER_ROLES } = require('../constants/business');
 
 /**
  * 用户管理控制器
@@ -122,10 +122,10 @@ async function createUser(req, res) {
       });
     }
 
-    if (password.length < 12) {
+    if (password.length < MIN_PASSWORD_LENGTH) {
       return res.status(400).json({
         success: false,
-        message: '密码长度不能少于 12 位',
+        message: `密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`,
       });
     }
 

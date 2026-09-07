@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, User, Lock } from 'lucide-react';
 import client from '../api/client';
 import AlertModal from './AlertModal';
+import { MIN_PASSWORD_LENGTH } from '../constants/auth';
 
 export default function AddUserModal({ onClose, onSuccess }) {
   const [formData, setFormData] = useState({
@@ -50,10 +51,10 @@ export default function AddUserModal({ onClose, onSuccess }) {
       return;
     }
 
-    if (formData.password.length < 12) {
+    if (formData.password.length < MIN_PASSWORD_LENGTH) {
       setAlertModal({
         title: '提示',
-        message: '密码长度至少为 12 位',
+        message: `密码长度至少为 ${MIN_PASSWORD_LENGTH} 位`,
       });
       return;
     }
@@ -154,7 +155,8 @@ export default function AddUserModal({ onClose, onSuccess }) {
                   value={formData.password}
                   onChange={handleChange}
                   className="input pl-10"
-                  placeholder="请输入密码（至少12位）"
+                  placeholder={`请输入密码（至少${MIN_PASSWORD_LENGTH}位）`}
+                  minLength={MIN_PASSWORD_LENGTH}
                   disabled={loading}
                 />
               </div>
@@ -180,6 +182,7 @@ export default function AddUserModal({ onClose, onSuccess }) {
                   onChange={handleChange}
                   className="input pl-10"
                   placeholder="请再次输入密码"
+                  minLength={MIN_PASSWORD_LENGTH}
                   disabled={loading}
                 />
               </div>

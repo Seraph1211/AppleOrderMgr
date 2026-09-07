@@ -1503,8 +1503,6 @@ async function startAutoRefreshScheduler() {
         logger.error('自动刷新调度任务执行失败', { error: error.message });
       });
     }, config.crawler.autoRefreshIntervalMs);
-    schedulerState.timer.unref?.();
-
     await createCrawlLog({
       source: 'system',
       severity: 'info',

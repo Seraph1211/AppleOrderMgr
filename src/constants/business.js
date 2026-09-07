@@ -19,6 +19,8 @@ const ORDER_STATUSES = Object.freeze([
 
 const USER_ROLES = Object.freeze(['admin', 'operator', 'readOnly']);
 
+const MIN_PASSWORD_LENGTH = 8;
+
 const PERMISSIONS = Object.freeze({
   READ: 'read',
   WRITE: 'write',
@@ -44,6 +46,7 @@ module.exports = {
   ACCOUNT_STATUSES,
   ORDER_STATUSES,
   USER_ROLES,
+  MIN_PASSWORD_LENGTH,
   PERMISSIONS,
   ROLE_PERMISSIONS,
 };

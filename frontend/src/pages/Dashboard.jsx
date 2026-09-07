@@ -38,7 +38,7 @@ const Dashboard = () => {
     totalOrders: 0,
     totalAmount: 0,
     pendingOrders: 0,
-    activeRecipients: 0,
+    availableRecipients: 0,
     orderGrowth: 0,
     amountGrowth: 0,
   });
@@ -354,17 +354,17 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* 活跃收件人 */}
+        {/* 可用取机人 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-500 mb-2">活跃收件人</p>
+              <p className="text-sm font-medium text-gray-500 mb-2">可用取机人</p>
               <div className="flex items-baseline gap-3 mb-2">
                 <h3 className="text-3xl font-bold text-gray-900">
-                  {formatAmount(stats.activeRecipients)}
+                  {formatAmount(stats.availableRecipients)}
                 </h3>
                 <span className="px-2 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-md">
-                  在线
+                  可用
                 </span>
               </div>
             </div>

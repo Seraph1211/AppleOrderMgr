@@ -1,0 +1,13 @@
+.git
+.DS_Store
+.env
+.env.*
+!.env.example
+node_modules
+frontend
+logs
+tmp
+coverage
+test-artifacts
+database_backup.sql
+npm-debug.log

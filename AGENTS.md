@@ -69,13 +69,13 @@ Apple 订单管理系统已有 React 管理台、Express API、PostgreSQL/Sequel
 每个开发阶段结束及会话完成前更新[开发进度](docs/development/开发进度.md)：当前阶段、已完成功能、关键决策、验证证据、下一步、阻塞问题。该文件只保留当前结论和近期摘要，旧过程进入 archive。
 
 ```bash
-npm run lint
-npm test -- --runInBand
-npm run docs:check
-npm --prefix frontend run lint
-npm --prefix frontend run build
+docker compose -f docker-compose.dev.yml exec api npm run lint
+docker compose -f docker-compose.dev.yml exec api npm test -- --runInBand
+docker compose -f docker-compose.dev.yml exec api npm run docs:check
+docker compose -f docker-compose.dev.yml exec frontend npm run lint
+docker compose -f docker-compose.dev.yml exec frontend npx vite build
 ```
 
-按变更范围执行相关检查；提交前代码规范与测试必须通过。格式化使用指定文件，避免覆盖其他工作；npm run format 会改写全仓，使用前确认范围。CLI 脚本在 package.json 定义，检查边界见[测试指南](docs/testing/测试与验收指南.md)。
+本地开发和检查默认在 `docker-compose.dev.yml` 容器内执行，邮件与爬虫 Worker 只通过 profile 显式启动。按变更范围执行相关检查；提交前代码规范与测试必须通过。格式化使用指定文件，避免覆盖其他工作；npm run format 会改写全仓，使用前确认范围。CLI 脚本在 package.json 定义，检查边界见[测试指南](docs/testing/测试与验收指南.md)。
 
 本项目已有文档检查和质量 CI，维护现有入口，不复制历史 Husky/CI 脚手架。完整文档生命周期规则见[文档管理规范](docs/development/文档管理规范.md)。

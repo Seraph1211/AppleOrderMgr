@@ -56,7 +56,10 @@ export default function Recipients() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [showGenerateConfirm, setShowGenerateConfirm] = useState(false);
+  const [showContactOverwriteConfirm, setShowContactOverwriteConfirm] = useState(false);
   const [showGenerateAddressModal, setShowGenerateAddressModal] = useState(false);
+  const [showAddressOverwriteConfirm, setShowAddressOverwriteConfirm] = useState(false);
+  const [pendingAddressParams, setPendingAddressParams] = useState(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [showAlertModal, setShowAlertModal] = useState(false);
@@ -102,7 +105,11 @@ export default function Recipients() {
             idCard: item.id_card_number || item.id_card_last4,
             phone: item.phone || '-',
             email: item.email || '-',
-            address: item.masked_address || '-',
+            address: item.street_address
+              ? [item.province, item.city, item.district, item.street_address]
+                  .filter(Boolean)
+                  .join('')
+              : item.masked_address || '-',
             province: item.province || '',
             city: item.city || '',
             district: item.district || '',
@@ -144,6 +151,14 @@ export default function Recipients() {
 
   // 后端已按关键词和分页返回结果，不再对当前页脱敏值二次过滤。
   const filteredRecipients = recipients;
+  const selectedRecipients = recipients.filter(recipient => selectedIds.includes(recipient.id));
+  const existingContactCount = selectedRecipients.filter(
+    recipient =>
+      (recipient.phone && recipient.phone !== '-') || (recipient.email && recipient.email !== '-')
+  ).length;
+  const existingAddressCount = selectedRecipients.filter(
+    recipient => recipient.address && recipient.address !== '-'
+  ).length;
 
   const handleSaveRecipient = async formData => {
     const response = await createRecipient(formData);
@@ -266,8 +281,7 @@ export default function Recipients() {
     setShowGenerateConfirm(true);
   };
 
-  const handleConfirmGenerate = async () => {
-    setShowGenerateConfirm(false);
+  const executeContactGeneration = async () => {
     setGenerating(true);
 
     try {
@@ -290,6 +304,21 @@ export default function Recipients() {
     }
   };
 
+  const handleConfirmGenerate = () => {
+    setShowGenerateConfirm(false);
+    if (existingContactCount > 0) {
+      setShowContactOverwriteConfirm(true);
+      return;
+    }
+
+    executeContactGeneration();
+  };
+
+  const handleConfirmContactOverwrite = () => {
+    setShowContactOverwriteConfirm(false);
+    executeContactGeneration();
+  };
+
   // 批量生成地址
   const handleBatchGenerateAddress = () => {
     if (selectedIds.length === 0) {
@@ -301,7 +330,7 @@ export default function Recipients() {
     setShowGenerateAddressModal(true);
   };
 
-  const handleConfirmGenerateAddress = async ({ province, city, district }) => {
+  const executeAddressGeneration = async ({ province, city, district }) => {
     setGeneratingAddress(true);
 
     try {
@@ -322,6 +351,30 @@ export default function Recipients() {
     } finally {
       setGeneratingAddress(false);
     }
+  };
+
+  const handleConfirmGenerateAddress = addressParams => {
+    if (existingAddressCount > 0) {
+      setPendingAddressParams(addressParams);
+      setShowAddressOverwriteConfirm(true);
+      return;
+    }
+
+    executeAddressGeneration(addressParams);
+  };
+
+  const handleConfirmAddressOverwrite = () => {
+    const addressParams = pendingAddressParams;
+    setShowAddressOverwriteConfirm(false);
+    setPendingAddressParams(null);
+    if (addressParams) {
+      executeAddressGeneration(addressParams);
+    }
+  };
+
+  const handleCancelAddressOverwrite = () => {
+    setShowAddressOverwriteConfirm(false);
+    setPendingAddressParams(null);
   };
 
   // 导出Excel
@@ -745,10 +798,20 @@ export default function Recipients() {
       {showGenerateConfirm && (
         <ConfirmModal
           title="生成联系方式"
-          message={`确定要为选中的 ${selectedIds.length} 个取机人生成电话和邮箱吗？\n电话号码格式：138xxxxxxxx（11位）\n邮箱格式：电话号码@8lvv.com`}
+          message={`确定要为选中的 ${selectedIds.length} 个取机人生成电话和邮箱吗？\n电话号码格式：1[3-9]xxxxxxxxx（11位）\n邮箱格式：电话号码@8lvv.com`}
           type="generate"
           onConfirm={handleConfirmGenerate}
           onCancel={() => setShowGenerateConfirm(false)}
+        />
+      )}
+
+      {showContactOverwriteConfirm && (
+        <ConfirmModal
+          title="二次确认：覆盖联系方式"
+          message={`选中的取机人中有 ${existingContactCount} 个已有电话或邮箱。\n继续生成将覆盖这些联系方式，是否确认继续？`}
+          type="danger"
+          onConfirm={handleConfirmContactOverwrite}
+          onCancel={() => setShowContactOverwriteConfirm(false)}
         />
       )}
 
@@ -759,6 +822,16 @@ export default function Recipients() {
           onClose={() => setShowGenerateAddressModal(false)}
           onConfirm={handleConfirmGenerateAddress}
           selectedCount={selectedIds.length}
+        />
+      )}
+
+      {showAddressOverwriteConfirm && (
+        <ConfirmModal
+          title="二次确认：覆盖地址"
+          message={`选中的取机人中有 ${existingAddressCount} 个已有地址。\n继续生成将覆盖这些地址，是否确认继续？`}
+          type="danger"
+          onConfirm={handleConfirmAddressOverwrite}
+          onCancel={handleCancelAddressOverwrite}
         />
       )}
 
@@ -779,7 +852,7 @@ export default function Recipients() {
       {/* 绑定 Apple ID 弹窗 */}
       {showBindModal && (
         <BindAppleIdModal
-          selectedRecipients={recipients.filter(r => selectedIds.includes(r.id))}
+          selectedRecipients={selectedRecipients}
           onClose={() => setShowBindModal(false)}
           onConfirm={handleConfirmBind}
         />

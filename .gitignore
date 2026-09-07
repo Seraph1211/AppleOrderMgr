@@ -36,6 +36,7 @@ coverage/
 dist/
 build/
 test-artifacts/
+release-artifacts/
 
 # PM2
 .pm2/
