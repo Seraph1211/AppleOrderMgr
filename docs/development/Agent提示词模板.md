@@ -264,7 +264,7 @@
 
 - 必读 docs/development/本地开发指南.md、docs/testing/测试与验收指南.md；涉及数据库时加读 docs/database/数据库初始化与迁移指南.md。
 - 默认使用 docker-compose.dev.yml，不依赖宿主机 Node.js、PostgreSQL 或 node_modules。不得用已删除的 docker-compose.yml 或历史 archive 命令。
-- 默认只启动 PostgreSQL、migrate、api 和 frontend。email-worker 与 crawler-worker 会访问外部系统，必须通过 profile 显式启动，并在启动前确认测试账号、白名单、IMAP_MARK_SEEN、PROXY_ENABLED 和 AUTO_ORDER_REFRESH_ENABLED。
+- 默认只启动 PostgreSQL、migrate、api 和 frontend。email-worker 与 crawler-worker 会访问外部系统，必须通过 profile 显式启动，并在启动前确认测试账号、可选 IMAP_ALLOWED_SENDERS 来源策略、IMAP_MARK_SEEN、PROXY_ENABLED 和 AUTO_ORDER_REFRESH_ENABLED。
 - 不覆盖现有 .env，不输出其中的秘密。新增 Migration 后使用开发 Compose 的一次性 migrate 服务；首次管理员种子只在需要时显式执行。
 - docker compose -f docker-compose.dev.yml down --volumes 会永久删除本地数据库和其他命名卷，只有在已确认环境可丢弃且获得明确授权时才可执行。
 

@@ -160,4 +160,30 @@ describe('订单刷新任务仓储', () => {
       { transaction }
     );
   });
+
+  test('代理切换请求在行锁中只持久化非敏感状态', async () => {
+    const state = {
+      activeProxyProvider: 'kdl_tunnel',
+      reload: jest.fn(),
+      update: jest.fn(function update(values) {
+        Object.assign(this, values);
+      }),
+    };
+    mockSystemFindOrCreate.mockResolvedValue([state]);
+
+    const result = await repository.requestProxyProviderSwitch('kdl_private', 7);
+
+    expect(state.reload).toHaveBeenCalledWith({ transaction, lock: 'UPDATE' });
+    expect(state.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        requestedProxyProvider: 'kdl_private',
+        proxySwitchStatus: 'pending',
+        proxySwitchErrorCode: null,
+        proxySwitchErrorMessage: null,
+        updatedBy: 7,
+      }),
+      { transaction }
+    );
+    expect(result).toBe(state);
+  });
 });

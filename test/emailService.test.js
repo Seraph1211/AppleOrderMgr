@@ -6,14 +6,15 @@ jest.mock('../src/utils/logger', () => ({
   warn: jest.fn(),
   error: jest.fn(),
 }));
-jest.mock('../src/utils/config', () => ({
-  config: {
-    app: { env: 'production' },
-    imap: {
-      allowedSenders: ['orders@example.com'],
-      markSeen: true,
-    },
+const mockConfig = {
+  app: { env: 'production' },
+  imap: {
+    allowedSenders: ['orders@example.com'],
+    markSeen: true,
   },
+};
+jest.mock('../src/utils/config', () => ({
+  config: mockConfig,
 }));
 jest.mock('../src/services/emailParser', () => ({
   parseOrderEmail: jest.fn(),
@@ -29,8 +30,13 @@ jest.mock('../src/services/emailProcessingService', () => ({
 
 const { isOrderEmail } = require('../src/services/emailService');
 
-describe('订单邮件身份过滤', () => {
-  test('发件人和主题同时符合时才接受', () => {
+describe('订单邮件来源策略', () => {
+  beforeEach(() => {
+    mockConfig.app.env = 'production';
+    mockConfig.imap.allowedSenders = ['orders@example.com'];
+  });
+
+  test('配置白名单时要求发件人和主题同时符合', () => {
     expect(
       isOrderEmail({
         subject: 'NULL 预订成功',
@@ -39,11 +45,33 @@ describe('订单邮件身份过滤', () => {
     ).toBe(true);
   });
 
-  test('仅伪造订单主题不得通过', () => {
+  test('配置白名单时拒绝不匹配发件人', () => {
     expect(
       isOrderEmail({
         subject: 'NULL 预订成功',
         fromAddresses: ['attacker@example.net'],
+      })
+    ).toBe(false);
+  });
+
+  test('生产环境白名单为空时接受任意发件人的订单主题', () => {
+    mockConfig.imap.allowedSenders = [];
+
+    expect(
+      isOrderEmail({
+        subject: 'NULL 预订成功',
+        fromAddresses: ['anyone@example.net'],
+      })
+    ).toBe(true);
+  });
+
+  test('白名单为空也拒绝没有订单关键词的邮件', () => {
+    mockConfig.imap.allowedSenders = [];
+
+    expect(
+      isOrderEmail({
+        subject: '普通通知',
+        fromAddresses: ['anyone@example.net'],
       })
     ).toBe(false);
   });

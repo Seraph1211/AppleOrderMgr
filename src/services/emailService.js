@@ -56,7 +56,7 @@ function track(promise) {
 /**
  * 判断是否为订单邮件。
  * @param {Object} metadata - MIME 元数据
- * @returns {boolean} 是否通过主题与 From 白名单
+ * @returns {boolean} 是否通过主题与可选 From 白名单
  */
 function isOrderEmail(metadata) {
   const { subject = '', fromAddresses = [] } = metadata;
@@ -66,7 +66,7 @@ function isOrderEmail(metadata) {
     return false;
   }
   if (config.imap.allowedSenders.length === 0) {
-    return config.app.env !== 'production';
+    return true;
   }
   return fromAddresses.some(address => config.imap.allowedSenders.includes(address));
 }

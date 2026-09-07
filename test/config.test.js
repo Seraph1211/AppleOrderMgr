@@ -48,6 +48,21 @@ describe('config telegram environment variables', () => {
     expect(config.crawler.autoRefreshEnabled).toBe(false);
   });
 
+  test('生产环境允许不配置发件人白名单', () => {
+    process.env.NODE_ENV = 'production';
+    process.env.DATABASE_URL = 'postgres://integration.invalid/database';
+    process.env.IMAP_HOST = 'imap.example.com';
+    process.env.IMAP_USER = 'mailbox@example.com';
+    process.env.IMAP_PASSWORD = 'synthetic-imap-password';
+    process.env.PROXY_ENABLED = 'false';
+    delete process.env.IMAP_ALLOWED_SENDERS;
+
+    const { config, validateConfig } = require('../src/utils/config');
+
+    expect(config.imap.allowedSenders).toEqual([]);
+    expect(() => validateConfig()).not.toThrow();
+  });
+
   test('读取隧道代理 Provider 配置但不提供凭据默认值', () => {
     process.env.PROXY_PROVIDER = 'kdl_tunnel';
     process.env.KDL_TUNNEL_HOST = 'primary.example';
@@ -65,5 +80,14 @@ describe('config telegram environment variables', () => {
       poolPriority: 'q10',
     });
     expect(config.proxy.tunnel.password).toBeUndefined();
+  });
+
+  test('代理启用时拒绝未知 Provider 配置', () => {
+    process.env.PROXY_ENABLED = 'true';
+    process.env.PROXY_PROVIDER = 'unknown';
+
+    const { validateConfig } = require('../src/utils/config');
+
+    expect(() => validateConfig()).toThrow('PROXY_PROVIDER 必须是 kdl_tunnel 或 kdl_private');
   });
 });

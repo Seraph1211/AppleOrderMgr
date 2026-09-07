@@ -1,5 +1,6 @@
 const mockEnsureSystemState = jest.fn();
 const mockResume = jest.fn();
+const mockRequestProxyProviderSwitch = jest.fn();
 const mockJobFindAll = jest.fn();
 const mockScheduleFindAll = jest.fn();
 
@@ -18,6 +19,22 @@ jest.mock('../src/models', () => ({
 jest.mock('../src/services/crawler/refreshJobRepository', () => ({
   ensureSystemState: mockEnsureSystemState,
   resume: mockResume,
+  requestProxyProviderSwitch: mockRequestProxyProviderSwitch,
+}));
+jest.mock('../src/utils/config', () => ({
+  config: {
+    proxy: {
+      enabled: true,
+      provider: 'kdl_tunnel',
+      apiUrl: 'https://proxy.example/api',
+      tunnel: {
+        host: 'tunnel.example',
+        port: 15818,
+        username: 'secret-user',
+        password: 'secret-password',
+      },
+    },
+  },
 }));
 jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),
@@ -40,6 +57,11 @@ describe('独立爬虫 Worker 持久化状态与控制', () => {
       pausedAt: null,
       workerId: 'worker:test',
       heartbeatAt: new Date(),
+      requestedProxyProvider: 'kdl_tunnel',
+      activeProxyProvider: 'kdl_tunnel',
+      proxySwitchStatus: 'succeeded',
+      proxySwitchErrorCode: null,
+      proxySwitchErrorMessage: null,
     });
     mockJobFindAll.mockResolvedValue([{ status: 'pending', count: '2' }]);
     mockScheduleFindAll.mockResolvedValue([{ freshnessStatus: 'stale', count: '3' }]);
@@ -81,5 +103,59 @@ describe('独立爬虫 Worker 持久化状态与控制', () => {
       success: true,
       data: { isPaused: false },
     });
+  });
+
+  test('代理状态只返回配置完整性和 Worker 确认结果', async () => {
+    const res = { json: jest.fn() };
+
+    await systemController.getProxyProviderStatus({}, res);
+
+    const payload = res.json.mock.calls[0][0];
+    expect(payload.data).toMatchObject({
+      enabled: true,
+      requestedProvider: 'kdl_tunnel',
+      activeProvider: 'kdl_tunnel',
+      switchStatus: 'succeeded',
+    });
+    expect(payload.data.providers['kdl_tunnel']).toEqual({ configured: true });
+    expect(payload.data.providers['kdl_private']).toEqual({ configured: true });
+    expect(JSON.stringify(payload)).not.toContain('secret-user');
+    expect(JSON.stringify(payload)).not.toContain('secret-password');
+    expect(JSON.stringify(payload)).not.toContain('proxy.example');
+  });
+
+  test('管理员提交私密代理切换请求并收到 202', async () => {
+    mockRequestProxyProviderSwitch.mockResolvedValue({
+      requestedProxyProvider: 'kdl_private',
+      activeProxyProvider: 'kdl_tunnel',
+      proxySwitchStatus: 'pending',
+      heartbeatAt: new Date(),
+    });
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    await systemController.switchProxyProvider(
+      { body: { provider: 'kdl_private' }, user: { id: 7 } },
+      res
+    );
+
+    expect(mockRequestProxyProviderSwitch).toHaveBeenCalledWith('kdl_private', 7);
+    expect(res.status).toHaveBeenCalledWith(202);
+    expect(res.json.mock.calls[0][0]).toMatchObject({
+      success: true,
+      data: { requestedProvider: 'kdl_private', activeProvider: 'kdl_tunnel' },
+    });
+  });
+
+  test('拒绝未知代理 Provider', async () => {
+    await expect(
+      systemController.switchProxyProvider(
+        { body: { provider: 'unknown' }, user: { id: 7 } },
+        { status: jest.fn(), json: jest.fn() }
+      )
+    ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
+    expect(mockRequestProxyProviderSwitch).not.toHaveBeenCalled();
   });
 });

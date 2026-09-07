@@ -8,6 +8,7 @@
 require('dotenv').config();
 
 const logger = require('./logger');
+const { isSupportedProxyProvider } = require('../services/crawler/proxy/proxyProvider');
 
 /**
  * 验证必需的环境变量
@@ -148,6 +149,11 @@ const config = {
 const validateConfig = () => {
   const requiredVars = [];
 
+  if (config.proxy.enabled && !isSupportedProxyProvider(config.proxy.provider)) {
+    logger.error('配置验证失败', { invalidProxyProvider: true });
+    throw new Error('PROXY_PROVIDER 必须是 kdl_tunnel 或 kdl_private');
+  }
+
   // 数据库配置必需（除非提供了 DATABASE_URL）
   if (!config.database.url) {
     requiredVars.push('DB_HOST', 'DB_NAME', 'DB_PASSWORD');
@@ -158,9 +164,6 @@ const validateConfig = () => {
 
   // IMAP 配置必需
   requiredVars.push('IMAP_HOST', 'IMAP_USER', 'IMAP_PASSWORD');
-  if (config.app.env === 'production') {
-    requiredVars.push('IMAP_ALLOWED_SENDERS');
-  }
 
   // 生产环境下，代理配置必需
   if (config.app.env === 'production' && config.proxy.enabled) {

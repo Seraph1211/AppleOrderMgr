@@ -30,7 +30,13 @@ import {
 import { getStats, getAppleIdStats, getRecipientStats, getProductStats } from './dashboardApi';
 import { previewImport, executeImport, downloadTemplate } from './importApi';
 import { getChannels, getChannelStats, getChannelOrders, updateChannelName } from './channelsApi';
-import { getSystemLogs, getAutoRefreshStatus, resumeAutoRefresh } from './systemApi';
+import {
+  getSystemLogs,
+  getAutoRefreshStatus,
+  resumeAutoRefresh,
+  getProxyProviderStatus,
+  switchProxyProvider,
+} from './systemApi';
 import {
   getEmailProcessingRecords,
   getEmailProcessingMetrics,
@@ -94,6 +100,8 @@ export {
   getSystemLogs,
   getAutoRefreshStatus,
   resumeAutoRefresh,
+  getProxyProviderStatus,
+  switchProxyProvider,
 
   // Email processing
   getEmailProcessingRecords,

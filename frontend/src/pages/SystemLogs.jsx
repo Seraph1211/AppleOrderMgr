@@ -4,12 +4,19 @@ import {
   CheckCircle,
   ExternalLink,
   Filter,
+  Network,
   RefreshCw,
   RotateCcw,
   Search,
   X,
 } from 'lucide-react';
-import { getSystemLogs, getAutoRefreshStatus, resumeAutoRefresh } from '../api';
+import {
+  getSystemLogs,
+  getAutoRefreshStatus,
+  resumeAutoRefresh,
+  getProxyProviderStatus,
+  switchProxyProvider,
+} from '../api';
 import AlertModal from '../components/AlertModal';
 import Pagination from '../components/Pagination';
 import { useAuth } from '../contexts/AuthContext';
@@ -29,6 +36,8 @@ export default function SystemLogs() {
   const [loading, setLoading] = useState(true);
   const [selectedLog, setSelectedLog] = useState(null);
   const [autoRefreshStatus, setAutoRefreshStatus] = useState(null);
+  const [proxyProviderStatus, setProxyProviderStatus] = useState(null);
+  const [switchingProvider, setSwitchingProvider] = useState(null);
   const [alertInfo, setAlertInfo] = useState(null);
   const { isAdmin } = useAuth();
   const [pagination, setPagination] = useState({
@@ -51,7 +60,14 @@ export default function SystemLogs() {
   useEffect(() => {
     loadLogs();
     loadAutoRefreshStatus();
+    loadProxyProviderStatus();
   }, [pagination.currentPage, pagination.pageSize]);
+
+  useEffect(() => {
+    if (!['pending', 'switching'].includes(proxyProviderStatus?.switchStatus)) return undefined;
+    const timer = window.setInterval(loadProxyProviderStatus, 2000);
+    return () => window.clearInterval(timer);
+  }, [proxyProviderStatus?.switchStatus]);
 
   const buildParams = () => ({
     page: pagination.currentPage,
@@ -79,7 +95,10 @@ export default function SystemLogs() {
         }));
       }
     } catch (error) {
-      setAlertInfo({ title: '加载失败', message: error.message || '系统日志加载失败' });
+      setAlertInfo({
+        title: '加载失败',
+        message: error.message || '系统日志加载失败',
+      });
     } finally {
       setLoading(false);
     }
@@ -92,7 +111,22 @@ export default function SystemLogs() {
         setAutoRefreshStatus(res.data);
       }
     } catch (error) {
-      setAlertInfo({ title: '加载失败', message: error.message || '自动刷新状态加载失败' });
+      setAlertInfo({
+        title: '加载失败',
+        message: error.message || '自动刷新状态加载失败',
+      });
+    }
+  };
+
+  const loadProxyProviderStatus = async () => {
+    try {
+      const res = await getProxyProviderStatus();
+      if (res.success) setProxyProviderStatus(res.data);
+    } catch (error) {
+      setAlertInfo({
+        title: '加载失败',
+        message: error.message || '代理状态加载失败',
+      });
     }
   };
 
@@ -132,8 +166,37 @@ export default function SystemLogs() {
         loadLogs();
       }
     } catch (error) {
-      setAlertInfo({ title: '恢复失败', message: error.message || '自动刷新恢复失败' });
+      setAlertInfo({
+        title: '恢复失败',
+        message: error.message || '自动刷新恢复失败',
+      });
     }
+  };
+
+  const handleProxySwitch = async provider => {
+    setSwitchingProvider(provider);
+    try {
+      const res = await switchProxyProvider(provider);
+      if (res.success) {
+        setProxyProviderStatus(res.data);
+        setAlertInfo({ title: '切换请求已提交', message: res.message });
+      }
+    } catch (error) {
+      setAlertInfo({
+        title: '切换失败',
+        message: error.message || '代理切换请求失败',
+      });
+    } finally {
+      setSwitchingProvider(null);
+    }
+  };
+
+  const getProviderLabel = provider => {
+    const labels = {
+      kdl_tunnel: '隧道代理 Pro',
+      kdl_private: '私密代理',
+    };
+    return labels[provider] || '尚未确认';
   };
 
   const getSeverityBadge = severity => {
@@ -186,6 +249,63 @@ export default function SystemLogs() {
               <span>恢复</span>
             </button>
           )}
+        </div>
+      )}
+
+      {proxyProviderStatus && (
+        <div className="card">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 bg-primary-50 rounded-lg flex items-center justify-center">
+                <Network className="w-5 h-5 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold text-gray-900">爬虫代理 Provider</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600">
+                  <span>当前生效：</span>
+                  <span className="badge badge-success">
+                    {getProviderLabel(proxyProviderStatus.activeProvider)}
+                  </span>
+                  <span>目标：</span>
+                  <span className="badge badge-info">
+                    {getProviderLabel(proxyProviderStatus.requestedProvider)}
+                  </span>
+                  <span>状态：{proxyProviderStatus.switchStatus}</span>
+                </div>
+                <p className="text-sm text-gray-500 mt-2">
+                  切换请求由独立 Worker 在当前批次结束后验证；候选失败时继续使用原 Provider。
+                </p>
+                {proxyProviderStatus.switchError && (
+                  <p className="text-sm text-red-600 mt-2">
+                    {proxyProviderStatus.switchError.code}：
+                    {proxyProviderStatus.switchError.message}
+                  </p>
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-2">
+              {['kdl_tunnel', 'kdl_private'].map(provider => {
+                const configured = proxyProviderStatus.providers?.[provider]?.configured;
+                const isBusy = ['pending', 'switching'].includes(proxyProviderStatus.switchStatus);
+                const isActive = proxyProviderStatus.activeProvider === provider && !isBusy;
+                return (
+                  <button
+                    key={provider}
+                    type="button"
+                    onClick={() => handleProxySwitch(provider)}
+                    disabled={!configured || isBusy || isActive || switchingProvider === provider}
+                    className="btn btn-secondary flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title={!configured ? '该 Provider 的环境配置不完整' : undefined}
+                  >
+                    <RefreshCw
+                      className={`w-4 h-4 ${switchingProvider === provider ? 'animate-spin' : ''}`}
+                    />
+                    <span>{isActive ? '当前使用' : `切换到${getProviderLabel(provider)}`}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       )}
 

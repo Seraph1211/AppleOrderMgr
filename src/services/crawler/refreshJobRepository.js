@@ -332,6 +332,80 @@ async function resume(userId) {
 }
 
 /**
+ * 持久化管理员代理 Provider 切换请求。
+ * @param {string} _providerName - 目标 Provider
+ * @param {number|null} userId - 操作用户
+ * @returns {Promise<Object>} 更新后的系统状态
+ */
+function requestProxyProviderSwitch(providerName, userId) {
+  return sequelize.transaction(async transaction => {
+    const state = await ensureSystemState(transaction);
+    await state.reload({ transaction, lock: transaction.LOCK.UPDATE });
+    const alreadyActive = state.activeProxyProvider === providerName;
+    await state.update(
+      {
+        requestedProxyProvider: providerName,
+        proxySwitchStatus: alreadyActive ? 'succeeded' : 'pending',
+        proxySwitchErrorCode: null,
+        proxySwitchErrorMessage: null,
+        proxySwitchRequestedAt: new Date(),
+        updatedBy: userId || null,
+      },
+      { transaction }
+    );
+    return state;
+  });
+}
+
+/**
+ * 标记 Worker 已开始处理指定 Provider 切换。
+ * @param {string} providerName - 目标 Provider
+ * @returns {Promise<Object>} 更新后的系统状态
+ */
+async function startProxyProviderSwitch(_providerName) {
+  const state = await ensureSystemState();
+  await state.update({
+    proxySwitchStatus: 'switching',
+    proxySwitchErrorCode: null,
+    proxySwitchErrorMessage: null,
+  });
+  return state;
+}
+
+/**
+ * 记录 Worker 已成功切换 Provider。
+ * @param {string} providerName - 已生效 Provider
+ * @returns {Promise<Object>} 更新后的系统状态
+ */
+async function completeProxyProviderSwitch(providerName) {
+  const state = await ensureSystemState();
+  await state.update({
+    activeProxyProvider: providerName,
+    proxySwitchStatus: 'succeeded',
+    proxySwitchErrorCode: null,
+    proxySwitchErrorMessage: null,
+    proxySwitchedAt: new Date(),
+  });
+  return state;
+}
+
+/**
+ * 记录候选 Provider 切换失败，保留原活动 Provider。
+ * @param {string} errorCode - 稳定错误码
+ * @param {string} errorMessage - 脱敏错误摘要
+ * @returns {Promise<Object>} 更新后的系统状态
+ */
+async function failProxyProviderSwitch(errorCode, errorMessage) {
+  const state = await ensureSystemState();
+  await state.update({
+    proxySwitchStatus: 'failed',
+    proxySwitchErrorCode: errorCode,
+    proxySwitchErrorMessage: errorMessage,
+  });
+  return state;
+}
+
+/**
  * 在数据库行锁中预留一个全局请求时隙。
  * @param {number} intervalMs - 请求间隔
  * @returns {Promise<number>} 调用方需要等待的毫秒数
@@ -364,5 +438,9 @@ module.exports = {
   heartbeat,
   pause,
   resume,
+  requestProxyProviderSwitch,
+  startProxyProviderSwitch,
+  completeProxyProviderSwitch,
+  failProxyProviderSwitch,
   reserveRequestSlot,
 };

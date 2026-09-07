@@ -98,6 +98,8 @@
 | GET    | /api/system/logs                       | admin                      |
 | GET    | /api/system/auto-refresh               | admin                      |
 | POST   | /api/system/auto-refresh/resume        | admin                      |
+| GET    | /api/system/proxy-provider             | admin                      |
+| POST   | /api/system/proxy-provider             | admin                      |
 
 ## 认证与用户
 
@@ -153,6 +155,8 @@
 - 仪表板 `GET /api/dashboard/stats` 返回 `availableRecipients`，统计状态为“使用中”或“未使用”的取机人总数，不受订单筛选影响。
 - `GET /api/system/auto-refresh` 从持久化系统状态、任务和调度表返回 Worker 心跳、暂停原因、队列计数及新鲜度统计。
 - `POST /api/system/auto-refresh/resume` 仅 admin 可调用；清除持久化断路状态并返回当前状态，不重启 Worker、不改代理配置，也不把 API 进程状态冒充 Worker 状态。
+- `GET /api/system/proxy-provider` 仅返回代理是否启用、两个 Provider 是否已配置、环境默认值、管理员请求值、Worker 已确认值、切换状态、时间和脱敏错误；不返回主机鉴权、用户名、密码、提取 API URL 或签名。
+- `POST /api/system/proxy-provider` 仅 admin 可调用，body 为 `{ "provider": "kdl_tunnel" }` 或 `{ "provider": "kdl_private" }`。未知枚举、代理未启用或目标 Provider 配置不完整时拒绝。接口只持久化切换请求并返回 HTTP `202`；独立 Worker 在当前批次结束后预初始化并验证目标 Provider，成功才切换，失败保留旧 Provider。重复提交当前请求幂等，不把“已提交”响应表示成“已切换”。
 
 ## 维护与验证
 

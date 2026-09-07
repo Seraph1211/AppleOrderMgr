@@ -28,6 +28,33 @@ module.exports = sequelize => {
       workerId: { type: DataTypes.STRING(100), field: 'worker_id' },
       heartbeatAt: { type: DataTypes.DATE, field: 'heartbeat_at' },
       nextRequestAt: { type: DataTypes.DATE, field: 'next_request_at' },
+      requestedProxyProvider: {
+        type: DataTypes.STRING(30),
+        field: 'requested_proxy_provider',
+      },
+      activeProxyProvider: {
+        type: DataTypes.STRING(30),
+        field: 'active_proxy_provider',
+      },
+      proxySwitchStatus: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        defaultValue: 'idle',
+        field: 'proxy_switch_status',
+      },
+      proxySwitchErrorCode: {
+        type: DataTypes.STRING(50),
+        field: 'proxy_switch_error_code',
+      },
+      proxySwitchErrorMessage: {
+        type: DataTypes.TEXT,
+        field: 'proxy_switch_error_message',
+      },
+      proxySwitchRequestedAt: {
+        type: DataTypes.DATE,
+        field: 'proxy_switch_requested_at',
+      },
+      proxySwitchedAt: { type: DataTypes.DATE, field: 'proxy_switched_at' },
     },
     { tableName: 'order_refresh_system_states', underscored: true, timestamps: true }
   );

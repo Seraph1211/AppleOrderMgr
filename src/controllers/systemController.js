@@ -2,6 +2,12 @@
 const { Op } = require('sequelize');
 const { CrawlLog, Order, OrderRefreshJob, OrderRefreshSchedule } = require('../models');
 const refreshJobRepository = require('../services/crawler/refreshJobRepository');
+const {
+  SUPPORTED_PROXY_PROVIDERS,
+  isProxyProviderConfigured,
+  isSupportedProxyProvider,
+} = require('../services/crawler/proxy/proxyProvider');
+const { config } = require('../utils/config');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
@@ -15,6 +21,38 @@ const LOG_TYPES = [
   'scheduler',
 ];
 const SEVERITIES = ['error', 'warn', 'info', 'debug'];
+
+/**
+ * 序列化不包含凭据的代理 Provider 运行状态。
+ * @param {Object} state - Worker 单例状态
+ * @returns {Object} API 响应对象
+ */
+function serializeProxyProviderStatus(state) {
+  let switchError = null;
+  if (state.proxySwitchErrorCode) {
+    switchError = {
+      code: state.proxySwitchErrorCode,
+      message: state.proxySwitchErrorMessage,
+    };
+  }
+  return {
+    enabled: config.proxy.enabled,
+    configuredDefaultProvider: config.proxy.provider,
+    requestedProvider: state.requestedProxyProvider || config.proxy.provider,
+    activeProvider: state.activeProxyProvider,
+    switchStatus: state.proxySwitchStatus || 'idle',
+    switchError,
+    switchRequestedAt: state.proxySwitchRequestedAt,
+    switchedAt: state.proxySwitchedAt,
+    workerHeartbeatAt: state.heartbeatAt,
+    providers: Object.fromEntries(
+      SUPPORTED_PROXY_PROVIDERS.map(providerName => [
+        providerName,
+        { configured: isProxyProviderConfigured(config.proxy, providerName) },
+      ])
+    ),
+  };
+}
 
 /**
  * 序列化系统日志
@@ -228,8 +266,60 @@ async function resumeAutoRefresh(req, res) {
   }
 }
 
+/**
+ * GET /api/system/proxy-provider
+ */
+async function getProxyProviderStatus(_req, res) {
+  try {
+    const state = await refreshJobRepository.ensureSystemState();
+    return res.json({ success: true, data: serializeProxyProviderStatus(state) });
+  } catch (error) {
+    logger.error('查询代理 Provider 状态失败', { error: error.message });
+    throw ApiError.internal('查询代理 Provider 状态失败');
+  }
+}
+
+/**
+ * POST /api/system/proxy-provider
+ */
+async function switchProxyProvider(req, res) {
+  try {
+    const providerName = req.body?.provider;
+    if (typeof providerName !== 'string' || !isSupportedProxyProvider(providerName)) {
+      throw ApiError.badRequest('provider 必须是 kdl_tunnel 或 kdl_private');
+    }
+    if (!config.proxy.enabled) {
+      throw ApiError.conflict('代理功能未启用', undefined, 'PROXY_DISABLED');
+    }
+    if (!isProxyProviderConfigured(config.proxy, providerName)) {
+      throw ApiError.conflict(
+        '目标代理 Provider 配置不完整',
+        { provider: providerName },
+        'PROXY_CONFIG_MISSING'
+      );
+    }
+
+    const state = await refreshJobRepository.requestProxyProviderSwitch(providerName, req.user.id);
+    return res.status(202).json({
+      success: true,
+      message:
+        state.proxySwitchStatus === 'succeeded'
+          ? '目标代理 Provider 已处于生效状态'
+          : '代理 Provider 切换请求已提交，将在当前批次结束后验证并生效',
+      data: serializeProxyProviderStatus(state),
+    });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    logger.error('提交代理 Provider 切换失败', { error: error.message });
+    throw ApiError.internal('提交代理 Provider 切换失败');
+  }
+}
+
 module.exports = {
   listSystemLogs,
   getAutoRefreshStatus,
   resumeAutoRefresh,
+  getProxyProviderStatus,
+  switchProxyProvider,
+  serializeProxyProviderStatus,
 };

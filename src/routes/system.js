@@ -21,5 +21,15 @@ router.post(
   requireRole(['admin']),
   asyncHandler(systemController.resumeAutoRefresh)
 );
+router.get(
+  '/proxy-provider',
+  requireRole(['admin']),
+  asyncHandler(systemController.getProxyProviderStatus)
+);
+router.post(
+  '/proxy-provider',
+  requireRole(['admin']),
+  asyncHandler(systemController.switchProxyProvider)
+);
 
 module.exports = router;
