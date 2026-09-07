@@ -15,6 +15,7 @@ import {
   ScrollText,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { getEmailProcessingMetrics } from '../api';
 
 const baseNavigation = [
   { name: '仪表板', href: '/', icon: LayoutDashboard },
@@ -25,11 +26,15 @@ const baseNavigation = [
   { name: '系统日志', href: '/system-logs', icon: ScrollText },
 ];
 
-const adminNavigation = [{ name: '用户管理', href: '/users', icon: Users, adminOnly: true }];
+const adminNavigation = [
+  { name: '邮件处理', href: '/email-processing', icon: Mail, adminOnly: true },
+  { name: '用户管理', href: '/users', icon: Users, adminOnly: true },
+];
 
 export default function Layout({ children }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [emailWorker, setEmailWorker] = useState(null);
   const menuRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -56,6 +61,28 @@ export default function Layout({ children }) {
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
+
+  useEffect(() => {
+    if (user?.role !== 'admin') {
+      setEmailWorker(null);
+      return undefined;
+    }
+    let active = true;
+    const loadStatus = async () => {
+      try {
+        const response = await getEmailProcessingMetrics();
+        if (active) setEmailWorker(response.data.worker || null);
+      } catch (_error) {
+        if (active) setEmailWorker(null);
+      }
+    };
+    loadStatus();
+    const timer = setInterval(loadStatus, 30_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [user?.role]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -139,14 +166,26 @@ export default function Layout({ children }) {
             <div className="flex-1" />
 
             <div className="flex items-center space-x-4">
-              {/* 当前没有邮件 Worker 心跳接口，不展示无法证实的“监听中”状态 */}
-              <div
-                className="flex items-center space-x-2 text-sm"
-                title="邮件 Worker 心跳接口待实现"
-              >
-                <Mail className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-500">邮件监听状态未接入</span>
-              </div>
+              {user?.role === 'admin' && (
+                <Link
+                  to="/email-processing"
+                  className="flex items-center space-x-2 text-sm text-gray-500 hover:text-primary"
+                  title={
+                    emailWorker?.heartbeatAt
+                      ? `最近心跳：${new Date(emailWorker.heartbeatAt).toLocaleString()}`
+                      : '暂无 Worker 心跳'
+                  }
+                >
+                  <Mail
+                    className={`w-4 h-4 ${emailWorker?.isRunning && emailWorker?.isConnected ? 'text-green-600' : 'text-gray-400'}`}
+                  />
+                  <span>
+                    {emailWorker?.isRunning && emailWorker?.isConnected
+                      ? '邮件监听正常'
+                      : '邮件监听未连接'}
+                  </span>
+                </Link>
+              )}
 
               {/* 分隔线 */}
               <div className="h-6 w-px bg-gray-200"></div>

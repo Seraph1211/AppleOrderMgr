@@ -1,7 +1,7 @@
 /* eslint-disable camelcase */
 const { Op } = require('sequelize');
-const { CrawlLog, Order } = require('../models');
-const crawlerService = require('../services/crawlerService');
+const { CrawlLog, Order, OrderRefreshJob, OrderRefreshSchedule } = require('../models');
+const refreshJobRepository = require('../services/crawler/refreshJobRepository');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
@@ -150,57 +150,51 @@ async function listSystemLogs(req, res) {
  */
 async function getAutoRefreshStatus(_req, res) {
   try {
-    const localStatus = crawlerService.getAutoRefreshStatus();
-    if (process.env.RUN_WORKERS_IN_API === 'true') {
-      return res.json({
-        success: true,
-        data: {
-          ...localStatus,
-          controlMode: 'in_process',
-          controlAvailable: true,
-          statusSource: 'process_memory',
-        },
-      });
-    }
-
-    const [latestStateLog, latestScanLog] = await Promise.all([
-      CrawlLog.findOne({
-        where: {
-          event: {
-            [Op.in]: [
-              'auto_refresh_started',
-              'auto_refresh_paused',
-              'auto_refresh_resumed',
-              'auto_refresh_start_failed',
-            ],
-          },
-        },
-        order: [['createdAt', 'DESC']],
+    const [state, jobCounts, freshnessCounts] = await Promise.all([
+      refreshJobRepository.ensureSystemState(),
+      OrderRefreshJob.findAll({
+        attributes: [
+          'status',
+          [OrderRefreshJob.sequelize.fn('COUNT', OrderRefreshJob.sequelize.col('id')), 'count'],
+        ],
+        group: ['status'],
+        raw: true,
       }),
-      CrawlLog.findOne({
-        where: { event: 'auto_refresh_scan' },
-        order: [['createdAt', 'DESC']],
+      OrderRefreshSchedule.findAll({
+        attributes: [
+          'freshnessStatus',
+          [
+            OrderRefreshSchedule.sequelize.fn(
+              'COUNT',
+              OrderRefreshSchedule.sequelize.col('order_id')
+            ),
+            'count',
+          ],
+        ],
+        group: ['freshnessStatus'],
+        raw: true,
       }),
     ]);
-    const stateLog = latestStateLog?.toJSON ? latestStateLog.toJSON() : latestStateLog;
-    const scanLog = latestScanLog?.toJSON ? latestScanLog.toJSON() : latestScanLog;
-    const isPaused = stateLog ? stateLog.event === 'auto_refresh_paused' : null;
+    const heartbeatAt = state.heartbeatAt ? new Date(state.heartbeatAt) : null;
+    const isRunning = heartbeatAt ? Date.now() - heartbeatAt.getTime() < 20_000 : false;
 
     return res.json({
       success: true,
       data: {
-        ...localStatus,
-        isRunning: null,
-        isPaused,
-        pausedAt: isPaused ? stateLog.createdAt : null,
-        pauseReason: isPaused ? stateLog.errorMessage : null,
-        lastScanAt: scanLog?.createdAt || null,
-        nextScanAt: null,
-        observedStateEvent: stateLog?.event || null,
-        observedStateAt: stateLog?.createdAt || null,
+        enabled: process.env.AUTO_ORDER_REFRESH_ENABLED === 'true',
+        isRunning,
+        isPaused: state.isPaused,
+        pausedAt: state.pausedAt,
+        pauseReason: state.pauseReason,
+        workerId: state.workerId,
+        heartbeatAt,
+        queue: Object.fromEntries(jobCounts.map(row => [row.status, Number(row.count)])),
+        freshness: Object.fromEntries(
+          freshnessCounts.map(row => [row.freshnessStatus, Number(row.count)])
+        ),
         controlMode: 'external_worker',
-        controlAvailable: false,
-        statusSource: 'crawl_logs',
+        controlAvailable: true,
+        statusSource: 'postgresql',
       },
     });
   } catch (error) {
@@ -214,20 +208,16 @@ async function getAutoRefreshStatus(_req, res) {
  */
 async function resumeAutoRefresh(req, res) {
   try {
-    if (process.env.RUN_WORKERS_IN_API !== 'true') {
-      throw ApiError.conflict(
-        '爬虫调度器运行在独立 Worker，当前 API 无法直接恢复该进程',
-        {
-          requiredAction: '确认风控或代理问题已解决后，由授权运维人员重启 crawler-worker',
-        },
-        'WORKER_CONTROL_UNAVAILABLE'
-      );
-    }
-    const status = await crawlerService.resumeAutoRefresh(req.user);
+    const state = await refreshJobRepository.resume(req.user.id);
     return res.json({
       success: true,
-      message: '自动刷新已恢复',
-      data: status,
+      message: '持久化调度暂停状态已清除',
+      data: {
+        isPaused: state.isPaused,
+        pausedAt: state.pausedAt,
+        pauseReason: state.pauseReason,
+        heartbeatAt: state.heartbeatAt,
+      },
     });
   } catch (error) {
     if (error instanceof ApiError) {

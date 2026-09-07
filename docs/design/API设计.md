@@ -67,6 +67,18 @@
 | PUT    | /api/orders/:id                        | write                      |
 | POST   | /api/orders/:id/refresh                | refresh                    |
 | POST   | /api/orders/batch-refresh              | refresh                    |
+| POST   | /api/orders/refresh-all                | refresh                    |
+| POST   | /api/orders/page-open-refresh          | refresh                    |
+| GET    | /api/order-refresh/jobs/:id            | 登录并完成强制改密         |
+| GET    | /api/order-refresh/batches/:id         | 登录并完成强制改密         |
+| GET    | /api/email-processing                  | admin                      |
+| GET    | /api/email-processing/metrics          | admin                      |
+| POST   | /api/email-processing/batch-reparse    | admin                      |
+| GET    | /api/email-processing/:id              | admin                      |
+| POST   | /api/email-processing/:id/reparse      | admin                      |
+| PUT    | /api/email-processing/:id/draft        | admin                      |
+| POST   | /api/email-processing/:id/ingest       | admin                      |
+| POST   | /api/email-processing/:id/resolve      | admin                      |
 | GET    | /api/stats/overview                    | 登录并完成强制改密         |
 | GET    | /api/stats/apple-ids                   | 登录并完成强制改密         |
 | GET    | /api/stats/recipients                  | 登录并完成强制改密         |
@@ -107,10 +119,31 @@
 ## 订单
 
 - 列表和详情由不同序列化函数构建；详情中的 apple_id 是关联对象或 null，不能套用列表的字符串类型。
-- 批量刷新传 orderIds 时仅对目标集合操作；未传时才使用受限筛选与 limit。详见[orderController.js](../../src/controllers/orderController.js)。
+- `POST /api/orders/:id/refresh` 只提交或合并 `manual_single` 任务，返回 HTTP `202` 和 `jobId`；任务入队不代表官网已经更新。
+- `POST /api/orders/refresh-all` 为所有具有合法订单链接的订单创建或复用全量批次，返回 HTTP `202` 和 `batchId`。运行中重复提交返回同一批次。
+- `POST /api/orders/page-open-refresh` 接收 `order_ids`（1–100 个去重正整数），仅为其中已付款订单提交 `page_open` 任务；未付款或状态未知订单复用自动调度，不因打开页面重复访问。
+- 兼容端点 `POST /api/orders/batch-refresh` 仍接收 `orderIds/order_ids` 或既有筛选字段，但改为异步提交任务并返回 HTTP `202`，不再同步等待爬虫完成。
+- `GET /api/order-refresh/jobs/:id` 返回任务状态、错误分类和订单当前新鲜度；只能查询本人提交的任务，admin 可查询全部，系统自动任务允许所有已认证用户读取其非敏感状态。
+- `GET /api/order-refresh/batches/:id` 返回批次六类计数和完成时间；只能查询本人批次，admin 可查询全部。
+- 列表和详情新增 `refresh` 对象：`freshness_status`、`last_attempt_at`、`last_success_at`、`last_failure_at`、`last_error_code`、`last_error_message` 和当前活动 `job`。超过 90 秒没有成功结果的待付款/未知订单由服务端序列化为 `stale`。
 - PUT /api/orders/:id 当前只允许 payerName、paymentScreenshot，不提供任意状态/商品字段更新。
 - 官网金额、支付与取货状态是独立字段。列表、详情不返回 Apple 密码/原始订单链接，身份证和地址保持脱敏；`recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
 - 导出使用当前筛选条件，下载按 Blob 处理；不能以固定价格代替缺失官网金额。
+
+## 邮件处理
+
+邮件处理页面、列表、完整详情、指标、重新解析、草稿、入库、批量操作和人工关闭均仅允许 `admin`。`operator`、`readOnly` 和未认证请求由后端拒绝，前端隐藏导航不替代该门禁。
+
+- `GET /api/email-processing`：query 支持 `page`、`limit`、`status`、`error_code`、`order_number`、`date_from`、`date_to`。省略 status 时只返回 `manual_review`。列表按人工优先、接收时间倒序，返回完整邮件主题和 From，不做字段脱敏。
+- `GET /api/email-processing/metrics`：返回各状态计数、最近收信、最近成功、24 小时失败数，以及独立 Worker 的连接、30 秒心跳运行判断、连续失败和最近错误码。
+- `GET /api/email-processing/:id`：返回解密后的完整 `raw_mime`、`parsed_data`、`manual_draft`、`final_data`、处理尝试和管理员操作审计；读取完整详情本身写入 `view_full_detail` 审计。若草稿或解析结果中的订单号已存在，返回 `duplicate_order` 入口。
+- `POST /api/email-processing/:id/reparse`：只允许 `manual_review/retry_wait`，使用当前解析器生成预览但不创建订单；返回预览、最新 version 和重复订单结果。
+- `PUT /api/email-processing/:id/draft`：body 为 `{ draft, version }`，执行完整人工字段校验并加密保存。旧 version 返回 HTTP 409、错误码 `CONCURRENT_MODIFICATION`。
+- `POST /api/email-processing/:id/ingest`：body 同草稿保存；在订单号 advisory lock 和邮件行锁下统一创建/关联订单、邮件终态和首次刷新任务。相同订单不覆盖，返回已有订单并把邮件置为 `superseded`。
+- `POST /api/email-processing/batch-reparse`：body 为 `{ ids }`，1–50 个去重整数；只处理指定的可重解析记录，并为每个请求 ID 返回独立的成功、稳定错误码或 `NOT_FOUND`。
+- `POST /api/email-processing/:id/resolve`：body 为 `{ resolutionType, reason, version, orderNumber? }`；`resolutionType` 仅允许 `ignored/existing_order`，原因必填且不超过 500 字，关联已有订单时必须提供确实存在的订单号。
+
+管理员人工草稿可包含 `appleId`、`applePassword`、`orderNumber`、`orderUrl`、`orderDate`、`orderStatus`、`paymentMethod`、`products[]`，以及 `recipient.name/idLast4/idCard/email/phone/address/tag`。允许查看和填写密码、完整身份证号及系统内部状态是本模块的明确 admin 专属规则；字段在 `email_logs` 草稿/最终数据及订单敏感快照中加密存储，不得进入运行日志或错误响应。Apple URL 仍只允许中国官网 `vieworder` 路径且必须与订单号一致。
 
 ## 专题协议
 
@@ -118,7 +151,8 @@
 - [渠道管理](渠道管理说明.md)：标签聚合、分页、newTag 事务改名。
 - [仪表板](仪表板说明.md)：图表与指标口径；stats 独立统计入口见[statsController.js](../../src/controllers/statsController.js)。
 - 仪表板 `GET /api/dashboard/stats` 返回 `availableRecipients`，统计状态为“使用中”或“未使用”的取机人总数，不受订单筛选影响。
-- 系统自动刷新在独立 Worker 模式为日志观测；resume 返回 409，不把 API 内存状态当作 Worker 真实状态，见[systemController.js](../../src/controllers/systemController.js)。
+- `GET /api/system/auto-refresh` 从持久化系统状态、任务和调度表返回 Worker 心跳、暂停原因、队列计数及新鲜度统计。
+- `POST /api/system/auto-refresh/resume` 仅 admin 可调用；清除持久化断路状态并返回当前状态，不重启 Worker、不改代理配置，也不把 API 进程状态冒充 Worker 状态。
 
 ## 维护与验证
 

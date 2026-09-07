@@ -4,8 +4,8 @@
  *
  * 代理使用策略：
  * - 所有爬虫功能必须使用代理（防止 IP 被 Apple 风控）
- * - 失败计数累积，连续失败 2 次永久废弃代理
- * - HTTP 541 风控立即废弃代理
+ * - 快代理隧道在单次抓取及重定向期间固定出口，重试通过新 sid 换出口
+ * - 私密代理兼容模式保留失败计数和 HTTP 541 废弃 IP 规则
  *
  * 作者：Seraph
  * 更新：2026-07-08
@@ -21,12 +21,35 @@ const { removeControlCharacters } = require('../utils/helpers');
 const { Order, CrawlLog, sequelize } = require('../models');
 const { config } = require('../utils/config');
 const { sendTelegramAlert } = require('../utils/telegramNotifier');
+const crawlerRateLimiter = require('./crawler/crawlerRateLimiter');
+const refreshJobRepository = require('./crawler/refreshJobRepository');
+const { classifyRefreshError } = require('./crawler/refreshErrors');
+const { isAutoRefreshEligible } = require('./crawler/refreshPolicy');
 
+const MAX_CRAWL_ATTEMPTS = 3;
 const AUTO_STOP_STATUSES = new Set(['completed', 'cancelled', 'pickup_cancelled', 'delivered']);
-const AUTO_STOP_PAYMENT_PICKUP = {
-  paymentStatus: 'paid',
-  pickupStatus: 'not_picked_up',
-};
+const ORDER_ITEM_KEY_PATTERN = /^orderItem-\d+(?:of\d+)?(?:-\d+)*$/;
+const APPLE_CURRENT_STATUS_MAP = Object.freeze({
+  PROCESSING: 'processing',
+  SHIPPED: 'shipped',
+  READY_FOR_PICKUP: 'ready_for_pickup',
+  DELIVERED: 'delivered',
+  PICKED_UP: 'completed',
+  CANCELLED: 'cancelled',
+  PICKUP_CANCELLED: 'pickup_cancelled',
+  PAYMENT_EXPIRED_STORED_ORDER: 'cancelled',
+});
+const HIDDEN_ORDER_TEXT_SELECTORS = [
+  'script',
+  'style',
+  'template',
+  'noscript',
+  'footer',
+  '[hidden]',
+  '[aria-hidden="true"]',
+  '[style*="display:none"]',
+  '[style*="display: none"]',
+].join(', ');
 const VALIDATION_STATUS = {
   UNCHECKED: 'unchecked',
   VALID: 'valid',
@@ -140,7 +163,7 @@ function sleep(ms) {
 }
 
 /**
- * 生成随机延迟时间（5-10秒）
+ * 生成旧批量入口使用的随机延迟时间（5-10秒）
  * @returns {number} 延迟毫秒数
  */
 function getRandomDelay() {
@@ -159,6 +182,54 @@ function normalizeProductText(value) {
     .replace(/\s+/g, '')
     .replace(/[，,，。]/g, '')
     .toLowerCase();
+}
+
+/**
+ * 获取去除脚本、样式、隐藏节点和页脚后的订单可见文本。
+ * @param {Function} $ - Cheerio 实例
+ * @returns {string} 清理后的页面文本
+ */
+function extractVisibleOrderText($) {
+  const body = $('body').clone();
+  body.find(HIDDEN_ORDER_TEXT_SELECTORS).remove();
+  return body.text().replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * 按 Apple JSON 提供的顺序取得订单项键。
+ * @param {Object} orderItems - Apple 订单项容器
+ * @returns {string[]} 有效订单项键
+ */
+function getOrderedOrderItemKeys(orderItems) {
+  const declaredKeys = Array.isArray(orderItems?.c) ? orderItems.c : [];
+  const fallbackKeys = Object.keys(orderItems || {}).filter(key =>
+    ORDER_ITEM_KEY_PATTERN.test(key)
+  );
+  return [...new Set([...declaredKeys, ...fallbackKeys])].filter(
+    key => ORDER_ITEM_KEY_PATTERN.test(key) && orderItems[key]
+  );
+}
+
+/**
+ * 读取并标准化首个 Apple 订单项的 currentStatus。
+ * @param {Object} orderItems - Apple 订单项容器
+ * @returns {string} Apple 原始状态；缺失时为空字符串
+ */
+function extractRawCurrentOrderStatus(orderItems) {
+  const firstItemKey = getOrderedOrderItemKeys(orderItems)[0];
+  const currentStatus = orderItems?.[firstItemKey]?.orderItemStatusTracker?.d?.currentStatus;
+  return String(currentStatus || '')
+    .trim()
+    .toUpperCase();
+}
+
+/**
+ * 将 Apple currentStatus 映射为系统订单状态。
+ * @param {Object} orderItems - Apple 订单项容器
+ * @returns {string} 系统订单状态
+ */
+function extractCurrentOrderStatus(orderItems) {
+  return APPLE_CURRENT_STATUS_MAP[extractRawCurrentOrderStatus(orderItems)] || 'unknown';
 }
 
 /**
@@ -215,10 +286,11 @@ function extractOfficialAmount(bodyText) {
       }
     }
 
+    const hasTotalLabel = /订单总计|总计|合计/.test(normalizedText);
     return {
       amount: null,
       currency: null,
-      parseError: '页面未出现可识别的订单总金额',
+      parseError: hasTotalLabel ? '页面包含订单总计，但金额格式无法识别' : null,
     };
   } catch (error) {
     logger.error('解析官网订单金额失败', { error: error.message });
@@ -234,21 +306,25 @@ function extractOfficialAmount(bodyText) {
  * 从页面文本中推断支付状态
  * @param {string} bodyText - 页面文本
  * @param {string|null} orderStatus - 订单状态
+ * @param {string|null} rawCurrentStatus - Apple 原始 currentStatus
  * @returns {string|null} 标准支付状态
  */
-function inferPaymentStatus(bodyText, orderStatus = null) {
+function inferPaymentStatus(bodyText, orderStatus = null, rawCurrentStatus = null) {
   const text = String(bodyText || '');
-  if (/已付款|支付成功|已支付/.test(text)) {
+  if (rawCurrentStatus === 'PAYMENT_EXPIRED_STORED_ORDER') {
+    return 'unpaid';
+  }
+  if (/已收到付款|已付款|支付成功|已支付/.test(text)) {
     return 'paid';
   }
   if (/待付款|等待付款|未付款/.test(text)) {
     return 'unpaid';
   }
-  if (/退款|已退款/.test(text)) {
-    return 'refunded';
-  }
   if (['ready_for_pickup', 'completed', 'delivered'].includes(orderStatus)) {
     return 'paid';
+  }
+  if (/退款|已退款/.test(text)) {
+    return 'refunded';
   }
   return null;
 }
@@ -419,11 +495,8 @@ function getAutoRefreshStopReason(orderLike) {
   if (status === 'ready_for_pickup') {
     return 'status:ready_for_pickup';
   }
-  if (
-    orderLike.paymentStatus === AUTO_STOP_PAYMENT_PICKUP.paymentStatus &&
-    orderLike.pickupStatus === AUTO_STOP_PAYMENT_PICKUP.pickupStatus
-  ) {
-    return 'paid_not_picked_up';
+  if (orderLike.paymentStatus === 'paid') {
+    return 'payment_status:paid';
   }
   if (orderLike.validationStatus === VALIDATION_STATUS.ABNORMAL) {
     return 'validation_abnormal';
@@ -477,6 +550,12 @@ async function pauseAutoRefresh(reason, context = {}) {
     schedulerState.isPaused = true;
     schedulerState.pausedAt = new Date();
     schedulerState.pauseReason = reason;
+
+    try {
+      await refreshJobRepository.pause(reason);
+    } catch (persistError) {
+      logger.warn('持久化自动刷新暂停状态失败', { error: persistError.message });
+    }
 
     logger.error('自动刷新已暂停', {
       reason,
@@ -596,8 +675,9 @@ async function fetchOrderPage(orderUrl, proxy = null) {
       'User-Agent': config.crawler.userAgent,
       Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-      Connection: 'keep-alive',
+      Connection: proxy?.disableKeepAlive ? 'close' : 'keep-alive',
       'Upgrade-Insecure-Requests': '1',
+      'Accept-Encoding': 'gzip',
     },
     timeout: config.crawler.timeout,
   };
@@ -697,7 +777,7 @@ function extractOrderJson(html) {
 function parseOrderData(orderJson, html) {
   try {
     const $ = cheerio.load(html);
-    const bodyText = $('body').text();
+    const bodyText = extractVisibleOrderText($);
 
     // 1. 提取订单基本信息
     const orderHeader = orderJson.orderDetail?.orderHeader?.d || {};
@@ -713,8 +793,10 @@ function parseOrderData(orderJson, html) {
       }
     }
 
-    // 2. 提取订单状态（从页面文本）
-    let orderStatus = 'unknown';
+    // 2. 以首个订单项的 currentStatus 为权威，页面可见文本仅用于兼容回退
+    const orderItems = orderJson.orderDetail?.orderItems || {};
+    const rawCurrentStatus = extractRawCurrentOrderStatus(orderItems);
+    let orderStatus = extractCurrentOrderStatus(orderItems);
     const statusKeywords = {
       已取货: 'completed',
       取货已取消: 'pickup_cancelled',
@@ -726,39 +808,38 @@ function parseOrderData(orderJson, html) {
       已发货: 'shipped',
     };
 
-    for (const [keyword, status] of Object.entries(statusKeywords)) {
-      if (bodyText.includes(keyword)) {
-        orderStatus = status;
-        break;
+    if (orderStatus === 'unknown') {
+      for (const [keyword, status] of Object.entries(statusKeywords)) {
+        if (bodyText.includes(keyword)) {
+          orderStatus = status;
+          break;
+        }
       }
     }
 
     // 3. 提取商品列表
-    const orderItems = orderJson.orderDetail?.orderItems || {};
     const products = [];
 
-    Object.keys(orderItems).forEach(key => {
-      if (key.startsWith('orderItem-') && key.match(/orderItem-\d+/)) {
-        const item = orderItems[key];
-        const itemDetails = item.orderItemDetails?.d;
-        const itemStatus = item.orderItemStatusTracker?.d;
+    getOrderedOrderItemKeys(orderItems).forEach(key => {
+      const item = orderItems[key];
+      const itemDetails = item.orderItemDetails?.d;
+      const itemStatus = item.orderItemStatusTracker?.d;
 
-        if (itemDetails) {
-          products.push({
-            name: itemDetails.productName || '',
-            model:
-              itemDetails.partNumber ||
-              itemDetails.sku ||
-              itemDetails.productId ||
-              itemDetails.modelNumber ||
-              '',
-            quantity: itemDetails.quantity || 0,
-            status: itemStatus?.currentStatus || 'unknown',
-            deliveryType: item.d?.deliveryType || 'unknown',
-            pickupType: itemDetails.pickupType || null,
-            deliveryDate: itemDetails.deliveryDate || null,
-          });
-        }
+      if (itemDetails) {
+        products.push({
+          name: itemDetails.productName || '',
+          model:
+            itemDetails.partNumber ||
+            itemDetails.sku ||
+            itemDetails.productId ||
+            itemDetails.modelNumber ||
+            '',
+          quantity: itemDetails.quantity || 0,
+          status: itemStatus?.currentStatus || 'unknown',
+          deliveryType: item.d?.deliveryType || 'unknown',
+          pickupType: itemDetails.pickupType || null,
+          deliveryDate: itemDetails.deliveryDate || null,
+        });
       }
     });
 
@@ -767,7 +848,7 @@ function parseOrderData(orderJson, html) {
     let storeDirectionsUrl = null;
 
     // 从第一个商品的配送信息中提取门店
-    const firstItemKey = orderItems.c?.[0];
+    const firstItemKey = getOrderedOrderItemKeys(orderItems)[0];
     if (firstItemKey) {
       const firstItem = orderItems[firstItemKey];
       const storeInfo = firstItem?.shippingInfo?.['shipping-address']?.address?.d;
@@ -791,7 +872,7 @@ function parseOrderData(orderJson, html) {
       orderNumber,
       orderDate,
       orderStatus,
-      paymentStatus: inferPaymentStatus(bodyText, orderStatus),
+      paymentStatus: inferPaymentStatus(bodyText, orderStatus, rawCurrentStatus),
       pickupStatus: inferPickupStatus(bodyText, orderStatus),
       products,
       pickupStore,
@@ -827,8 +908,17 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
 
   let lastError;
   let currentProxy = null;
+  let windControlAttemptCount = 0;
+  const requestedAttempts = Number.parseInt(maxRetries, 10);
+  const attemptLimit = Number.isFinite(requestedAttempts)
+    ? Math.min(Math.max(requestedAttempts, 1), MAX_CRAWL_ATTEMPTS)
+    : MAX_CRAWL_ATTEMPTS;
 
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+  if (!proxyManager.getStatus().isInitialized) {
+    await proxyManager.initialize();
+  }
+
+  for (let attempt = 1; attempt <= attemptLimit; attempt++) {
     try {
       // 获取代理
       currentProxy = proxyManager.getNextProxy();
@@ -870,11 +960,12 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
       logger.info('开始爬取订单', {
         urlSummary: summarizeOrderUrl(orderUrl),
         attempt,
-        maxRetries,
+        maxRetries: attemptLimit,
         proxy: `${currentProxy.host}:${currentProxy.port}`,
       });
 
       // 发送请求
+      await crawlerRateLimiter.acquire();
       const html = await fetchOrderPage(orderUrl, currentProxy);
 
       // 提取 JSON 数据
@@ -905,38 +996,32 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
       };
     } catch (error) {
       lastError = error;
+      error.httpStatus = error.httpStatus || error.response?.status;
+      error.refreshErrorCode = classifyRefreshError(error);
+
+      if ([407, 441, 517].includes(error.httpStatus)) {
+        error.eventType = 'proxy';
+      }
 
       logger.warn('订单爬取失败', {
         attempt,
-        maxRetries,
+        maxRetries: attemptLimit,
         error: error.message,
         statusCode: error.response?.status,
         proxy: currentProxy ? `${currentProxy.host}:${currentProxy.port}` : 'none',
       });
 
-      if (currentProxy) {
-        // HTTP 541: Apple 风控，立即永久废弃
+      if (currentProxy && error.httpStatus !== 441 && error.httpStatus !== 407) {
+        // HTTP 541: 私密代理废弃 IP；隧道 Provider 在下次重试生成新 sid
         if (error.response?.status === 541) {
-          logger.warn('检测到 Apple 风控（HTTP 541），立即废弃代理');
+          logger.warn('检测到 Apple 风控（HTTP 541），下次重试切换代理出口');
           proxyManager.markProxyAsBad(currentProxy);
-          schedulerState.consecutiveWindControlCount++;
+          windControlAttemptCount++;
           error.isWindControl = true;
           error.httpStatus = 541;
           error.proxyIp = `${currentProxy.host}:${currentProxy.port}`;
           error.eventType = 'wind_control';
-
-          if (
-            schedulerState.consecutiveWindControlCount >= config.crawler.windControlPauseThreshold
-          ) {
-            await pauseAutoRefresh('连续触发 Apple 风控', {
-              urlSummary: summarizeOrderUrl(orderUrl),
-              proxyIp: error.proxyIp,
-              consecutiveWindControlCount: schedulerState.consecutiveWindControlCount,
-              threshold: config.crawler.windControlPauseThreshold,
-            });
-          }
-          // ✅ 修复：不在这里刷新，重试时会自动从池中获取下一个代理
-          // 只有当 getNextProxy() 返回 null 时，才需要刷新
+          // 不在这里刷新固定入口；重试时从 Provider 获取下一代理会话
         }
         // 其他错误：累计失败次数
         else {
@@ -950,9 +1035,19 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
         }
       }
 
+      if (error.httpStatus === 407) {
+        await pauseAutoRefreshForProxyFailure('快代理鉴权失败（HTTP 407）', {
+          urlSummary: summarizeOrderUrl(orderUrl),
+          proxy: `${currentProxy.host}:${currentProxy.port}`,
+        });
+        break;
+      }
+
       // 如果还有重试机会，延时后重试
-      if (attempt < maxRetries) {
-        const delay = getRandomDelay() * attempt; // 递增延时
+      if (attempt < attemptLimit) {
+        const retryMin = config.crawler.retryDelayMinMs || 1000;
+        const retryMax = config.crawler.retryDelayMaxMs || 5000;
+        const delay = Math.min(retryMax, retryMin * attempt) + Math.floor(Math.random() * 250);
         logger.info('等待后重试', {
           delaySeconds: (delay / 1000).toFixed(1),
           nextAttempt: attempt + 1,
@@ -962,13 +1057,26 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
     }
   }
 
+  if (windControlAttemptCount === attemptLimit) {
+    schedulerState.consecutiveWindControlCount++;
+    if (schedulerState.consecutiveWindControlCount >= config.crawler.windControlPauseThreshold) {
+      await pauseAutoRefresh('连续订单耗尽重试并触发 Apple 风控', {
+        urlSummary: summarizeOrderUrl(orderUrl),
+        proxyIp: lastError.proxyIp,
+        consecutiveWindControlCount: schedulerState.consecutiveWindControlCount,
+        threshold: config.crawler.windControlPauseThreshold,
+      });
+    }
+  }
+
   // 所有重试都失败
-  const retryError = new Error(`爬取订单失败，已重试 ${maxRetries} 次: ${lastError.message}`);
+  const retryError = new Error(`爬取订单失败，已重试 ${attemptLimit} 次: ${lastError.message}`);
   retryError.isWindControl = Boolean(lastError.isWindControl);
   retryError.httpStatus = lastError.httpStatus || lastError.response?.status;
   retryError.proxyIp =
     lastError.proxyIp || (currentProxy ? `${currentProxy.host}:${currentProxy.port}` : null);
   retryError.eventType = lastError.eventType || 'crawler';
+  retryError.refreshErrorCode = lastError.refreshErrorCode || classifyRefreshError(lastError);
   throw retryError;
 }
 
@@ -1331,21 +1439,7 @@ async function crawlMultipleOrders(orderIds, options = {}) {
 function isOrderEligibleForAutoRefresh(order) {
   try {
     const plain = typeof order.toJSON === 'function' ? order.toJSON() : order;
-    if (!plain.autoRefreshEnabled) {
-      return false;
-    }
-    if (!plain.orderUrl && !plain.orderNumber) {
-      return false;
-    }
-    if (plain.validationStatus === VALIDATION_STATUS.ABNORMAL) {
-      return false;
-    }
-    return !getAutoRefreshStopReason({
-      status: plain.status,
-      paymentStatus: plain.paymentStatus,
-      pickupStatus: plain.pickupStatus,
-      validationStatus: plain.validationStatus,
-    });
+    return isAutoRefreshEligible(plain);
   } catch (error) {
     logger.error('判断订单自动刷新资格失败', { error: error.message });
     return false;

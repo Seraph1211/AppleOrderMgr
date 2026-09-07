@@ -21,6 +21,24 @@ const USER_ROLES = Object.freeze(['admin', 'operator', 'readOnly']);
 
 const MIN_PASSWORD_LENGTH = 8;
 
+const EMAIL_PROCESSING_STATUSES = Object.freeze([
+  'received',
+  'ignored',
+  'parsing',
+  'retry_wait',
+  'manual_review',
+  'processing',
+  'succeeded',
+  'superseded',
+]);
+
+const EMAIL_TERMINAL_STATUSES = Object.freeze([
+  'ignored',
+  'manual_review',
+  'succeeded',
+  'superseded',
+]);
+
 const PERMISSIONS = Object.freeze({
   READ: 'read',
   WRITE: 'write',
@@ -47,6 +65,8 @@ module.exports = {
   ORDER_STATUSES,
   USER_ROLES,
   MIN_PASSWORD_LENGTH,
+  EMAIL_PROCESSING_STATUSES,
+  EMAIL_TERMINAL_STATUSES,
   PERMISSIONS,
   ROLE_PERMISSIONS,
 };

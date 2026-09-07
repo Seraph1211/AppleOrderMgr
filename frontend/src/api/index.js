@@ -6,6 +6,10 @@ import {
   exportOrders,
   refreshOrder,
   batchRefreshOrders,
+  refreshAllOrders,
+  submitPageOpenRefresh,
+  getRefreshJob,
+  getRefreshBatch,
   updateOrder,
 } from './ordersApi';
 import {
@@ -27,6 +31,16 @@ import { getStats, getAppleIdStats, getRecipientStats, getProductStats } from '.
 import { previewImport, executeImport, downloadTemplate } from './importApi';
 import { getChannels, getChannelStats, getChannelOrders, updateChannelName } from './channelsApi';
 import { getSystemLogs, getAutoRefreshStatus, resumeAutoRefresh } from './systemApi';
+import {
+  getEmailProcessingRecords,
+  getEmailProcessingMetrics,
+  getEmailProcessingRecord,
+  reparseEmailRecord,
+  saveEmailDraft,
+  ingestEmailRecord,
+  batchReparseEmailRecords,
+  resolveEmailRecord,
+} from './emailProcessingApi';
 
 export {
   client,
@@ -38,6 +52,10 @@ export {
   exportOrders,
   refreshOrder,
   batchRefreshOrders,
+  refreshAllOrders,
+  submitPageOpenRefresh,
+  getRefreshJob,
+  getRefreshBatch,
   updateOrder,
 
   // Apple IDs
@@ -76,4 +94,14 @@ export {
   getSystemLogs,
   getAutoRefreshStatus,
   resumeAutoRefresh,
+
+  // Email processing
+  getEmailProcessingRecords,
+  getEmailProcessingMetrics,
+  getEmailProcessingRecord,
+  reparseEmailRecord,
+  saveEmailDraft,
+  ingestEmailRecord,
+  batchReparseEmailRecords,
+  resolveEmailRecord,
 };

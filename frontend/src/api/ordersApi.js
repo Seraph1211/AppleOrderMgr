@@ -30,7 +30,10 @@ export const getOrderDetail = id => {
 export const getOrderFilterOptions = () => client.get('/orders/filter-options');
 
 export const exportOrders = async (params = {}) => {
-  const blob = await client.get('/orders/export', { params, responseType: 'blob' });
+  const blob = await client.get('/orders/export', {
+    params,
+    responseType: 'blob',
+  });
   const objectUrl = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = objectUrl;
@@ -58,6 +61,19 @@ export const refreshOrder = id => {
 export const batchRefreshOrders = ids => {
   return client.post('/orders/batch-refresh', { order_ids: ids });
 };
+
+/** 提交刷新全部批次。 */
+export const refreshAllOrders = () => client.post('/orders/refresh-all');
+
+/** 为当前页面可见订单提交页面打开刷新。 */
+export const submitPageOpenRefresh = ids =>
+  client.post('/orders/page-open-refresh', { order_ids: ids });
+
+/** 查询刷新任务状态。 */
+export const getRefreshJob = id => client.get(`/order-refresh/jobs/${id}`);
+
+/** 查询刷新全部批次状态。 */
+export const getRefreshBatch = id => client.get(`/order-refresh/batches/${id}`);
 
 /**
  * 更新订单信息

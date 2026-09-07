@@ -1,18 +1,19 @@
-import { Routes, Route } from 'react-router-dom'
-import { AuthProvider } from './contexts/AuthContext'
-import Layout from './components/Layout'
-import ProtectedRoute from './components/ProtectedRoute'
-import Login from './pages/Login'
-import Dashboard from './pages/Dashboard'
-import Orders from './pages/Orders'
-import OrderDetail from './pages/OrderDetail'
-import AppleIds from './pages/AppleIds'
-import Recipients from './pages/Recipients'
-import Channels from './pages/Channels'
-import ChannelOrders from './pages/ChannelOrders'
-import Users from './pages/Users'
-import ChangePassword from './pages/ChangePassword'
-import SystemLogs from './pages/SystemLogs'
+import { Routes, Route } from 'react-router-dom';
+import { AuthProvider } from './contexts/AuthContext';
+import Layout from './components/Layout';
+import ProtectedRoute from './components/ProtectedRoute';
+import Login from './pages/Login';
+import Dashboard from './pages/Dashboard';
+import Orders from './pages/Orders';
+import OrderDetail from './pages/OrderDetail';
+import AppleIds from './pages/AppleIds';
+import Recipients from './pages/Recipients';
+import Channels from './pages/Channels';
+import ChannelOrders from './pages/ChannelOrders';
+import Users from './pages/Users';
+import ChangePassword from './pages/ChangePassword';
+import SystemLogs from './pages/SystemLogs';
+import EmailProcessing from './pages/EmailProcessing';
 
 function App() {
   return (
@@ -38,6 +39,15 @@ function App() {
                   <Route path="/change-password" element={<ChangePassword />} />
                   <Route path="/system-logs" element={<SystemLogs />} />
 
+                  <Route
+                    path="/email-processing"
+                    element={
+                      <ProtectedRoute requiredRole="admin">
+                        <EmailProcessing />
+                      </ProtectedRoute>
+                    }
+                  />
+
                   {/* 仅管理员可访问：用户管理 */}
                   <Route
                     path="/users"
@@ -54,7 +64,7 @@ function App() {
         />
       </Routes>
     </AuthProvider>
-  )
+  );
 }
 
-export default App
+export default App;

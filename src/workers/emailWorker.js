@@ -14,7 +14,7 @@ const { validateEncryptionConfiguration } = require('../utils/fieldEncryption');
 async function shutdown(signal) {
   try {
     logger.info('邮件 Worker 正在关闭', { signal });
-    emailService.stopEmailService();
+    await emailService.stopEmailService();
     await sequelize.close();
     process.exit(0);
   } catch (error) {

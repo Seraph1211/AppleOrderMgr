@@ -19,7 +19,12 @@ describe('模型安全与关联契约', () => {
       Recipient: require('../src/models/Recipient')(sequelize),
       Order: require('../src/models/Order')(sequelize),
       EmailLog: require('../src/models/EmailLog')(sequelize),
+      EmailWorkerState: require('../src/models/EmailWorkerState')(sequelize),
       CrawlLog: require('../src/models/CrawlLog')(sequelize),
+      OrderRefreshSchedule: require('../src/models/OrderRefreshSchedule')(sequelize),
+      OrderRefreshBatch: require('../src/models/OrderRefreshBatch')(sequelize),
+      OrderRefreshJob: require('../src/models/OrderRefreshJob')(sequelize),
+      OrderRefreshSystemState: require('../src/models/OrderRefreshSystemState')(sequelize),
     };
 
     Object.values(models).forEach(model => {
@@ -65,10 +70,32 @@ describe('模型安全与关联契约', () => {
     expect(models.Order.rawAttributes).not.toHaveProperty('apple_id_ref');
     expect(models.Order.rawAttributes).not.toHaveProperty('recipient_ref');
     expect(models.CrawlLog.rawAttributes).not.toHaveProperty('order_id');
+    expect(models.EmailLog.rawAttributes).not.toHaveProperty('order_id');
 
     expect(models.Recipient.rawAttributes).toHaveProperty('appleIdRef');
     expect(models.Order.rawAttributes).toHaveProperty('appleIdRef');
     expect(models.Order.rawAttributes).toHaveProperty('recipientRef');
     expect(models.CrawlLog.rawAttributes).toHaveProperty('orderId');
+    expect(models.EmailLog.rawAttributes).toHaveProperty('orderId');
+  });
+
+  test('邮件原文、解析数据和人工草稿使用加密存储', () => {
+    const log = models.EmailLog.build({
+      emailUid: '1',
+      rawContent: 'raw mime',
+      parsedData: { orderNumber: 'W1234567890' },
+      manualDraft: { applePassword: 'secret' },
+      finalData: { recipient: { idCard: '110101199001011234' } },
+      attemptHistory: [{ errorCode: 'PRODUCT_INVALID' }],
+      auditHistory: [{ action: 'view_full_detail', userId: 1 }],
+    });
+
+    expect(log.getDataValue('rawContent')).toMatch(/^enc:v1:/);
+    expect(log.getDataValue('parsedData')).toHaveProperty('__encrypted');
+    expect(log.getDataValue('manualDraft')).toHaveProperty('__encrypted');
+    expect(log.getDataValue('finalData')).toHaveProperty('__encrypted');
+    expect(log.getDataValue('attemptHistory')).toHaveProperty('__encrypted');
+    expect(log.getDataValue('auditHistory')).toHaveProperty('__encrypted');
+    expect(log.manualDraft.applePassword).toBe('secret');
   });
 });

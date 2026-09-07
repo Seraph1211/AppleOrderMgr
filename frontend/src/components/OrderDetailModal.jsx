@@ -190,13 +190,14 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
       if (response.success) {
         const updatedOrder = {
           ...order,
-          status: response.data.new_status || order.status,
-          validationStatus: response.data.validation_status || order.validationStatus,
-          autoRefreshStopReason: response.data.auto_refresh_stop_reason || order.autoRefreshStopReason,
-          lastCrawledAt: new Date().toISOString()
+          freshnessStatus: response.data.status === 'running' ? 'refreshing' : 'pending',
+          refreshJob: {
+            id: response.data.jobId,
+            status: response.data.status
+          }
         }
         onUpdate && onUpdate(updatedOrder)
-        setAlertInfo({ title: '刷新完成', message: '订单已从 Apple 官网更新' })
+        setAlertInfo({ title: '任务已提交', message: '订单将在后台刷新，请稍后重新加载查看结果' })
       }
     } catch (error) {
       setAlertInfo({ title: '刷新失败', message: error.message || '订单刷新失败，请稍后重试' })

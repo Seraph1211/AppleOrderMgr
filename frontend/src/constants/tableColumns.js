@@ -22,6 +22,14 @@ export const ordersColumns = [
     pinned: false,
   },
   {
+    key: 'freshnessStatus',
+    label: '刷新状态',
+    width: '120px',
+    defaultVisible: true,
+    sortable: false,
+    pinned: false,
+  },
+  {
     key: 'validationStatus',
     label: '校验状态',
     width: '120px',
@@ -233,7 +241,7 @@ export const ordersColumns = [
     sortable: false,
     pinned: true,
   },
-]
+];
 
 export const appleIdsColumns = [
   // 基础信息
@@ -338,7 +346,7 @@ export const appleIdsColumns = [
     sortable: false,
     pinned: true,
   },
-]
+];
 
 export const recipientsColumns = [
   {
@@ -429,4 +437,4 @@ export const recipientsColumns = [
     sortable: false,
     pinned: true,
   },
-]
+];

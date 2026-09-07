@@ -9,7 +9,15 @@ import {
   AlertTriangle,
   PauseCircle,
 } from 'lucide-react';
-import { getOrders, getOrderFilterOptions, exportOrders, getAutoRefreshStatus } from '../api';
+import {
+  getOrders,
+  getOrderFilterOptions,
+  exportOrders,
+  getAutoRefreshStatus,
+  refreshAllOrders,
+  submitPageOpenRefresh,
+  getRefreshBatch,
+} from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
 import ColumnConfigModal from '../components/ColumnConfigModal';
 import OrderDetailModal from '../components/OrderDetailModal';
@@ -23,6 +31,8 @@ export default function Orders() {
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [autoRefreshStatus, setAutoRefreshStatus] = useState(null);
+  const [refreshBatch, setRefreshBatch] = useState(null);
+  const [refreshMessage, setRefreshMessage] = useState('');
 
   // 分页状态
   const [pagination, setPagination] = useState({
@@ -39,6 +49,7 @@ export default function Orders() {
     recipientName: '',
     pickupStore: '',
     payerName: '',
+    payment_status: '',
   });
 
   const [showColumnConfig, setShowColumnConfig] = useState(false);
@@ -75,7 +86,29 @@ export default function Orders() {
     filters.recipientName,
     filters.pickupStore,
     filters.payerName,
+    filters.payment_status,
   ]);
+
+  useEffect(() => {
+    if (!refreshBatch?.id || refreshBatch.status === 'completed') return undefined;
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await getRefreshBatch(refreshBatch.id);
+        if (response.success) {
+          setRefreshBatch(response.data);
+          if (response.data.status === 'completed') {
+            setRefreshMessage(
+              `刷新全部完成：成功 ${response.data.succeeded}，失败 ${response.data.failed}，跳过 ${response.data.skipped}`
+            );
+            loadOrders();
+          }
+        }
+      } catch (error) {
+        setRefreshMessage(error.message || '刷新进度查询失败');
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [refreshBatch?.id, refreshBatch?.status]);
 
   const loadOrders = async () => {
     setLoading(true);
@@ -86,64 +119,77 @@ export default function Orders() {
         keyword: searchTerm || undefined,
         ...filters,
       };
-      console.log('加载订单，参数:', params);
       const res = await getOrders(params);
-      console.log('API响应:', res);
 
       if (res.success) {
-        console.log('订单数据:', res.data.orders.length, '条');
-        setOrders(
-          res.data.orders.map(order => ({
-            id: order.id,
-            orderNumber: order.order_number,
-            status: order.status,
-            validationStatus: order.validation_status || 'unchecked',
-            validationIssues: order.validation_issues || [],
-            anomalyDetectedAt: order.anomaly_detected_at || null,
-            autoRefreshEnabled: order.auto_refresh_enabled,
-            autoRefreshStopReason: order.auto_refresh_stop_reason || null,
-            autoRefreshStoppedAt: order.auto_refresh_stopped_at || null,
-            paymentStatus: order.payment_status || '-',
-            pickupStatus: order.pickup_status || '-',
-            officialOrderAmount: order.official_order_amount || null,
-            officialOrderAmountCurrency: order.official_order_amount_currency || null,
-            officialOrderAmountParseError: order.official_order_amount_parse_error || null,
-            officialProducts: order.official_products || [],
-            // Apple ID 相关
-            appleId: order.apple_id || '-',
-            applePassword: order.apple_password || '-',
-            // 收件人相关
-            recipientName: order.recipient_name || '-',
-            recipientIdCard: order.recipient_id_card || '-',
-            recipientEmail: order.recipient_email || '-',
-            recipientPhone: order.recipient_phone || '-',
-            recipientAddress: order.recipient_address || '-',
-            // 产品信息
-            products: order.products || [],
-            // 订单信息
-            orderUrl: order.order_url || '-',
-            orderDate: order.order_date || '-',
-            // 取货信息
-            pickupStore: order.pickup_store || '-',
-            pickupStoreCode: order.pickup_store_code || '-',
-            pickupCode: order.pickup_code || '-',
-            pickupTimeSlot: order.pickup_time_slot || '-',
-            actualPickupDate: order.actual_pickup_date || '-',
-            // 付款信息
-            paymentMethod: order.payment_method || '-',
-            payerName: order.payer_name || '-',
-            paymentScreenshot: order.payment_screenshot || [],
-            // 爬虫相关
-            lastCrawledAt: order.last_crawled_at || '-',
-            crawlFailCount: order.crawl_fail_count || 0,
-            // 业务字段
-            tag: order.tag || '-',
-            notes: order.notes || '-',
-            // 时间戳
-            createdAt: order.created_at,
-            updatedAt: order.updated_at,
-          }))
-        );
+        const mappedOrders = res.data.orders.map(order => ({
+          id: order.id,
+          orderNumber: order.order_number,
+          status: order.status,
+          validationStatus: order.validation_status || 'unchecked',
+          validationIssues: order.validation_issues || [],
+          anomalyDetectedAt: order.anomaly_detected_at || null,
+          autoRefreshEnabled: order.auto_refresh_enabled,
+          autoRefreshStopReason: order.auto_refresh_stop_reason || null,
+          autoRefreshStoppedAt: order.auto_refresh_stopped_at || null,
+          paymentStatus: order.payment_status || '-',
+          pickupStatus: order.pickup_status || '-',
+          officialOrderAmount: order.official_order_amount || null,
+          officialOrderAmountCurrency: order.official_order_amount_currency || null,
+          officialOrderAmountParseError: order.official_order_amount_parse_error || null,
+          officialProducts: order.official_products || [],
+          // Apple ID 相关
+          appleId: order.apple_id || '-',
+          applePassword: order.apple_password || '-',
+          // 收件人相关
+          recipientName: order.recipient_name || '-',
+          recipientIdCard: order.recipient_id_card || '-',
+          recipientEmail: order.recipient_email || '-',
+          recipientPhone: order.recipient_phone || '-',
+          recipientAddress: order.recipient_address || '-',
+          // 产品信息
+          products: order.products || [],
+          // 订单信息
+          orderUrl: order.order_url || '-',
+          orderDate: order.order_date || '-',
+          // 取货信息
+          pickupStore: order.pickup_store || '-',
+          pickupStoreCode: order.pickup_store_code || '-',
+          pickupCode: order.pickup_code || '-',
+          pickupTimeSlot: order.pickup_time_slot || '-',
+          actualPickupDate: order.actual_pickup_date || '-',
+          // 付款信息
+          paymentMethod: order.payment_method || '-',
+          payerName: order.payer_name || '-',
+          paymentScreenshot: order.payment_screenshot || [],
+          // 爬虫相关
+          lastCrawledAt: order.last_crawled_at || '-',
+          crawlFailCount: order.crawl_fail_count || 0,
+          freshnessStatus:
+            order.refresh?.job?.status === 'pending'
+              ? 'pending'
+              : order.refresh?.job?.status === 'running'
+                ? 'refreshing'
+                : order.refresh?.freshness_status || 'stale',
+          refreshJob: order.refresh?.job || null,
+          refreshErrorCode: order.refresh?.last_error_code || null,
+          refreshErrorMessage: order.refresh?.last_error_message || null,
+          // 业务字段
+          tag: order.tag || '-',
+          notes: order.notes || '-',
+          // 时间戳
+          createdAt: order.created_at,
+          updatedAt: order.updated_at,
+        }));
+        setOrders(mappedOrders);
+        const paidOrderIds = mappedOrders
+          .filter(order => order.paymentStatus === 'paid')
+          .map(order => order.id);
+        if (paidOrderIds.length > 0) {
+          submitPageOpenRefresh(paidOrderIds).catch(error => {
+            setRefreshMessage(error.message || '提交页面刷新任务失败');
+          });
+        }
 
         // 更新分页信息
         setPagination(prev => ({
@@ -153,7 +199,7 @@ export default function Orders() {
         }));
       }
     } catch (error) {
-      console.error('加载订单失败:', error);
+      setRefreshMessage(error.message || '加载订单失败');
     } finally {
       setLoading(false);
     }
@@ -166,7 +212,7 @@ export default function Orders() {
         setAutoRefreshStatus(res.data);
       }
     } catch (error) {
-      console.error('加载自动刷新状态失败:', error);
+      setRefreshMessage(error.message || '加载自动刷新状态失败');
     }
   };
 
@@ -175,12 +221,41 @@ export default function Orders() {
       const response = await getOrderFilterOptions();
       if (response.success) setFilterOptions(response.data);
     } catch (_error) {
-      setFilterOptions({ productModels: [], stores: [], recipients: [], payers: [] });
+      setFilterOptions({
+        productModels: [],
+        stores: [],
+        recipients: [],
+        payers: [],
+      });
     }
   };
 
   const handleExport = async () => {
     await exportOrders({ keyword: searchTerm || undefined, ...filters });
+  };
+
+  const handleRefreshAll = async () => {
+    if (
+      !window.confirm(
+        `将为全部可刷新订单提交后台任务，当前共有 ${pagination.totalItems} 条订单。继续吗？`
+      )
+    ) {
+      return;
+    }
+    try {
+      const response = await refreshAllOrders();
+      if (response.success) {
+        setRefreshBatch({
+          id: response.data.batchId,
+          status: response.data.status,
+        });
+        setRefreshMessage(
+          response.data.created ? '刷新全部批次已提交' : '已有批次运行中，正在显示其进度'
+        );
+      }
+    } catch (error) {
+      setRefreshMessage(error.message || '提交刷新全部失败');
+    }
   };
 
   const getValidationBadge = status => {
@@ -206,6 +281,7 @@ export default function Orders() {
       recipientName: '',
       pickupStore: '',
       payerName: '',
+      payment_status: '',
     });
     setSearchTerm('');
     setPagination(prev => ({ ...prev, currentPage: 1 }));
@@ -260,6 +336,22 @@ export default function Orders() {
         return (
           <span className={`badge ${badge.class} inline-flex items-center gap-1`}>
             {value === 'abnormal' && <AlertTriangle className="w-3 h-3" />}
+            {badge.text}
+          </span>
+        );
+      }
+
+      case 'freshnessStatus': {
+        const badges = {
+          pending: { text: '排队中', class: 'badge-info' },
+          fresh: { text: '最新', class: 'badge-success' },
+          stale: { text: '已过期', class: 'badge-warning' },
+          refreshing: { text: '刷新中', class: 'badge-info' },
+          failed: { text: '失败', class: 'badge-error' },
+        };
+        const badge = badges[value] || badges.stale;
+        return (
+          <span className={`badge ${badge.class}`} title={order.refreshErrorMessage || ''}>
             {badge.text}
           </span>
         );
@@ -361,11 +453,32 @@ export default function Orders() {
           <h1 className="text-3xl font-bold">订单管理</h1>
           <p className="text-gray-600 mt-1">管理所有 Apple 订单</p>
         </div>
-        <button onClick={loadOrders} className="btn btn-primary flex items-center space-x-2">
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          <span>刷新</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={loadOrders} className="btn btn-secondary flex items-center space-x-2">
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <span>重新加载</span>
+          </button>
+          <button
+            onClick={handleRefreshAll}
+            className="btn btn-primary flex items-center space-x-2"
+          >
+            <RefreshCw className="w-4 h-4" />
+            <span>刷新全部</span>
+          </button>
+        </div>
       </div>
+
+      {refreshMessage && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-700">
+          {refreshMessage}
+          {refreshBatch && refreshBatch.total !== undefined && (
+            <span className="ml-2">
+              总计 {refreshBatch.total}，待执行 {refreshBatch.pending}，执行中{' '}
+              {refreshBatch.running}，成功 {refreshBatch.succeeded}，失败 {refreshBatch.failed}
+            </span>
+          )}
+        </div>
+      )}
 
       {autoRefreshStatus?.isPaused && (
         <div className="border border-red-200 bg-red-50 rounded-lg px-4 py-3 flex items-start gap-3">
@@ -432,7 +545,7 @@ export default function Orders() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
           {/* 订单状态 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">订单状态</label>
@@ -451,6 +564,21 @@ export default function Orders() {
               <option value="cancelled">已取消</option>
               <option value="pickup_cancelled">取货已取消</option>
               <option value="unknown">未知</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">支付状态</label>
+            <select
+              value={filters.payment_status}
+              onChange={event => handleFilterChange('payment_status', event.target.value)}
+              className="input"
+            >
+              <option value="">全部支付状态</option>
+              <option value="unknown">状态未知</option>
+              <option value="unpaid">未付款</option>
+              <option value="paid">已付款</option>
+              <option value="refunded">已退款</option>
             </select>
           </div>
 

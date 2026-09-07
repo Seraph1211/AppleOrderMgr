@@ -27,10 +27,12 @@ const channelsRouter = require('./routes/channels');
 const authRouter = require('./routes/auth');
 const usersRouter = require('./routes/users');
 const systemRouter = require('./routes/system');
+const orderRefreshRouter = require('./routes/orderRefresh');
+const emailProcessingRouter = require('./routes/emailProcessing');
 
 const { sequelize } = require('./models');
 const emailService = require('./services/emailService');
-const crawlerService = require('./services/crawlerService');
+const refreshWorkerService = require('./services/crawler/refreshWorkerService');
 
 const DEFAULT_PORT = parseInt(process.env.PORT, 10) || 3000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -104,6 +106,8 @@ app.use('/api/users', usersRouter);
 app.use('/api/apple-ids', appleIdsRouter);
 app.use('/api/recipients', recipientsRouter);
 app.use('/api/orders', ordersRouter);
+app.use('/api/order-refresh', orderRefreshRouter);
+app.use('/api/email-processing', emailProcessingRouter);
 app.use('/api/stats', statsRouter);
 app.use('/api/import', importRouter);
 app.use('/api/dashboard', dashboardRouter);
@@ -140,7 +144,7 @@ const server = app.listen(DEFAULT_PORT, () => {
     } catch (error) {
       logger.error('邮件监听服务启动失败', { error: error.message });
     }
-    crawlerService.startAutoRefreshScheduler().catch(error => {
+    refreshWorkerService.start().catch(error => {
       logger.error('自动刷新调度器启动失败', { error: error.message });
     });
   }
@@ -150,9 +154,8 @@ const server = app.listen(DEFAULT_PORT, () => {
 function shutdown(signal) {
   logger.info(`收到 ${signal} 信号，准备关闭服务`);
 
-  // 先停止邮件监听
-  emailService.stopEmailService();
-  crawlerService.stopAutoRefreshScheduler();
+  // 停止领取新的后台任务；邮件在途处理在关闭数据库前等待完成。
+  refreshWorkerService.stop();
 
   server.close(async err => {
     if (err) {
@@ -161,6 +164,7 @@ function shutdown(signal) {
     }
 
     try {
+      await emailService.stopEmailService();
       await sequelize.close();
       logger.info('数据库连接已关闭');
     } catch (closeErr) {

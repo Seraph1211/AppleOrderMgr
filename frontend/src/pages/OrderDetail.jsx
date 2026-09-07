@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -10,7 +10,7 @@ import {
   RefreshCw,
   User,
 } from 'lucide-react';
-import { getOrderDetail } from '../api';
+import { getOrderDetail, refreshOrder, submitPageOpenRefresh, getRefreshJob } from '../api';
 
 const STATUS_BADGES = {
   pending: { text: '待处理', className: 'badge-warning' },
@@ -22,6 +22,14 @@ const STATUS_BADGES = {
   cancelled: { text: '已取消', className: 'badge-error' },
   pickup_cancelled: { text: '取货已取消', className: 'badge-error' },
   unknown: { text: '未知', className: 'badge-info' },
+};
+
+const FRESHNESS_BADGES = {
+  pending: { text: '排队中', className: 'badge-info' },
+  refreshing: { text: '刷新中', className: 'badge-info' },
+  fresh: { text: '数据最新', className: 'badge-success' },
+  stale: { text: '数据已过期', className: 'badge-warning' },
+  failed: { text: '刷新失败', className: 'badge-error' },
 };
 
 function formatDate(value) {
@@ -51,6 +59,9 @@ export default function OrderDetail() {
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [refreshJob, setRefreshJob] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const pageOpenSubmitted = useRef(false);
 
   const loadOrderDetail = useCallback(async () => {
     setLoading(true);
@@ -61,6 +72,12 @@ export default function OrderDetail() {
         throw new Error('订单详情响应格式异常');
       }
       setOrder(response.data);
+      if (response.data.payment_status === 'paid' && !pageOpenSubmitted.current) {
+        pageOpenSubmitted.current = true;
+        const queued = await submitPageOpenRefresh([Number(id)]);
+        const jobId = queued.data?.results?.[0]?.jobId;
+        if (jobId) setRefreshJob({ id: jobId, status: 'pending' });
+      }
     } catch (loadError) {
       setOrder(null);
       setError(loadError.message || '订单详情加载失败');
@@ -72,6 +89,45 @@ export default function OrderDetail() {
   useEffect(() => {
     loadOrderDetail();
   }, [loadOrderDetail]);
+
+  useEffect(() => {
+    if (!refreshJob?.id || ['succeeded', 'failed', 'skipped'].includes(refreshJob.status)) {
+      return undefined;
+    }
+    const timer = window.setInterval(async () => {
+      try {
+        const response = await getRefreshJob(refreshJob.id);
+        if (!response.success) return;
+        setRefreshJob(response.data);
+        if (response.data.status === 'succeeded') {
+          window.clearInterval(timer);
+          setRefreshing(false);
+          await loadOrderDetail();
+        } else if (['failed', 'skipped'].includes(response.data.status)) {
+          window.clearInterval(timer);
+          setRefreshing(false);
+          setError(response.data.lastErrorMessage || '订单刷新失败');
+        }
+      } catch (pollError) {
+        window.clearInterval(timer);
+        setRefreshing(false);
+        setError(pollError.message || '刷新进度查询失败');
+      }
+    }, 2000);
+    return () => window.clearInterval(timer);
+  }, [refreshJob?.id, refreshJob?.status, loadOrderDetail]);
+
+  const handleManualRefresh = async () => {
+    setRefreshing(true);
+    setError('');
+    try {
+      const response = await refreshOrder(Number(id));
+      setRefreshJob({ id: response.data.jobId, status: response.data.status });
+    } catch (refreshError) {
+      setRefreshing(false);
+      setError(refreshError.message || '提交刷新任务失败');
+    }
+  };
 
   if (loading) {
     return (
@@ -103,6 +159,14 @@ export default function OrderDetail() {
   }
 
   const badge = STATUS_BADGES[order.status] || STATUS_BADGES.unknown;
+  const activeRefreshStatus = refreshJob?.status || order.refresh?.job?.status;
+  const freshnessStatus =
+    activeRefreshStatus === 'pending'
+      ? 'pending'
+      : activeRefreshStatus === 'running'
+        ? 'refreshing'
+        : order.refresh?.freshness_status || 'stale';
+  const freshnessBadge = FRESHNESS_BADGES[freshnessStatus] || FRESHNESS_BADGES.stale;
   const products = Array.isArray(order.products) ? order.products : [];
   const validationIssues = Array.isArray(order.validation_issues) ? order.validation_issues : [];
 
@@ -122,10 +186,15 @@ export default function OrderDetail() {
           <p className="mt-1 font-mono text-sm text-gray-500">{order.order_number}</p>
         </div>
         <div className="flex items-center gap-3">
+          <span className={`badge ${freshnessBadge.className}`}>{freshnessBadge.text}</span>
           <span className={`badge ${badge.className}`}>{badge.text}</span>
-          <button onClick={loadOrderDetail} className="btn btn-primary flex items-center gap-2">
-            <RefreshCw className="h-4 w-4" />
-            <span>重新加载</span>
+          <button
+            onClick={handleManualRefresh}
+            disabled={refreshing}
+            className="btn btn-primary flex items-center gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>{refreshing ? '刷新中' : '刷新官网状态'}</span>
           </button>
         </div>
       </div>
@@ -143,6 +212,12 @@ export default function OrderDetail() {
               </li>
             ))}
           </ul>
+        </div>
+      )}
+
+      {error && (
+        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
         </div>
       )}
 
@@ -236,6 +311,10 @@ export default function OrderDetail() {
               <div>
                 <dt className="text-gray-500">最后爬取</dt>
                 <dd className="mt-1 text-gray-900">{formatDate(order.last_crawled_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">最后成功刷新</dt>
+                <dd className="mt-1 text-gray-900">{formatDate(order.refresh?.last_success_at)}</dd>
               </div>
             </dl>
           </div>

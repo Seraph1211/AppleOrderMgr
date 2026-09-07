@@ -9,6 +9,7 @@ jest.mock('../src/utils/logger', () => ({
 const {
   checkPasswordChangeRequired,
   requirePermission,
+  requireRole,
 } = require('../src/middleware/authMiddleware');
 const { PERMISSIONS, ROLE_PERMISSIONS } = require('../src/constants/business');
 
@@ -49,6 +50,29 @@ describe('最小权限矩阵', () => {
 
     expect(res.statusCode).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test('只读用户不能提交订单刷新任务', () => {
+    const req = { user: { id: 3, role: 'readOnly' }, path: '/orders/1/refresh' };
+    const res = createResponse();
+    const next = jest.fn();
+
+    requirePermission(PERMISSIONS.REFRESH)(req, res, next);
+
+    expect(res.statusCode).toBe(403);
+    expect(res.body.error.code).toBe('FORBIDDEN');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  test.each(['operator', 'readOnly'])('非管理员角色不能访问邮件处理页面和 API', role => {
+    const req = { user: { id: 3, role }, path: '/email-processing' };
+    const res = createResponse();
+    const next = jest.fn();
+
+    requireRole(['admin'])(req, res, next);
+
+    expect(res.statusCode).toBe(403);
     expect(next).not.toHaveBeenCalled();
   });
 

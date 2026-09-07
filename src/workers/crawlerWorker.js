@@ -6,14 +6,14 @@
 require('dotenv').config();
 
 const { sequelize } = require('../models');
-const crawlerService = require('../services/crawlerService');
+const refreshWorkerService = require('../services/crawler/refreshWorkerService');
 const logger = require('../utils/logger');
 const { validateEncryptionConfiguration } = require('../utils/fieldEncryption');
 
 async function shutdown(signal) {
   try {
     logger.info('爬虫 Worker 正在关闭', { signal });
-    crawlerService.stopAutoRefreshScheduler();
+    refreshWorkerService.stop();
     await sequelize.close();
     process.exit(0);
   } catch (error) {
@@ -26,7 +26,7 @@ async function start() {
   try {
     validateEncryptionConfiguration();
     await sequelize.authenticate();
-    await crawlerService.startAutoRefreshScheduler();
+    await refreshWorkerService.start();
     logger.info('爬虫 Worker 已启动');
   } catch (error) {
     logger.error('爬虫 Worker 启动失败', { error: error.message });

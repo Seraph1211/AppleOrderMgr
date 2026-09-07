@@ -29,7 +29,12 @@ const models = {
   Recipient: require('./Recipient')(sequelize),
   Order: require('./Order')(sequelize),
   EmailLog: require('./EmailLog')(sequelize),
+  EmailWorkerState: require('./EmailWorkerState')(sequelize),
   CrawlLog: require('./CrawlLog')(sequelize),
+  OrderRefreshSchedule: require('./OrderRefreshSchedule')(sequelize),
+  OrderRefreshBatch: require('./OrderRefreshBatch')(sequelize),
+  OrderRefreshJob: require('./OrderRefreshJob')(sequelize),
+  OrderRefreshSystemState: require('./OrderRefreshSystemState')(sequelize),
 };
 
 // 建立模型关联关系

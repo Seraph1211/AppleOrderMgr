@@ -1,5 +1,7 @@
-const { DataTypes } = require('sequelize');
+/* eslint-disable camelcase */
+const { DataTypes, Op } = require('sequelize');
 const { encrypt, decrypt, encryptJson, decryptJson } = require('../utils/fieldEncryption');
+const { EMAIL_PROCESSING_STATUSES } = require('../constants/business');
 
 /**
  * EmailLog 模型 - 邮件处理日志
@@ -25,14 +27,43 @@ module.exports = sequelize => {
       emailUid: {
         type: DataTypes.STRING(100),
         allowNull: false,
-        unique: true,
         field: 'email_uid',
-        comment: '邮件唯一标识符（IMAP UID）',
+        comment: 'IMAP UID；只在邮箱身份与 UIDVALIDITY 内唯一',
         validate: {
           notEmpty: {
             msg: '邮件UID不能为空',
           },
         },
+      },
+      mailboxIdentityHash: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+        field: 'mailbox_identity_hash',
+        comment: '邮箱身份不可逆 SHA-256',
+      },
+      uidValidity: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        field: 'uid_validity',
+        comment: 'IMAP UIDVALIDITY',
+      },
+      messageId: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'message_id',
+        comment: 'RFC Message-ID',
+      },
+      mimeSha256: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+        field: 'mime_sha256',
+        comment: '原始 MIME SHA-256',
+      },
+      authenticationResults: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'authentication_results',
+        comment: 'Authentication-Results 原始头，仅记录不作为阻断条件',
       },
       emailSubject: {
         type: DataTypes.TEXT,
@@ -130,6 +161,153 @@ module.exports = sequelize => {
         field: 'retry_count',
         comment: '重试次数',
       },
+      status: {
+        type: DataTypes.STRING(32),
+        allowNull: false,
+        defaultValue: 'received',
+        validate: {
+          isIn: {
+            args: [EMAIL_PROCESSING_STATUSES],
+            msg: '邮件处理状态无效',
+          },
+        },
+      },
+      errorCode: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+        field: 'error_code',
+      },
+      nextRetryAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'next_retry_at',
+      },
+      lastAttemptAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'last_attempt_at',
+      },
+      imapAckStatus: {
+        type: DataTypes.STRING(32),
+        allowNull: false,
+        defaultValue: 'pending',
+        field: 'imap_ack_status',
+        validate: {
+          isIn: {
+            args: [['pending', 'not_required', 'retry_wait', 'succeeded']],
+            msg: 'IMAP 确认状态无效',
+          },
+        },
+      },
+      imapAckRetryCount: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        field: 'imap_ack_retry_count',
+      },
+      imapAckNextRetryAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'imap_ack_next_retry_at',
+      },
+      imapAckErrorCode: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+        field: 'imap_ack_error_code',
+      },
+      resolvedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'resolved_at',
+      },
+      resolutionType: {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+        field: 'resolution_type',
+      },
+      resolutionReason: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'resolution_reason',
+      },
+      resolvedBy: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'resolved_by',
+        references: { model: 'users', key: 'id' },
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
+      },
+      manualDraft: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        field: 'manual_draft',
+        set(value) {
+          this.setDataValue('manualDraft', encryptJson(value));
+        },
+        get() {
+          return decryptJson(this.getDataValue('manualDraft'));
+        },
+      },
+      finalData: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        field: 'final_data',
+        set(value) {
+          this.setDataValue('finalData', encryptJson(value));
+        },
+        get() {
+          return decryptJson(this.getDataValue('finalData'));
+        },
+      },
+      attemptHistory: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [],
+        field: 'attempt_history',
+        set(value) {
+          this.setDataValue('attemptHistory', encryptJson(value || []));
+        },
+        get() {
+          return decryptJson(this.getDataValue('attemptHistory')) || [];
+        },
+      },
+      auditHistory: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [],
+        field: 'audit_history',
+        set(value) {
+          this.setDataValue('auditHistory', encryptJson(value || []));
+        },
+        get() {
+          return decryptJson(this.getDataValue('auditHistory')) || [];
+        },
+      },
+      orderId: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'order_id',
+        references: { model: 'orders', key: 'id' },
+        onDelete: 'SET NULL',
+        onUpdate: 'CASCADE',
+      },
+      version: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+      },
+      receivedAt: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+        field: 'received_at',
+      },
+      retentionExpiresAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'retention_expires_at',
+      },
       createdAt: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -152,8 +330,12 @@ module.exports = sequelize => {
       indexes: [
         {
           unique: true,
-          fields: ['email_uid'],
-          name: 'uk_email_uid',
+          fields: ['mailbox_identity_hash', 'uid_validity', 'email_uid'],
+          name: 'uk_email_logs_mailbox_uid',
+          where: {
+            mailbox_identity_hash: { [Op.ne]: null },
+            uid_validity: { [Op.ne]: null },
+          },
         },
         {
           fields: ['processed'],
@@ -183,6 +365,15 @@ module.exports = sequelize => {
           fields: ['email_from'],
           name: 'idx_email_logs_email_from',
         },
+        { fields: ['message_id'], name: 'idx_email_logs_message_id' },
+        { fields: ['mime_sha256'], name: 'idx_email_logs_mime_sha256' },
+        { fields: ['status', 'next_retry_at'], name: 'idx_email_logs_retry_queue' },
+        {
+          fields: ['imap_ack_status', 'imap_ack_next_retry_at'],
+          name: 'idx_email_logs_ack_queue',
+        },
+        { fields: ['retention_expires_at'], name: 'idx_email_logs_retention' },
+        { fields: ['order_id'], name: 'idx_email_logs_order_id' },
       ],
       comment: '邮件处理日志表',
     }
@@ -192,9 +383,9 @@ module.exports = sequelize => {
    * 定义模型关联关系
    * @param {Object} models - 所有模型的集合
    */
-  EmailLog.associate = _models => {
-    // EmailLog 暂无外键关联，但可以通过 order_number 关联到 Order
-    // 这里不定义 belongsTo，因为是冗余字段，用于快速查询
+  EmailLog.associate = models => {
+    EmailLog.belongsTo(models.Order, { foreignKey: 'orderId', as: 'order' });
+    EmailLog.belongsTo(models.User, { foreignKey: 'resolvedBy', as: 'resolver' });
   };
 
   return EmailLog;

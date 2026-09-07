@@ -1,21 +1,23 @@
-const mockFindOne = jest.fn();
-const mockGetAutoRefreshStatus = jest.fn(() => ({
-  enabled: true,
-  isRunning: false,
-  isPaused: false,
-  intervalMs: 300000,
-}));
-const mockResumeAutoRefresh = jest.fn();
+const mockEnsureSystemState = jest.fn();
+const mockResume = jest.fn();
+const mockJobFindAll = jest.fn();
+const mockScheduleFindAll = jest.fn();
 
 jest.mock('../src/models', () => ({
-  CrawlLog: {
-    findOne: mockFindOne,
-  },
+  CrawlLog: {},
   Order: {},
+  OrderRefreshJob: {
+    findAll: mockJobFindAll,
+    sequelize: { fn: jest.fn(), col: jest.fn() },
+  },
+  OrderRefreshSchedule: {
+    findAll: mockScheduleFindAll,
+    sequelize: { fn: jest.fn(), col: jest.fn() },
+  },
 }));
-jest.mock('../src/services/crawlerService', () => ({
-  getAutoRefreshStatus: mockGetAutoRefreshStatus,
-  resumeAutoRefresh: mockResumeAutoRefresh,
+jest.mock('../src/services/crawler/refreshJobRepository', () => ({
+  ensureSystemState: mockEnsureSystemState,
+  resume: mockResume,
 }));
 jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),
@@ -26,49 +28,58 @@ jest.mock('../src/utils/logger', () => ({
 
 const systemController = require('../src/controllers/systemController');
 
-describe('独立爬虫 Worker 状态与控制', () => {
-  const originalRunWorkersInApi = process.env.RUN_WORKERS_IN_API;
+describe('独立爬虫 Worker 持久化状态与控制', () => {
+  const originalEnabled = process.env.AUTO_ORDER_REFRESH_ENABLED;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    process.env.RUN_WORKERS_IN_API = 'false';
+    process.env.AUTO_ORDER_REFRESH_ENABLED = 'true';
+    mockEnsureSystemState.mockResolvedValue({
+      isPaused: false,
+      pauseReason: null,
+      pausedAt: null,
+      workerId: 'worker:test',
+      heartbeatAt: new Date(),
+    });
+    mockJobFindAll.mockResolvedValue([{ status: 'pending', count: '2' }]);
+    mockScheduleFindAll.mockResolvedValue([{ freshnessStatus: 'stale', count: '3' }]);
   });
 
   afterAll(() => {
-    if (originalRunWorkersInApi === undefined) delete process.env.RUN_WORKERS_IN_API;
-    else process.env.RUN_WORKERS_IN_API = originalRunWorkersInApi;
+    if (originalEnabled === undefined) delete process.env.AUTO_ORDER_REFRESH_ENABLED;
+    else process.env.AUTO_ORDER_REFRESH_ENABLED = originalEnabled;
   });
 
-  test('独立 Worker 拓扑只返回持久化观测值，不伪造进程运行状态', async () => {
-    mockFindOne
-      .mockResolvedValueOnce({
-        event: 'auto_refresh_paused',
-        errorMessage: '连续触发 Apple 风控',
-        createdAt: new Date('2026-09-05T08:00:00Z'),
-      })
-      .mockResolvedValueOnce({
-        event: 'auto_refresh_scan',
-        createdAt: new Date('2026-09-05T07:59:00Z'),
-      });
+  test('返回 PostgreSQL 队列、心跳和新鲜度状态', async () => {
     const res = { json: jest.fn() };
 
     await systemController.getAutoRefreshStatus({}, res);
 
     const data = res.json.mock.calls[0][0].data;
     expect(data.controlMode).toBe('external_worker');
-    expect(data.controlAvailable).toBe(false);
-    expect(data.isRunning).toBeNull();
-    expect(data.isPaused).toBe(true);
-    expect(data.statusSource).toBe('crawl_logs');
+    expect(data.controlAvailable).toBe(true);
+    expect(data.isRunning).toBe(true);
+    expect(data.isPaused).toBe(false);
+    expect(data.statusSource).toBe('postgresql');
+    expect(data.queue).toEqual({ pending: 2 });
+    expect(data.freshness).toEqual({ stale: 3 });
   });
 
-  test('独立 Worker 拓扑下恢复接口应明确拒绝而不是假成功', async () => {
-    await expect(
-      systemController.resumeAutoRefresh({ user: { id: 1, username: 'admin' } }, {})
-    ).rejects.toMatchObject({
-      statusCode: 409,
-      code: 'WORKER_CONTROL_UNAVAILABLE',
+  test('恢复接口清除持久化暂停状态', async () => {
+    mockResume.mockResolvedValue({
+      isPaused: false,
+      pausedAt: null,
+      pauseReason: null,
+      heartbeatAt: new Date(),
     });
-    expect(mockResumeAutoRefresh).not.toHaveBeenCalled();
+    const res = { json: jest.fn() };
+
+    await systemController.resumeAutoRefresh({ user: { id: 7 } }, res);
+
+    expect(mockResume).toHaveBeenCalledWith(7);
+    expect(res.json.mock.calls[0][0]).toMatchObject({
+      success: true,
+      data: { isPaused: false },
+    });
   });
 });

@@ -1,544 +1,513 @@
-/* eslint-disable no-unused-vars, require-await, camelcase */
 /**
- * 邮件监听服务
- * @description 使用 IMAP IDLE 监听邮箱，实时接收订单通知邮件
- * @author Seraph
- * @date 2026-07-07
+ * IMAP 邮件监听、回溯、持久化处理与确认服务。
+ * @module services/emailService
  */
 
+const { Op } = require('sequelize');
 const Imap = require('node-imap');
+const os = require('os');
+
+const { EmailLog } = require('../models');
 const logger = require('../utils/logger');
 const { config } = require('../utils/config');
-const { parseOrderEmail, extractEmailMetadata } = require('./emailParser');
-const { saveOrderFromEmail } = require('./orderService');
+const { parseMimeEmail, extractEmailMetadataFromParsed } = require('./emailParser');
+const { EMAIL_ERROR_CODES } = require('./emailErrors');
+const emailProcessingService = require('./emailProcessingService');
 
-// IMAP 连接实例
+const RECONNECT_DELAY_MS = 30_000;
+const RETRY_INTERVAL_MS = 60_000;
+const BACKFILL_INTERVAL_MS = 10 * 60_000;
+const RETENTION_INTERVAL_MS = 24 * 60 * 60_000;
+const HEARTBEAT_INTERVAL_MS = 10_000;
+const STARTUP_LOOKBACK_MS = 24 * 60 * 60_000;
+const PERIODIC_LOOKBACK_MS = 30 * 60_000;
+
 let imapConnection = null;
 let isConnected = false;
 let reconnectTimer = null;
 let shouldReconnect = false;
-
-// 并发控制标志
 let isProcessing = false;
+let pendingMailCheck = false;
+let currentUidValidity = null;
+let retryTimer = null;
+let backfillTimer = null;
+let retentionTimer = null;
+let heartbeatTimer = null;
+const inFlight = new Set();
+const workerId = `${os.hostname()}:${process.pid}`;
 
-// 邮件重试计数器 (uid -> retryCount)
-const emailRetryCount = new Map();
+function mailboxIdentity() {
+  return {
+    host: config.imap.host,
+    user: config.imap.user,
+    mailbox: config.imap.mailbox,
+  };
+}
 
-/**
- * 启动邮件监听服务
- */
-function startEmailService() {
-  try {
-    shouldReconnect = true;
-    logger.info('启动邮件监听服务...');
-
-    // 创建 IMAP 连接
-    imapConnection = new Imap({
-      user: config.imap.user,
-      password: config.imap.password,
-      host: config.imap.host,
-      port: config.imap.port,
-      tls: config.imap.tls,
-      tlsOptions: config.imap.tlsOptions,
-      keepalive: true,
-      connTimeout: 30000, // 连接超时 30秒
-      authTimeout: 10000, // 认证超时 10秒
-    });
-
-    // 绑定事件监听器
-    setupEventHandlers();
-
-    // 连接到邮箱
-    imapConnection.connect();
-
-    logger.info('IMAP 连接请求已发送', {
-      host: config.imap.host,
-      port: config.imap.port,
-      userConfigured: Boolean(config.imap.user),
-    });
-  } catch (error) {
-    logger.error('启动邮件服务失败', { error: error.message, stack: error.stack });
-    throw error;
-  }
+function track(promise) {
+  inFlight.add(promise);
+  promise.then(
+    () => inFlight.delete(promise),
+    () => inFlight.delete(promise)
+  );
+  return promise;
 }
 
 /**
- * 停止邮件监听服务
+ * 判断是否为订单邮件。
+ * @param {Object} metadata - MIME 元数据
+ * @returns {boolean} 是否通过主题与 From 白名单
  */
-function stopEmailService() {
+function isOrderEmail(metadata) {
+  const { subject = '', fromAddresses = [] } = metadata;
+  const hasOrderKeyword =
+    subject.includes('NULL') || subject.includes('预订助手') || subject.includes('预订成功');
+  if (!hasOrderKeyword) {
+    return false;
+  }
+  if (config.imap.allowedSenders.length === 0) {
+    return config.app.env !== 'production';
+  }
+  return fromAddresses.some(address => config.imap.allowedSenders.includes(address));
+}
+
+async function updateAckFailure(record) {
+  record.imapAckStatus = 'retry_wait';
+  record.imapAckRetryCount += 1;
+  record.imapAckNextRetryAt = new Date(Date.now() + RETRY_INTERVAL_MS);
+  record.imapAckErrorCode = EMAIL_ERROR_CODES.IMAP_TEMPORARY;
+  await record.save();
+}
+
+function addSeenFlag(uid) {
+  return new Promise((resolve, reject) => {
+    if (!imapConnection || !isConnected) {
+      reject(new Error('IMAP 未连接'));
+      return;
+    }
+    imapConnection.addFlags(uid, '\\Seen', error => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+async function acknowledgeRecord(record) {
+  if (!config.imap.markSeen) {
+    record.imapAckStatus = 'not_required';
+    record.imapAckNextRetryAt = null;
+    record.imapAckErrorCode = null;
+    await record.save();
+    return;
+  }
+  try {
+    await addSeenFlag(record.emailUid);
+    record.imapAckStatus = 'succeeded';
+    record.imapAckNextRetryAt = null;
+    record.imapAckErrorCode = null;
+    await record.save();
+  } catch (_error) {
+    await updateAckFailure(record);
+    logger.warn('IMAP 已读确认等待重试', {
+      emailRecordId: record.id,
+      errorCode: EMAIL_ERROR_CODES.IMAP_TEMPORARY,
+    });
+  }
+}
+
+async function retryPendingAcknowledgements() {
+  if (!config.imap.markSeen || !isConnected || !currentUidValidity) {
+    return;
+  }
+  const identityHash = emailProcessingService.createMailboxIdentityHash(mailboxIdentity());
+  const records = await EmailLog.findAll({
+    where: {
+      mailboxIdentityHash: identityHash,
+      uidValidity: String(currentUidValidity),
+      imapAckStatus: 'retry_wait',
+      imapAckNextRetryAt: { [Op.lte]: new Date() },
+    },
+    order: [['imapAckNextRetryAt', 'ASC']],
+    limit: 20,
+  });
+  await Promise.all(records.map(acknowledgeRecord));
+}
+
+async function processReceivedMessage(rawBuffer, emailUid) {
+  let record = null;
+  try {
+    const received = await emailProcessingService.receiveEmail({
+      mailboxIdentity: mailboxIdentity(),
+      uidValidity: currentUidValidity,
+      emailUid,
+      rawBuffer,
+    });
+    record = received.record;
+    await emailProcessingService.updateWorkerState({ received: true });
+
+    if (!received.created) {
+      if (emailProcessingService.TERMINAL_STATUSES.has(record.status)) {
+        await acknowledgeRecord(record);
+      }
+      return;
+    }
+
+    let parsed;
+    try {
+      ({ parsed } = await parseMimeEmail(rawBuffer, record.id));
+    } catch (error) {
+      const failed = await emailProcessingService.markFailure(record, error);
+      if (emailProcessingService.TERMINAL_STATUSES.has(failed.status)) {
+        await acknowledgeRecord(failed);
+      }
+      return;
+    }
+
+    const metadata = extractEmailMetadataFromParsed(parsed);
+    const duplicate = await emailProcessingService.registerMetadata(record, metadata);
+    if (duplicate) {
+      await record.reload();
+      await acknowledgeRecord(record);
+      return;
+    }
+
+    if (!isOrderEmail(metadata)) {
+      await emailProcessingService.markIgnored(record);
+      await acknowledgeRecord(record);
+      return;
+    }
+
+    const result = await emailProcessingService.processPersistedRecord(record, {
+      parsed,
+      rawBuffer,
+    });
+    if (result.record.status === 'succeeded' || result.record.status === 'superseded') {
+      await emailProcessingService.updateWorkerState({ succeeded: true });
+    } else if (result.record.errorCode) {
+      await emailProcessingService.updateWorkerState({ errorCode: result.record.errorCode });
+    }
+    if (emailProcessingService.TERMINAL_STATUSES.has(result.record.status)) {
+      await acknowledgeRecord(result.record);
+    }
+  } catch (error) {
+    if (record && !emailProcessingService.TERMINAL_STATUSES.has(record.status)) {
+      await emailProcessingService.markFailure(record, error).catch(() => {});
+    }
+    logger.error('邮件接收处理失败', {
+      emailRecordId: record?.id || null,
+      errorCode: error.code || EMAIL_ERROR_CODES.DATABASE_TEMPORARY,
+    });
+    await emailProcessingService
+      .updateWorkerState({ errorCode: error.code || EMAIL_ERROR_CODES.DATABASE_TEMPORARY })
+      .catch(() => {});
+  }
+}
+
+function readFetchedMessage(msg, seqno) {
+  return new Promise((resolve, reject) => {
+    let emailUid = null;
+    const chunks = [];
+    let streamError = null;
+
+    msg.once('attributes', attrs => {
+      emailUid = attrs.uid;
+    });
+    msg.on('body', stream => {
+      stream.on('data', chunk => chunks.push(Buffer.from(chunk)));
+      stream.once('error', error => {
+        streamError = error;
+      });
+    });
+    msg.once('error', reject);
+    msg.once('end', () => {
+      if (streamError) {
+        reject(streamError);
+        return;
+      }
+      if (emailUid === null || emailUid === undefined) {
+        reject(new Error(`邮件 ${seqno} 缺少 UID`));
+        return;
+      }
+      resolve({ emailUid, rawBuffer: Buffer.concat(chunks) });
+    });
+  });
+}
+
+function fetchSearchResults(results) {
+  return new Promise((resolve, reject) => {
+    const messagePromises = [];
+    const fetch = imapConnection.fetch(results, { bodies: '', markSeen: false });
+    fetch.on('message', (msg, seqno) => {
+      const promise = readFetchedMessage(msg, seqno)
+        .then(({ emailUid, rawBuffer }) => processReceivedMessage(rawBuffer, emailUid))
+        .catch(error => {
+          logger.error('邮件正文流读取失败', {
+            errorCode: EMAIL_ERROR_CODES.IMAP_TEMPORARY,
+            sequenceNumber: seqno,
+          });
+          throw error;
+        });
+      messagePromises.push(track(promise));
+    });
+    fetch.once('error', reject);
+    fetch.once('end', async () => {
+      const settled = await Promise.allSettled(messagePromises);
+      const failedCount = settled.filter(result => result.status === 'rejected').length;
+      if (failedCount > 0) {
+        logger.warn('邮件批次存在正文流失败', { failedCount, total: settled.length });
+      }
+      resolve();
+    });
+  });
+}
+
+/**
+ * 按 IMAP 搜索条件处理邮件。
+ * @param {Array} criteria - node-imap 搜索条件
+ * @returns {Promise<void>}
+ */
+async function processEmails(criteria) {
+  if (!imapConnection || !isConnected || !shouldReconnect) {
+    return;
+  }
+  if (isProcessing) {
+    pendingMailCheck = true;
+    return;
+  }
+
+  isProcessing = true;
+  try {
+    const results = await new Promise((resolve, reject) => {
+      imapConnection.search(criteria, (error, matches) => {
+        if (error) {
+          reject(error);
+        } else {
+          resolve(matches || []);
+        }
+      });
+    });
+    if (results.length > 0) {
+      logger.info('开始处理邮件批次', { count: results.length });
+      await fetchSearchResults(results);
+    }
+  } catch (_error) {
+    logger.error('IMAP 邮件批次失败', { errorCode: EMAIL_ERROR_CODES.IMAP_TEMPORARY });
+  } finally {
+    isProcessing = false;
+    if (pendingMailCheck && shouldReconnect) {
+      pendingMailCheck = false;
+      await processEmails(['UNSEEN']);
+    }
+  }
+}
+
+function clearBackgroundTimers() {
+  for (const timer of [retryTimer, backfillTimer, retentionTimer, heartbeatTimer]) {
+    if (timer) {
+      clearInterval(timer);
+    }
+  }
+  retryTimer = null;
+  backfillTimer = null;
+  retentionTimer = null;
+  heartbeatTimer = null;
+}
+
+function startBackgroundTimers() {
+  clearBackgroundTimers();
+  retryTimer = setInterval(() => {
+    track(
+      emailProcessingService
+        .processDueRetries()
+        .then(results =>
+          Promise.all(
+            results
+              .filter(result => emailProcessingService.TERMINAL_STATUSES.has(result.record.status))
+              .map(result => acknowledgeRecord(result.record))
+          )
+        )
+        .then(retryPendingAcknowledgements)
+        .catch(error => {
+          logger.error('邮件持久化重试批次失败', {
+            errorCode: error.code || EMAIL_ERROR_CODES.DATABASE_TEMPORARY,
+          });
+        })
+    );
+  }, RETRY_INTERVAL_MS);
+  backfillTimer = setInterval(() => {
+    track(processEmails([['SINCE', new Date(Date.now() - PERIODIC_LOOKBACK_MS)]]));
+  }, BACKFILL_INTERVAL_MS);
+  retentionTimer = setInterval(() => {
+    track(
+      emailProcessingService.purgeExpiredContent().catch(error => {
+        logger.error('邮件保留期限清理失败', {
+          errorCode: error.code || EMAIL_ERROR_CODES.DATABASE_TEMPORARY,
+        });
+      })
+    );
+  }, RETENTION_INTERVAL_MS);
+  heartbeatTimer = setInterval(() => {
+    track(
+      emailProcessingService
+        .updateWorkerState({
+          mailboxIdentityHash: emailProcessingService.createMailboxIdentityHash(mailboxIdentity()),
+          workerId,
+          isConnected,
+        })
+        .catch(() => {})
+    );
+  }, HEARTBEAT_INTERVAL_MS);
+  retryTimer.unref?.();
+  backfillTimer.unref?.();
+  retentionTimer.unref?.();
+  heartbeatTimer.unref?.();
+}
+
+function scheduleReconnect() {
+  if (!shouldReconnect || reconnectTimer) {
+    return;
+  }
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    if (!isConnected && shouldReconnect) {
+      startEmailService();
+    }
+  }, RECONNECT_DELAY_MS);
+  reconnectTimer.unref?.();
+}
+
+function openMailbox() {
+  imapConnection.openBox(config.imap.mailbox, false, (error, box) => {
+    if (error) {
+      logger.error('打开邮箱失败', { errorCode: EMAIL_ERROR_CODES.IMAP_TEMPORARY });
+      isConnected = false;
+      imapConnection.end();
+      scheduleReconnect();
+      return;
+    }
+    currentUidValidity = String(box.uidvalidity || 'unknown');
+    imapConnection.on('mail', count => {
+      logger.info('收到新邮件事件', { count });
+      track(processEmails(['UNSEEN']));
+    });
+    startBackgroundTimers();
+    track(processEmails([['SINCE', new Date(Date.now() - STARTUP_LOOKBACK_MS)]]));
+    track(emailProcessingService.processDueRetries().catch(() => []));
+    track(emailProcessingService.purgeExpiredContent().catch(() => 0));
+  });
+}
+
+function setupEventHandlers() {
+  imapConnection.once('ready', () => {
+    isConnected = true;
+    track(
+      emailProcessingService
+        .updateWorkerState({
+          mailboxIdentityHash: emailProcessingService.createMailboxIdentityHash(mailboxIdentity()),
+          workerId,
+          isConnected: true,
+        })
+        .catch(() => {})
+    );
+    try {
+      imapConnection.id(
+        {
+          name: 'AppleOrderManager',
+          version: '1.0.0',
+          vendor: 'Seraph',
+          'support-email': config.imap.user,
+        },
+        error => {
+          if (error) {
+            logger.warn('发送 IMAP ID 失败', { errorCode: EMAIL_ERROR_CODES.IMAP_TEMPORARY });
+          }
+          openMailbox();
+        }
+      );
+    } catch (_error) {
+      openMailbox();
+    }
+  });
+  imapConnection.on('error', () => {
+    isConnected = false;
+    track(
+      emailProcessingService
+        .updateWorkerState({
+          isConnected: false,
+          errorCode: EMAIL_ERROR_CODES.IMAP_TEMPORARY,
+        })
+        .catch(() => {})
+    );
+    logger.error('IMAP 连接错误', { errorCode: EMAIL_ERROR_CODES.IMAP_TEMPORARY });
+    scheduleReconnect();
+  });
+  imapConnection.once('end', () => {
+    isConnected = false;
+    track(emailProcessingService.updateWorkerState({ isConnected: false }).catch(() => {}));
+    scheduleReconnect();
+  });
+  imapConnection.once('close', () => {
+    isConnected = false;
+    track(emailProcessingService.updateWorkerState({ isConnected: false }).catch(() => {}));
+    scheduleReconnect();
+  });
+}
+
+/**
+ * 启动邮件监听服务。
+ * @returns {void}
+ */
+function startEmailService() {
+  shouldReconnect = true;
+  imapConnection = new Imap({
+    user: config.imap.user,
+    password: config.imap.password,
+    host: config.imap.host,
+    port: config.imap.port,
+    tls: config.imap.tls,
+    tlsOptions: config.imap.tlsOptions,
+    keepalive: true,
+    connTimeout: 30_000,
+    authTimeout: 10_000,
+  });
+  setupEventHandlers();
+  imapConnection.connect();
+  logger.info('IMAP 连接请求已发送', {
+    host: config.imap.host,
+    port: config.imap.port,
+  });
+}
+
+/**
+ * 停止领取新邮件并等待在途处理到达安全停止点。
+ * @returns {Promise<void>}
+ */
+async function stopEmailService() {
   shouldReconnect = false;
+  pendingMailCheck = false;
+  clearBackgroundTimers();
   if (reconnectTimer) {
     clearTimeout(reconnectTimer);
     reconnectTimer = null;
   }
-
+  if (inFlight.size > 0) {
+    await Promise.allSettled([...inFlight]);
+  }
   if (imapConnection) {
-    logger.info('正在关闭 IMAP 连接...');
     imapConnection.end();
-    imapConnection = null;
-    isConnected = false;
   }
-}
-
-/**
- * 设置 IMAP 事件处理器
- */
-function setupEventHandlers() {
-  // 连接就绪事件
-  imapConnection.once('ready', onConnectionReady);
-
-  // 连接错误事件
-  imapConnection.on('error', onConnectionError);
-
-  // 连接结束事件
-  imapConnection.once('end', onConnectionEnd);
-
-  // 连接关闭事件
-  imapConnection.once('close', onConnectionClose);
-}
-
-/**
- * 连接就绪处理器
- */
-function onConnectionReady() {
-  logger.info('✅ IMAP 连接成功');
-  isConnected = true;
-
-  // 发送 IMAP ID 信息（163 邮箱要求）
-  try {
-    const clientId = {
-      name: 'AppleOrderManager',
-      version: '1.0.0',
-      vendor: 'Seraph',
-      'support-email': config.imap.user,
-    };
-
-    // 使用 id() 方法发送 ID 命令
-    imapConnection.id(clientId, err => {
-      if (err) {
-        logger.warn('发送 IMAP ID 失败', { error: err.message });
-      } else {
-        logger.debug('✅ IMAP ID 已发送', clientId);
-      }
-
-      // 继续打开邮箱
-      openMailbox();
-    });
-  } catch (error) {
-    logger.error('IMAP ID 发送异常', { error: error.message });
-    // 即使失败也尝试打开邮箱
-    openMailbox();
-  }
-}
-
-/**
- * 打开邮箱
- */
-function openMailbox() {
-  imapConnection.openBox(config.imap.mailbox, false, (err, box) => {
-    if (err) {
-      logger.error('打开邮箱失败', { error: err.message });
-      return;
-    }
-
-    logger.info('✅ 邮箱已打开', {
-      mailbox: config.imap.mailbox,
-      totalMessages: box.messages.total,
-      newMessages: box.messages.new,
-    });
-
-    // 监听新邮件
-    imapConnection.on('mail', onNewMail);
-
-    // 处理现有未读邮件
-    processUnreadEmails();
-  });
-}
-
-/**
- * 连接错误处理器
- */
-function onConnectionError(err) {
-  logger.error('IMAP 连接错误', {
-    error: err.message,
-    code: err.code,
-    stack: err.stack,
-  });
-
-  // 连接失败后尝试重连
-  scheduleReconnect();
-}
-
-/**
- * 连接结束处理器
- */
-function onConnectionEnd() {
-  logger.warn('IMAP 连接已结束');
+  imapConnection = null;
   isConnected = false;
-  scheduleReconnect();
+  currentUidValidity = null;
+  await emailProcessingService.updateWorkerState({ isConnected: false }).catch(() => {});
 }
 
 /**
- * 连接关闭处理器
- */
-function onConnectionClose(hadError) {
-  logger.warn('IMAP 连接已关闭', { hadError });
-  isConnected = false;
-
-  scheduleReconnect();
-}
-
-/**
- * 新邮件到达处理器
- */
-function onNewMail(numNewMsgs) {
-  logger.info('📬 收到新邮件', { count: numNewMsgs });
-
-  // 检查是否正在处理
-  if (isProcessing) {
-    logger.debug('正在处理邮件，跳过本次触发');
-    return;
-  }
-
-  // 处理新邮件
-  processUnreadEmails();
-}
-
-/**
- * 处理未读邮件
- */
-async function processUnreadEmails() {
-  // 检查是否正在处理
-  if (isProcessing) {
-    logger.debug('已有处理任务在运行，跳过');
-    return;
-  }
-
-  try {
-    // 设置处理标志
-    isProcessing = true;
-    logger.debug('开始处理未读邮件，设置 isProcessing = true');
-
-    // 搜索未读邮件
-    imapConnection.search(['UNSEEN'], (err, results) => {
-      if (err) {
-        logger.error('搜索邮件失败', { error: err.message });
-        isProcessing = false;
-        return;
-      }
-
-      if (!results || results.length === 0) {
-        logger.debug('没有未读邮件');
-        isProcessing = false;
-        return;
-      }
-
-      logger.info('找到未读邮件', { count: results.length });
-
-      // 批量获取邮件（不自动标记已读）
-      const fetch = imapConnection.fetch(results, {
-        bodies: '',
-        markSeen: false, // 不自动标记已读
-      });
-
-      let processedCount = 0;
-      const totalCount = results.length;
-
-      fetch.on('message', (msg, seqno) => {
-        onMessageFetch(msg, seqno, () => {
-          processedCount++;
-
-          // 所有邮件处理完成
-          if (processedCount === totalCount) {
-            logger.info('本批邮件处理完成', { total: totalCount });
-
-            // 重置处理标志
-            isProcessing = false;
-            logger.debug('重置 isProcessing = false');
-
-            // 再次检查是否有新的未读邮件
-            checkForMoreUnreadEmails();
-          }
-        });
-      });
-
-      fetch.once('error', err => {
-        logger.error('获取邮件失败', { error: err.message });
-        isProcessing = false;
-      });
-
-      fetch.once('end', () => {
-        logger.debug('邮件获取流结束');
-      });
-    });
-  } catch (error) {
-    logger.error('处理未读邮件异常', { error: error.message, stack: error.stack });
-    isProcessing = false;
-  }
-}
-
-/**
- * 邮件获取处理器
- */
-function onMessageFetch(msg, seqno, onComplete) {
-  logger.debug('开始获取邮件', { seqno });
-
-  let emailUid = null;
-  let emailBuffer = Buffer.alloc(0);
-
-  // 获取邮件 UID
-  msg.once('attributes', attrs => {
-    emailUid = attrs.uid;
-    logger.debug('邮件 UID 获取成功', { seqno, uid: emailUid });
-  });
-
-  // 获取邮件内容
-  msg.on('body', (stream, _info) => {
-    const chunks = [];
-
-    stream.on('data', chunk => {
-      chunks.push(chunk);
-    });
-
-    stream.once('end', () => {
-      emailBuffer = Buffer.concat(chunks);
-      logger.debug('邮件内容下载完成', {
-        seqno,
-        uid: emailUid,
-        size: emailBuffer.length,
-      });
-    });
-  });
-
-  // 邮件处理完成
-  msg.once('end', async () => {
-    logger.info('邮件下载完成，开始处理', { seqno, uid: emailUid });
-
-    let shouldMarkAsRead = false;
-
-    try {
-      // 提取邮件元数据（发件人、主题）
-      const metadata = await extractEmailMetadata(emailBuffer);
-
-      logger.debug('邮件元数据', {
-        uid: emailUid,
-        senderCount: metadata.fromAddresses.length,
-        subjectPresent: Boolean(metadata.subject),
-        date: metadata.date,
-      });
-
-      // 过滤邮件（只处理 NULL AOS Helper 的邮件）
-      if (!isOrderEmail(metadata)) {
-        logger.info('跳过非订单邮件', {
-          uid: emailUid,
-          senderAllowed: metadata.fromAddresses.some(address =>
-            config.imap.allowedSenders.includes(address)
-          ),
-          orderKeywordMatched:
-            metadata.subject.includes('NULL') ||
-            metadata.subject.includes('预订助手') ||
-            metadata.subject.includes('预订成功'),
-        });
-        // 是否标记已读由显式配置决定；完成回调统一在 finally 触发一次。
-        shouldMarkAsRead = config.imap.markSeen;
-        return;
-      }
-
-      // 解析邮件
-      const orderData = await parseOrderEmail(emailBuffer, emailUid.toString());
-
-      // 保存到数据库
-      await saveOrderFromEmail(orderData, emailUid.toString());
-
-      logger.info('✅ 订单处理成功', {
-        uid: emailUid,
-        orderNumber: orderData.orderNumber,
-      });
-
-      // 成功处理的订单邮件标记为已读
-      shouldMarkAsRead = config.imap.markSeen;
-
-      // 清除重试计数
-      emailRetryCount.delete(emailUid);
-    } catch (error) {
-      logger.error('邮件处理失败', {
-        seqno,
-        uid: emailUid,
-        error: error.message,
-        stack: error.stack,
-      });
-
-      // 判断错误类型和重试次数
-      const retryCount = (emailRetryCount.get(emailUid) || 0) + 1;
-      const isPermanent = isPermanentError(error);
-
-      if (isPermanent) {
-        // 永久性错误：立即标记已读，不再重试
-        logger.error('检测到永久性错误，标记已读', {
-          uid: emailUid,
-          errorType: error.name,
-          errorMessage: error.message,
-        });
-        shouldMarkAsRead = config.imap.markSeen;
-        emailRetryCount.delete(emailUid);
-      } else if (retryCount >= 3) {
-        // 临时性错误但重试次数超限：标记已读
-        logger.error('重试次数超限，标记已读', {
-          uid: emailUid,
-          retryCount,
-          errorType: error.name,
-        });
-        shouldMarkAsRead = config.imap.markSeen;
-        emailRetryCount.delete(emailUid);
-      } else {
-        // 临时性错误且未超限：保持未读，等待重试
-        emailRetryCount.set(emailUid, retryCount);
-        logger.warn('临时性错误，保持未读等待重试', {
-          uid: emailUid,
-          retryCount,
-          maxRetry: 3,
-          errorType: error.name,
-        });
-        shouldMarkAsRead = false;
-      }
-    } finally {
-      // 选择性标记已读
-      if (shouldMarkAsRead && emailUid) {
-        markEmailAsRead(emailUid);
-      }
-
-      onComplete && onComplete();
-    }
-  });
-}
-
-/**
- * 判断是否为永久性错误
- * @param {Error} error - 错误对象
- * @returns {boolean}
- */
-function isPermanentError(error) {
-  // 数据验证错误（字段格式、长度等）
-  if (error.name === 'SequelizeValidationError') {
-    return true;
-  }
-
-  // 唯一约束冲突（订单已存在）
-  if (error.name === 'SequelizeUniqueConstraintError') {
-    return true;
-  }
-
-  // 邮件解析错误（数据不完整）
-  if (error.message && error.message.includes('邮件数据不完整')) {
-    return true;
-  }
-
-  // 外键约束错误
-  if (error.name === 'SequelizeForeignKeyConstraintError') {
-    return true;
-  }
-
-  // 其他为临时错误（数据库连接、网络等）
-  return false;
-}
-
-/**
- * 判断是否为订单邮件
- * @param {Object} metadata - 邮件元数据
- * @returns {boolean}
- */
-function isOrderEmail(metadata) {
-  const { subject = '', fromAddresses = [] } = metadata;
-
-  // 检查主题是否包含关键词
-  const hasOrderKeyword =
-    subject.includes('NULL') || subject.includes('预订助手') || subject.includes('预订成功');
-
-  if (!hasOrderKeyword) {
-    return false;
-  }
-
-  if (config.imap.allowedSenders.length === 0) {
-    // 生产环境会在 validateConfig 阶段拒绝缺少白名单的配置。
-    return config.app.env !== 'production';
-  }
-
-  return fromAddresses.some(address => config.imap.allowedSenders.includes(address));
-}
-
-/**
- * 标记邮件为已读
- * @param {number} uid - 邮件 UID
- */
-function markEmailAsRead(uid) {
-  try {
-    imapConnection.addFlags(uid, '\\Seen', err => {
-      if (err) {
-        logger.error('标记邮件已读失败', { uid, error: err.message });
-      } else {
-        logger.debug('邮件已标记为已读', { uid });
-      }
-    });
-  } catch (error) {
-    logger.error('标记已读异常', { uid, error: error.message });
-  }
-}
-
-/**
- * 处理完成后检查是否还有未读邮件
- */
-function checkForMoreUnreadEmails() {
-  // 延迟 500ms，给服务器时间处理标记已读命令
-  setTimeout(() => {
-    try {
-      imapConnection.search(['UNSEEN'], (err, results) => {
-        if (err) {
-          logger.error('检查未读邮件失败', { error: err.message });
-          return;
-        }
-
-        if (results && results.length > 0) {
-          logger.info('发现新的未读邮件，立即处理', { count: results.length });
-          processUnreadEmails();
-        } else {
-          logger.debug('没有更多未读邮件');
-        }
-      });
-    } catch (error) {
-      logger.error('检查未读邮件异常', { error: error.message });
-    }
-  }, 500);
-}
-
-/**
- * 安排重连
- */
-function scheduleReconnect() {
-  if (!shouldReconnect) {
-    return;
-  }
-
-  if (reconnectTimer) {
-    return; // 已经在重连中
-  }
-
-  const delay = 30000; // 30秒后重连
-
-  logger.info('将在 30 秒后尝试重连...');
-
-  reconnectTimer = setTimeout(() => {
-    reconnectTimer = null;
-
-    if (!isConnected) {
-      logger.info('尝试重新连接...');
-      startEmailService();
-    }
-  }, delay);
-}
-
-/**
- * 获取服务状态
- * @returns {Object} 服务状态
+ * 获取邮件 Worker 进程内连接状态。
+ * @returns {Object} 状态
  */
 function getServiceStatus() {
   return {
@@ -547,6 +516,9 @@ function getServiceStatus() {
     port: config.imap.port,
     user: config.imap.user,
     mailbox: config.imap.mailbox,
+    uidValidity: currentUidValidity,
+    isProcessing,
+    inFlightCount: inFlight.size,
   };
 }
 
@@ -555,4 +527,5 @@ module.exports = {
   stopEmailService,
   getServiceStatus,
   isOrderEmail,
+  processEmails,
 };

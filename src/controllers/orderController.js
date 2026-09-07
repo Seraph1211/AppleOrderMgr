@@ -8,8 +8,16 @@
 
 const { Op } = require('sequelize');
 const XLSX = require('xlsx');
-const { Order, AppleId, Recipient, EmailLog } = require('../models');
-const crawlerService = require('../services/crawlerService');
+const {
+  Order,
+  AppleId,
+  Recipient,
+  EmailLog,
+  OrderRefreshSchedule,
+  OrderRefreshJob,
+} = require('../models');
+const refreshJobService = require('../services/crawler/refreshJobService');
+const { getDisplayedFreshness } = require('../services/crawler/refreshPolicy');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
@@ -23,7 +31,26 @@ const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDispl
  * @param {boolean} includeRecipientPhone - 是否包含取机人手机号明文
  * @returns {Object} 列表项
  */
-function serializeOrderListItem(order, includeRecipientPhone = false) {
+function serializeRefreshState(schedule, job, order) {
+  const scheduleData = schedule?.toJSON ? schedule.toJSON() : schedule || {};
+  const jobData = job?.toJSON ? job.toJSON() : job || null;
+  return {
+    freshness_status: getDisplayedFreshness(scheduleData, order),
+    last_attempt_at: scheduleData.lastAttemptAt || null,
+    last_success_at: scheduleData.lastSuccessAt || null,
+    last_failure_at: scheduleData.lastFailureAt || null,
+    last_error_code: scheduleData.lastErrorCode || null,
+    last_error_message: scheduleData.lastErrorMessage || null,
+    job: jobData ? { id: jobData.id, status: jobData.status, trigger: jobData.trigger } : null,
+  };
+}
+
+function serializeOrderListItem(
+  order,
+  includeRecipientPhone = false,
+  refreshSchedule = null,
+  refreshJob = null
+) {
   const plain = order.toJSON();
   return {
     id: plain.id,
@@ -66,6 +93,7 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
     tag: plain.tag,
     created_at: plain.createdAt,
     updated_at: plain.updatedAt,
+    refresh: serializeRefreshState(refreshSchedule, refreshJob, plain),
   };
 }
 
@@ -75,27 +103,36 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
  * @param {boolean} includeRecipientPhone - 是否包含取机人手机号明文
  * @returns {Object} 详情对象
  */
-function serializeOrderDetail(order, includeRecipientPhone = false) {
+function serializeOrderDetail(
+  order,
+  includeRecipientPhone = false,
+  refreshSchedule = null,
+  refreshJob = null
+) {
   const plain = order.toJSON();
+  let appleId = null;
+  if (plain.appleAccount) {
+    appleId = {
+      id: plain.appleAccount.id,
+      apple_id: plain.appleAccount.appleId,
+      nickname: plain.appleAccount.nickname,
+    };
+  }
+  let recipient = null;
+  if (plain.recipient) {
+    recipient = {
+      id: plain.recipient.id,
+      name: `${plain.recipient.lastName}${plain.recipient.firstName}`,
+      id_card_last4: plain.recipient.idCardLast4,
+      tag: plain.recipient.tag,
+      phone: includeRecipientPhone ? plain.recipient.phone : maskPhone(plain.recipient.phone),
+    };
+  }
   return {
     id: plain.id,
     order_number: plain.orderNumber,
-    apple_id: plain.appleAccount
-      ? {
-        id: plain.appleAccount.id,
-        apple_id: plain.appleAccount.appleId,
-        nickname: plain.appleAccount.nickname,
-      }
-      : null,
-    recipient: plain.recipient
-      ? {
-        id: plain.recipient.id,
-        name: `${plain.recipient.lastName}${plain.recipient.firstName}`,
-        id_card_last4: plain.recipient.idCardLast4,
-        tag: plain.recipient.tag,
-        phone: includeRecipientPhone ? plain.recipient.phone : maskPhone(plain.recipient.phone),
-      }
-      : null,
+    apple_id: appleId,
+    recipient,
     products: plain.products,
     status: plain.status,
     payment_status: plain.paymentStatus,
@@ -124,6 +161,7 @@ function serializeOrderDetail(order, includeRecipientPhone = false) {
     notes: plain.notes,
     created_at: plain.createdAt,
     updated_at: plain.updatedAt,
+    refresh: serializeRefreshState(refreshSchedule, refreshJob, plain),
   };
 }
 
@@ -147,6 +185,19 @@ function buildListFilters(query) {
     where.status = query.status;
   }
 
+  if (query.payment_status) {
+    if (!['unknown', 'unpaid', 'paid', 'refunded'].includes(query.payment_status)) {
+      throw ApiError.badRequest('payment_status 非法');
+    }
+    if (query.payment_status === 'unknown') {
+      where[Op.and] = (where[Op.and] || []).concat({
+        [Op.or]: [{ paymentStatus: 'unknown' }, { paymentStatus: null }, { paymentStatus: '' }],
+      });
+    } else {
+      where.paymentStatus = query.payment_status;
+    }
+  }
+
   if (query.apple_id) {
     const appleIdInt = parseInt(query.apple_id, 10);
     if (Number.isNaN(appleIdInt) || appleIdInt <= 0) {
@@ -167,7 +218,9 @@ function buildListFilters(query) {
     where.pickupStore = { [Op.iLike]: `%${String(query.pickupStore).trim()}%` };
   if (query.payerName) where.payerName = { [Op.iLike]: `%${String(query.payerName).trim()}%` };
   if (query.productModel) {
-    where[Op.and] = [sequelizeJsonbTextSearch('products', String(query.productModel).trim())];
+    where[Op.and] = (where[Op.and] || []).concat(
+      sequelizeJsonbTextSearch('products', String(query.productModel).trim())
+    );
   }
   if (query.recipientName) {
     const { Sequelize } = require('sequelize');
@@ -268,9 +321,30 @@ async function listOrders(req, res) {
     });
 
     const includeRecipientPhone = canDisplayLocalSensitiveFields(req);
+    const orderIds = rows.map(order => order.id);
+    let schedules = [];
+    let activeJobs = [];
+    if (orderIds.length > 0) {
+      [schedules, activeJobs] = await Promise.all([
+        OrderRefreshSchedule.findAll({ where: { orderId: { [Op.in]: orderIds } } }),
+        OrderRefreshJob.findAll({
+          where: { orderId: { [Op.in]: orderIds }, status: { [Op.in]: ['pending', 'running'] } },
+          order: [['priority', 'DESC']],
+        }),
+      ]);
+    }
+    const scheduleByOrder = new Map(schedules.map(schedule => [schedule.orderId, schedule]));
+    const jobByOrder = new Map(activeJobs.map(job => [job.orderId, job]));
     res.json(
       paginatedResponse(
-        rows.map(order => serializeOrderListItem(order, includeRecipientPhone)),
+        rows.map(order =>
+          serializeOrderListItem(
+            order,
+            includeRecipientPhone,
+            scheduleByOrder.get(order.id),
+            jobByOrder.get(order.id)
+          )
+        ),
         count,
         page,
         limit,
@@ -308,9 +382,22 @@ async function getOrderDetail(req, res) {
       throw ApiError.notFound('订单不存在', { orderId });
     }
 
+    const [refreshSchedule, refreshJob] = await Promise.all([
+      OrderRefreshSchedule.findByPk(orderId),
+      OrderRefreshJob.findOne({
+        where: { orderId, status: { [Op.in]: ['pending', 'running'] } },
+        order: [['priority', 'DESC']],
+      }),
+    ]);
+
     res.json({
       success: true,
-      data: serializeOrderDetail(order, canDisplayLocalSensitiveFields(req)),
+      data: serializeOrderDetail(
+        order,
+        canDisplayLocalSensitiveFields(req),
+        refreshSchedule,
+        refreshJob
+      ),
     });
   } catch (error) {
     if (error instanceof ApiError) {
@@ -336,23 +423,20 @@ async function refreshOrder(req, res) {
       throw ApiError.notFound('订单不存在', { orderId });
     }
 
-    const oldStatus = order.status;
-    const result = await crawlerService.crawlAndUpdateOrder(orderId, {
-      source: 'manual',
-      manual: true,
+    const result = await refreshJobService.enqueueOrderRefresh(orderId, {
+      trigger: 'manual_single',
+      requestedBy: req.user.id,
     });
 
-    return res.json({
+    return res.status(202).json({
       success: true,
-      message: '订单已更新',
+      message: result.created ? '刷新任务已提交' : '已有刷新任务，已复用',
       data: {
-        id: orderId,
+        orderId,
         order_number: order.orderNumber,
-        old_status: oldStatus,
-        new_status: result?.status ?? oldStatus,
-        validation_status: result?.validationStatus ?? order.validationStatus,
-        auto_refresh_stop_reason: result?.autoRefreshStopReason ?? null,
-        updated: result || null,
+        jobId: result.job.id,
+        status: result.job.status,
+        created: result.created,
       },
     });
   } catch (error) {
@@ -363,7 +447,7 @@ async function refreshOrder(req, res) {
       orderId: req.params?.params?.id || req.params?.id,
       error: error.message,
     });
-    throw ApiError.crawler('刷新订单失败', { reason: error.message });
+    throw ApiError.database('提交刷新任务失败', { reason: error.message });
   }
 }
 
@@ -431,33 +515,62 @@ async function batchRefresh(req, res) {
       });
     }
 
-    const orderIds = orders.map(o => o.id);
-    const results = await crawlerService.crawlMultipleOrders(orderIds, {
-      concurrency: 3,
-      source: 'manual',
-      manual: true,
+    const orderIds = orders.map(order => order.id);
+    const result = await refreshJobService.enqueueMany(orderIds, {
+      trigger: 'manual_single',
+      requestedBy: req.user.id,
     });
 
-    const detailRows = results.details || [];
-    const succeeded = detailRows.filter(r => r.success).length;
-    const failed = detailRows.filter(r => !r.success).length;
-
-    return res.json({
+    return res.status(202).json({
       success: true,
-      message: `批量刷新完成，成功 ${succeeded} 个，失败 ${failed} 个`,
-      data: {
-        total: orderIds.length,
-        succeeded,
-        failed,
-        results: detailRows,
-      },
+      message: '批量刷新任务已提交',
+      data: result,
     });
   } catch (error) {
     if (error instanceof ApiError) {
       throw error;
     }
     logger.error('批量刷新订单失败', { error: error.message });
-    throw ApiError.crawler('批量刷新订单失败', { reason: error.message });
+    throw ApiError.database('提交批量刷新任务失败', { reason: error.message });
+  }
+}
+
+/**
+ * POST /api/orders/refresh-all
+ */
+async function refreshAll(req, res) {
+  try {
+    const result = await refreshJobService.enqueueRefreshAll(req.user.id);
+    return res.status(202).json({
+      success: true,
+      message: result.created ? '刷新全部批次已提交' : '已有刷新全部批次，已复用',
+      data: { batchId: result.batch.id, status: result.batch.status, created: result.created },
+    });
+  } catch (error) {
+    logger.error('提交刷新全部批次失败', { userId: req.user.id, error: error.message });
+    throw ApiError.database('提交刷新全部批次失败', { reason: error.message });
+  }
+}
+
+/**
+ * POST /api/orders/page-open-refresh
+ */
+async function pageOpenRefresh(req, res) {
+  try {
+    const rawIds = req.body.order_ids;
+    if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > 100) {
+      throw ApiError.badRequest('order_ids 必须是 1-100 个订单 ID 的数组');
+    }
+    const orderIds = [...new Set(rawIds.map(id => Number(id)))];
+    if (orderIds.some(id => !Number.isInteger(id) || id <= 0)) {
+      throw ApiError.badRequest('order_ids 包含无效订单 ID');
+    }
+    const result = await refreshJobService.enqueuePageOpenRefresh(orderIds, req.user.id);
+    return res.status(202).json({ success: true, message: '页面刷新任务已提交', data: result });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    logger.error('提交页面刷新任务失败', { userId: req.user.id, error: error.message });
+    throw ApiError.database('提交页面刷新任务失败', { reason: error.message });
   }
 }
 
@@ -615,10 +728,13 @@ async function updateOrder(req, res) {
 }
 
 module.exports = {
+  buildListFilters,
   listOrders,
   getOrderDetail,
   refreshOrder,
   batchRefresh,
+  refreshAll,
+  pageOpenRefresh,
   exportOrders,
   getFilterOptions,
   updateOrder,

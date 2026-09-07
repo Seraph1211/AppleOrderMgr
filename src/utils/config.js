@@ -81,9 +81,14 @@ const config = {
     },
     maxRetry: parseInt(process.env.CRAWLER_MAX_RETRY, 10) || 3,
     timeout: parseInt(process.env.CRAWLER_TIMEOUT, 10) || 30000,
-    autoRefreshEnabled:
-      process.env.AUTO_ORDER_REFRESH_ENABLED === 'true' ||
-      (process.env.AUTO_ORDER_REFRESH_ENABLED !== 'false' && process.env.NODE_ENV === 'production'),
+    requestsPerSecond: parseInt(process.env.CRAWLER_REQUESTS_PER_SECOND, 10) || 5,
+    workerConcurrency: parseInt(process.env.CRAWLER_WORKER_CONCURRENCY, 10) || 8,
+    schedulerTickMs: parseInt(process.env.CRAWLER_SCHEDULER_TICK_MS, 10) || 5000,
+    jobLeaseMs: parseInt(process.env.CRAWLER_JOB_LEASE_MS, 10) || 300000,
+    scheduleScanLimit: parseInt(process.env.CRAWLER_SCHEDULE_SCAN_LIMIT, 10) || 500,
+    retryDelayMinMs: parseInt(process.env.CRAWLER_RETRY_DELAY_MIN_MS, 10) || 1000,
+    retryDelayMaxMs: parseInt(process.env.CRAWLER_RETRY_DELAY_MAX_MS, 10) || 5000,
+    autoRefreshEnabled: process.env.AUTO_ORDER_REFRESH_ENABLED === 'true',
     autoRefreshIntervalMs: parseInt(process.env.AUTO_ORDER_REFRESH_INTERVAL_MS, 10) || 300000,
     windControlPauseThreshold: parseInt(process.env.CRAWLER_WIND_CONTROL_PAUSE_THRESHOLD, 10) || 2,
     userAgent:
@@ -110,10 +115,22 @@ const config = {
   // 代理池配置
   proxy: {
     enabled: process.env.PROXY_ENABLED === 'true',
+    provider: process.env.PROXY_PROVIDER || 'kdl_private',
     apiUrl: process.env.PROXY_API_URL,
     apiKey: process.env.PROXY_API_KEY,
     refreshInterval: parseInt(process.env.PROXY_REFRESH_INTERVAL, 10) || 3600000, // 1小时
     badProxyTimeout: parseInt(process.env.PROXY_BAD_TIMEOUT, 10) || 3600000, // 1小时
+    maxFailCount: parseInt(process.env.PROXY_MAX_FAIL_COUNT, 10) || 2,
+    tunnel: {
+      host: process.env.KDL_TUNNEL_HOST,
+      backupHost: process.env.KDL_TUNNEL_BACKUP_HOST,
+      port: parseInt(process.env.KDL_TUNNEL_PORT, 10) || null,
+      username: process.env.KDL_TUNNEL_USERNAME,
+      password: process.env.KDL_TUNNEL_PASSWORD,
+      stickyPeriod: process.env.KDL_TUNNEL_STICKY_PERIOD || '0.5',
+      poolType: process.env.KDL_TUNNEL_POOL_TYPE || 'std',
+      poolPriority: process.env.KDL_TUNNEL_POOL_PRIORITY || 'q10',
+    },
   },
 
   // 定时任务配置
@@ -147,7 +164,16 @@ const validateConfig = () => {
 
   // 生产环境下，代理配置必需
   if (config.app.env === 'production' && config.proxy.enabled) {
-    requiredVars.push('PROXY_API_URL', 'PROXY_API_KEY');
+    if (config.proxy.provider === 'kdl_tunnel') {
+      requiredVars.push(
+        'KDL_TUNNEL_HOST',
+        'KDL_TUNNEL_PORT',
+        'KDL_TUNNEL_USERNAME',
+        'KDL_TUNNEL_PASSWORD'
+      );
+    } else {
+      requiredVars.push('PROXY_API_URL');
+    }
   }
 
   try {

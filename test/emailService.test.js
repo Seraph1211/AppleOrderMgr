@@ -1,4 +1,5 @@
 jest.mock('node-imap', () => jest.fn());
+jest.mock('../src/models', () => ({ EmailLog: {} }));
 jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),
   info: jest.fn(),
@@ -10,6 +11,7 @@ jest.mock('../src/utils/config', () => ({
     app: { env: 'production' },
     imap: {
       allowedSenders: ['orders@example.com'],
+      markSeen: true,
     },
   },
 }));
@@ -19,6 +21,10 @@ jest.mock('../src/services/emailParser', () => ({
 }));
 jest.mock('../src/services/orderService', () => ({
   saveOrderFromEmail: jest.fn(),
+}));
+jest.mock('../src/services/emailProcessingService', () => ({
+  TERMINAL_STATUSES: new Set(),
+  createMailboxIdentityHash: jest.fn(),
 }));
 
 const { isOrderEmail } = require('../src/services/emailService');

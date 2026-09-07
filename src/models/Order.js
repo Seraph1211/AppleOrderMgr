@@ -451,6 +451,18 @@ module.exports = sequelize => {
       foreignKey: 'orderId',
       as: 'crawlLogs',
     });
+    Order.hasOne(models.OrderRefreshSchedule, {
+      foreignKey: 'orderId',
+      as: 'refreshSchedule',
+    });
+    Order.hasMany(models.OrderRefreshJob, {
+      foreignKey: 'orderId',
+      as: 'refreshJobs',
+    });
+    Order.hasMany(models.EmailLog, {
+      foreignKey: 'orderId',
+      as: 'emailLogs',
+    });
   };
 
   return Order;
