@@ -14,6 +14,7 @@ const { isValidEmail } = require('../utils/helpers');
 const { ACCOUNT_STATUSES } = require('../constants/business');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
 const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
+const { PERMISSIONS } = require('../constants/business');
 
 /**
  * 把 AppleId 实例序列化为对外对象
@@ -86,7 +87,7 @@ async function listAppleIds(req, res) {
     const ids = rows.map(r => r.id);
     const orderStats = await getOrderStatsByAppleIds(ids);
     const recipientCounts = await getRecipientCountsByAppleIds(ids);
-    const includePassword = canDisplayLocalSensitiveFields(req);
+    const includePassword = canDisplayLocalSensitiveFields(req, PERMISSIONS.APPLE_IDS_SECRETS_READ);
 
     res.json(
       paginatedResponse(
@@ -182,7 +183,7 @@ async function getAppleIdDetail(req, res) {
     const orderStats = await getOrderStatsByAppleIds([id]);
     const recipientCounts = await getRecipientCountsByAppleIds([id]);
 
-    const includePassword = canDisplayLocalSensitiveFields(req);
+    const includePassword = canDisplayLocalSensitiveFields(req, PERMISSIONS.APPLE_IDS_SECRETS_READ);
     const plain = appleId.toJSON();
     if (!includePassword) delete plain.password;
     delete plain.securityQa;

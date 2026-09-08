@@ -10,33 +10,49 @@ const controller = require('../controllers/recipientController');
 
 const router = express.Router();
 
-router.get('/', asyncHandler(controller.listRecipients));
+router.get(
+  '/',
+  requirePermission(PERMISSIONS.RECIPIENTS_READ),
+  asyncHandler(controller.listRecipients)
+);
 router.get(
   '/export',
-  requirePermission(PERMISSIONS.EXPORT),
+  requirePermission(PERMISSIONS.RECIPIENTS_EXPORT),
   asyncHandler(controller.exportRecipients)
 );
-router.get('/:id', asyncHandler(controller.getRecipientDetail));
-router.post('/', requirePermission(PERMISSIONS.WRITE), asyncHandler(controller.createRecipient));
+router.get(
+  '/:id',
+  requirePermission(PERMISSIONS.RECIPIENTS_READ),
+  asyncHandler(controller.getRecipientDetail)
+);
+router.post(
+  '/',
+  requirePermission(PERMISSIONS.RECIPIENTS_CREATE),
+  asyncHandler(controller.createRecipient)
+);
 router.post(
   '/batch-generate-contact',
-  requirePermission(PERMISSIONS.WRITE),
+  requirePermission(PERMISSIONS.RECIPIENTS_GENERATE_CONTACT),
   asyncHandler(controller.batchGenerateContact)
 );
 router.post(
   '/batch-generate-address',
-  requirePermission(PERMISSIONS.WRITE),
+  requirePermission(PERMISSIONS.RECIPIENTS_GENERATE_ADDRESS),
   asyncHandler(controller.batchGenerateAddress)
 );
 router.post(
   '/bind-apple-ids',
-  requirePermission(PERMISSIONS.WRITE),
+  requirePermission(PERMISSIONS.RECIPIENTS_BIND_APPLE_IDS),
   asyncHandler(controller.batchBindAppleIds)
 );
-router.put('/:id', requirePermission(PERMISSIONS.WRITE), asyncHandler(controller.updateRecipient));
+router.put(
+  '/:id',
+  requirePermission(PERMISSIONS.RECIPIENTS_EDIT),
+  asyncHandler(controller.updateRecipient)
+);
 router.delete(
   '/:id',
-  requirePermission(PERMISSIONS.DELETE),
+  requirePermission(PERMISSIONS.RECIPIENTS_DELETE),
   asyncHandler(controller.deleteRecipient)
 );
 

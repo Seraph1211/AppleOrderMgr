@@ -14,6 +14,13 @@ import Users from './pages/Users';
 import ChangePassword from './pages/ChangePassword';
 import SystemLogs from './pages/SystemLogs';
 import EmailProcessing from './pages/EmailProcessing';
+import PaymentTasks from './pages/PaymentTasks';
+import PaymentDispatch from './pages/PaymentDispatch';
+import { PERMISSIONS } from './constants/permissions';
+
+function permissionRoute(permission, element) {
+  return <ProtectedRoute requiredPermission={permission}>{element}</ProtectedRoute>;
+}
 
 function App() {
   return (
@@ -29,20 +36,55 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Routes>
-                  <Route path="/" element={<Dashboard />} />
-                  <Route path="/orders" element={<Orders />} />
-                  <Route path="/orders/:id" element={<OrderDetail />} />
-                  <Route path="/apple-ids" element={<AppleIds />} />
-                  <Route path="/recipients" element={<Recipients />} />
-                  <Route path="/channels" element={<Channels />} />
-                  <Route path="/channels/:tag/orders" element={<ChannelOrders />} />
+                  <Route
+                    path="/"
+                    element={permissionRoute(PERMISSIONS.DASHBOARD_READ, <Dashboard />)}
+                  />
+                  <Route
+                    path="/orders"
+                    element={permissionRoute(PERMISSIONS.ORDERS_READ, <Orders />)}
+                  />
+                  <Route
+                    path="/orders/:id"
+                    element={permissionRoute(PERMISSIONS.ORDERS_READ, <OrderDetail />)}
+                  />
+                  <Route
+                    path="/apple-ids"
+                    element={permissionRoute(PERMISSIONS.APPLE_IDS_READ, <AppleIds />)}
+                  />
+                  <Route
+                    path="/recipients"
+                    element={permissionRoute(PERMISSIONS.RECIPIENTS_READ, <Recipients />)}
+                  />
+                  <Route
+                    path="/channels"
+                    element={permissionRoute(PERMISSIONS.CHANNELS_READ, <Channels />)}
+                  />
+                  <Route
+                    path="/channels/:tag/orders"
+                    element={permissionRoute(PERMISSIONS.CHANNELS_READ, <ChannelOrders />)}
+                  />
+                  <Route
+                    path="/payment-tasks"
+                    element={permissionRoute(PERMISSIONS.PAYMENT_TASKS_READ_OWN, <PaymentTasks />)}
+                  />
+                  <Route
+                    path="/payment-dispatch"
+                    element={permissionRoute(
+                      PERMISSIONS.PAYMENT_DISPATCH_READ,
+                      <PaymentDispatch />
+                    )}
+                  />
                   <Route path="/change-password" element={<ChangePassword />} />
-                  <Route path="/system-logs" element={<SystemLogs />} />
+                  <Route
+                    path="/system-logs"
+                    element={permissionRoute(PERMISSIONS.SYSTEM_LOGS_READ, <SystemLogs />)}
+                  />
 
                   <Route
                     path="/email-processing"
                     element={
-                      <ProtectedRoute requiredRole="admin">
+                      <ProtectedRoute requiredPermission={PERMISSIONS.EMAIL_READ}>
                         <EmailProcessing />
                       </ProtectedRoute>
                     }
@@ -52,7 +94,7 @@ function App() {
                   <Route
                     path="/users"
                     element={
-                      <ProtectedRoute requiredRole="admin">
+                      <ProtectedRoute requiredPermission={PERMISSIONS.USERS_READ}>
                         <Users />
                       </ProtectedRoute>
                     }

@@ -13,22 +13,42 @@ import {
   LogOut,
   Lock,
   ScrollText,
+  CreditCard,
+  ListChecks,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getEmailProcessingMetrics } from '../api';
+import { PERMISSIONS } from '../constants/permissions';
 
 const baseNavigation = [
-  { name: '仪表板', href: '/', icon: LayoutDashboard },
-  { name: '订单管理', href: '/orders', icon: Package },
-  { name: 'Apple ID', href: '/apple-ids', icon: Apple },
-  { name: '取机人', href: '/recipients', icon: User },
-  { name: '渠道管理', href: '/channels', icon: TrendingUp },
-  { name: '系统日志', href: '/system-logs', icon: ScrollText },
+  { name: '仪表板', href: '/', icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD_READ },
+  { name: '订单管理', href: '/orders', icon: Package, permission: PERMISSIONS.ORDERS_READ },
+  { name: 'Apple ID', href: '/apple-ids', icon: Apple, permission: PERMISSIONS.APPLE_IDS_READ },
+  { name: '取机人', href: '/recipients', icon: User, permission: PERMISSIONS.RECIPIENTS_READ },
+  { name: '渠道管理', href: '/channels', icon: TrendingUp, permission: PERMISSIONS.CHANNELS_READ },
 ];
 
 const adminNavigation = [
-  { name: '邮件处理', href: '/email-processing', icon: Mail, adminOnly: true },
-  { name: '用户管理', href: '/users', icon: Users, adminOnly: true },
+  {
+    name: '付款调度',
+    href: '/payment-dispatch',
+    icon: ListChecks,
+    permission: PERMISSIONS.PAYMENT_DISPATCH_READ,
+  },
+  {
+    name: '付款任务',
+    href: '/payment-tasks',
+    icon: CreditCard,
+    permission: PERMISSIONS.PAYMENT_TASKS_READ_OWN,
+  },
+  { name: '邮件处理', href: '/email-processing', icon: Mail, permission: PERMISSIONS.EMAIL_READ },
+  {
+    name: '系统日志',
+    href: '/system-logs',
+    icon: ScrollText,
+    permission: PERMISSIONS.SYSTEM_LOGS_READ,
+  },
+  { name: '用户管理', href: '/users', icon: Users, permission: PERMISSIONS.USERS_READ },
 ];
 
 export default function Layout({ children }) {
@@ -38,10 +58,10 @@ export default function Layout({ children }) {
   const menuRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout, isAdmin } = useAuth();
+  const { user, logout, can } = useAuth();
 
   // 根据用户角色生成导航菜单
-  const navigation = isAdmin() ? [...baseNavigation, ...adminNavigation] : baseNavigation;
+  const navigation = [...baseNavigation, ...adminNavigation].filter(item => can(item.permission));
 
   // 处理登出
   const handleLogout = () => {
@@ -63,7 +83,7 @@ export default function Layout({ children }) {
   }, []);
 
   useEffect(() => {
-    if (user?.role !== 'admin') {
+    if (!can(PERMISSIONS.EMAIL_READ)) {
       setEmailWorker(null);
       return undefined;
     }
@@ -82,7 +102,7 @@ export default function Layout({ children }) {
       active = false;
       clearInterval(timer);
     };
-  }, [user?.role]);
+  }, [can]);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -166,7 +186,7 @@ export default function Layout({ children }) {
             <div className="flex-1" />
 
             <div className="flex items-center space-x-4">
-              {user?.role === 'admin' && (
+              {can(PERMISSIONS.EMAIL_READ) && (
                 <Link
                   to="/email-processing"
                   className="flex items-center space-x-2 text-sm text-gray-500 hover:text-primary"

@@ -1,7 +1,7 @@
 const mockChangePassword = jest.fn();
 const mockLogin = jest.fn();
 const mockFindOne = jest.fn();
-const mockCreate = jest.fn();
+const mockCreateUserWithPermissions = jest.fn();
 
 jest.mock('../src/services/authService', () => ({
   changePassword: mockChangePassword,
@@ -10,8 +10,10 @@ jest.mock('../src/services/authService', () => ({
 jest.mock('../src/models', () => ({
   User: {
     findOne: mockFindOne,
-    create: mockCreate,
   },
+}));
+jest.mock('../src/services/permissionService', () => ({
+  createUserWithPermissions: mockCreateUserWithPermissions,
 }));
 jest.mock('../src/utils/logger', () => ({
   info: jest.fn(),
@@ -110,28 +112,36 @@ describe('密码长度接口契约', () => {
 
   test('创建用户接口接受 8 位密码', async () => {
     mockFindOne.mockResolvedValue(null);
-    mockCreate.mockResolvedValue({
-      id: 2,
-      username: 'operator',
-      role: 'operator',
-      status: 'active',
-      createdAt: new Date('2026-09-06T00:00:00.000Z'),
+    mockCreateUserWithPermissions.mockResolvedValue({
+      user: {
+        id: 2,
+        username: 'operator',
+        role: 'operator',
+        status: 'active',
+        permissionsVersion: 1,
+        createdAt: new Date('2026-09-06T00:00:00.000Z'),
+      },
+      permissions: [],
     });
     const request = {
       body: { username: 'operator', password: '12345678', role: 'operator' },
-      user: { username: 'admin' },
+      user: { id: 1, username: 'admin' },
     };
     const response = createResponse();
 
     await userController.createUser(request, response);
 
-    expect(mockCreate).toHaveBeenCalledWith({
-      username: 'operator',
-      password: '12345678',
-      role: 'operator',
-      status: 'active',
-      forcePasswordChange: true,
-    });
+    expect(mockCreateUserWithPermissions).toHaveBeenCalledWith(
+      {
+        username: 'operator',
+        password: '12345678',
+        role: 'operator',
+        status: 'active',
+        forcePasswordChange: true,
+      },
+      [],
+      1
+    );
     expect(response.status).toHaveBeenCalledWith(201);
   });
 });

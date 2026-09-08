@@ -16,7 +16,12 @@ describe('本地敏感字段展示门禁', () => {
     process.env.NODE_ENV = 'development';
     process.env.ALLOW_LOCAL_SENSITIVE_DISPLAY = 'true';
 
-    expect(canDisplayLocalSensitiveFields({ user: { role: 'admin' } })).toBe(true);
+    expect(
+      canDisplayLocalSensitiveFields(
+        { user: { role: 'admin', permissions: ['orders.secrets.read'] } },
+        'orders.secrets.read'
+      )
+    ).toBe(true);
   });
 
   test.each([
@@ -28,6 +33,22 @@ describe('本地敏感字段展示门禁', () => {
     process.env.NODE_ENV = nodeEnv;
     process.env.ALLOW_LOCAL_SENSITIVE_DISPLAY = displayFlag;
 
-    expect(canDisplayLocalSensitiveFields({ user: { role } })).toBe(false);
+    expect(
+      canDisplayLocalSensitiveFields(
+        { user: { role, permissions: ['orders.secrets.read'] } },
+        'orders.secrets.read'
+      )
+    ).toBe(false);
+  });
+
+  test('管理员缺少对应保留权限时仍保持脱敏', () => {
+    process.env.NODE_ENV = 'development';
+    process.env.ALLOW_LOCAL_SENSITIVE_DISPLAY = 'true';
+    expect(
+      canDisplayLocalSensitiveFields(
+        { user: { role: 'admin', permissions: [] } },
+        'orders.secrets.read'
+      )
+    ).toBe(false);
   });
 });

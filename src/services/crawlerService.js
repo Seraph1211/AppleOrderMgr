@@ -18,7 +18,8 @@ const { Op } = require('sequelize');
 const logger = require('../utils/logger');
 const proxyManager = require('../utils/proxyManager');
 const { removeControlCharacters } = require('../utils/helpers');
-const { Order, CrawlLog, sequelize } = require('../models');
+const { Order, CrawlLog, PaymentTask, sequelize } = require('../models');
+const { PAYMENT_WINDOW_MS } = require('../constants/business');
 const { config } = require('../utils/config');
 const { sendTelegramAlert } = require('../utils/telegramNotifier');
 const crawlerRateLimiter = require('./crawler/crawlerRateLimiter');
@@ -769,6 +770,41 @@ function extractOrderJson(html) {
 }
 
 /**
+ * 解析官网订单创建时间。只有包含时分的值才可用于 30 分钟付款窗口。
+ * @param {unknown} value - Apple orderPlacedDate 原始值
+ * @returns {Date|null} 精确官网时间或 null
+ */
+function parseOfficialOrderCreatedAt(value) {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text) return null;
+
+  const chineseMatch = text.match(
+    /(\d{4})年(\d{1,2})月(\d{1,2})日\s*(上午|下午)?\s*(\d{1,2})[:：](\d{2})(?:[:：](\d{2}))?/
+  );
+  if (chineseMatch) {
+    let hour = Number(chineseMatch[5]);
+    if (chineseMatch[4] === '下午' && hour < 12) hour += 12;
+    if (chineseMatch[4] === '上午' && hour === 12) hour = 0;
+    if (hour > 23) return null;
+    const isoTime = [
+      chineseMatch[1],
+      chineseMatch[2].padStart(2, '0'),
+      chineseMatch[3].padStart(2, '0'),
+    ].join('-');
+    const parsed = new Date(
+      `${isoTime}T${String(hour).padStart(2, '0')}:${chineseMatch[6]}:${chineseMatch[7] || '00'}+08:00`
+    );
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  const hasExplicitTime = /(?:T|\s)\d{1,2}:\d{2}/.test(text);
+  if (!hasExplicitTime) return null;
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/**
  * 解析订单 JSON 数据为结构化对象
  * @param {Object} orderJson - 订单 JSON 对象
  * @param {string} html - 原始 HTML（用于提取页面文本信息）
@@ -783,6 +819,7 @@ function parseOrderData(orderJson, html) {
     const orderHeader = orderJson.orderDetail?.orderHeader?.d || {};
     const orderNumber = orderHeader.orderNumber || null;
     const orderPlacedDate = orderHeader.orderPlacedDate || null;
+    const officialOrderCreatedAt = parseOfficialOrderCreatedAt(orderPlacedDate);
 
     // 日期格式转换: "2025年11月8日" → "2025-11-08"
     let orderDate = null;
@@ -871,6 +908,7 @@ function parseOrderData(orderJson, html) {
     return {
       orderNumber,
       orderDate,
+      officialOrderCreatedAt,
       orderStatus,
       paymentStatus: inferPaymentStatus(bodyText, orderStatus, rawCurrentStatus),
       pickupStatus: inferPickupStatus(bodyText, orderStatus),
@@ -1198,6 +1236,9 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     if (crawledData.orderDate) {
       updateData.orderDate = crawledData.orderDate;
     }
+    if (crawledData.officialOrderCreatedAt) {
+      updateData.officialOrderCreatedAt = crawledData.officialOrderCreatedAt;
+    }
 
     // 更新商品信息（合并邮件数据和爬取数据）
     if (crawledData.products.length > 0) {
@@ -1225,6 +1266,24 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     }
 
     await order.update(updateData, { transaction });
+
+    if (crawledData.officialOrderCreatedAt) {
+      const deadlineAt = new Date(
+        new Date(crawledData.officialOrderCreatedAt).getTime() + PAYMENT_WINDOW_MS
+      );
+      await PaymentTask.update(
+        {
+          deadlineAt,
+          deadlineSource: 'official',
+          eligibilityVerifiedAt: null,
+          eligibilityValidUntil: null,
+          eligibilityVerifiedBy: null,
+          paymentLinkSource: order.orderUrl ? 'order_url' : null,
+          version: sequelize.literal('version + 1'),
+        },
+        { where: { orderId: order.id }, transaction }
+      );
+    }
 
     // 5. 记录爬取日志
     const responseTime = Date.now() - startTime;
@@ -1660,6 +1719,7 @@ module.exports = {
   fetchOrderPage,
   extractOrderJson,
   parseOrderData,
+  parseOfficialOrderCreatedAt,
   summarizeOrderUrl,
   validateOrderUrl,
   validateCrawledOrderIdentity,

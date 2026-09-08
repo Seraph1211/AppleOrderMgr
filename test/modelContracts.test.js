@@ -25,6 +25,14 @@ describe('模型安全与关联契约', () => {
       OrderRefreshBatch: require('../src/models/OrderRefreshBatch')(sequelize),
       OrderRefreshJob: require('../src/models/OrderRefreshJob')(sequelize),
       OrderRefreshSystemState: require('../src/models/OrderRefreshSystemState')(sequelize),
+      UserPermission: require('../src/models/UserPermission')(sequelize),
+      UserPermissionEvent: require('../src/models/UserPermissionEvent')(sequelize),
+      PaymentTask: require('../src/models/PaymentTask')(sequelize),
+      PaymentTaskEvent: require('../src/models/PaymentTaskEvent')(sequelize),
+      OrderPayerEvent: require('../src/models/OrderPayerEvent')(sequelize),
+      PaymentDispatchSetting: require('../src/models/PaymentDispatchSetting')(sequelize),
+      PaymentStaffSetting: require('../src/models/PaymentStaffSetting')(sequelize),
+      PaymentDispatchEvent: require('../src/models/PaymentDispatchEvent')(sequelize),
     };
 
     Object.values(models).forEach(model => {

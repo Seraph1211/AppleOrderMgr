@@ -1,8 +1,19 @@
-const { User } = require('../models');
+const {
+  User,
+  PaymentTask,
+  PaymentTaskEvent,
+  UserPermissionEvent,
+  OrderPayerEvent,
+  PaymentStaffSetting,
+  PaymentDispatchEvent,
+  sequelize,
+} = require('../models');
 const { Op } = require('sequelize');
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
 const { MIN_PASSWORD_LENGTH, USER_ROLES } = require('../constants/business');
+const permissionService = require('../services/permissionService');
+const ApiError = require('../utils/ApiError');
 
 /**
  * 用户管理控制器
@@ -55,6 +66,7 @@ async function listUsers(req, res) {
         'lastLoginIp',
         'createdAt',
         'updatedAt',
+        'permissionsVersion',
       ],
       order: [['createdAt', 'DESC']],
       limit: limitNum,
@@ -98,7 +110,7 @@ async function listUsers(req, res) {
  */
 async function createUser(req, res) {
   try {
-    const { username, password, role = 'operator' } = req.body;
+    const { username, password, role = 'operator', permissions = [] } = req.body;
 
     // 输入验证
     if (!username || !password) {
@@ -148,14 +160,19 @@ async function createUser(req, res) {
       });
     }
 
-    // 创建用户（beforeCreate hook 会自动加密密码）
-    const user = await User.create({
-      username,
-      password,
-      role,
-      status: 'active',
-      forcePasswordChange: true,
-    });
+    // 用户与初始权限必须原子创建，避免出现短暂的角色默认授权窗口。
+    const created = await permissionService.createUserWithPermissions(
+      {
+        username,
+        password,
+        role,
+        status: 'active',
+        forcePasswordChange: true,
+      },
+      permissions,
+      req.user.id
+    );
+    const { user } = created;
 
     logger.info('创建用户成功', {
       userId: user.id,
@@ -172,10 +189,15 @@ async function createUser(req, res) {
         role: user.role,
         status: user.status,
         createdAt: user.createdAt,
+        permissions: created.permissions,
+        permissionsVersion: user.permissionsVersion,
       },
       message: '用户创建成功',
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
     logger.error('创建用户失败', {
       error: error.message,
       stack: error.stack,
@@ -199,16 +221,6 @@ async function updateUser(req, res) {
     const { id } = req.params;
     const { role, status } = req.body;
 
-    // 查找用户
-    const user = await User.findByPk(id);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: '用户不存在',
-      });
-    }
-
     // 验证更新字段
     if (role && !USER_ROLES.includes(role)) {
       return res.status(400).json({
@@ -224,16 +236,32 @@ async function updateUser(req, res) {
       });
     }
 
-    // 更新用户信息
-    if (role) {
-      user.role = role;
-    }
+    const user = await sequelize.transaction(async transaction => {
+      await sequelize.query('SELECT pg_advisory_xact_lock(742092)', { transaction });
+      const target = await User.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+      if (!target) throw ApiError.notFound('用户不存在');
 
-    if (status) {
-      user.status = status;
-    }
+      const nextRole = role || target.role;
+      const nextStatus = status || target.status;
+      if (
+        target.role === 'admin' &&
+        target.status === 'active' &&
+        (nextRole !== 'admin' || nextStatus !== 'active')
+      ) {
+        const activeAdminCount = await User.count({
+          where: { role: 'admin', status: 'active' },
+          transaction,
+        });
+        if (activeAdminCount <= 1) {
+          throw ApiError.badRequest('不能降级或锁定最后一个可用管理员账号');
+        }
+      }
 
-    await user.save();
+      target.role = nextRole;
+      target.status = nextStatus;
+      await target.save({ transaction });
+      return target;
+    });
 
     logger.info('更新用户成功', {
       userId: user.id,
@@ -254,6 +282,7 @@ async function updateUser(req, res) {
       message: '用户更新成功',
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     logger.error('更新用户失败', {
       userId: req.params.id,
       error: error.message,
@@ -308,6 +337,27 @@ async function deleteUser(req, res) {
           message: '不能删除最后一个管理员账号',
         });
       }
+    }
+
+    const referenceCounts = await Promise.all([
+      PaymentTask.count({ where: { assigneeUserId: user.id } }),
+      PaymentStaffSetting.count({ where: { userId: user.id } }),
+      UserPermissionEvent.count({
+        where: { [Op.or]: [{ userId: user.id }, { actorUserId: user.id }] },
+      }),
+      PaymentTaskEvent.count({
+        where: {
+          [Op.or]: [{ actorUserId: user.id }, { fromUserId: user.id }, { toUserId: user.id }],
+        },
+      }),
+      OrderPayerEvent.count({ where: { actorUserId: user.id } }),
+      PaymentDispatchEvent.count({ where: { actorUserId: user.id } }),
+    ]);
+    if (referenceCounts.some(count => count > 0)) {
+      return res.status(409).json({
+        success: false,
+        message: '用户已被付款任务或审计记录引用，请锁定账号并完成交接',
+      });
     }
 
     // 删除用户

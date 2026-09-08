@@ -18,6 +18,7 @@ const {
 const logger = require('../utils/logger');
 const { isValidOrderNumber, isValidEmail } = require('../utils/helpers');
 const { EMAIL_ERROR_CODES, EmailProcessingError } = require('./emailErrors');
+const paymentDispatchService = require('./paymentDispatchService');
 
 /**
  * 从邮件数据保存订单
@@ -253,6 +254,7 @@ async function saveOrderFromEmail(emailData, emailUid, options = {}) {
         { transaction }
       );
     }
+    await paymentDispatchService.enrollOrderInTransaction(order, transaction);
 
     // 7. 更新邮件处理记录；兼容旧调用时才创建日志。
     if (emailLog) {

@@ -1,156 +1,162 @@
-import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { Apple, Lock, User } from 'lucide-react'
-import { useAuth } from '../contexts/AuthContext'
-import client from '../api/client'
-import AlertModal from '../components/AlertModal'
-import { MIN_PASSWORD_LENGTH } from '../constants/auth'
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Apple, Lock, User } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import client from '../api/client';
+import AlertModal from '../components/AlertModal';
+import { MIN_PASSWORD_LENGTH } from '../constants/auth';
 
 export default function Login() {
-  const navigate = useNavigate()
-  const { login } = useAuth()
+  const navigate = useNavigate();
+  const { login } = useAuth();
 
   const [formData, setFormData] = useState({
     username: '',
     password: '',
     rememberMe: false,
-  })
+  });
 
-  const [loading, setLoading] = useState(false)
-  const [alertModal, setAlertModal] = useState(null)
-  const [lockInfo, setLockInfo] = useState(null)
+  const [loading, setLoading] = useState(false);
+  const [alertModal, setAlertModal] = useState(null);
+  const [lockInfo, setLockInfo] = useState(null);
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target
-    setFormData((prev) => ({
+  const handleChange = e => {
+    const { name, value, type, checked } = e.target;
+    setFormData(prev => ({
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
-    }))
+    }));
     // 清除错误信息
-    setAlertModal(null)
-    setLockInfo(null)
-  }
+    setAlertModal(null);
+    setLockInfo(null);
+  };
 
   /**
    * 计算锁定剩余时间
    * @param {string} lockedUntil - 锁定截止时间
    * @returns {string|null} 剩余时间字符串
    */
-  const calculateLockTime = (lockedUntil) => {
-    const now = new Date()
-    const lockEnd = new Date(lockedUntil)
-    const diffMs = lockEnd - now
+  const calculateLockTime = lockedUntil => {
+    const now = new Date();
+    const lockEnd = new Date(lockedUntil);
+    const diffMs = lockEnd - now;
 
     if (diffMs <= 0) {
-      return null
+      return null;
     }
 
-    const minutes = Math.floor(diffMs / 60000)
-    const seconds = Math.floor((diffMs % 60000) / 1000)
+    const minutes = Math.floor(diffMs / 60000);
+    const seconds = Math.floor((diffMs % 60000) / 1000);
 
-    return `${minutes} 分 ${seconds} 秒`
-  }
+    return `${minutes} 分 ${seconds} 秒`;
+  };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault()
+  const handleSubmit = async e => {
+    e.preventDefault();
 
     // 前端验证
     if (!formData.username.trim()) {
       setAlertModal({
         title: '提示',
         message: '请输入用户名',
-      })
-      return
+      });
+      return;
     }
 
     if (!formData.password) {
       setAlertModal({
         title: '提示',
         message: '请输入密码',
-      })
-      return
+      });
+      return;
     }
 
     if (formData.password.length < MIN_PASSWORD_LENGTH) {
       setAlertModal({
         title: '提示',
         message: `密码长度至少为 ${MIN_PASSWORD_LENGTH} 位`,
-      })
-      return
+      });
+      return;
     }
 
-    setLoading(true)
-    setAlertModal(null)
-    setLockInfo(null)
+    setLoading(true);
+    setAlertModal(null);
+    setLockInfo(null);
 
     try {
       const response = await client.post('/auth/login', {
         username: formData.username,
         password: formData.password,
-      })
+      });
 
       // 登录成功
       if (response.success && response.data) {
-        const { token, user } = response.data
+        const { token, user } = response.data;
 
         // 调用 AuthContext 的 login 方法
-        login({
-          token,
-          username: user.username,
-          role: user.role,
-          forcePasswordChange: user.forcePasswordChange
-        }, formData.rememberMe)
+        login(
+          {
+            token,
+            username: user.username,
+            role: user.role,
+            forcePasswordChange: user.forcePasswordChange,
+            permissions: user.permissions,
+            permissionsVersion: user.permissionsVersion,
+            availableHome: user.availableHome,
+          },
+          formData.rememberMe
+        );
 
         // 检查是否需要强制修改密码
         if (user.forcePasswordChange) {
-          navigate('/change-password')
+          navigate('/change-password');
         } else {
-          navigate('/')
+          navigate(user.availableHome || '/change-password');
         }
       } else {
         setAlertModal({
           title: '登录失败',
           message: response.message || '登录失败，请重试',
-        })
+        });
       }
     } catch (error) {
       // 处理登录失败
-      let errorMessage = '登录失败，请重试'
-      let lockUntil = null
+      let errorMessage = '登录失败，请重试';
+      let lockUntil = null;
 
       if (error.response) {
-        const { status, data } = error.response
+        const { status, data } = error.response;
 
         if (status === 401) {
-          errorMessage = data.message || '用户名或密码错误'
+          errorMessage = data.message || '用户名或密码错误';
         } else if (status === 403) {
-          errorMessage = data.message || '账号已被锁定'
-          lockUntil = data.lockedUntil
+          errorMessage = data.message || '账号已被锁定';
+          lockUntil = data.lockedUntil;
         } else {
-          errorMessage = data.message || '登录失败，请稍后重试'
+          errorMessage = data.message || '登录失败，请稍后重试';
         }
       } else if (error.message) {
-        errorMessage = error.message
+        errorMessage = error.message;
       } else if (typeof error === 'string') {
-        errorMessage = error
+        errorMessage = error;
       }
 
       setAlertModal({
         title: '登录失败',
         message: errorMessage,
-      })
+      });
 
       // 设置锁定信息
       if (lockUntil) {
-        const lockTime = calculateLockTime(lockUntil)
+        const lockTime = calculateLockTime(lockUntil);
         if (lockTime) {
-          setLockInfo(`账号已被锁定，剩余时间: ${lockTime}`)
+          setLockInfo(`账号已被锁定，剩余时间: ${lockTime}`);
         }
       }
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -233,20 +239,14 @@ export default function Login() {
             </div>
 
             {/* 登录按钮 */}
-            <button
-              type="submit"
-              className="btn btn-primary w-full"
-              disabled={loading}
-            >
+            <button type="submit" className="btn btn-primary w-full" disabled={loading}>
               {loading ? '登录中...' : '登录'}
             </button>
           </form>
         </div>
 
         {/* 底部信息 */}
-        <p className="text-center text-sm text-gray-500 mt-8">
-          Apple 订单管理系统 v1.0.0
-        </p>
+        <p className="text-center text-sm text-gray-500 mt-8">Apple 订单管理系统 v1.0.0</p>
       </div>
 
       {/* 错误提示 Modal */}
@@ -265,5 +265,5 @@ export default function Login() {
         </div>
       )}
     </div>
-  )
+  );
 }

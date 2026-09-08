@@ -79,10 +79,15 @@ export const getRefreshBatch = id => client.get(`/order-refresh/batches/${id}`);
  * 更新订单信息
  * @param {number} id - 订单 ID
  * @param {Object} data - 更新数据
- * @param {string} data.payerName - 付款人
- * @param {string} data.paymentScreenshot - 付款截图 URL
+ * @param {string[]} data.paymentScreenshot - 付款截图 URL 数组
  * @returns {Promise<Object>} 更新结果
  */
 export const updateOrder = (id, data) => {
   return client.put(`/orders/${id}`, data);
 };
+
+/** 通过受审计的专用端点更新订单付款人。 */
+export const updateOrderPayer = (id, data, idempotencyKey) =>
+  client.put(`/orders/${id}/payer`, data, {
+    headers: { 'Idempotency-Key': idempotencyKey },
+  });

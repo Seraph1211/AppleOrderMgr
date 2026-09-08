@@ -29,10 +29,13 @@ const usersRouter = require('./routes/users');
 const systemRouter = require('./routes/system');
 const orderRefreshRouter = require('./routes/orderRefresh');
 const emailProcessingRouter = require('./routes/emailProcessing');
+const paymentTasksRouter = require('./routes/paymentTasks');
+const paymentDispatchRouter = require('./routes/paymentDispatch');
 
 const { sequelize } = require('./models');
 const emailService = require('./services/emailService');
 const refreshWorkerService = require('./services/crawler/refreshWorkerService');
+const paymentDispatchScheduler = require('./services/paymentDispatchScheduler');
 
 const DEFAULT_PORT = parseInt(process.env.PORT, 10) || 3000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -113,6 +116,8 @@ app.use('/api/import', importRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/channels', channelsRouter);
 app.use('/api/system', systemRouter);
+app.use('/api/payment-tasks', paymentTasksRouter);
+app.use('/api/payment-dispatch', paymentDispatchRouter);
 
 // ---------- 404 兜底 ----------
 app.use((req, _res, next) => {
@@ -137,6 +142,8 @@ const server = app.listen(DEFAULT_PORT, () => {
     apiHealth: `http://localhost:${DEFAULT_PORT}/api/health`,
   });
 
+  paymentDispatchScheduler.start();
+
   if (process.env.RUN_WORKERS_IN_API === 'true') {
     try {
       emailService.startEmailService();
@@ -156,6 +163,7 @@ function shutdown(signal) {
 
   // 停止领取新的后台任务；邮件在途处理在关闭数据库前等待完成。
   refreshWorkerService.stop();
+  paymentDispatchScheduler.stop();
 
   server.close(async err => {
     if (err) {

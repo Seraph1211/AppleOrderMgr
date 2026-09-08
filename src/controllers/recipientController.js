@@ -15,6 +15,7 @@ const XLSX = require('xlsx');
 const { ACCOUNT_STATUSES } = require('../constants/business');
 const { blindIndex } = require('../utils/fieldEncryption');
 const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
+const { PERMISSIONS } = require('../constants/business');
 const { generatePhone } = require('../utils/contactGenerator');
 const {
   maskIdCard,
@@ -167,7 +168,10 @@ async function listRecipients(req, res) {
     });
 
     const orderStats = await getOrderStatsByRecipients(rows.map(r => r.id));
-    const includeSensitive = canDisplayLocalSensitiveFields(req);
+    const includeSensitive = canDisplayLocalSensitiveFields(
+      req,
+      PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE
+    );
 
     res.json(
       paginatedResponse(
@@ -205,7 +209,10 @@ async function getRecipientDetail(req, res) {
     }
 
     const orderCounts = await getOrderCountsByRecipients([id]);
-    const includeSensitive = canDisplayLocalSensitiveFields(req);
+    const includeSensitive = canDisplayLocalSensitiveFields(
+      req,
+      PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE
+    );
     res.json({
       success: true,
       data: serializeRecipient(recipient.toJSON(), orderCounts[id] || {}, includeSensitive),

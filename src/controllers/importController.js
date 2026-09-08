@@ -207,6 +207,9 @@ async function executeImport(req, res) {
     if (!session || session.userId !== req.user.id) {
       throw ApiError.badRequest('导入会话不存在、已过期或不属于当前用户');
     }
+    if (req.body.type !== session.type) {
+      throw ApiError.badRequest('导入类型与预览会话不匹配');
+    }
     // 执行前即消费令牌，防止并发重放。失败后需重新预览。
     importSessions.delete(sessionToken);
 

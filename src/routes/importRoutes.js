@@ -9,6 +9,31 @@ const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
+function requireImportPermission(permissionByType) {
+  return (req, res, next) => {
+    const type = req.query.type || req.body?.type;
+    const permission = permissionByType[type];
+    if (!permission) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: '导入类型必须是 apple_ids 或 recipients' },
+      });
+    }
+    return requirePermission(permission)(req, res, next);
+  };
+}
+
+/* eslint-disable camelcase -- 导入类型是已发布的 API 枚举 */
+const importPermissionByType = {
+  apple_ids: PERMISSIONS.APPLE_IDS_IMPORT,
+  recipients: PERMISSIONS.RECIPIENTS_IMPORT,
+};
+const templatePermissionByType = {
+  apple_ids: PERMISSIONS.APPLE_IDS_TEMPLATE_READ,
+  recipients: PERMISSIONS.RECIPIENTS_TEMPLATE_READ,
+};
+/* eslint-enable camelcase */
+
 // 确保上传目录存在
 const uploadDir = path.join(__dirname, '../../uploads/import');
 if (!fs.existsSync(uploadDir)) {
@@ -47,7 +72,7 @@ const upload = multer({
  */
 router.post(
   '/preview',
-  requirePermission(PERMISSIONS.WRITE),
+  requireImportPermission(importPermissionByType),
   upload.single('file'),
   asyncHandler(previewImport)
 );
@@ -57,7 +82,11 @@ router.post(
  * @desc 执行批量导入
  * @access Public
  */
-router.post('/execute', requirePermission(PERMISSIONS.WRITE), asyncHandler(executeImport));
+router.post(
+  '/execute',
+  requireImportPermission(importPermissionByType),
+  asyncHandler(executeImport)
+);
 
 /**
  * @route GET /api/import/template/:type
@@ -74,18 +103,20 @@ router.get('/template/:type', (req, res) => {
     });
   }
 
-  const templateName =
-    type === 'apple_ids' ? 'apple_ids_import_template.xlsx' : 'recipients_import_template.xlsx';
-  const templatePath = path.join(__dirname, '../../templates', templateName);
+  return requirePermission(templatePermissionByType[type])(req, res, () => {
+    const templateName =
+      type === 'apple_ids' ? 'apple_ids_import_template.xlsx' : 'recipients_import_template.xlsx';
+    const templatePath = path.join(__dirname, '../../templates', templateName);
 
-  if (!fs.existsSync(templatePath)) {
-    return res.status(404).json({
-      success: false,
-      error: '模板文件不存在',
-    });
-  }
+    if (!fs.existsSync(templatePath)) {
+      return res.status(404).json({
+        success: false,
+        error: '模板文件不存在',
+      });
+    }
 
-  res.download(templatePath, templateName);
+    return res.download(templatePath, templateName);
+  });
 });
 
 module.exports = router;

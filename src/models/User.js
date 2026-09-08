@@ -94,6 +94,19 @@ module.exports = sequelize => {
         field: 'force_password_change',
         comment: '是否强制修改密码（首次登录）',
       },
+      permissionsVersion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        field: 'permissions_version',
+        comment: '逐用户权限集合版本，用于并发控制和前端刷新',
+        validate: {
+          min: {
+            args: [0],
+            msg: '权限版本不能为负数',
+          },
+        },
+      },
       lastLoginAt: {
         type: DataTypes.DATE,
         allowNull: true,
@@ -236,6 +249,21 @@ module.exports = sequelize => {
    */
   User.prototype.isLocked = function () {
     return this.status === 'locked' && (!this.lockedUntil || this.lockedUntil > new Date());
+  };
+
+  User.associate = models => {
+    User.hasMany(models.UserPermission, {
+      foreignKey: 'userId',
+      as: 'permissionGrants',
+    });
+    User.hasMany(models.PaymentTask, {
+      foreignKey: 'assigneeUserId',
+      as: 'paymentTasks',
+    });
+    User.hasOne(models.PaymentStaffSetting, {
+      foreignKey: 'userId',
+      as: 'paymentStaffSetting',
+    });
   };
 
   return User;

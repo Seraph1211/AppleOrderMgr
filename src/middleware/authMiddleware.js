@@ -1,7 +1,7 @@
 const { verifyToken, extractTokenFromHeader } = require('../utils/jwtUtils');
 const { User } = require('../models');
 const logger = require('../utils/logger');
-const { ROLE_PERMISSIONS } = require('../constants/business');
+const permissionService = require('../services/permissionService');
 
 /**
  * 认证中间件
@@ -52,7 +52,7 @@ async function authenticate(req, res, next) {
 
     // 从数据库查询用户信息（验证用户是否仍然存在且状态正常）
     const user = await User.findByPk(decoded.userId, {
-      attributes: ['id', 'username', 'role', 'status', 'forcePasswordChange'],
+      attributes: ['id', 'username', 'role', 'status', 'forcePasswordChange', 'permissionsVersion'],
     });
 
     if (!user) {
@@ -79,12 +79,16 @@ async function authenticate(req, res, next) {
       });
     }
 
-    // 将用户信息附加到请求对象
+    const permissions = await permissionService.getEffectivePermissions(user);
+
+    // 将当前数据库权限快照附加到本次请求，不信任 JWT 中的历史角色。
     req.user = {
       id: user.id,
       username: user.username,
       role: user.role,
       forcePasswordChange: user.forcePasswordChange,
+      permissions,
+      permissionsVersion: user.permissionsVersion,
     };
 
     logger.debug('用户认证成功', {
@@ -184,8 +188,7 @@ function requirePermission(permission) {
           error: { code: 'UNAUTHORIZED', message: '请先登录' },
         });
       }
-      const permissions = ROLE_PERMISSIONS[req.user.role] || [];
-      if (!permissions.includes(permission)) {
+      if (!req.user.permissions.includes(permission)) {
         logger.warn('权限不足', {
           userId: req.user.id,
           role: req.user.role,
@@ -194,7 +197,11 @@ function requirePermission(permission) {
         });
         return res.status(403).json({
           success: false,
-          error: { code: 'FORBIDDEN', message: '当前角色无权执行此操作' },
+          error: {
+            code: 'FORBIDDEN',
+            message: '当前账号无权执行此操作',
+            details: { requiredPermission: permission },
+          },
         });
       }
       next();
@@ -205,6 +212,56 @@ function requirePermission(permission) {
         error: { code: 'INTERNAL_ERROR', message: '权限检查失败' },
       });
     }
+  };
+}
+
+/**
+ * 要求同时拥有全部指定权限。
+ * @param {string[]} permissions - 所需权限列表
+ * @returns {Function} Express 中间件
+ */
+function requireAllPermissions(permissions) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'UNAUTHORIZED', message: '请先登录' },
+      });
+    }
+    const missingPermissions = permissions.filter(code => !req.user.permissions.includes(code));
+    if (missingPermissions.length) {
+      return res.status(403).json({
+        success: false,
+        error: {
+          code: 'FORBIDDEN',
+          message: '当前账号缺少所需权限',
+          details: { missingPermissions },
+        },
+      });
+    }
+    return next();
+  };
+}
+
+/**
+ * 要求至少拥有一项指定权限。
+ * @param {string[]} permissions - 候选权限列表
+ * @returns {Function} Express 中间件
+ */
+function requireAnyPermission(permissions) {
+  return (req, res, next) => {
+    if (!req.user) {
+      return res
+        .status(401)
+        .json({ success: false, error: { code: 'UNAUTHORIZED', message: '请先登录' } });
+    }
+    if (!permissions.some(code => req.user.permissions.includes(code))) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'FORBIDDEN', message: '当前账号无权执行此操作' },
+      });
+    }
+    return next();
   };
 }
 
@@ -258,5 +315,7 @@ module.exports = {
   authenticate,
   requireRole,
   requirePermission,
+  requireAllPermissions,
+  requireAnyPermission,
   checkPasswordChangeRequired,
 };

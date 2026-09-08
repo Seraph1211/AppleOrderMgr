@@ -11,6 +11,8 @@ import {
   User,
 } from 'lucide-react';
 import { getOrderDetail, refreshOrder, submitPageOpenRefresh, getRefreshJob } from '../api';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
 
 const STATUS_BADGES = {
   pending: { text: '待处理', className: 'badge-warning' },
@@ -54,6 +56,7 @@ function formatAmount(value, currency = 'CNY') {
 }
 
 export default function OrderDetail() {
+  const { can } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
@@ -188,14 +191,16 @@ export default function OrderDetail() {
         <div className="flex items-center gap-3">
           <span className={`badge ${freshnessBadge.className}`}>{freshnessBadge.text}</span>
           <span className={`badge ${badge.className}`}>{badge.text}</span>
-          <button
-            onClick={handleManualRefresh}
-            disabled={refreshing}
-            className="btn btn-primary flex items-center gap-2"
-          >
-            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-            <span>{refreshing ? '刷新中' : '刷新官网状态'}</span>
-          </button>
+          {can(PERMISSIONS.ORDERS_REFRESH) && (
+            <button
+              onClick={handleManualRefresh}
+              disabled={refreshing}
+              className="btn btn-primary flex items-center gap-2"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+              <span>{refreshing ? '刷新中' : '刷新官网状态'}</span>
+            </button>
+          )}
         </div>
       </div>
 

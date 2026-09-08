@@ -1,6 +1,19 @@
 /* eslint-disable no-magic-numbers -- 本文件中的数字均为固定的合成数据夹具 */
 const { Op } = require('sequelize');
-const { sequelize, AppleId, Recipient, Order } = require('../src/models');
+const {
+  sequelize,
+  AppleId,
+  Recipient,
+  Order,
+  User,
+  UserPermission,
+  UserPermissionEvent,
+  PaymentTask,
+  PaymentTaskEvent,
+  PaymentStaffSetting,
+} = require('../src/models');
+const { MIN_PASSWORD_LENGTH, PERMISSIONS } = require('../src/constants/business');
+const { PAYMENT_EXECUTION_PERMISSIONS } = require('../src/constants/permissionCatalog');
 const { blindIndex } = require('../src/utils/fieldEncryption');
 const logger = require('../src/utils/logger');
 
@@ -10,8 +23,44 @@ const ALLOWED_DATABASE_HOSTS = new Set(['postgres', 'localhost', '127.0.0.1', ':
 const MOCK_APPLE_ID_COUNT = 8;
 const MOCK_RECIPIENT_COUNT = 20;
 const MOCK_ORDER_COUNT = 48;
+const MOCK_STAFF_COUNT = 3;
+const MOCK_PAYMENT_TASK_COUNT = 30;
 const MOCK_ORDER_NUMBER_BASE = 9100000000;
-const MOCK_DATA_MARKER = 'local-mock-v1';
+const MOCK_DATA_MARKER = 'local-mock-v3';
+
+const MOCK_STAFF = [
+  {
+    username: 'mock_pay_01',
+    role: 'operator',
+    permissions: [...PAYMENT_EXECUTION_PERMISSIONS],
+    autoAssignEnabled: true,
+    maxActiveTasks: 20,
+  },
+  {
+    username: 'mock_pay_02',
+    role: 'operator',
+    permissions: [...PAYMENT_EXECUTION_PERMISSIONS],
+    autoAssignEnabled: true,
+    maxActiveTasks: 15,
+  },
+  {
+    username: 'mock_pay_viewer',
+    role: 'readOnly',
+    permissions: [PERMISSIONS.PAYMENT_TASKS_READ_OWN],
+    autoAssignEnabled: false,
+    maxActiveTasks: 12,
+  },
+];
+
+const MOCK_TASK_STATUSES = [
+  ...Array(15).fill('pending'),
+  ...Array(7).fill('processing'),
+  ...Array(4).fill('exception'),
+  ...Array(4).fill('completed'),
+];
+
+const UNASSIGNED_TASK_INDEXES = new Set([4, 9, 14, 19, 22, 24]);
+const DEADLINE_MINUTE_OFFSETS = [-5, 3, 7, 12, 20, 35, 45, 60];
 
 const RECIPIENT_STATUSES = [
   ...Array(10).fill('使用中'),
@@ -82,6 +131,10 @@ function assertLocalMockEnvironment(env = process.env) {
   if (!ALLOWED_DATABASE_HOSTS.has(databaseHost)) {
     throw new Error(`数据库主机 ${databaseHost || '(空)'} 不属于允许的本地目标`);
   }
+
+  if (!env.LOCAL_MOCK_USER_PASSWORD || env.LOCAL_MOCK_USER_PASSWORD.length < MIN_PASSWORD_LENGTH) {
+    throw new Error(`LOCAL_MOCK_USER_PASSWORD 必须显式配置且至少 ${MIN_PASSWORD_LENGTH} 位`);
+  }
 }
 
 /**
@@ -98,9 +151,19 @@ function createOrderDate(referenceDate, daysAgo) {
 }
 
 /**
+ * 创建相对基准时间的分钟偏移。
+ * @param {Date} referenceDate - 基准时间
+ * @param {number} minutes - 分钟偏移
+ * @returns {Date} 偏移后的时间
+ */
+function createRelativeTime(referenceDate, minutes) {
+  return new Date(new Date(referenceDate).getTime() + minutes * 60 * 1000);
+}
+
+/**
  * 生成确定性的合成本地验收数据定义。
  * @param {Date} referenceDate - 订单日期基准
- * @returns {{appleIds: Array, recipients: Array, orders: Array}} Mock 数据定义
+ * @returns {Object} Mock 数据定义
  */
 function buildMockDefinitions(referenceDate = new Date()) {
   const appleIds = Array.from({ length: MOCK_APPLE_ID_COUNT }, (_item, index) => ({
@@ -137,25 +200,47 @@ function buildMockDefinitions(referenceDate = new Date()) {
     const product = MOCK_PRODUCTS[index % MOCK_PRODUCTS.length];
     const store = PICKUP_STORES[index % PICKUP_STORES.length];
     const quantity = (index % 2) + 1;
-    const status = ORDER_STATUSES[index % ORDER_STATUSES.length];
+    const hasPaymentTask = index < MOCK_PAYMENT_TASK_COUNT;
+    const taskStatus = hasPaymentTask ? MOCK_TASK_STATUSES[index] : null;
+    const status = hasPaymentTask
+      ? taskStatus === 'completed'
+        ? 'processing'
+        : index % 2 === 0
+          ? 'pending'
+          : 'processing'
+      : ORDER_STATUSES[index % ORDER_STATUSES.length];
+    const orderNumber = `W${MOCK_ORDER_NUMBER_BASE + index + 1}`;
+    const deadlineMinuteOffset = DEADLINE_MINUTE_OFFSETS[index % DEADLINE_MINUTE_OFFSETS.length];
     return {
-      orderNumber: `W${MOCK_ORDER_NUMBER_BASE + index + 1}`,
+      orderNumber,
       appleIndex: index % MOCK_APPLE_ID_COUNT,
       recipientIndex: index % MOCK_RECIPIENT_COUNT,
       products: [{ model: product.model, name: product.name, quantity }],
       status,
+      orderUrl: hasPaymentTask
+        ? `https://www.apple.com.cn/xc/cn/vieworder/${orderNumber}/local-mock-${index + 1}`
+        : null,
       paymentMethod: ['支付宝', '微信支付', '银行卡'][index % 3],
-      paymentStatus: ['已支付', '待支付', '已退款'][index % 3],
+      paymentStatus: hasPaymentTask
+        ? taskStatus === 'completed'
+          ? 'paid'
+          : 'unpaid'
+        : ['paid', 'unpaid', 'refunded'][index % 3],
       officialOrderAmount: product.amount * quantity,
       officialOrderAmountCurrency: 'CNY',
-      payerName: `Mock付款人${(index % 8) + 1}`,
+      payerName: null,
       paymentScreenshot: [],
       pickupStore: store.name,
       pickupStoreCode: store.code,
       pickupStatus: status === 'completed' || status === 'delivered' ? '已取货' : '待取货',
       pickupTimeSlot: '18:00-18:15',
       orderDate: createOrderDate(referenceDate, index % 12),
-      lastCrawledAt: createOrderDate(referenceDate, index % 12),
+      officialOrderCreatedAt: hasPaymentTask
+        ? createRelativeTime(referenceDate, deadlineMinuteOffset - 30)
+        : null,
+      lastCrawledAt: hasPaymentTask
+        ? new Date(referenceDate)
+        : createOrderDate(referenceDate, index % 12),
       crawlFailCount: 0,
       officialProducts: [{ model: product.model, name: product.name, quantity }],
       validationStatus: 'valid',
@@ -168,7 +253,42 @@ function buildMockDefinitions(referenceDate = new Date()) {
     };
   });
 
-  return { appleIds, recipients, orders };
+  const paymentTasks = Array.from({ length: MOCK_PAYMENT_TASK_COUNT }, (_item, index) => {
+    const processingStatus = MOCK_TASK_STATUSES[index];
+    const deadlineMinutes = DEADLINE_MINUTE_OFFSETS[index % DEADLINE_MINUTE_OFFSETS.length];
+    const isCompleted = processingStatus === 'completed';
+    return {
+      orderIndex: index,
+      assigneeIndex: UNASSIGNED_TASK_INDEXES.has(index) ? null : index % MOCK_STAFF_COUNT,
+      payerName: index % 4 === 0 ? null : `测试付款人 ${String((index % 6) + 1).padStart(2, '0')}`,
+      processingStatus,
+      processingNotes:
+        processingStatus === 'exception'
+          ? '本地 Mock：等待人工核对付款异常'
+          : isCompleted
+            ? '本地 Mock：已登记付款完成'
+            : processingStatus === 'processing'
+              ? '本地 Mock：付款处理中'
+              : null,
+      deadlineAt: createRelativeTime(referenceDate, deadlineMinutes),
+      deadlineSource: 'official',
+      eligibilityVerifiedAt: null,
+      eligibilityValidUntil: null,
+      paymentLinkSource: isCompleted ? null : 'order_url',
+      assignedAt: UNASSIGNED_TASK_INDEXES.has(index)
+        ? null
+        : createRelativeTime(referenceDate, -10),
+      completedAt: isCompleted ? createRelativeTime(referenceDate, -2) : null,
+    };
+  });
+
+  return {
+    appleIds,
+    recipients,
+    orders,
+    staff: MOCK_STAFF.map(item => ({ ...item, permissions: [...item.permissions] })),
+    paymentTasks,
+  };
 }
 
 /**
@@ -179,8 +299,104 @@ function buildMockDefinitions(referenceDate = new Date()) {
 async function seedLocalMockData(referenceDate = new Date()) {
   assertLocalMockEnvironment();
   const definitions = buildMockDefinitions(referenceDate);
+  const mockUserPassword = process.env.LOCAL_MOCK_USER_PASSWORD;
 
   const result = await sequelize.transaction(async transaction => {
+    const admin = await User.findOne({
+      where: { role: 'admin', status: 'active' },
+      attributes: ['id'],
+      transaction,
+    });
+    if (!admin) {
+      throw new Error('本地开发库缺少可用管理员，无法创建可审计的 Mock 权限数据');
+    }
+
+    const staffAccounts = [];
+    for (const definition of definitions.staff) {
+      const [staffAccount, created] = await User.findOrCreate({
+        where: { username: definition.username },
+        defaults: {
+          username: definition.username,
+          password: mockUserPassword,
+          role: definition.role,
+          status: 'active',
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          forcePasswordChange: false,
+          permissionsVersion: 0,
+        },
+        transaction,
+      });
+      if (!created) {
+        await staffAccount.update(
+          {
+            password: mockUserPassword,
+            role: definition.role,
+            status: 'active',
+            failedLoginAttempts: 0,
+            lockedUntil: null,
+            forcePasswordChange: false,
+          },
+          { transaction }
+        );
+      }
+
+      const existingPermissions = await UserPermission.findAll({
+        where: { userId: staffAccount.id },
+        attributes: ['permissionCode'],
+        transaction,
+      });
+      const beforePermissions = existingPermissions.map(item => item.permissionCode).sort();
+      await UserPermission.destroy({ where: { userId: staffAccount.id }, transaction });
+      await UserPermission.bulkCreate(
+        definition.permissions.map(permissionCode => ({
+          userId: staffAccount.id,
+          permissionCode,
+          grantedBy: admin.id,
+        })),
+        { transaction }
+      );
+      const beforeVersion = staffAccount.permissionsVersion;
+      staffAccount.permissionsVersion += 1;
+      await staffAccount.save({ transaction });
+      await UserPermissionEvent.create(
+        {
+          userId: staffAccount.id,
+          actorUserId: admin.id,
+          beforePermissions,
+          afterPermissions: [...definition.permissions].sort(),
+          reason: '本地 Mock 体验数据授权',
+          beforeVersion,
+          afterVersion: staffAccount.permissionsVersion,
+          idempotencyKey:
+            `${MOCK_DATA_MARKER}-permissions-` +
+            `${staffAccount.id}-${staffAccount.permissionsVersion}`,
+          source: 'local_mock',
+        },
+        { transaction }
+      );
+
+      const [staffSetting] = await PaymentStaffSetting.findOrCreate({
+        where: { userId: staffAccount.id },
+        defaults: {
+          userId: staffAccount.id,
+          autoAssignEnabled: definition.autoAssignEnabled,
+          maxActiveTasks: definition.maxActiveTasks,
+          updatedBy: admin.id,
+        },
+        transaction,
+      });
+      await staffSetting.update(
+        {
+          autoAssignEnabled: definition.autoAssignEnabled,
+          maxActiveTasks: definition.maxActiveTasks,
+          updatedBy: admin.id,
+        },
+        { transaction }
+      );
+      staffAccounts.push(staffAccount);
+    }
+
     const appleAccounts = [];
     for (const definition of definitions.appleIds) {
       const [appleAccount] = await AppleId.findOrCreate({
@@ -212,6 +428,7 @@ async function seedLocalMockData(referenceDate = new Date()) {
       recipients.push(recipient);
     }
 
+    const orders = [];
     for (const definition of definitions.orders) {
       const appleAccount = appleAccounts[definition.appleIndex];
       const recipient = recipients[definition.recipientIndex];
@@ -237,6 +454,62 @@ async function seedLocalMockData(referenceDate = new Date()) {
         transaction,
       });
       await order.update(orderData, { transaction });
+      orders.push(order);
+    }
+
+    const paymentTasks = [];
+    for (const [index, definition] of definitions.paymentTasks.entries()) {
+      const order = orders[definition.orderIndex];
+      const assignee =
+        definition.assigneeIndex === null ? null : staffAccounts[definition.assigneeIndex];
+      await order.update(
+        {
+          payerName: definition.payerName,
+          payerVersion: definition.payerName ? 1 : 0,
+        },
+        { transaction }
+      );
+
+      const taskData = {
+        orderId: order.id,
+        assigneeUserId: assignee?.id || null,
+        processingStatus: definition.processingStatus,
+        processingNotes: definition.processingNotes,
+        deadlineAt: definition.deadlineAt,
+        deadlineSource: definition.deadlineSource,
+        eligibilityVerifiedAt: definition.eligibilityVerifiedAt,
+        eligibilityValidUntil: definition.eligibilityValidUntil,
+        eligibilityVerifiedBy: definition.eligibilityVerifiedAt ? admin.id : null,
+        paymentLinkSource: definition.paymentLinkSource,
+        assignedAt: definition.assignedAt,
+        completedAt: definition.completedAt,
+        version: 0,
+      };
+      const [paymentTask] = await PaymentTask.findOrCreate({
+        where: { orderId: order.id },
+        defaults: taskData,
+        transaction,
+      });
+      await paymentTask.update(taskData, { transaction });
+      await PaymentTaskEvent.findOrCreate({
+        where: {
+          actorUserId: admin.id,
+          idempotencyKey: `${MOCK_DATA_MARKER}-task-${index + 1}`,
+        },
+        defaults: {
+          paymentTaskId: paymentTask.id,
+          eventType: assignee ? 'assigned' : 'registered',
+          actorUserId: admin.id,
+          fromUserId: null,
+          toUserId: assignee?.id || null,
+          beforeStatus: null,
+          afterStatus: definition.processingStatus,
+          details: { marker: MOCK_DATA_MARKER },
+          idempotencyKey: `${MOCK_DATA_MARKER}-task-${index + 1}`,
+        },
+        transaction,
+      });
+      paymentTasks.push(paymentTask);
     }
 
     const latestOrderAt = createOrderDate(referenceDate, 0);
@@ -262,6 +535,12 @@ async function seedLocalMockData(referenceDate = new Date()) {
         ['使用中', '未使用'].includes(recipient.status)
       ).length,
       orders: definitions.orders.length,
+      staff: staffAccounts.length,
+      paymentTasks: paymentTasks.length,
+      assignedPaymentTasks: definitions.paymentTasks.filter(task => task.assigneeIndex !== null)
+        .length,
+      unassignedPaymentTasks: definitions.paymentTasks.filter(task => task.assigneeIndex === null)
+        .length,
       marker: MOCK_DATA_MARKER,
     };
   });

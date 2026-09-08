@@ -23,8 +23,11 @@ import ColumnConfigModal from '../components/ColumnConfigModal';
 import OrderDetailModal from '../components/OrderDetailModal';
 import Pagination from '../components/Pagination';
 import { ordersColumns } from '../constants/tableColumns';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
 
 export default function Orders() {
+  const { can } = useAuth();
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -161,6 +164,7 @@ export default function Orders() {
           // 付款信息
           paymentMethod: order.payment_method || '-',
           payerName: order.payer_name || '-',
+          payerVersion: order.payer_version || 0,
           paymentScreenshot: order.payment_screenshot || [],
           // 爬虫相关
           lastCrawledAt: order.last_crawled_at || '-',
@@ -458,13 +462,15 @@ export default function Orders() {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             <span>重新加载</span>
           </button>
-          <button
-            onClick={handleRefreshAll}
-            className="btn btn-primary flex items-center space-x-2"
-          >
-            <RefreshCw className="w-4 h-4" />
-            <span>刷新全部</span>
-          </button>
+          {can(PERMISSIONS.ORDERS_REFRESH) && (
+            <button
+              onClick={handleRefreshAll}
+              className="btn btn-primary flex items-center space-x-2"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>刷新全部</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -508,10 +514,15 @@ export default function Orders() {
           </div>
 
           {/* 导出按钮 */}
-          <button onClick={handleExport} className="btn btn-secondary flex items-center space-x-2">
-            <Download className="w-4 h-4" />
-            <span>导出</span>
-          </button>
+          {can(PERMISSIONS.ORDERS_EXPORT) && (
+            <button
+              onClick={handleExport}
+              className="btn btn-secondary flex items-center space-x-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>导出</span>
+            </button>
+          )}
 
           {/* 列设置按钮 */}
           <button

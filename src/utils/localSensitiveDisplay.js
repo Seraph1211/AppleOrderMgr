@@ -5,13 +5,15 @@
  * 任一条件不满足时均保持默认脱敏，避免配置被误带到生产后扩大暴露范围。
  *
  * @param {Object} req - Express request
+ * @param {string} requiredPermission - 所需管理员保留权限
  * @returns {boolean} 是否允许返回页面所需的敏感字段明文
  */
-function canDisplayLocalSensitiveFields(req) {
-  return (
+function canDisplayLocalSensitiveFields(req, requiredPermission) {
+  return Boolean(
     process.env.NODE_ENV === 'development' &&
     process.env.ALLOW_LOCAL_SENSITIVE_DISPLAY === 'true' &&
-    req?.user?.role === 'admin'
+    req?.user?.role === 'admin' &&
+    req.user.permissions?.includes(requiredPermission)
   );
 }
 

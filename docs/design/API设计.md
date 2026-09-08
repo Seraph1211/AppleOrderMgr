@@ -4,7 +4,7 @@
 >
 > 最近核对：2026-09-07
 >
-> 基线：main@1757928 与当前未提交工作树
+> 基线：main@d000d03 与当前工作树
 >
 > 验证范围：本地工作树静态核对；未验证真实数据库、邮箱、官网和生产环境
 
@@ -12,7 +12,7 @@
 
 前缀为 /api。除登录和健康检查外均需认证；auth 下改密、登出、me 各自经过 authenticate，其余业务统一经过全局认证与强制改密检查。Bearer Token 不放入 URL。
 
-角色为 admin、operator、readOnly：后者只读；operator 可写、脱敏导出及受控刷新；删除、用户管理、系统运行控制限 admin。具体权限常量见[business.js](../../src/constants/business.js)。
+角色字段继续保留 admin、operator、readOnly，但普通业务授权以数据库 `user_permissions` 为唯一来源。admin 通过受保护身份获得代码目录中的全部有效权限；operator/readOnly 仅作为存量标签，不再在请求时隐式叠加权限。所有业务路由显式声明权限，未登记入口默认拒绝。权限目录与依赖见[用户权限方案](../planning/用户权限分配与访问控制方案.md)。
 
 字段目前混用 camelCase 和 snake_case，不能按惯例自动转换或增加别名。新契约修改需更新本页及对应专题文档，CON-01/CON-02 的完整统一尚未完成。
 
@@ -41,65 +41,82 @@
 | POST   | /api/auth/logout                       | 登录；允许强制改密状态     |
 | POST   | /api/auth/change-password              | 登录；允许强制改密状态     |
 | GET    | /api/auth/me                           | 登录；允许强制改密状态     |
-| GET    | /api/users                             | admin                      |
-| POST   | /api/users                             | admin                      |
-| PUT    | /api/users/:id                         | admin                      |
-| DELETE | /api/users/:id                         | admin                      |
-| PUT    | /api/users/:id/unlock                  | admin                      |
-| GET    | /api/apple-ids                         | 登录并完成强制改密         |
-| GET    | /api/apple-ids/:id                     | 登录并完成强制改密         |
-| POST   | /api/apple-ids                         | write                      |
-| PUT    | /api/apple-ids/:id                     | write                      |
-| DELETE | /api/apple-ids/:id                     | delete（admin）            |
-| GET    | /api/recipients                        | 登录并完成强制改密         |
-| GET    | /api/recipients/export                 | export                     |
-| GET    | /api/recipients/:id                    | 登录并完成强制改密         |
-| POST   | /api/recipients                        | write                      |
-| POST   | /api/recipients/batch-generate-contact | write                      |
-| POST   | /api/recipients/batch-generate-address | write                      |
-| POST   | /api/recipients/bind-apple-ids         | write                      |
-| PUT    | /api/recipients/:id                    | write                      |
-| DELETE | /api/recipients/:id                    | delete（admin）            |
-| GET    | /api/orders                            | 登录并完成强制改密         |
-| GET    | /api/orders/export                     | export                     |
-| GET    | /api/orders/filter-options             | 登录并完成强制改密         |
-| GET    | /api/orders/:id                        | 登录并完成强制改密         |
-| PUT    | /api/orders/:id                        | write                      |
-| POST   | /api/orders/:id/refresh                | refresh                    |
-| POST   | /api/orders/batch-refresh              | refresh                    |
-| POST   | /api/orders/refresh-all                | refresh                    |
-| POST   | /api/orders/page-open-refresh          | refresh                    |
-| GET    | /api/order-refresh/jobs/:id            | 登录并完成强制改密         |
-| GET    | /api/order-refresh/batches/:id         | 登录并完成强制改密         |
-| GET    | /api/email-processing                  | admin                      |
-| GET    | /api/email-processing/metrics          | admin                      |
-| POST   | /api/email-processing/batch-reparse    | admin                      |
-| GET    | /api/email-processing/:id              | admin                      |
-| POST   | /api/email-processing/:id/reparse      | admin                      |
-| PUT    | /api/email-processing/:id/draft        | admin                      |
-| POST   | /api/email-processing/:id/ingest       | admin                      |
-| POST   | /api/email-processing/:id/resolve      | admin                      |
-| GET    | /api/stats/overview                    | 登录并完成强制改密         |
-| GET    | /api/stats/apple-ids                   | 登录并完成强制改密         |
-| GET    | /api/stats/recipients                  | 登录并完成强制改密         |
-| GET    | /api/stats/products                    | 登录并完成强制改密         |
-| POST   | /api/import/preview                    | write                      |
-| POST   | /api/import/execute                    | write                      |
-| GET    | /api/import/template/:type             | 登录并完成强制改密         |
-| GET    | /api/dashboard/stats                   | 登录并完成强制改密         |
-| GET    | /api/dashboard/daily-trend             | 登录并完成强制改密         |
-| GET    | /api/dashboard/product-distribution    | 登录并完成强制改密         |
-| GET    | /api/dashboard/store-distribution      | 登录并完成强制改密         |
-| GET    | /api/dashboard/filter-options          | 登录并完成强制改密         |
-| GET    | /api/channels                          | 登录并完成强制改密         |
-| GET    | /api/channels/:tag/stats               | 登录并完成强制改密         |
-| GET    | /api/channels/:tag/orders              | 登录并完成强制改密         |
-| PUT    | /api/channels/:tag                     | write                      |
-| GET    | /api/system/logs                       | admin                      |
-| GET    | /api/system/auto-refresh               | admin                      |
-| POST   | /api/system/auto-refresh/resume        | admin                      |
-| GET    | /api/system/proxy-provider             | admin                      |
-| POST   | /api/system/proxy-provider             | admin                      |
+| GET    | /api/users/permission-catalog           | users.permissions.manage（admin 保留） |
+| GET    | /api/users                             | users.read（admin 保留）   |
+| POST   | /api/users                             | users.manage（admin 保留） |
+| PUT    | /api/users/:id                         | users.manage（admin 保留） |
+| DELETE | /api/users/:id                         | users.manage（admin 保留） |
+| PUT    | /api/users/:id/unlock                  | users.manage（admin 保留） |
+| GET    | /api/users/:id/permissions             | users.permissions.manage（admin 保留） |
+| PUT    | /api/users/:id/permissions             | users.permissions.manage（admin 保留） |
+| GET    | /api/apple-ids                         | apple_ids.read             |
+| GET    | /api/apple-ids/:id                     | apple_ids.read             |
+| POST   | /api/apple-ids                         | apple_ids.create           |
+| PUT    | /api/apple-ids/:id                     | apple_ids.edit             |
+| DELETE | /api/apple-ids/:id                     | apple_ids.delete           |
+| GET    | /api/recipients                        | recipients.read            |
+| GET    | /api/recipients/export                 | recipients.export          |
+| GET    | /api/recipients/:id                    | recipients.read            |
+| POST   | /api/recipients                        | recipients.create          |
+| POST   | /api/recipients/batch-generate-contact | recipients.generate_contact |
+| POST   | /api/recipients/batch-generate-address | recipients.generate_address |
+| POST   | /api/recipients/bind-apple-ids         | recipients.bind_apple_ids  |
+| PUT    | /api/recipients/:id                    | recipients.edit            |
+| DELETE | /api/recipients/:id                    | recipients.delete          |
+| GET    | /api/orders                            | orders.read                |
+| GET    | /api/orders/export                     | orders.export              |
+| GET    | /api/orders/filter-options             | orders.read                |
+| GET    | /api/orders/:id                        | orders.read                |
+| PUT    | /api/orders/:id                        | orders.edit                |
+| PUT    | /api/orders/:id/payer                  | orders.read + orders.payer.edit |
+| POST   | /api/orders/:id/refresh                | orders.refresh             |
+| POST   | /api/orders/batch-refresh              | orders.refresh             |
+| POST   | /api/orders/refresh-all                | orders.refresh             |
+| POST   | /api/orders/page-open-refresh          | orders.refresh             |
+| GET    | /api/order-refresh/jobs/:id            | orders.refresh             |
+| GET    | /api/order-refresh/batches/:id         | orders.refresh             |
+| GET    | /api/email-processing                  | admin + email.read         |
+| GET    | /api/email-processing/metrics          | admin + email.read         |
+| POST   | /api/email-processing/batch-reparse    | admin + email.process      |
+| GET    | /api/email-processing/:id              | admin + email.content.read |
+| POST   | /api/email-processing/:id/reparse      | admin + email.process      |
+| PUT    | /api/email-processing/:id/draft        | admin + email.process      |
+| POST   | /api/email-processing/:id/ingest       | admin + email.process      |
+| POST   | /api/email-processing/:id/resolve      | admin + email.process      |
+| GET    | /api/stats/overview                    | stats.read                 |
+| GET    | /api/stats/apple-ids                   | stats.read                 |
+| GET    | /api/stats/recipients                  | stats.read                 |
+| GET    | /api/stats/products                    | stats.read                 |
+| POST   | /api/import/preview                    | type 对应模块 import       |
+| POST   | /api/import/execute                    | type 与预览会话对应的 import |
+| GET    | /api/import/template/:type             | type 对应模块 template.read |
+| GET    | /api/dashboard/*                       | dashboard.read             |
+| GET    | /api/channels                          | channels.read              |
+| GET    | /api/channels/:tag/stats               | channels.read              |
+| GET    | /api/channels/:tag/orders              | channels.read              |
+| PUT    | /api/channels/:tag                     | channels.rename            |
+| GET    | /api/system/logs                       | admin + system.logs.read   |
+| GET    | /api/system/auto-refresh               | admin + system.refresh.read |
+| POST   | /api/system/auto-refresh/resume        | admin + system.refresh.manage |
+| GET    | /api/system/proxy-provider             | admin + system.proxy.read  |
+| POST   | /api/system/proxy-provider             | admin + system.proxy.manage |
+| GET    | /api/payment-tasks                     | payment_tasks.read_own；仅本人范围 |
+| GET    | /api/payment-tasks/:id                 | payment_tasks.read_own＋当前归属 |
+| PUT    | /api/payment-tasks/:id                 | payment_tasks.handle_own 和／或 payment_tasks.payer.edit_own＋当前归属；按实际字段检查 |
+| PUT    | /api/payment-tasks/:id/payer           | payment_tasks.payer.edit_own＋当前归属 |
+| GET    | /api/payment-tasks/:id/payment-link    | payment_tasks.link.read_own＋当前归属 |
+| POST   | /api/payment-tasks/:id/refresh         | payment_tasks.refresh_own＋当前归属 |
+| GET    | /api/payment-tasks/:id/refresh/:jobId  | payment_tasks.refresh_own＋当前归属；仅关联订单任务 |
+| GET    | /api/payment-dispatch/overview         | payment_dispatch.read（admin 保留） |
+| GET    | /api/payment-dispatch/tasks            | payment_dispatch.read（admin 保留） |
+| PUT    | /api/payment-dispatch/settings         | payment_dispatch.configure（admin 保留） |
+| PUT    | /api/payment-dispatch/staff/:userId    | payment_dispatch.configure（admin 保留） |
+| PUT    | /api/payment-dispatch/tasks/:id/assignee | payment_dispatch.assign（admin 保留） |
+| PUT    | /api/payment-dispatch/tasks/assignee     | payment_dispatch.assign（admin 保留）；原子批量分配／转派 |
+| POST   | /api/payment-dispatch/tasks/:id/refresh  | payment_dispatch.assign（admin 保留） |
+| POST   | /api/payment-dispatch/tasks/refresh      | payment_dispatch.assign（admin 保留）；1–100 项批量刷新 |
+| POST   | /api/payment-dispatch/tasks/:id/reopen | payment_dispatch.correct（admin 保留） |
+| POST   | /api/payment-dispatch/scan             | payment_dispatch.assign（admin 保留） |
 
 ## 认证与用户
 
@@ -107,6 +124,8 @@
 - 改密提交 oldPassword、newPassword、confirmPassword；新密码至少 8 位，首次改密完成后才可访问业务 API。
 - 登出目前由客户端移除 Token，不能理解成服务端已维护 JWT 撤销名单。
 - 用户管理的 role 必须使用当前三个枚举，创建用户的初始密码至少 8 位。用户列表、增改、删除、解锁输入以[userController.js](../../src/controllers/userController.js)为准；解锁方法是 PUT。
+- 登录和 `/auth/me` 返回 `permissions`、`permissionsVersion` 和 `availableHome`。普通用户权限每次请求从数据库重新读取；撤权提交后旧 Token 的后续业务请求立即按新集合判定。
+- `PUT /users/:id/permissions` body 为 `{ permissions, expectedVersion, reason? }`，幂等键通过 `Idempotency-Key` 请求头传入；permissions 是完整集合。未知键、依赖不完整、普通用户获管理员保留项返回 400，版本冲突返回 409；授权集合、版本和审计同事务提交。
 
 ## Apple ID 与取机人
 
@@ -128,7 +147,7 @@
 - `GET /api/order-refresh/jobs/:id` 返回任务状态、错误分类和订单当前新鲜度；只能查询本人提交的任务，admin 可查询全部，系统自动任务允许所有已认证用户读取其非敏感状态。
 - `GET /api/order-refresh/batches/:id` 返回批次六类计数和完成时间；只能查询本人批次，admin 可查询全部。
 - 列表和详情新增 `refresh` 对象：`freshness_status`、`last_attempt_at`、`last_success_at`、`last_failure_at`、`last_error_code`、`last_error_message` 和当前活动 `job`。超过 90 秒没有成功结果的待付款/未知订单由服务端序列化为 `stale`。
-- PUT /api/orders/:id 当前只允许 payerName、paymentScreenshot，不提供任意状态/商品字段更新。
+- PUT /api/orders/:id 只允许 paymentScreenshot，不再接受 payerName。付款人必须经 `PUT /api/orders/:id/payer` 或本人任务入口更新，body 为 `{ payerName: string | null, expectedVersion, reason? }`，幂等键通过请求头传入。`payerName` 去除首尾空白后最长 100 个字符，空字符串按 null 清空；付款人不是系统账号，也不存在候选目录。
 - 官网金额、支付与取货状态是独立字段。列表、详情不返回 Apple 密码/原始订单链接，身份证和地址保持脱敏；`recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
 - 导出使用当前筛选条件，下载按 Blob 处理；不能以固定价格代替缺失官网金额。
 
@@ -146,6 +165,20 @@
 - `POST /api/email-processing/:id/resolve`：body 为 `{ resolutionType, reason, version, orderNumber? }`；`resolutionType` 仅允许 `ignored/existing_order`，原因必填且不超过 500 字，关联已有订单时必须提供确实存在的订单号。
 
 管理员人工草稿可包含 `appleId`、`applePassword`、`orderNumber`、`orderUrl`、`orderDate`、`orderStatus`、`paymentMethod`、`products[]`，以及 `recipient.name/idLast4/idCard/email/phone/address/tag`。允许查看和填写密码、完整身份证号及系统内部状态是本模块的明确 admin 专属规则；字段在 `email_logs` 草稿/最终数据及订单敏感快照中加密存储，不得进入运行日志或错误响应。Apple URL 仍只允许中国官网 `vieworder` 路径且必须与订单号一致。
+
+## 付款任务与付款人姓名
+
+- 新增付款接口沿用项目现有 JavaScript API 的 camelCase 请求／响应，不对既有 snake_case 订单 DTO 做隐式全局转换。普通用户的列表、详情、状态、付款人、链接和刷新入口均同时校验权限和最新 assigneeUserId；转派后原负责人立即失去访问。
+- 本人任务列表支持 page、limit、orderNumber、productModel、productKeyword、processingStatus；筛选在分页前完成，商品型号与关键词必须命中同一 products 元素。
+- `PUT /api/payment-tasks/:id` 是行级原子保存接口，body 可包含 `{ processingStatus?, processingNotes?, expectedVersion?, payerName?, expectedPayerVersion? }`，幂等键通过请求头传入。接口只更新实际提交且发生变化的字段；任务字段要求 `payment_tasks.handle_own`，付款人字段要求 `payment_tasks.payer.edit_own`，同时修改时在同一事务提交或全部回滚。四态为 pending、processing、completed、exception；官网状态、复制链接、登记付款人、到期和转派不自动改变处理状态。异常、异常恢复和人工完成但官网未付时备注必填。兼容的独立付款人接口仍保留。
+- 外部付款人姓名在四种状态、到期、官网已付／退款／取消后仍可维护。`PUT /api/payment-tasks/:id/payer` 使用 `{ payerName: string | null, expectedVersion, reason? }`；系统不提供付款人候选接口，不创建付款人账号或主数据。
+- 复制订单链接接口只保留 `payment_tasks.link.read_own` 和当前任务归属校验，直接返回该任务关联订单的 `orders.orderUrl`；不再按核实、截止时间、人工处理状态或官网支付／订单状态限制复制。链接为空时返回资源不存在；响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
+- 本人任务刷新提交返回 HTTP `202`、`jobId`、是否新建或合并；`GET /api/payment-tasks/:id/refresh/:jobId` 仅允许当前负责人查询同一关联订单的刷新任务，返回 pending、running、succeeded、failed、skipped、错误摘要和订单最新抓取时间。入队不表示官网已更新；前端应展示提交中、排队／运行、成功／失败，终态后重新加载当前列表，Worker 未运行时明确保持“等待后台处理”。
+- 本人任务列表和详情的 `updatedAt` 取付款任务与关联订单更新时间中的较新值，前端“最后更新时间”按用户本地时区显示为 `YYYY/MM/DD HH:mm:ss`。
+- 付款倒计时固定使用 `officialOrderCreatedAt + 30 分钟`。官网时间必须包含时分，仅有日期时保持未知；服务端返回 `serverTime`、`deadlineAt` 和 `remainingSeconds`，客户端不得用本机时间决定是否超时。管理员人工截止时间核实接口已取消。
+- `GET /api/payment-dispatch/tasks` 支持 `orderNumber`、`productKeyword`、`assignee`、`officialOrderStatus` 和 `processingStatus` 组合筛选；商品匹配在数据库分页前执行。每项返回 `officialOrderStatus`、`lastCrawledAt` 和派生的 `deadlineAt`，其中页面“最后更新时间”只使用最后一次成功官网抓取时间 `lastCrawledAt`。
+- 批量分配 body 为 `{ tasks: [{ id, expectedVersion }], assigneeUserId, handoffConfirmed?, reason? }`，一次最多 100 项，在同一事务内校验版本、状态、付款窗口、目标权限和容量后全部提交或全部回滚。批量刷新 body 为 `{ taskIds }`，仅把选中任务对应订单提交持久化刷新队列，HTTP 202 不代表官网已更新。
+- payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、完成首次改密、上限有余量、合法付款链接以及官网创建时间对应的 30 分钟付款窗口仍有效。active_count 为 pending＋processing＋exception；completed 释放容量。
 
 ## 专题协议
 

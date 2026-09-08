@@ -12,9 +12,10 @@ import EditAppleIdModal from '../components/EditAppleIdModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { appleIdsColumns } from '../constants/tableColumns';
 import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status';
+import { PERMISSIONS } from '../constants/permissions';
 
 export default function AppleIds() {
-  const { isAdmin } = useAuth();
+  const { can } = useAuth();
   const [appleIds, setAppleIds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -188,7 +189,7 @@ export default function AppleIds() {
       }
 
       // 第二步：执行导入
-      const executeRes = await executeImport(previewRes.data.sessionToken);
+      const executeRes = await executeImport(previewRes.data.sessionToken, 'apple_ids');
 
       if (!executeRes.success) {
         throw new Error(executeRes.error || '导入失败');
@@ -294,13 +295,15 @@ export default function AppleIds() {
       case 'actions':
         return (
           <div className="flex items-center justify-end space-x-2">
-            <button
-              onClick={() => handleEdit(item)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Edit className="w-4 h-4 text-gray-400 hover:text-primary" />
-            </button>
-            {isAdmin() && (
+            {can(PERMISSIONS.APPLE_IDS_EDIT) && (
+              <button
+                onClick={() => handleEdit(item)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Edit className="w-4 h-4 text-gray-400 hover:text-primary" />
+              </button>
+            )}
+            {can(PERMISSIONS.APPLE_IDS_DELETE) && (
               <button
                 onClick={() => handleDelete(item)}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -324,20 +327,24 @@ export default function AppleIds() {
           <p className="text-gray-500 mt-1">管理所有 Apple ID 账号</p>
         </div>
         <div className="flex items-center space-x-3">
-          <button
-            onClick={() => setShowBatchImport(true)}
-            className="btn btn-secondary flex items-center space-x-2"
-          >
-            <Upload className="w-4 h-4" />
-            <span>批量导入</span>
-          </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="btn btn-primary flex items-center space-x-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>添加 Apple ID</span>
-          </button>
+          {can(PERMISSIONS.APPLE_IDS_IMPORT) && (
+            <button
+              onClick={() => setShowBatchImport(true)}
+              className="btn btn-secondary flex items-center space-x-2"
+            >
+              <Upload className="w-4 h-4" />
+              <span>批量导入</span>
+            </button>
+          )}
+          {can(PERMISSIONS.APPLE_IDS_CREATE) && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="btn btn-primary flex items-center space-x-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>添加 Apple ID</span>
+            </button>
+          )}
         </div>
       </div>
 

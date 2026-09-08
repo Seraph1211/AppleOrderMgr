@@ -175,6 +175,19 @@ describe('crawlerService product validation and scheduler rules', () => {
     expect(result.orderStatus).toBe('ready_for_pickup');
     expect(result.paymentStatus).toBe('paid');
     expect(result.pickupStatus).toBe('not_picked_up');
+    expect(result.officialOrderCreatedAt).toBeNull();
+  });
+
+  test('只在官网下单时间包含时分时提取精确创建时间', () => {
+    const crawlerService = loadCrawlerService();
+
+    expect(crawlerService.parseOfficialOrderCreatedAt('2026年9月8日')).toBeNull();
+    expect(crawlerService.parseOfficialOrderCreatedAt('2026年9月8日 下午2:05').toISOString()).toBe(
+      '2026-09-08T06:05:00.000Z'
+    );
+    expect(
+      crawlerService.parseOfficialOrderCreatedAt('2026-09-08T14:05:30+08:00').toISOString()
+    ).toBe('2026-09-08T06:05:30.000Z');
   });
 
   test('以 currentStatus 为订单状态权威且忽略隐藏退款文案', () => {

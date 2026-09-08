@@ -1,6 +1,10 @@
 const express = require('express');
 const router = express.Router();
 const dashboardController = require('../controllers/dashboardController');
+const { requirePermission } = require('../middleware/authMiddleware');
+const { PERMISSIONS } = require('../constants/business');
+
+router.use(requirePermission(PERMISSIONS.DASHBOARD_READ));
 
 /**
  * @route GET /api/dashboard/stats

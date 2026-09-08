@@ -200,6 +200,14 @@ module.exports = sequelize => {
         field: 'payer_name',
         comment: '付款人姓名',
       },
+      payerVersion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        field: 'payer_version',
+        comment: '付款人关联乐观锁版本',
+        validate: { min: 0 },
+      },
       paymentScreenshot: {
         type: DataTypes.JSONB,
         allowNull: true,
@@ -244,6 +252,12 @@ module.exports = sequelize => {
         allowNull: true,
         field: 'order_date',
         comment: '下单时间（来自邮件）',
+      },
+      officialOrderCreatedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'official_order_created_at',
+        comment: '官网订单创建时间（必须包含时分）',
       },
       actualPickupDate: {
         type: DataTypes.DATEONLY,
@@ -462,6 +476,14 @@ module.exports = sequelize => {
     Order.hasMany(models.EmailLog, {
       foreignKey: 'orderId',
       as: 'emailLogs',
+    });
+    Order.hasOne(models.PaymentTask, {
+      foreignKey: 'orderId',
+      as: 'paymentTask',
+    });
+    Order.hasMany(models.OrderPayerEvent, {
+      foreignKey: 'orderId',
+      as: 'payerEvents',
     });
   };
 

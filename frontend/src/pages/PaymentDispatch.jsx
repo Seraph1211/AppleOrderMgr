@@ -1,0 +1,747 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ListChecks, Play, RefreshCw, RotateCcw, Save, Search, Users, X } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
+import {
+  assignPaymentTasks,
+  getPaymentDispatchOverview,
+  getPaymentDispatchTasks,
+  refreshPaymentDispatchTask,
+  refreshPaymentDispatchTasks,
+  reopenPaymentTask,
+  runPaymentDispatchScan,
+  updatePaymentDispatchSettings,
+  updatePaymentStaffSettings,
+} from '../api/paymentDispatchApi';
+
+const STATUS_LABELS = {
+  pending: '待处理',
+  processing: '处理中',
+  completed: '已完成',
+  exception: '异常',
+};
+
+const OFFICIAL_STATUS_LABELS = {
+  pending: '待处理',
+  processing: '处理中',
+  shipped: '已发货',
+  ready_for_pickup: '可取货',
+  completed: '已完成',
+  delivered: '已送达',
+  cancelled: '已取消',
+  pickup_cancelled: '取货已取消',
+  unknown: '未知',
+};
+
+const INITIAL_FILTERS = {
+  orderNumber: '',
+  productKeyword: '',
+  assignee: '',
+  officialOrderStatus: '',
+  processingStatus: '',
+};
+
+function formatDateTime(value) {
+  if (!value) return '尚未获取';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return '尚未获取';
+  const part = number => String(number).padStart(2, '0');
+  return `${date.getFullYear()}/${part(date.getMonth() + 1)}/${part(date.getDate())} ${part(
+    date.getHours()
+  )}:${part(date.getMinutes())}:${part(date.getSeconds())}`;
+}
+
+function formatCountdown(deadlineAt, now) {
+  if (!deadlineAt) return { text: '等待官网时间', className: 'text-gray-500' };
+  const seconds = Math.floor((new Date(deadlineAt).getTime() - now.getTime()) / 1000);
+  if (seconds <= 0) {
+    return {
+      text: `已超时 ${Math.max(1, Math.ceil(Math.abs(seconds) / 60))} 分钟`,
+      className: 'text-red-600 font-medium',
+    };
+  }
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return {
+    text: `${minutes} 分 ${String(remainingSeconds).padStart(2, '0')} 秒`,
+    className: seconds <= 5 * 60 ? 'text-red-600 font-medium' : 'text-gray-700',
+  };
+}
+
+export default function PaymentDispatch() {
+  const { can } = useAuth();
+  const [overview, setOverview] = useState(null);
+  const [tasks, setTasks] = useState([]);
+  const [staffDrafts, setStaffDrafts] = useState({});
+  const [filterDrafts, setFilterDrafts] = useState(INITIAL_FILTERS);
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [assignmentDraft, setAssignmentDraft] = useState({
+    assigneeUserId: '',
+    handoffConfirmed: false,
+    reason: '',
+  });
+  const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [busyAction, setBusyAction] = useState('');
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [now, setNow] = useState(new Date());
+  const [serverTimeOffsetMs, setServerTimeOffsetMs] = useState(0);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const query = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ''));
+      const [overviewResponse, tasksResponse] = await Promise.all([
+        getPaymentDispatchOverview(),
+        getPaymentDispatchTasks(query),
+      ]);
+      setOverview(overviewResponse.data);
+      setTasks(tasksResponse.data.items);
+      const serverTime = new Date(tasksResponse.data.serverTime);
+      setNow(serverTime);
+      setServerTimeOffsetMs(serverTime.getTime() - Date.now());
+      setStaffDrafts(
+        Object.fromEntries(
+          overviewResponse.data.staff.map(item => [
+            item.id,
+            {
+              autoAssignEnabled: item.autoAssignEnabled,
+              maxActiveTasks: item.maxActiveTasks,
+            },
+          ])
+        )
+      );
+      const visibleIds = new Set(tasksResponse.data.items.map(item => item.id));
+      setSelectedTaskIds(previous => previous.filter(id => visibleIds.has(id)));
+    } catch (loadError) {
+      setError(loadError.message);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      setNow(new Date(Date.now() + serverTimeOffsetMs));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [serverTimeOffsetMs]);
+
+  const selectedTasks = useMemo(
+    () => tasks.filter(task => selectedTaskIds.includes(task.id)),
+    [selectedTaskIds, tasks]
+  );
+  const assignmentHasTransfer = useMemo(() => {
+    const assigneeUserId = Number(assignmentDraft.assigneeUserId);
+    if (!assigneeUserId) return false;
+    return selectedTasks.some(task => task.assignee && Number(task.assignee.id) !== assigneeUserId);
+  }, [assignmentDraft.assigneeUserId, selectedTasks]);
+  const allVisibleSelected = tasks.length > 0 && selectedTaskIds.length === tasks.length;
+
+  const runAction = async (actionKey, action, successMessage) => {
+    setError('');
+    setNotice('');
+    setBusyAction(actionKey);
+    try {
+      await action();
+      if (successMessage) setNotice(successMessage);
+      await load();
+      return true;
+    } catch (actionError) {
+      setError(actionError.message);
+      return false;
+    } finally {
+      setBusyAction('');
+    }
+  };
+
+  const toggleTask = taskId => {
+    setSelectedTaskIds(previous =>
+      previous.includes(taskId) ? previous.filter(id => id !== taskId) : [...previous, taskId]
+    );
+  };
+
+  const openAssignmentModal = () => {
+    if (selectedTaskIds.length === 0) return;
+    setError('');
+    setAssignmentDraft({
+      assigneeUserId: '',
+      handoffConfirmed: false,
+      reason: '',
+    });
+    setAssignModalOpen(true);
+  };
+
+  const confirmAssignment = async () => {
+    const assigneeUserId = Number(assignmentDraft.assigneeUserId);
+    if (!assigneeUserId) {
+      setError('请选择负责人');
+      return;
+    }
+    if (
+      assignmentHasTransfer &&
+      (!assignmentDraft.handoffConfirmed || !assignmentDraft.reason.trim())
+    ) {
+      setError('批量中包含转派任务，请确认原负责人已停止并填写转派原因');
+      return;
+    }
+    const succeeded = await runAction(
+      'assign-selected',
+      () =>
+        assignPaymentTasks(
+          {
+            tasks: selectedTasks.map(task => ({
+              id: task.id,
+              expectedVersion: task.version,
+            })),
+            assigneeUserId,
+            handoffConfirmed: assignmentHasTransfer ? assignmentDraft.handoffConfirmed : false,
+            reason: assignmentHasTransfer ? assignmentDraft.reason.trim() : undefined,
+          },
+          crypto.randomUUID()
+        ),
+      `已分配 ${selectedTasks.length} 个付款任务`
+    );
+    if (succeeded) {
+      setSelectedTaskIds([]);
+      setAssignModalOpen(false);
+    }
+  };
+
+  if (loading && !overview)
+    return <div className="card text-center text-gray-500 py-12">加载中...</div>;
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <ListChecks className="w-6 h-6 text-primary" />
+          付款任务调度
+        </h1>
+        <p className="text-sm text-gray-500 mt-1">配置任务范围、人员容量并完成批量分配</p>
+      </div>
+      {error && <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3">{error}</div>}
+      {notice && <div className="rounded-lg bg-green-50 text-green-700 px-4 py-3">{notice}</div>}
+
+      <div className="card">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h2 className="font-semibold text-gray-900">全局调度</h2>
+            <p className="text-sm text-gray-500 mt-1">
+              范围启用时间：
+              {overview?.settings.scopeStartedAt
+                ? formatDateTime(overview.settings.scopeStartedAt)
+                : '未启用'}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-3 items-center">
+            <label className="flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
+                checked={Boolean(overview?.settings.enabled)}
+                onChange={event =>
+                  setOverview(previous => ({
+                    ...previous,
+                    settings: {
+                      ...previous.settings,
+                      enabled: event.target.checked,
+                    },
+                  }))
+                }
+              />
+              启用新订单纳入
+            </label>
+            <select
+              className="input w-32"
+              disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
+              value={overview?.settings.mode || 'manual'}
+              onChange={event =>
+                setOverview(previous => ({
+                  ...previous,
+                  settings: { ...previous.settings, mode: event.target.value },
+                }))
+              }
+            >
+              <option value="manual">手动</option>
+              <option value="auto">自动</option>
+            </select>
+            {can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE) && (
+              <button
+                className="btn btn-primary"
+                disabled={Boolean(busyAction)}
+                onClick={() =>
+                  runAction(
+                    'save-settings',
+                    () =>
+                      updatePaymentDispatchSettings({
+                        enabled: overview.settings.enabled,
+                        mode: overview.settings.mode,
+                        expectedVersion: overview.settings.version,
+                      }),
+                    '全局调度设置已保存'
+                  )
+                }
+              >
+                <Save className="w-4 h-4 mr-2" />
+                保存
+              </button>
+            )}
+            {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
+              <button
+                className="btn btn-secondary"
+                disabled={Boolean(busyAction)}
+                onClick={() => runAction('scan', runPaymentDispatchScan, '调度扫描已完成')}
+              >
+                <Play className="w-4 h-4 mr-2" />
+                立即扫描
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="card p-0 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-200">
+          <h2 className="font-semibold">人员与容量</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[760px]">
+            <thead className="bg-gray-50">
+              <tr>
+                {['用户', '权限完整', '当前负载', '上限', '自动接单', '操作'].map(title => (
+                  <th key={title} className="px-4 py-3 text-left text-sm text-gray-500">
+                    {title}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {overview?.staff.map(person => (
+                <tr key={person.id} className="border-t border-gray-100">
+                  <td className="px-4 py-3 font-medium">{person.username}</td>
+                  <td className="px-4 py-3">
+                    <span
+                      className={`badge ${person.hasExecutionPermissions ? 'badge-success' : 'badge-warning'}`}
+                    >
+                      {person.hasExecutionPermissions ? '完整' : '缺失'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-sm">
+                    {person.activeCount} / {person.maxActiveTasks}
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="number"
+                      min="0"
+                      max="1000"
+                      className="input w-24"
+                      disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
+                      value={staffDrafts[person.id]?.maxActiveTasks ?? 0}
+                      onChange={event =>
+                        setStaffDrafts(previous => ({
+                          ...previous,
+                          [person.id]: {
+                            ...previous[person.id],
+                            maxActiveTasks: Number(event.target.value),
+                          },
+                        }))
+                      }
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    <input
+                      type="checkbox"
+                      disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
+                      checked={Boolean(staffDrafts[person.id]?.autoAssignEnabled)}
+                      onChange={event =>
+                        setStaffDrafts(previous => ({
+                          ...previous,
+                          [person.id]: {
+                            ...previous[person.id],
+                            autoAssignEnabled: event.target.checked,
+                          },
+                        }))
+                      }
+                    />
+                  </td>
+                  <td className="px-4 py-3">
+                    {can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE) && (
+                      <button
+                        className="btn btn-secondary"
+                        disabled={Boolean(busyAction)}
+                        onClick={() =>
+                          runAction(
+                            `staff-${person.id}`,
+                            () =>
+                              updatePaymentStaffSettings(person.id, {
+                                ...staffDrafts[person.id],
+                                expectedVersion: person.version,
+                              }),
+                            `${person.username} 的接单设置已保存`
+                          )
+                        }
+                      >
+                        保存
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div className="card p-0 overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-200 space-y-4">
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">任务队列</h2>
+              <p className="text-sm text-gray-500 mt-1">已选择 {selectedTaskIds.length} 项</p>
+            </div>
+            {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
+              <div className="flex flex-wrap gap-2">
+                <button
+                  className="btn btn-secondary"
+                  disabled={selectedTaskIds.length === 0 || Boolean(busyAction)}
+                  onClick={() =>
+                    runAction(
+                      'refresh-selected',
+                      () => refreshPaymentDispatchTasks(selectedTaskIds),
+                      `已提交 ${selectedTaskIds.length} 个官网刷新任务`
+                    )
+                  }
+                >
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  批量刷新
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={selectedTaskIds.length === 0 || Boolean(busyAction)}
+                  onClick={openAssignmentModal}
+                >
+                  <Users className="w-4 h-4 mr-2" />
+                  分配所选订单
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+            <input
+              className="input"
+              placeholder="订单号"
+              value={filterDrafts.orderNumber}
+              onChange={event =>
+                setFilterDrafts(previous => ({
+                  ...previous,
+                  orderNumber: event.target.value,
+                }))
+              }
+            />
+            <input
+              className="input"
+              placeholder="商品名称或型号"
+              value={filterDrafts.productKeyword}
+              onChange={event =>
+                setFilterDrafts(previous => ({
+                  ...previous,
+                  productKeyword: event.target.value,
+                }))
+              }
+            />
+            <select
+              className="input"
+              value={filterDrafts.assignee}
+              onChange={event =>
+                setFilterDrafts(previous => ({
+                  ...previous,
+                  assignee: event.target.value,
+                }))
+              }
+            >
+              <option value="">全部负责人</option>
+              <option value="unassigned">未分配</option>
+              {overview?.staff.map(person => (
+                <option key={person.id} value={person.id}>
+                  {person.username}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input"
+              value={filterDrafts.officialOrderStatus}
+              onChange={event =>
+                setFilterDrafts(previous => ({
+                  ...previous,
+                  officialOrderStatus: event.target.value,
+                }))
+              }
+            >
+              <option value="">全部官网状态</option>
+              {Object.entries(OFFICIAL_STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <select
+              className="input"
+              value={filterDrafts.processingStatus}
+              onChange={event =>
+                setFilterDrafts(previous => ({
+                  ...previous,
+                  processingStatus: event.target.value,
+                }))
+              }
+            >
+              <option value="">全部处理状态</option>
+              {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button className="btn btn-primary" onClick={() => setFilters(filterDrafts)}>
+              <Search className="w-4 h-4 mr-2" />
+              筛选
+            </button>
+            <button
+              className="btn btn-secondary"
+              onClick={() => {
+                setFilterDrafts(INITIAL_FILTERS);
+                setFilters(INITIAL_FILTERS);
+              }}
+            >
+              <RotateCcw className="w-4 h-4 mr-2" />
+              重置
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1360px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    aria-label="选择当前列表全部任务"
+                    checked={allVisibleSelected}
+                    onChange={event =>
+                      setSelectedTaskIds(event.target.checked ? tasks.map(task => task.id) : [])
+                    }
+                  />
+                </th>
+                {[
+                  '订单 / 商品',
+                  '官网状态',
+                  '处理状态',
+                  '负责人',
+                  '付款倒计时',
+                  '最后更新时间',
+                  '操作',
+                ].map(title => (
+                  <th key={title} className="px-4 py-3 text-left text-sm text-gray-500">
+                    {title}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {tasks.map(task => {
+                const countdown = formatCountdown(task.deadlineAt, now);
+                const refreshKey = `refresh-${task.id}`;
+                return (
+                  <tr key={task.id} className="border-t border-gray-100">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        aria-label={`选择订单 ${task.orderNumber}`}
+                        checked={selectedTaskIds.includes(task.id)}
+                        onChange={() => toggleTask(task.id)}
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium">{task.orderNumber}</div>
+                      <div className="text-xs text-gray-500 max-w-72 truncate">
+                        {task.products
+                          .map(product => `${product.name || ''} ${product.model || ''}`.trim())
+                          .join('、') || '无商品信息'}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      {OFFICIAL_STATUS_LABELS[task.officialOrderStatus] ||
+                        task.officialOrderStatus ||
+                        '未知'}
+                    </td>
+                    <td className="px-4 py-3">{STATUS_LABELS[task.processingStatus]}</td>
+                    <td className="px-4 py-3">{task.assignee?.username || '未分配'}</td>
+                    <td className={`px-4 py-3 ${countdown.className}`}>{countdown.text}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">
+                      {formatDateTime(task.lastCrawledAt)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex flex-wrap gap-2">
+                        {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
+                          <button
+                            className="btn btn-secondary"
+                            disabled={Boolean(busyAction)}
+                            onClick={() =>
+                              runAction(
+                                refreshKey,
+                                () => refreshPaymentDispatchTask(task.id),
+                                `订单 ${task.orderNumber} 已进入刷新队列`
+                              )
+                            }
+                          >
+                            <RefreshCw
+                              className={`w-4 h-4 mr-2 ${busyAction === refreshKey ? 'animate-spin' : ''}`}
+                            />
+                            刷新
+                          </button>
+                        )}
+                        {can(PERMISSIONS.PAYMENT_DISPATCH_CORRECT) &&
+                          task.processingStatus === 'completed' && (
+                            <button
+                              className="btn btn-secondary"
+                              disabled={Boolean(busyAction)}
+                              onClick={() => {
+                                const reason = window.prompt('请输入重开原因');
+                                if (reason)
+                                  runAction(
+                                    `reopen-${task.id}`,
+                                    () =>
+                                      reopenPaymentTask(
+                                        task.id,
+                                        {
+                                          reason,
+                                          expectedVersion: task.version,
+                                        },
+                                        crypto.randomUUID()
+                                      ),
+                                    `订单 ${task.orderNumber} 已重开为异常`
+                                  );
+                              }}
+                            >
+                              重开为异常
+                            </button>
+                          )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!loading && tasks.length === 0 && (
+                <tr>
+                  <td colSpan="8" className="px-4 py-12 text-center text-gray-500">
+                    没有符合条件的付款任务
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {assignModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900">批量分配付款任务</h2>
+                <p className="text-sm text-gray-500 mt-1">共选择 {selectedTasks.length} 个订单</p>
+              </div>
+              <button
+                className="btn btn-secondary p-2"
+                aria-label="关闭批量分配弹窗"
+                onClick={() => setAssignModalOpen(false)}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {error && <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3">{error}</div>}
+              <label className="block">
+                <span className="block text-sm font-medium text-gray-700 mb-2">负责人</span>
+                <select
+                  className="input w-full"
+                  value={assignmentDraft.assigneeUserId}
+                  onChange={event =>
+                    setAssignmentDraft(previous => ({
+                      ...previous,
+                      assigneeUserId: event.target.value,
+                    }))
+                  }
+                >
+                  <option value="">请选择负责人</option>
+                  {overview?.staff
+                    .filter(person => person.hasExecutionPermissions)
+                    .map(person => (
+                      <option key={person.id} value={person.id}>
+                        {person.username}（剩余容量 {person.remainingCapacity}）
+                      </option>
+                    ))}
+                </select>
+              </label>
+              {assignmentHasTransfer && (
+                <>
+                  <label className="block">
+                    <span className="block text-sm font-medium text-gray-700 mb-2">转派原因</span>
+                    <textarea
+                      className="input w-full min-h-24"
+                      maxLength="500"
+                      value={assignmentDraft.reason}
+                      onChange={event =>
+                        setAssignmentDraft(previous => ({
+                          ...previous,
+                          reason: event.target.value,
+                        }))
+                      }
+                    />
+                  </label>
+                  <label className="flex items-start gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      className="mt-1"
+                      checked={assignmentDraft.handoffConfirmed}
+                      onChange={event =>
+                        setAssignmentDraft(previous => ({
+                          ...previous,
+                          handoffConfirmed: event.target.checked,
+                        }))
+                      }
+                    />
+                    已确认原负责人停止处理所选转派订单
+                  </label>
+                </>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
+              <button className="btn btn-secondary" onClick={() => setAssignModalOpen(false)}>
+                取消
+              </button>
+              <button
+                className="btn btn-primary"
+                disabled={busyAction === 'assign-selected'}
+                onClick={confirmAssignment}
+              >
+                {busyAction === 'assign-selected' ? '分配中...' : '确认分配'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -15,24 +15,36 @@ const router = express.Router();
  * GET /api/channels
  * 获取渠道列表（动态聚合统计）
  */
-router.get('/', channelController.getChannels);
+router.get('/', requirePermission(PERMISSIONS.CHANNELS_READ), channelController.getChannels);
 
 /**
  * GET /api/channels/:tag/stats
  * 获取渠道详细统计
  */
-router.get('/:tag/stats', channelController.getChannelStats);
+router.get(
+  '/:tag/stats',
+  requirePermission(PERMISSIONS.CHANNELS_READ),
+  channelController.getChannelStats
+);
 
 /**
  * GET /api/channels/:tag/orders
  * 获取渠道订单列表
  */
-router.get('/:tag/orders', channelController.getChannelOrders);
+router.get(
+  '/:tag/orders',
+  requirePermission(PERMISSIONS.CHANNELS_READ),
+  channelController.getChannelOrders
+);
 
 /**
  * PUT /api/channels/:tag
  * 修改渠道名称（级联更新）
  */
-router.put('/:tag', requirePermission(PERMISSIONS.WRITE), channelController.updateChannelName);
+router.put(
+  '/:tag',
+  requirePermission(PERMISSIONS.CHANNELS_RENAME),
+  channelController.updateChannelName
+);
 
 module.exports = router;

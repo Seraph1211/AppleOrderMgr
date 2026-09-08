@@ -42,9 +42,10 @@ import AlertModal from '../components/AlertModal';
 import BindAppleIdModal from '../components/BindAppleIdModal';
 import { recipientsColumns } from '../constants/tableColumns';
 import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status';
+import { PERMISSIONS } from '../constants/permissions';
 
 export default function Recipients() {
-  const { isAdmin } = useAuth();
+  const { can } = useAuth();
   const [recipients, setRecipients] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -230,7 +231,7 @@ export default function Recipients() {
       }
 
       // 第二步：执行导入
-      const executeRes = await executeImport(previewRes.data.sessionToken);
+      const executeRes = await executeImport(previewRes.data.sessionToken, 'recipients');
 
       if (!executeRes.success) {
         throw new Error(executeRes.error || '导入失败');
@@ -523,13 +524,15 @@ export default function Recipients() {
       case 'actions':
         return (
           <div className="flex items-center justify-end space-x-2">
-            <button
-              onClick={() => handleEdit(item)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <Edit className="w-4 h-4 text-gray-400 hover:text-primary" />
-            </button>
-            {isAdmin() && (
+            {can(PERMISSIONS.RECIPIENTS_EDIT) && (
+              <button
+                onClick={() => handleEdit(item)}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+              >
+                <Edit className="w-4 h-4 text-gray-400 hover:text-primary" />
+              </button>
+            )}
+            {can(PERMISSIONS.RECIPIENTS_DELETE) && (
               <button
                 onClick={() => handleDelete(item)}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -553,24 +556,33 @@ export default function Recipients() {
           <p className="text-gray-500 mt-1">管理所有取机人信息</p>
         </div>
         <div className="flex items-center space-x-3">
-          <button onClick={handleExport} className="btn btn-secondary flex items-center space-x-2">
-            <Download className="w-4 h-4" />
-            <span>导出Excel</span>
-          </button>
-          <button
-            onClick={() => setShowBatchImport(true)}
-            className="btn btn-secondary flex items-center space-x-2"
-          >
-            <Upload className="w-4 h-4" />
-            <span>批量导入</span>
-          </button>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="btn btn-primary flex items-center space-x-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>添加取机人</span>
-          </button>
+          {can(PERMISSIONS.RECIPIENTS_EXPORT) && (
+            <button
+              onClick={handleExport}
+              className="btn btn-secondary flex items-center space-x-2"
+            >
+              <Download className="w-4 h-4" />
+              <span>导出Excel</span>
+            </button>
+          )}
+          {can(PERMISSIONS.RECIPIENTS_IMPORT) && (
+            <button
+              onClick={() => setShowBatchImport(true)}
+              className="btn btn-secondary flex items-center space-x-2"
+            >
+              <Upload className="w-4 h-4" />
+              <span>批量导入</span>
+            </button>
+          )}
+          {can(PERMISSIONS.RECIPIENTS_CREATE) && (
+            <button
+              onClick={() => setShowAddModal(true)}
+              className="btn btn-primary flex items-center space-x-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>添加取机人</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -611,43 +623,49 @@ export default function Recipients() {
               </option>
             ))}
           </select>
-          <button
-            onClick={handleBatchGenerate}
-            disabled={generating}
-            className="btn btn-primary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"
-          >
-            <Zap className="w-4 h-4" />
-            <span>
-              {generating
-                ? '生成中...'
-                : selectedIds.length > 0
-                  ? `生成联系方式 (${selectedIds.length})`
-                  : '生成联系方式'}
-            </span>
-          </button>
-          <button
-            onClick={handleBatchGenerateAddress}
-            disabled={generatingAddress}
-            className="btn btn-primary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"
-          >
-            <MapPin className="w-4 h-4" />
-            <span>
-              {generatingAddress
-                ? '生成中...'
-                : selectedIds.length > 0
-                  ? `生成地址 (${selectedIds.length})`
-                  : '生成地址'}
-            </span>
-          </button>
-          <button
-            onClick={handleBatchBindAppleIds}
-            className="btn btn-primary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"
-          >
-            <Link className="w-4 h-4" />
-            <span>
-              {selectedIds.length > 0 ? `绑定Apple ID (${selectedIds.length})` : '绑定Apple ID'}
-            </span>
-          </button>
+          {can(PERMISSIONS.RECIPIENTS_GENERATE_CONTACT) && (
+            <button
+              onClick={handleBatchGenerate}
+              disabled={generating}
+              className="btn btn-primary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"
+            >
+              <Zap className="w-4 h-4" />
+              <span>
+                {generating
+                  ? '生成中...'
+                  : selectedIds.length > 0
+                    ? `生成联系方式 (${selectedIds.length})`
+                    : '生成联系方式'}
+              </span>
+            </button>
+          )}
+          {can(PERMISSIONS.RECIPIENTS_GENERATE_ADDRESS) && (
+            <button
+              onClick={handleBatchGenerateAddress}
+              disabled={generatingAddress}
+              className="btn btn-primary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"
+            >
+              <MapPin className="w-4 h-4" />
+              <span>
+                {generatingAddress
+                  ? '生成中...'
+                  : selectedIds.length > 0
+                    ? `生成地址 (${selectedIds.length})`
+                    : '生成地址'}
+              </span>
+            </button>
+          )}
+          {can(PERMISSIONS.RECIPIENTS_BIND_APPLE_IDS) && (
+            <button
+              onClick={handleBatchBindAppleIds}
+              className="btn btn-primary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"
+            >
+              <Link className="w-4 h-4" />
+              <span>
+                {selectedIds.length > 0 ? `绑定Apple ID (${selectedIds.length})` : '绑定Apple ID'}
+              </span>
+            </button>
+          )}
           <button
             onClick={() => setShowColumnConfig(true)}
             className="btn btn-secondary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"

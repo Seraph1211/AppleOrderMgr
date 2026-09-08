@@ -1,4 +1,5 @@
 jest.mock('../src/models', () => ({ User: {} }));
+jest.mock('../src/services/permissionService', () => ({ getEffectivePermissions: jest.fn() }));
 jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),
   info: jest.fn(),
@@ -28,45 +29,65 @@ function createResponse() {
   };
 }
 
-describe('最小权限矩阵', () => {
+describe('逐用户权限矩阵', () => {
   test('管理员拥有全部已定义权限', () => {
     expect(ROLE_PERMISSIONS.admin).toEqual(expect.arrayContaining(Object.values(PERMISSIONS)));
   });
 
-  test('业务操作员可写入和导出但不可删除或查看秘密', () => {
-    expect(ROLE_PERMISSIONS.operator).toEqual(
-      expect.arrayContaining([PERMISSIONS.READ, PERMISSIONS.WRITE, PERMISSIONS.EXPORT])
-    );
-    expect(ROLE_PERMISSIONS.operator).not.toContain(PERMISSIONS.DELETE);
-    expect(ROLE_PERMISSIONS.operator).not.toContain(PERMISSIONS.VIEW_SECRETS);
+  test('普通用户角色不再隐式授权', () => {
+    expect(ROLE_PERMISSIONS.operator).toEqual([]);
+    expect(ROLE_PERMISSIONS.readOnly).toEqual([]);
   });
 
-  test('只读用户的写请求返回 403', () => {
-    const req = { user: { id: 3, role: 'readOnly' }, path: '/orders/1' };
+  test.each([
+    PERMISSIONS.DASHBOARD_READ,
+    PERMISSIONS.STATS_READ,
+    PERMISSIONS.ORDERS_READ,
+    PERMISSIONS.APPLE_IDS_READ,
+    PERMISSIONS.RECIPIENTS_READ,
+    PERMISSIONS.CHANNELS_READ,
+    PERMISSIONS.EMAIL_READ,
+  ])('只有本人付款任务权限时拒绝其他业务权限 %s', requiredPermission => {
+    const req = {
+      user: {
+        id: 3,
+        role: 'operator',
+        permissions: [
+          PERMISSIONS.PAYMENT_TASKS_READ_OWN,
+          PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN,
+          PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN,
+          PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN,
+          PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN,
+        ],
+      },
+      path: '/business-resource',
+    };
     const res = createResponse();
     const next = jest.fn();
 
-    requirePermission(PERMISSIONS.WRITE)(req, res, next);
+    requirePermission(requiredPermission)(req, res, next);
 
     expect(res.statusCode).toBe(403);
     expect(res.body.error.code).toBe('FORBIDDEN');
     expect(next).not.toHaveBeenCalled();
   });
 
-  test('只读用户不能提交订单刷新任务', () => {
-    const req = { user: { id: 3, role: 'readOnly' }, path: '/orders/1/refresh' };
+  test('明确拥有所需权限时继续请求', () => {
+    const req = {
+      user: { id: 2, role: 'operator', permissions: [PERMISSIONS.ORDERS_EXPORT] },
+      path: '/orders/export',
+    };
     const res = createResponse();
     const next = jest.fn();
 
-    requirePermission(PERMISSIONS.REFRESH)(req, res, next);
+    requirePermission(PERMISSIONS.ORDERS_EXPORT)(req, res, next);
 
-    expect(res.statusCode).toBe(403);
-    expect(res.body.error.code).toBe('FORBIDDEN');
-    expect(next).not.toHaveBeenCalled();
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(res.body).toBeNull();
   });
 
-  test.each(['operator', 'readOnly'])('非管理员角色不能访问邮件处理页面和 API', role => {
-    const req = { user: { id: 3, role }, path: '/email-processing' };
+  test.each(['operator', 'readOnly'])('非管理员角色不能进入管理员保留端点', role => {
+    const req = { user: { id: 3, role, permissions: [] }, path: '/email-processing' };
     const res = createResponse();
     const next = jest.fn();
 
@@ -74,17 +95,6 @@ describe('最小权限矩阵', () => {
 
     expect(res.statusCode).toBe(403);
     expect(next).not.toHaveBeenCalled();
-  });
-
-  test('符合权限时继续请求', () => {
-    const req = { user: { id: 2, role: 'operator' }, path: '/orders/export' };
-    const res = createResponse();
-    const next = jest.fn();
-
-    requirePermission(PERMISSIONS.EXPORT)(req, res, next);
-
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.body).toBeNull();
   });
 
   test('被标记强制改密的用户不得访问业务 API', () => {
@@ -100,19 +110,5 @@ describe('最小权限矩阵', () => {
     expect(res.statusCode).toBe(403);
     expect(res.body.forcePasswordChange).toBe(true);
     expect(next).not.toHaveBeenCalled();
-  });
-
-  test('已完成改密的用户可继续访问业务 API', () => {
-    const req = {
-      user: { id: 4, username: 'user', role: 'operator', forcePasswordChange: false },
-      path: '/orders',
-    };
-    const res = createResponse();
-    const next = jest.fn();
-
-    checkPasswordChangeRequired(req, res, next);
-
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.body).toBeNull();
   });
 });

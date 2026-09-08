@@ -2,6 +2,7 @@ const { User } = require('../models');
 const { generateToken } = require('../utils/jwtUtils');
 const logger = require('../utils/logger');
 const { MIN_PASSWORD_LENGTH } = require('../constants/business');
+const permissionService = require('./permissionService');
 
 /**
  * 认证服务层
@@ -101,6 +102,7 @@ async function login(username, password, loginIp = null) {
       loginIp,
     });
 
+    const permissions = await permissionService.getEffectivePermissions(user);
     return {
       token,
       user: {
@@ -108,6 +110,9 @@ async function login(username, password, loginIp = null) {
         username: user.username,
         role: user.role,
         forcePasswordChange: user.forcePasswordChange,
+        permissions,
+        permissionsVersion: user.permissionsVersion,
+        availableHome: permissionService.resolveAvailableHome(permissions),
       },
     };
   } catch (error) {
@@ -235,6 +240,7 @@ async function getUserInfo(userId) {
         'role',
         'status',
         'forcePasswordChange',
+        'permissionsVersion',
         'lastLoginAt',
         'lastLoginIp',
         'createdAt',
@@ -245,12 +251,16 @@ async function getUserInfo(userId) {
       throw new Error('用户不存在');
     }
 
+    const permissions = await permissionService.getEffectivePermissions(user);
     return {
       id: user.id,
       username: user.username,
       role: user.role,
       status: user.status,
       forcePasswordChange: user.forcePasswordChange,
+      permissions,
+      permissionsVersion: user.permissionsVersion,
+      availableHome: permissionService.resolveAvailableHome(permissions),
       lastLoginAt: user.lastLoginAt,
       lastLoginIp: user.lastLoginIp,
       createdAt: user.createdAt,

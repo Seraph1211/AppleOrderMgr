@@ -61,6 +61,7 @@ client.interceptors.response.use(
         return Promise.reject(new Error('登录已过期，请重新登录'));
       } else if (status === 403 && !isLoginRequest) {
         // 权限不足（非登录请求）
+        window.dispatchEvent(new Event('auth-permissions-stale'));
         return Promise.reject(new Error(data?.error?.message || '权限不足'));
       } else if (status === 404) {
         return Promise.reject(new Error(data?.error?.message || '请求的资源不存在'));

@@ -1,59 +1,45 @@
-import { Navigate, useLocation } from 'react-router-dom'
-import { useAuth } from '../contexts/AuthContext'
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 
 /**
- * 路由守卫组件
- * 检查用户是否已登录，支持角色权限检查和强制修改密码
- * @param {Object} props - 组件属性
- * @param {React.ReactNode} props.children - 子组件
- * @param {string} props.requiredRole - 所需角色（'admin' 或 'user'）
+ * 路由权限守卫，支持单权限和全部权限集合。
  */
-export default function ProtectedRoute({ children, requiredRole = null }) {
-  const { user, isAuthenticated, isAdmin, loading } = useAuth()
-  const location = useLocation()
+export default function ProtectedRoute({
+  children,
+  requiredRole = null,
+  requiredPermission = null,
+  requiredPermissions = [],
+}) {
+  const { user, isAuthenticated, isAdmin, can, hasAllPermissions, loading } = useAuth();
+  const location = useLocation();
 
-  // 加载中
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
           <p className="text-gray-500 mt-4">加载中...</p>
         </div>
       </div>
-    )
+    );
   }
-
-  // 未登录：跳转到登录页
-  if (!isAuthenticated()) {
-    return <Navigate to="/login" state={{ from: location }} replace />
-  }
-
-  // 强制修改密码：跳转到修改密码页面（除非当前就在修改密码页面）
+  if (!isAuthenticated()) return <Navigate to="/login" state={{ from: location }} replace />;
   if (user?.forcePasswordChange && location.pathname !== '/change-password') {
-    return <Navigate to="/change-password" replace />
+    return <Navigate to="/change-password" replace />;
   }
-
-  // 需要管理员权限但当前用户不是管理员
-  if (requiredRole === 'admin' && !isAdmin()) {
+  const forbidden =
+    (requiredRole === 'admin' && !isAdmin()) ||
+    (requiredPermission && !can(requiredPermission)) ||
+    !hasAllPermissions(requiredPermissions);
+  if (forbidden) {
+    const fallback = user?.availableHome;
+    if (fallback && fallback !== location.pathname) return <Navigate to={fallback} replace />;
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center max-w-md mx-4">
-          <div className="card">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">权限不足</h2>
-            <p className="text-gray-600 mb-6">您没有权限访问此页面，请联系管理员。</p>
-            <button
-              onClick={() => window.history.back()}
-              className="btn btn-primary"
-            >
-              返回
-            </button>
-          </div>
-        </div>
+      <div className="card max-w-md mx-auto mt-12 text-center">
+        <h2 className="text-xl font-bold text-gray-900 mb-3">权限不足</h2>
+        <p className="text-gray-600">当前账号没有可用的业务页面，请联系管理员。</p>
       </div>
-    )
+    );
   }
-
-  // 通过验证：渲染子组件
-  return children
+  return children;
 }

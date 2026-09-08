@@ -4,8 +4,11 @@ import { Search, Edit, TrendingUp } from 'lucide-react';
 import { getChannels, updateChannelName } from '../api';
 import EditChannelModal from '../components/EditChannelModal';
 import Pagination from '../components/Pagination';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
 
 export default function Channels() {
+  const { can } = useAuth();
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -284,13 +287,15 @@ export default function Channels() {
                         </Link>
                       </td>
                       <td className="py-4 px-4">
-                        <button
-                          onClick={() => handleEditChannel(channel)}
-                          className="text-primary hover:text-primary-dark transition-colors"
-                          title="修改渠道名称"
-                        >
-                          <Edit className="w-4 h-4" />
-                        </button>
+                        {can(PERMISSIONS.CHANNELS_RENAME) && (
+                          <button
+                            onClick={() => handleEditChannel(channel)}
+                            className="text-primary hover:text-primary-dark transition-colors"
+                            title="修改渠道名称"
+                          >
+                            <Edit className="w-4 h-4" />
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );

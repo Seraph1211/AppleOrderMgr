@@ -1,14 +1,16 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Unlock, Users as UsersIcon } from 'lucide-react';
+import { Plus, Edit, Trash2, Unlock, Users as UsersIcon, ShieldCheck } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import client from '../api/client';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
 import AddUserModal from '../components/AddUserModal';
 import EditUserModal from '../components/EditUserModal';
+import PermissionConfigModal from '../components/PermissionConfigModal';
+import { PERMISSIONS } from '../constants/permissions';
 
 export default function Users() {
-  const { isAdmin } = useAuth();
+  const { isAdmin, can } = useAuth();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [alertModal, setAlertModal] = useState(null);
@@ -16,6 +18,7 @@ export default function Users() {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState(null);
+  const [permissionUser, setPermissionUser] = useState(null);
 
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10 });
 
@@ -181,10 +184,12 @@ export default function Users() {
             <p className="text-sm text-gray-500 mt-1">管理系统用户账号和权限</p>
           </div>
         </div>
-        <button onClick={handleAdd} className="btn btn-primary">
-          <Plus className="w-4 h-4 mr-2" />
-          新增用户
-        </button>
+        {can(PERMISSIONS.USERS_MANAGE) && (
+          <button onClick={handleAdd} className="btn btn-primary">
+            <Plus className="w-4 h-4 mr-2" />
+            新增用户
+          </button>
+        )}
       </div>
 
       {/* 用户列表 */}
@@ -244,14 +249,25 @@ export default function Users() {
                       </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => handleEdit(user)}
-                            className="text-primary hover:text-primary/80 transition-colors"
-                            title="编辑"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                          {user.status === 'locked' && (
+                          {can(PERMISSIONS.USERS_PERMISSIONS_MANAGE) && (
+                            <button
+                              onClick={() => setPermissionUser(user)}
+                              className="text-primary hover:text-primary/80 transition-colors"
+                              title="权限配置"
+                            >
+                              <ShieldCheck className="w-4 h-4" />
+                            </button>
+                          )}
+                          {can(PERMISSIONS.USERS_MANAGE) && (
+                            <button
+                              onClick={() => handleEdit(user)}
+                              className="text-primary hover:text-primary/80 transition-colors"
+                              title="编辑"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          )}
+                          {can(PERMISSIONS.USERS_MANAGE) && user.status === 'locked' && (
                             <button
                               onClick={() => handleUnlock(user)}
                               className="text-warning hover:text-warning/80 transition-colors"
@@ -260,13 +276,15 @@ export default function Users() {
                               <Unlock className="w-4 h-4" />
                             </button>
                           )}
-                          <button
-                            onClick={() => handleDelete(user)}
-                            className="text-error hover:text-error/80 transition-colors"
-                            title="删除"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                          {can(PERMISSIONS.USERS_MANAGE) && (
+                            <button
+                              onClick={() => handleDelete(user)}
+                              className="text-error hover:text-error/80 transition-colors"
+                              title="删除"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -358,6 +376,17 @@ export default function Users() {
           message={confirmModal.message}
           onConfirm={confirmModal.onConfirm}
           onCancel={confirmModal.onCancel}
+        />
+      )}
+
+      {permissionUser && (
+        <PermissionConfigModal
+          user={permissionUser}
+          onClose={() => setPermissionUser(null)}
+          onSuccess={() => {
+            setPermissionUser(null);
+            fetchUsers(pagination.page);
+          }}
         />
       )}
     </div>

@@ -7,6 +7,9 @@ jest.mock('../src/models', () => ({
     findOne: mockFindOne,
     findByPk: mockFindByPk,
   },
+  UserPermission: {
+    findAll: jest.fn(() => Promise.resolve([])),
+  },
 }));
 jest.mock('../src/utils/jwtUtils', () => ({
   generateToken: mockGenerateToken,

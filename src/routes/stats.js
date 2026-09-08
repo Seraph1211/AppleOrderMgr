@@ -5,9 +5,12 @@
 const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
 const controller = require('../controllers/statsController');
+const { requirePermission } = require('../middleware/authMiddleware');
+const { PERMISSIONS } = require('../constants/business');
 
 const router = express.Router();
 
+router.use(requirePermission(PERMISSIONS.STATS_READ));
 router.get('/overview', asyncHandler(controller.getOverview));
 router.get('/apple-ids', asyncHandler(controller.getAppleIdStats));
 router.get('/recipients', asyncHandler(controller.getRecipientStats));

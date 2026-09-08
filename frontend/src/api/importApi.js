@@ -10,7 +10,7 @@ export async function previewImport(file, type) {
   formData.append('file', file);
   formData.append('type', type);
 
-  const response = await client.post('/import/preview', formData, {
+  const response = await client.post(`/import/preview?type=${encodeURIComponent(type)}`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
     },
@@ -24,8 +24,8 @@ export async function previewImport(file, type) {
  * @param {string} type - 导入类型（apple_ids 或 recipients）
  * @param {Array} data - 导入数据
  */
-export async function executeImport(sessionToken) {
-  const response = await client.post('/import/execute', { sessionToken });
+export async function executeImport(sessionToken, type) {
+  const response = await client.post('/import/execute', { sessionToken, type });
   return response;
 }
 

@@ -35,6 +35,14 @@ const models = {
   OrderRefreshBatch: require('./OrderRefreshBatch')(sequelize),
   OrderRefreshJob: require('./OrderRefreshJob')(sequelize),
   OrderRefreshSystemState: require('./OrderRefreshSystemState')(sequelize),
+  UserPermission: require('./UserPermission')(sequelize),
+  UserPermissionEvent: require('./UserPermissionEvent')(sequelize),
+  PaymentTask: require('./PaymentTask')(sequelize),
+  PaymentTaskEvent: require('./PaymentTaskEvent')(sequelize),
+  OrderPayerEvent: require('./OrderPayerEvent')(sequelize),
+  PaymentDispatchSetting: require('./PaymentDispatchSetting')(sequelize),
+  PaymentStaffSetting: require('./PaymentStaffSetting')(sequelize),
+  PaymentDispatchEvent: require('./PaymentDispatchEvent')(sequelize),
 };
 
 // 建立模型关联关系

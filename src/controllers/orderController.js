@@ -21,7 +21,7 @@ const { getDisplayedFreshness } = require('../services/crawler/refreshPolicy');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
-const { ORDER_STATUSES } = require('../constants/business');
+const { ORDER_STATUSES, PERMISSIONS } = require('../constants/business');
 const { maskIdCard, maskPhone, escapeSpreadsheetFormula } = require('../utils/masking');
 const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
 
@@ -86,6 +86,7 @@ function serializeOrderListItem(
     actual_pickup_date: plain.actualPickupDate,
     payment_method: plain.paymentMethod,
     payer_name: plain.payerName,
+    payer_version: plain.payerVersion,
     payment_screenshot: plain.paymentScreenshot,
     order_date: plain.orderDate,
     last_crawled_at: plain.lastCrawledAt,
@@ -149,6 +150,9 @@ function serializeOrderDetail(
     auto_refresh_stopped_at: plain.autoRefreshStoppedAt,
     order_url: null,
     payment_method: plain.paymentMethod,
+    payer_name: plain.payerName,
+    payer_version: plain.payerVersion,
+    payment_screenshot: plain.paymentScreenshot,
     pickup_store: plain.pickupStore,
     pickup_code: plain.pickupCode,
     order_date: plain.orderDate,
@@ -320,7 +324,10 @@ async function listOrders(req, res) {
       distinct: true,
     });
 
-    const includeRecipientPhone = canDisplayLocalSensitiveFields(req);
+    const includeRecipientPhone = canDisplayLocalSensitiveFields(
+      req,
+      PERMISSIONS.ORDERS_SECRETS_READ
+    );
     const orderIds = rows.map(order => order.id);
     let schedules = [];
     let activeJobs = [];
@@ -394,7 +401,7 @@ async function getOrderDetail(req, res) {
       success: true,
       data: serializeOrderDetail(
         order,
-        canDisplayLocalSensitiveFields(req),
+        canDisplayLocalSensitiveFields(req, PERMISSIONS.ORDERS_SECRETS_READ),
         refreshSchedule,
         refreshJob
       ),
@@ -671,7 +678,7 @@ async function getFilterOptions(_req, res) {
 
 /**
  * PUT /api/orders/:id
- * 更新订单信息（付款人、付款截图）
+ * 更新订单付款截图；付款人必须使用专用关联端点。
  */
 async function updateOrder(req, res) {
   try {
@@ -686,7 +693,7 @@ async function updateOrder(req, res) {
     }
 
     // 允许更新的字段
-    const allowedFields = ['payerName', 'paymentScreenshot'];
+    const allowedFields = ['paymentScreenshot'];
     const updates = {};
 
     for (const field of allowedFields) {
@@ -713,7 +720,6 @@ async function updateOrder(req, res) {
       data: {
         id: order.id,
         order_number: order.orderNumber,
-        payer_name: order.payerName,
         payment_screenshot: order.paymentScreenshot,
         updated_at: order.updatedAt,
       },

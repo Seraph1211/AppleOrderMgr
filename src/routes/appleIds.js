@@ -10,13 +10,29 @@ const controller = require('../controllers/appleIdController');
 
 const router = express.Router();
 
-router.get('/', asyncHandler(controller.listAppleIds));
-router.get('/:id', asyncHandler(controller.getAppleIdDetail));
-router.post('/', requirePermission(PERMISSIONS.WRITE), asyncHandler(controller.createAppleId));
-router.put('/:id', requirePermission(PERMISSIONS.WRITE), asyncHandler(controller.updateAppleId));
+router.get(
+  '/',
+  requirePermission(PERMISSIONS.APPLE_IDS_READ),
+  asyncHandler(controller.listAppleIds)
+);
+router.get(
+  '/:id',
+  requirePermission(PERMISSIONS.APPLE_IDS_READ),
+  asyncHandler(controller.getAppleIdDetail)
+);
+router.post(
+  '/',
+  requirePermission(PERMISSIONS.APPLE_IDS_CREATE),
+  asyncHandler(controller.createAppleId)
+);
+router.put(
+  '/:id',
+  requirePermission(PERMISSIONS.APPLE_IDS_EDIT),
+  asyncHandler(controller.updateAppleId)
+);
 router.delete(
   '/:id',
-  requirePermission(PERMISSIONS.DELETE),
+  requirePermission(PERMISSIONS.APPLE_IDS_DELETE),
   asyncHandler(controller.deleteAppleId)
 );
 
