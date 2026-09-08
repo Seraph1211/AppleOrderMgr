@@ -327,6 +327,15 @@ export default function EmailProcessing() {
           {metrics.counts?.retry_wait || 0}，已入库 {metrics.counts?.succeeded || 0}，最近 24
           小时失败 {metrics.recentFailureCount || 0}，连续失败{' '}
           {metrics.worker?.consecutiveFailures || 0}
+          ；收信扫描：{metrics.worker?.isScanHealthy ? '正常' : '未确认正常'}
+          {metrics.worker?.lastScanSucceededAt && (
+            <span>
+              （最近成功 {new Date(metrics.worker.lastScanSucceededAt).toLocaleString('zh-CN')}）
+            </span>
+          )}
+          {metrics.worker?.lastScanErrorCode && (
+            <span className="text-red-600">，扫描异常，请检查邮件服务</span>
+          )}
         </div>
       )}
 

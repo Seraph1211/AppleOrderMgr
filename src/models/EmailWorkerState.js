@@ -25,6 +25,22 @@ module.exports = sequelize =>
       heartbeatAt: { type: DataTypes.DATE, allowNull: true, field: 'heartbeat_at' },
       lastReceivedAt: { type: DataTypes.DATE, allowNull: true, field: 'last_received_at' },
       lastSucceededAt: { type: DataTypes.DATE, allowNull: true, field: 'last_succeeded_at' },
+      lastScanStartedAt: { type: DataTypes.DATE, allowNull: true, field: 'last_scan_started_at' },
+      lastScanSucceededAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'last_scan_succeeded_at',
+      },
+      lastScanDurationMs: {
+        type: DataTypes.INTEGER,
+        allowNull: true,
+        field: 'last_scan_duration_ms',
+      },
+      lastScanErrorCode: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+        field: 'last_scan_error_code',
+      },
       consecutiveFailures: {
         type: DataTypes.INTEGER,
         allowNull: false,

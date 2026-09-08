@@ -608,3 +608,48 @@ describe('非标准上游状态的日志保存', () => {
     }
   });
 });
+
+describe('官网逐台展示副本回归', () => {
+  function fixture(mode) {
+    const items = {};
+    for (let index = 1; index <= 2; index += 1) {
+      const suffix = mode === 'different-lines' ? index : 11;
+      items[`orderItem-${index}of2-${suffix}`] = {
+        orderItemDetails: {
+          d: { productName: '测试手机', quantity: 2, eyeBrowNumber: index, eyeBrowQuantity: 2 },
+        },
+        orderItemStatusTracker: {
+          d: {
+            currentStatus:
+              mode === 'mixed-status' && index === 2
+                ? 'PROCESSING'
+                : 'PAYMENT_EXPIRED_STORED_ORDER',
+          },
+        },
+      };
+    }
+    if (mode === 'missing-node') delete items['orderItem-2of2-11'];
+    if (mode === 'missing-evidence')
+      delete items['orderItem-2of2-11'].orderItemDetails.d.eyeBrowNumber;
+    return { orderDetail: { orderItems: items } };
+  }
+  test('完整同一行两个副本仅保留一行，总数量仍为 2', () => {
+    const parsed = loadCrawlerService().parseOrderData(fixture(), '<html></html>');
+    expect(parsed.products).toHaveLength(1);
+    expect(parsed.products[0].quantity).toBe(2);
+    expect(parsed.productsComplete).toBe(true);
+    expect(parsed.orderStatus).toBe('payment_expired');
+  });
+  test.each(['different-lines', 'mixed-status', 'missing-evidence'])(
+    '%s 不按名称误合并或丢弃状态',
+    mode => {
+      const parsed = loadCrawlerService().parseOrderData(fixture(mode), '<html></html>');
+      expect(parsed.products).toHaveLength(2);
+    }
+  );
+  test('只有一个节点时不猜测补齐或更改数量', () => {
+    const parsed = loadCrawlerService().parseOrderData(fixture('missing-node'), '<html></html>');
+    expect(parsed.products).toHaveLength(1);
+    expect(parsed.products[0].quantity).toBe(2);
+  });
+});

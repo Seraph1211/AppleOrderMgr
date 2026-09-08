@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Search,
   Filter,
@@ -16,6 +16,8 @@ import {
   getAutoRefreshStatus,
   refreshAllOrders,
   getRefreshBatch,
+  refreshOrder,
+  getRefreshJob,
 } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
 import ColumnConfigModal from '../components/ColumnConfigModal';
@@ -41,6 +43,9 @@ export default function Orders() {
   const [autoRefreshStatus, setAutoRefreshStatus] = useState(null);
   const [refreshBatch, setRefreshBatch] = useState(null);
   const [refreshMessage, setRefreshMessage] = useState('');
+  const [rowRefresh, setRowRefresh] = useState({});
+  const refreshRequests = useRef(new Set());
+  const loadOrdersRef = useRef(null);
 
   // 分页状态
   const [pagination, setPagination] = useState({
@@ -118,8 +123,116 @@ export default function Orders() {
     return () => window.clearInterval(timer);
   }, [refreshBatch?.id, refreshBatch?.status]);
 
-  const loadOrders = async () => {
-    setLoading(true);
+  const activeRowJobs = Object.entries(rowRefresh)
+    .filter(([, value]) => value.jobId && ['pending', 'running'].includes(value.status))
+    .map(([orderId, value]) => `${orderId}:${value.jobId}`)
+    .join(',');
+
+  useEffect(() => {
+    if (!activeRowJobs) return undefined;
+    let cancelled = false;
+    let querying = false;
+    const timer = window.setInterval(async () => {
+      if (querying) return;
+      querying = true;
+      try {
+        const results = await Promise.all(
+          activeRowJobs.split(',').map(async entry => {
+            try {
+              const [orderId, jobId] = entry.split(':');
+              const response = await getRefreshJob(jobId);
+              if (!response.success) throw new Error('刷新进度查询失败');
+              return { orderId, jobId, ...response.data };
+            } catch (error) {
+              return { error: error.message || '刷新进度查询失败，正在重试' };
+            }
+          })
+        );
+        if (cancelled) return;
+        let completed = false;
+        for (const result of results) {
+          if (result.error) {
+            setRefreshMessage(result.error);
+            continue;
+          }
+          const terminal = !['pending', 'running'].includes(result.status);
+          completed ||= terminal;
+          setRowRefresh(previous => ({
+            ...previous,
+            [result.orderId]: {
+              jobId: result.jobId,
+              status: result.status,
+              message:
+                result.lastErrorMessage ||
+                (result.status === 'succeeded' ? '刷新成功' : terminal ? '刷新未完成，可重试' : ''),
+            },
+          }));
+        }
+        if (completed) await loadOrdersRef.current?.(true);
+      } catch (error) {
+        if (!cancelled) setRefreshMessage(error.message || '刷新进度查询失败');
+      } finally {
+        querying = false;
+      }
+    }, 2000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [activeRowJobs]);
+
+  const hasExistingRefresh = orders.some(order =>
+    ['pending', 'running'].includes(order.refreshJob?.status)
+  );
+  useEffect(() => {
+    if (!hasExistingRefresh || activeRowJobs) return undefined;
+    let querying = false;
+    const timer = window.setInterval(async () => {
+      if (querying) return;
+      querying = true;
+      try {
+        await loadOrdersRef.current?.(true);
+      } catch (error) {
+        setRefreshMessage(error.message || '刷新列表失败');
+      } finally {
+        querying = false;
+      }
+    }, 3000);
+    return () => window.clearInterval(timer);
+  }, [hasExistingRefresh, activeRowJobs]);
+
+  const handleRowRefresh = async order => {
+    if (refreshRequests.current.has(order.id)) return;
+    refreshRequests.current.add(order.id);
+    setRowRefresh(previous => ({
+      ...previous,
+      [order.id]: { status: 'submitting' },
+    }));
+    try {
+      const response = await refreshOrder(order.id);
+      if (!response.success || !response.data?.jobId) throw new Error('刷新任务提交失败');
+      setRowRefresh(previous => ({
+        ...previous,
+        [order.id]: {
+          jobId: response.data.jobId,
+          status: response.data.status || 'pending',
+        },
+      }));
+    } catch (error) {
+      setRowRefresh(previous => ({
+        ...previous,
+        [order.id]: {
+          status: 'failed',
+          message: error.message || '刷新失败，请重试',
+        },
+      }));
+    } finally {
+      refreshRequests.current.delete(order.id);
+    }
+  };
+
+  const loadOrders = async (quiet = false) => {
+    if (!quiet) setLoading(true);
     try {
       const params = {
         page: pagination.currentPage,
@@ -155,6 +268,7 @@ export default function Orders() {
           applePassword: order.apple_password || '-',
           // 收件人相关
           recipientName: order.recipient_name || '-',
+          recipientTag: order.recipient_tag || '-',
           recipientIdCard: order.recipient_id_card || '-',
           recipientEmail: order.recipient_email || '-',
           recipientPhone: order.recipient_phone || '-',
@@ -177,6 +291,7 @@ export default function Orders() {
           paymentScreenshot: order.payment_screenshot || [],
           // 爬虫相关
           lastCrawledAt: order.last_crawled_at || '-',
+          lastOfficialUpdatedAt: order.last_crawled_at || '-',
           crawlFailCount: order.crawl_fail_count || 0,
           freshnessStatus:
             order.refresh?.job?.status === 'pending'
@@ -220,6 +335,8 @@ export default function Orders() {
       setRefreshMessage(error.message || '加载自动刷新状态失败');
     }
   };
+
+  loadOrdersRef.current = loadOrders;
 
   const loadFilterOptions = async () => {
     try {
@@ -337,21 +454,12 @@ export default function Orders() {
         );
       }
 
-      case 'freshnessStatus': {
-        const badges = {
-          pending: { text: '排队中', class: 'badge-info' },
-          fresh: { text: '最新', class: 'badge-success' },
-          stale: { text: '已过期', class: 'badge-warning' },
-          refreshing: { text: '刷新中', class: 'badge-info' },
-          failed: { text: '失败', class: 'badge-error' },
-        };
-        const badge = badges[value] || badges.stale;
+      case 'lastOfficialUpdatedAt':
         return (
-          <span className={`badge ${badge.class}`} title={order.refreshErrorMessage || ''}>
-            {badge.text}
+          <span className="text-sm text-gray-600" title="最后一次成功从官网更新订单数据的时间">
+            {value === '-' ? '尚未更新' : new Date(value).toLocaleString('zh-CN')}
           </span>
         );
-      }
 
       case 'products':
         return (
@@ -421,18 +529,51 @@ export default function Orders() {
           <span className="text-sm text-gray-600">{value}</span>
         );
 
-      case 'actions':
+      case 'actions': {
+        const progress = rowRefresh[order.id];
+        const state = progress?.status || order.refreshJob?.status;
+        const busy = ['submitting', 'pending', 'running'].includes(state);
+        const label =
+          { submitting: '提交中', pending: '排队中', running: '刷新中' }[state] || '手动刷新';
         return (
-          <button
-            onClick={() => {
-              setSelectedOrder(order);
-              setShowDetailModal(true);
-            }}
-            className="text-primary hover:text-blue-700 text-sm transition-colors"
-          >
-            查看
-          </button>
+          <div className="space-y-1">
+            <div className="flex items-center justify-end gap-2">
+              <button
+                onClick={event => {
+                  event.stopPropagation();
+                  setSelectedOrder(order);
+                  setShowDetailModal(true);
+                }}
+                className="btn btn-secondary text-sm"
+              >
+                查看
+              </button>
+              {can(PERMISSIONS.ORDERS_REFRESH) && (
+                <button
+                  onClick={event => {
+                    event.stopPropagation();
+                    handleRowRefresh(order);
+                  }}
+                  disabled={busy}
+                  aria-label={`${label} ${order.orderNumber}`}
+                  className="btn btn-secondary text-sm inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-4 h-4 ${busy ? 'animate-spin' : ''}`} />
+                  {label}
+                </button>
+              )}
+            </div>
+            {progress?.message && (
+              <p
+                role="status"
+                className={`text-xs max-w-56 ml-auto ${state === 'succeeded' ? 'text-green-700' : 'text-red-600'}`}
+              >
+                {progress.message}
+              </p>
+            )}
+          </div>
         );
+      }
 
       default:
         return <span className="text-sm text-gray-600">{value}</span>;
@@ -444,7 +585,7 @@ export default function Orders() {
   return (
     <div className="space-y-6">
       {/* 页面标题 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold">订单管理</h1>
           <p className="text-gray-600 mt-1">管理所有 Apple 订单</p>
@@ -664,7 +805,7 @@ export default function Orders() {
                     <th
                       key={col.key}
                       className={`text-left py-3 px-4 text-sm font-medium text-gray-500 whitespace-nowrap ${
-                        col.key === 'actions' ? 'text-right' : ''
+                        col.key === 'actions' ? 'text-right sticky right-0 bg-gray-50 z-10' : ''
                       }`}
                       style={{ minWidth: col.width }}
                     >
@@ -689,7 +830,7 @@ export default function Orders() {
                     {visibleColumns.map(col => (
                       <td
                         key={col.key}
-                        className={`py-4 px-4 ${col.key === 'actions' ? 'text-right' : ''}`}
+                        className={`py-4 px-4 ${col.key === 'actions' ? `text-right sticky right-0 ${order.validationStatus === 'abnormal' ? 'bg-red-50' : 'bg-white'}` : ''}`}
                       >
                         {renderCell(order, col)}
                       </td>

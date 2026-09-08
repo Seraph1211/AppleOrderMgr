@@ -29,6 +29,7 @@ const models = {
   Recipient: require('./Recipient')(sequelize),
   Order: require('./Order')(sequelize),
   EmailLog: require('./EmailLog')(sequelize),
+  EmailMailboxCursor: require('./EmailMailboxCursor')(sequelize),
   EmailWorkerState: require('./EmailWorkerState')(sequelize),
   CrawlLog: require('./CrawlLog')(sequelize),
   OrderRefreshSchedule: require('./OrderRefreshSchedule')(sequelize),

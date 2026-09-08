@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react'
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 /**
  * 分页组件
@@ -18,53 +18,53 @@ export default function Pagination({
   pageSize,
   onPageChange,
   onPageSizeChange,
-  pageSizeOptions = [10, 20, 50, 100]
+  pageSizeOptions = [10, 20, 50, 100],
 }) {
-  const startItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1
-  const endItem = Math.min(currentPage * pageSize, totalItems)
+  const startItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, totalItems);
 
   // 生成页码按钮数组
   const getPageNumbers = () => {
-    const pages = []
-    const maxVisible = 7 // 最多显示7个页码按钮
+    const pages = [];
+    const maxVisible = 7; // 最多显示7个页码按钮
 
     if (totalPages <= maxVisible) {
       // 如果总页数少于最大可见数，显示所有页码
       for (let i = 1; i <= totalPages; i++) {
-        pages.push(i)
+        pages.push(i);
       }
     } else {
       // 否则智能显示
       if (currentPage <= 4) {
         // 当前页在前面
-        for (let i = 1; i <= 5; i++) pages.push(i)
-        pages.push('...')
-        pages.push(totalPages)
+        for (let i = 1; i <= 5; i++) pages.push(i);
+        pages.push('...');
+        pages.push(totalPages);
       } else if (currentPage >= totalPages - 3) {
         // 当前页在后面
-        pages.push(1)
-        pages.push('...')
-        for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i)
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 4; i <= totalPages; i++) pages.push(i);
       } else {
         // 当前页在中间
-        pages.push(1)
-        pages.push('...')
-        for (let i = currentPage - 1; i <= currentPage + 1; i++) pages.push(i)
-        pages.push('...')
-        pages.push(totalPages)
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) pages.push(i);
+        pages.push('...');
+        pages.push(totalPages);
       }
     }
 
-    return pages
-  }
+    return pages;
+  };
 
-  const pageNumbers = getPageNumbers()
+  const pageNumbers = getPageNumbers();
 
   return (
-    <div className="flex items-center justify-between py-4 px-6 border-t border-gray-200 bg-gray-50">
+    <div className="flex flex-wrap items-center justify-between gap-4 py-4 px-6 border-t border-gray-200 bg-gray-50">
       {/* 左侧：统计信息和每页条目数选择 */}
-      <div className="flex items-center gap-6">
-        <div className="text-sm text-gray-700">
+      <div className="flex flex-wrap items-center gap-4">
+        <div className="text-sm text-gray-700 whitespace-nowrap">
           显示 <span className="font-medium">{startItem}</span> 到{' '}
           <span className="font-medium">{endItem}</span>，共{' '}
           <span className="font-medium">{totalItems}</span> 条
@@ -74,10 +74,10 @@ export default function Pagination({
           <label className="text-sm text-gray-700 whitespace-nowrap">每页显示</label>
           <select
             value={pageSize}
-            onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            onChange={e => onPageSizeChange(Number(e.target.value))}
             className="input py-1 pr-8"
           >
-            {pageSizeOptions.map((size) => (
+            {pageSizeOptions.map(size => (
               <option key={size} value={size}>
                 {size} 条
               </option>
@@ -87,7 +87,7 @@ export default function Pagination({
       </div>
 
       {/* 右侧：分页控制 */}
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 min-w-0">
         {/* 首页 */}
         <button
           onClick={() => onPageChange(1)}
@@ -109,14 +109,14 @@ export default function Pagination({
         </button>
 
         {/* 页码按钮 */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 max-w-full overflow-x-auto">
           {pageNumbers.map((page, index) => {
             if (page === '...') {
               return (
                 <span key={`ellipsis-${index}`} className="px-3 py-1 text-gray-500">
                   ...
                 </span>
-              )
+              );
             }
 
             return (
@@ -131,7 +131,7 @@ export default function Pagination({
               >
                 {page}
               </button>
-            )
+            );
           })}
         </div>
 
@@ -157,26 +157,26 @@ export default function Pagination({
 
         {/* 跳转到指定页 */}
         <div className="flex items-center gap-2 ml-4">
-          <span className="text-sm text-gray-700">跳转到</span>
+          <span className="text-sm text-gray-700 whitespace-nowrap">跳转到</span>
           <input
             type="number"
             min="1"
             max={totalPages}
             className="input w-16 py-1 text-center"
-            onKeyDown={(e) => {
+            onKeyDown={e => {
               if (e.key === 'Enter') {
-                const page = Number(e.target.value)
+                const page = Number(e.target.value);
                 if (page >= 1 && page <= totalPages) {
-                  onPageChange(page)
-                  e.target.value = ''
+                  onPageChange(page);
+                  e.target.value = '';
                 }
               }
             }}
             placeholder={currentPage}
           />
-          <span className="text-sm text-gray-700">页</span>
+          <span className="text-sm text-gray-700 whitespace-nowrap">页</span>
         </div>
       </div>
     </div>
-  )
+  );
 }

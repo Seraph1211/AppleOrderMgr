@@ -213,6 +213,49 @@ function getOrderedOrderItemKeys(orderItems) {
 }
 
 /**
+ * 合并官网同一商品行的完整逐台展示副本，保留不确定或状态不同的节点。
+ * @param {string[]} keys - 原始订单项键
+ * @param {Object[]} items - 原始订单项
+ * @param {Object[]} products - 按原顺序解析的完整商品
+ * @returns {Object[]} 不重复的商品行
+ */
+function collapseUnitProductCopies(keys, items, products) {
+  if (products.length !== items.length) return products;
+  const groups = new Map();
+  keys.forEach((key, index) => {
+    const match = /^orderItem-(\d+)of(\d+)-(\d+(?:-\d+)*)$/.exec(key);
+    if (!match) return;
+    const [, ordinalText, totalText, suffix] = match;
+    const ordinal = Number(ordinalText);
+    const total = Number(totalText);
+    const details = items[index].orderItemDetails?.d || {};
+    const groupKey = `${suffix}:${total}`;
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey).push({ index, ordinal, total, details });
+  });
+  const omitted = new Set();
+  for (const entries of groups.values()) {
+    const total = entries[0].total;
+    if (!Number.isSafeInteger(total) || total < 2 || entries.length !== total) continue;
+    const ordinals = new Set(entries.map(entry => entry.ordinal));
+    const fingerprint = JSON.stringify(products[entries[0].index]);
+    const verified =
+      ordinals.size === total &&
+      entries.every(
+        ({ index, ordinal, details }) =>
+          ordinal >= 1 &&
+          ordinal <= total &&
+          Number(details.eyeBrowNumber) === ordinal &&
+          Number(details.eyeBrowQuantity) === total &&
+          products[index].quantity === total &&
+          JSON.stringify(products[index]) === fingerprint
+      );
+    if (verified) entries.slice(1).forEach(entry => omitted.add(entry.index));
+  }
+  return products.filter((product, index) => !omitted.has(index));
+}
+
+/**
  * 从文本中解析金额
  * @param {string} value - 待解析文本
  * @returns {Object|null} 金额对象
@@ -821,7 +864,7 @@ function parseOrderData(orderJson, html) {
       lifecycle.paymentStatus = inferPaymentStatus(bodyText, orderStatus);
       lifecycle.pickupStatus = pickupForStatus(orderStatus);
     }
-    const products = items
+    const rawProducts = items
       .filter(item => item.orderItemDetails?.d)
       .map(item => {
         const details = item.orderItemDetails.d;
@@ -853,9 +896,10 @@ function parseOrderData(orderJson, html) {
         };
       });
     const productsComplete =
-      products.length === items.length &&
-      products.length > 0 &&
-      products.every(product => product.name && product.quantity !== null);
+      rawProducts.length === items.length &&
+      rawProducts.length > 0 &&
+      rawProducts.every(product => product.name && product.quantity !== null);
+    const products = collapseUnitProductCopies(keys, items, rawProducts);
 
     // 4. 提取取机门店信息
     let pickupStore = null;

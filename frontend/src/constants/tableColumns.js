@@ -22,9 +22,9 @@ export const ordersColumns = [
     pinned: false,
   },
   {
-    key: 'freshnessStatus',
-    label: '刷新状态',
-    width: '120px',
+    key: 'lastOfficialUpdatedAt',
+    label: '最后更新时间',
+    width: '180px',
     defaultVisible: true,
     sortable: false,
     pinned: false,
@@ -65,6 +65,14 @@ export const ordersColumns = [
     pinned: false,
   },
   {
+    key: 'recipientTag',
+    label: '取机人标签',
+    width: '140px',
+    defaultVisible: true,
+    sortable: false,
+    pinned: false,
+  },
+  {
     key: 'recipientIdCard',
     label: '身份证号',
     width: '180px',
@@ -78,14 +86,6 @@ export const ordersColumns = [
     label: '收件人邮箱',
     width: '200px',
     defaultVisible: false,
-    sortable: false,
-    pinned: false,
-  },
-  {
-    key: 'recipientPhone',
-    label: '联系电话',
-    width: '140px',
-    defaultVisible: true,
     sortable: false,
     pinned: false,
   },
@@ -183,14 +183,6 @@ export const ordersColumns = [
   },
   // 爬虫相关
   {
-    key: 'lastCrawledAt',
-    label: '最后爬取时间',
-    width: '160px',
-    defaultVisible: false,
-    sortable: true,
-    pinned: false,
-  },
-  {
     key: 'crawlFailCount',
     label: '爬取失败次数',
     width: '120px',
@@ -236,7 +228,7 @@ export const ordersColumns = [
   {
     key: 'actions',
     label: '操作',
-    width: '80px',
+    width: '180px',
     defaultVisible: true,
     sortable: false,
     pinned: true,

@@ -50,6 +50,14 @@ function serializeRefreshState(schedule, job, order) {
   };
 }
 
+/**
+ * 序列化订单列表，关联档案缺失时保留邮件入库信息。
+ * @param {Object} order - 订单模型
+ * @param {boolean} includeRecipientPhone - 是否允许读取明文电话
+ * @param {Object|null} refreshSchedule - 刷新计划
+ * @param {Object|null} refreshJob - 最新刷新任务
+ * @returns {Object} 订单列表 DTO
+ */
 function serializeOrderListItem(
   order,
   includeRecipientPhone = false,
@@ -60,10 +68,11 @@ function serializeOrderListItem(
   return {
     id: plain.id,
     order_number: plain.orderNumber,
-    apple_id: plain.appleAccount?.appleId || null,
+    apple_id: plain.appleAccount?.appleId || plain.appleId || null,
     recipient_name: plain.recipient
-      ? `${plain.recipient.lastName}${plain.recipient.firstName}`
-      : null,
+      ? `${plain.recipient.lastName || ''}${plain.recipient.firstName || ''}` || plain.recipientName
+      : plain.recipientName || null,
+    recipient_tag: plain.recipient?.tag || plain.tag || null,
     products: serializePublicProducts(plain.products),
     ...serializeOfficialFields(plain),
     status: plain.status,
@@ -125,14 +134,27 @@ function serializeOrderDetail(
       nickname: plain.appleAccount.nickname,
     };
   }
+  if (!appleId && plain.appleId) appleId = { id: null, apple_id: plain.appleId, nickname: null };
   let recipient = null;
   if (plain.recipient) {
     recipient = {
       id: plain.recipient.id,
-      name: `${plain.recipient.lastName}${plain.recipient.firstName}`,
+      name:
+        `${plain.recipient.lastName || ''}${plain.recipient.firstName || ''}` ||
+        plain.recipientName ||
+        null,
       id_card_last4: plain.recipient.idCardLast4,
-      tag: plain.recipient.tag,
+      tag: plain.recipient.tag || plain.tag || null,
       phone: includeRecipientPhone ? plain.recipient.phone : maskPhone(plain.recipient.phone),
+    };
+  }
+  if (!recipient && plain.recipientName) {
+    recipient = {
+      id: null,
+      name: plain.recipientName,
+      id_card_last4: null,
+      tag: plain.tag || null,
+      phone: includeRecipientPhone ? plain.recipientPhone : maskPhone(plain.recipientPhone),
     };
   }
   return {
@@ -140,6 +162,7 @@ function serializeOrderDetail(
     order_number: plain.orderNumber,
     apple_id: appleId,
     recipient,
+    recipient_tag: plain.recipient?.tag || plain.tag || null,
     products: serializePublicProducts(plain.products),
     ...serializeOfficialFields(plain),
     status: plain.status,
@@ -237,16 +260,19 @@ function buildListFilters(query) {
     const { Sequelize } = require('sequelize');
     const recipientName = String(query.recipientName).trim();
     const currentAnd = where[Op.and] || [];
-    where[Op.and] = currentAnd.concat(
-      Sequelize.where(
-        Sequelize.fn(
-          'concat',
-          Sequelize.col('recipient.last_name'),
-          Sequelize.col('recipient.first_name')
+    where[Op.and] = currentAnd.concat({
+      [Op.or]: [
+        { recipientName: { [Op.iLike]: `%${recipientName}%` } },
+        Sequelize.where(
+          Sequelize.fn(
+            'concat',
+            Sequelize.col('recipient.last_name'),
+            Sequelize.col('recipient.first_name')
+          ),
+          { [Op.iLike]: `%${recipientName}%` }
         ),
-        { [Op.iLike]: `%${recipientName}%` }
-      )
-    );
+      ],
+    });
   }
 
   if (query.date_from || query.date_to) {
@@ -273,6 +299,11 @@ function buildListFilters(query) {
       // 订单号精确匹配（订单号是 ^W\\d{10}$）+ 产品名模糊匹配
       where[Op.or] = [
         { orderNumber: { [Op.iLike]: `%${kw}%` } },
+        { appleId: { [Op.iLike]: `%${kw}%` } },
+        { recipientName: { [Op.iLike]: `%${kw}%` } },
+        { '$appleAccount.apple_id$': { [Op.iLike]: `%${kw}%` } },
+        { '$recipient.last_name$': { [Op.iLike]: `%${kw}%` } },
+        { '$recipient.first_name$': { [Op.iLike]: `%${kw}%` } },
         // Sequelize JSONB 容器查询（依赖 pg 的 @> 操作符）
         // 见 docs/database/数据库架构.md：products 已建 GIN 索引
         // 此处若 keyword 命中订单号 iLike 会优先；同时模糊搜索 products[].name 在 PostgreSQL 上可行
@@ -741,6 +772,8 @@ async function updateOrder(req, res) {
 }
 
 module.exports = {
+  serializeOrderListItem,
+  serializeOrderDetail,
   buildListFilters,
   listOrders,
   getOrderDetail,

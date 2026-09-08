@@ -14,6 +14,7 @@ const {
   extractEmailMetadataFromParsed,
 } = require('./emailParser');
 const { classifyEmailError, EMAIL_ERROR_CODES, EmailProcessingError } = require('./emailErrors');
+const { classifyOrderEmailSource } = require('./emailSourcePolicy');
 const { validateManualOrderData } = require('./emailManualData');
 const { saveOrderFromEmail } = require('./orderService');
 
@@ -269,6 +270,17 @@ async function processPersistedRecord(record, options = {}) {
     }
     if (!parsed) {
       ({ parsed, rawBuffer } = await parseMimeEmail(rawBuffer, record.id));
+      const metadata = extractEmailMetadataFromParsed(parsed);
+      const duplicate = await registerMetadata(record, metadata);
+      if (duplicate) {
+        await record.reload();
+        return { status: record.status, record };
+      }
+      const decision = classifyOrderEmailSource(metadata);
+      if (!decision.accepted) {
+        const rejected = await rejectSourceEmail(record, decision.errorCode);
+        return { status: rejected.status, record: rejected };
+      }
     }
 
     record.status = 'parsing';
@@ -357,8 +369,13 @@ function recoverInterruptedRecords() {
   return sequelize.transaction(async transaction => {
     const records = await EmailLog.findAll({
       where: {
-        status: { [Op.in]: ['parsing', 'processing'] },
-        lastAttemptAt: { [Op.lte]: new Date(Date.now() - 5 * 60_000) },
+        [Op.or]: [
+          {
+            status: { [Op.in]: ['parsing', 'processing'] },
+            lastAttemptAt: { [Op.lte]: new Date(Date.now() - 5 * 60_000) },
+          },
+          { status: 'received', receivedAt: { [Op.lte]: new Date(Date.now() - 60_000) } },
+        ],
       },
       transaction,
       lock: transaction.LOCK.UPDATE,
@@ -605,10 +622,24 @@ function updateWorkerState(updates = {}) {
     });
     state.heartbeatAt = new Date();
     if (updates.mailboxIdentityHash !== undefined) {
+      if (state.mailboxIdentityHash !== updates.mailboxIdentityHash) {
+        state.lastScanStartedAt = null;
+        state.lastScanSucceededAt = null;
+        state.lastScanDurationMs = null;
+        state.lastScanErrorCode = null;
+      }
       state.mailboxIdentityHash = updates.mailboxIdentityHash;
     }
     if (updates.workerId !== undefined) state.workerId = updates.workerId;
     if (updates.isConnected !== undefined) state.isConnected = updates.isConnected;
+    for (const field of [
+      'lastScanStartedAt',
+      'lastScanSucceededAt',
+      'lastScanDurationMs',
+      'lastScanErrorCode',
+    ]) {
+      if (updates[field] !== undefined) state[field] = updates[field];
+    }
     if (updates.received) state.lastReceivedAt = new Date();
     if (updates.succeeded) {
       state.lastSucceededAt = new Date();
@@ -656,6 +687,18 @@ async function getMetrics() {
       lastSucceededAt: workerState.lastSucceededAt,
       consecutiveFailures: workerState.consecutiveFailures,
       lastErrorCode: workerState.lastErrorCode,
+      lastScanStartedAt: workerState.lastScanStartedAt || null,
+      lastScanSucceededAt: workerState.lastScanSucceededAt || null,
+      lastScanDurationMs: workerState.lastScanDurationMs ?? null,
+      lastScanErrorCode: workerState.lastScanErrorCode || null,
+      isScanHealthy: !!(
+        workerState.isConnected &&
+        heartbeatAt &&
+        Date.now() - heartbeatAt.getTime() < 30_000 &&
+        workerState.lastScanSucceededAt &&
+        Date.now() - new Date(workerState.lastScanSucceededAt).getTime() < 90_000 &&
+        !workerState.lastScanErrorCode
+      ),
     };
   }
   return {
