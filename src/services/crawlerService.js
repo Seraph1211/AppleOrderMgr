@@ -4,7 +4,7 @@
  *
  * 代理使用策略：
  * - 所有爬虫功能必须使用代理（防止 IP 被 Apple 风控）
- * - 快代理隧道在单次抓取及重定向期间固定出口，重试通过新 sid 换出口
+ * - 隧道代理在单次抓取及重定向期间固定出口，重试通过新 sid 换出口
  * - 私密代理兼容模式保留失败计数和 HTTP 541 废弃 IP 规则
  *
  * 作者：Seraph
@@ -1035,11 +1035,12 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
     } catch (error) {
       lastError = error;
       error.httpStatus = error.httpStatus || error.response?.status;
-      error.refreshErrorCode = classifyRefreshError(error);
+      error.proxyProvider = currentProxy?.provider || proxyManager.getStatus().activeProvider;
 
       if ([407, 441, 517].includes(error.httpStatus)) {
         error.eventType = 'proxy';
       }
+      error.refreshErrorCode = classifyRefreshError(error);
 
       logger.warn('订单爬取失败', {
         attempt,
@@ -1049,7 +1050,12 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
         proxy: currentProxy ? `${currentProxy.host}:${currentProxy.port}` : 'none',
       });
 
-      if (currentProxy && error.httpStatus !== 441 && error.httpStatus !== 407) {
+      const isKdlProvider = String(currentProxy?.provider || '').startsWith('kdl_');
+      if (
+        currentProxy &&
+        error.httpStatus !== 407 &&
+        !(error.httpStatus === 441 && isKdlProvider)
+      ) {
         // HTTP 541: 私密代理废弃 IP；隧道 Provider 在下次重试生成新 sid
         if (error.response?.status === 541) {
           logger.warn('检测到 Apple 风控（HTTP 541），下次重试切换代理出口');
@@ -1074,7 +1080,7 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
       }
 
       if (error.httpStatus === 407) {
-        await pauseAutoRefreshForProxyFailure('快代理鉴权失败（HTTP 407）', {
+        await pauseAutoRefreshForProxyFailure('代理鉴权失败（HTTP 407）', {
           urlSummary: summarizeOrderUrl(orderUrl),
           proxy: `${currentProxy.host}:${currentProxy.port}`,
         });
@@ -1114,6 +1120,7 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
   retryError.proxyIp =
     lastError.proxyIp || (currentProxy ? `${currentProxy.host}:${currentProxy.port}` : null);
   retryError.eventType = lastError.eventType || 'crawler';
+  retryError.proxyProvider = lastError.proxyProvider || null;
   retryError.refreshErrorCode = lastError.refreshErrorCode || classifyRefreshError(lastError);
   throw retryError;
 }

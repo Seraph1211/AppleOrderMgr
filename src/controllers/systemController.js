@@ -286,7 +286,7 @@ async function switchProxyProvider(req, res) {
   try {
     const providerName = req.body?.provider;
     if (typeof providerName !== 'string' || !isSupportedProxyProvider(providerName)) {
-      throw ApiError.badRequest('provider 必须是 kdl_tunnel 或 kdl_private');
+      throw ApiError.badRequest(`provider 必须是 ${SUPPORTED_PROXY_PROVIDERS.join('、')}`);
     }
     if (!config.proxy.enabled) {
       throw ApiError.conflict('代理功能未启用', undefined, 'PROXY_DISABLED');

@@ -154,7 +154,7 @@ async function processJob(job) {
       nextAutoRefreshAt: await refreshJobService.calculateNextRefresh(job.orderId),
     };
     if (errorCode === 'PROXY_407') {
-      await repository.pause('快代理鉴权失败（HTTP 407）');
+      await repository.pause('代理鉴权失败（HTTP 407）');
     }
     logger.warn('订单刷新任务执行失败', { jobId: job.id, orderId: job.orderId, errorCode });
   }

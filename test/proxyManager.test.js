@@ -8,7 +8,13 @@ const mockLogger = {
 jest.mock('../src/utils/logger', () => mockLogger);
 
 const KdlPrivateProvider = require('../src/services/crawler/proxy/kdlPrivateProvider');
-const { createProxyProvider } = require('../src/services/crawler/proxy/proxyProvider');
+const FanProxyTunnelProvider = require('../src/services/crawler/proxy/fanproxyTunnelProvider');
+const YiyouHttpProvider = require('../src/services/crawler/proxy/yiyouHttpProvider');
+const {
+  DEFAULT_PROXY_PROVIDER,
+  SUPPORTED_PROXY_PROVIDERS,
+  createProxyProvider,
+} = require('../src/services/crawler/proxy/proxyProvider');
 const proxyManagerModule = require('../src/utils/proxyManager');
 
 const { ProxyManager, maskProxyString } = proxyManagerModule;
@@ -146,5 +152,32 @@ describe('proxyManager 安全切换与敏感信息保护', () => {
   test('工厂拒绝未知 Provider 且掩码只保留 host:port', () => {
     expect(() => createProxyProvider({ provider: 'unknown' })).toThrow('不支持的代理 Provider');
     expect(maskProxyString('1.2.3.4:8080:test_user:test_password')).toBe('1.2.3.4:8080');
+  });
+
+  test('工厂支持四种 Provider 并创建独立网帆与亦优实现', () => {
+    expect(SUPPORTED_PROXY_PROVIDERS).toEqual([
+      'yiyou_http',
+      'kdl_tunnel',
+      'kdl_private',
+      'fanproxy_tunnel',
+    ]);
+    expect(DEFAULT_PROXY_PROVIDER).toBe('yiyou_http');
+    expect(
+      createProxyProvider({
+        provider: 'fanproxy_tunnel',
+        fanproxyTunnel: {
+          host: 'fanproxy.example',
+          port: 9000,
+          account: 'testaccount',
+          password: 'test-password',
+        },
+      })
+    ).toBeInstanceOf(FanProxyTunnelProvider);
+    expect(
+      createProxyProvider({
+        provider: 'yiyou_http',
+        yiyouHttp: { apiUrl: 'https://api.yiyouip.com/test' },
+      })
+    ).toBeInstanceOf(YiyouHttpProvider);
   });
 });

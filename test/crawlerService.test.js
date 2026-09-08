@@ -30,8 +30,9 @@ function loadCrawlerService(overrides = {}) {
     },
   }));
 
+  const proxySequence = overrides.proxies ? [...overrides.proxies] : null;
   jest.doMock('../src/utils/proxyManager', () => ({
-    getNextProxy: jest.fn(() => overrides.proxy || null),
+    getNextProxy: jest.fn(() => proxySequence?.shift() || overrides.proxy || null),
     refresh: overrides.refreshReject
       ? jest.fn().mockRejectedValue(new Error(overrides.refreshReject))
       : jest.fn(),
@@ -438,6 +439,32 @@ describe('crawlerService proxy and wind control', () => {
       )
     ).resolves.toMatchObject({ success: true });
     expect(crawlerService.getAutoRefreshStatus().isPaused).toBe(false);
+  });
+
+  test('响应流中断时丢弃不完整内容并换代理完整重抓', async () => {
+    const firstProxy = { host: '127.0.0.1', port: 8080, provider: 'yiyou_http' };
+    const secondProxy = { host: '127.0.0.2', port: 8081, provider: 'yiyou_http' };
+    const crawlerService = loadCrawlerService({
+      proxyEnabled: true,
+      proxies: [firstProxy, secondProxy],
+    });
+    const mockedAxios = require('axios');
+    const interrupted = new Error('stream interrupted');
+    interrupted.code = 'ERR_BAD_RESPONSE';
+    mockedAxios.get.mockRejectedValueOnce(interrupted).mockResolvedValueOnce({
+      data: '<html><body><script>{"orderDetail":{"orderHeader":{"d":{"orderNumber":"W1234567890"}},"orderItems":{"c":[],"orderItem-1":{}}}}</script></body></html>',
+    });
+
+    await expect(
+      crawlerService.fetchWithRetry(
+        'https://www.apple.com.cn/xc/cn/vieworder/W1234567890/test@example.com',
+        2
+      )
+    ).resolves.toMatchObject({ success: true, proxy: '127.0.0.2:8081' });
+
+    expect(mockedAxios.get).toHaveBeenCalledTimes(2);
+    expect(mockedAxios.get.mock.calls[0][1].proxy.host).toBe('127.0.0.1');
+    expect(mockedAxios.get.mock.calls[1][1].proxy.host).toBe('127.0.0.2');
   });
 
   test('无论调用方配置如何都将单订单尝试次数限制为最多三次', async () => {

@@ -27,6 +27,12 @@ jest.mock('../src/utils/config', () => ({
         username: 'user',
         password: 'password',
       },
+      fanproxyTunnel: {
+        host: 'fanproxy.example',
+        port: 9000,
+        account: 'testaccount',
+        password: 'test-password',
+      },
     },
     crawler: {
       autoRefreshEnabled: true,
@@ -129,5 +135,30 @@ describe('爬虫 Worker 代理 Provider 切换', () => {
 
     expect(result).toEqual({ skipped: true, reason: 'awaiting_new_switch_request' });
     expect(mockSwitchProvider).not.toHaveBeenCalled();
+  });
+
+  test('网帆隧道沿用候选验证后原子切换流程', async () => {
+    const candidate = {};
+    mockSwitchProvider.mockImplementation(async (providerName, options) => {
+      await options.validateCandidate(candidate);
+      mockProxyStatus.mockReturnValue({ activeProvider: providerName, isInitialized: true });
+      return {
+        changed: true,
+        previousProvider: 'kdl_tunnel',
+        activeProvider: providerName,
+      };
+    });
+    mockEnsureSystemState.mockResolvedValue({ requestedProxyProvider: 'fanproxy_tunnel' });
+
+    const result = await refreshWorkerService.reconcileProxyProvider({
+      requestedProxyProvider: 'fanproxy_tunnel',
+      activeProxyProvider: 'kdl_tunnel',
+      proxySwitchStatus: 'pending',
+    });
+
+    expect(mockStartProxyProviderSwitch).toHaveBeenCalledWith('fanproxy_tunnel');
+    expect(mockValidateCandidate).toHaveBeenCalledWith(candidate);
+    expect(mockCompleteProxyProviderSwitch).toHaveBeenCalledWith('fanproxy_tunnel');
+    expect(result).toEqual({ switched: true, activeProvider: 'fanproxy_tunnel' });
   });
 });

@@ -1,7 +1,15 @@
 const KdlTunnelProvider = require('./kdlTunnelProvider');
 const KdlPrivateProvider = require('./kdlPrivateProvider');
+const FanProxyTunnelProvider = require('./fanproxyTunnelProvider');
+const YiyouHttpProvider = require('./yiyouHttpProvider');
 
-const SUPPORTED_PROXY_PROVIDERS = ['kdl_tunnel', 'kdl_private'];
+const DEFAULT_PROXY_PROVIDER = 'yiyou_http';
+const SUPPORTED_PROXY_PROVIDERS = [
+  DEFAULT_PROXY_PROVIDER,
+  'kdl_tunnel',
+  'kdl_private',
+  'fanproxy_tunnel',
+];
 
 /**
  * 判断 Provider 名称是否受支持。
@@ -26,6 +34,11 @@ function isProxyProviderConfigured(proxyConfig, providerName) {
     );
   }
   if (providerName === 'kdl_private') return Boolean(proxyConfig?.apiUrl);
+  if (providerName === 'yiyou_http') return Boolean(proxyConfig?.yiyouHttp?.apiUrl);
+  if (providerName === 'fanproxy_tunnel') {
+    const tunnel = proxyConfig?.fanproxyTunnel || {};
+    return Boolean(tunnel.host && tunnel.port && tunnel.account && tunnel.password);
+  }
   return false;
 }
 
@@ -43,10 +56,17 @@ function createProxyProvider(proxyConfig) {
     return new KdlTunnelProvider(proxyConfig.tunnel);
   }
   if (proxyConfig.provider === 'kdl_private') return new KdlPrivateProvider(proxyConfig);
+  if (proxyConfig.provider === 'yiyou_http') {
+    return new YiyouHttpProvider(proxyConfig.yiyouHttp);
+  }
+  if (proxyConfig.provider === 'fanproxy_tunnel') {
+    return new FanProxyTunnelProvider(proxyConfig.fanproxyTunnel);
+  }
   throw new Error('不支持的代理 Provider');
 }
 
 module.exports = {
+  DEFAULT_PROXY_PROVIDER,
   SUPPORTED_PROXY_PROVIDERS,
   isSupportedProxyProvider,
   isProxyProviderConfigured,

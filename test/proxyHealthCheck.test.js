@@ -20,14 +20,14 @@ const {
   validateProxyProviderCandidate,
 } = require('../src/services/crawler/proxy/proxyHealthCheck');
 
-function createCandidate() {
+function createCandidate(providerName = 'kdl_private') {
   const proxy = {
     host: 'proxy.example',
     port: 8080,
     auth: { username: 'secret-user', password: 'secret-password' },
   };
   return {
-    getStatus: jest.fn(() => ({ provider: 'kdl_private' })),
+    getStatus: jest.fn(() => ({ provider: providerName })),
     getNextProxy: jest.fn(() => proxy),
     refresh: jest.fn(),
     recordProxySuccess: jest.fn(),
@@ -71,5 +71,20 @@ describe('候选代理 Provider 连通性检查', () => {
     expect(mockAxiosGet).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(mockLogger.warn.mock.calls)).not.toContain('secret-user');
     expect(JSON.stringify(mockLogger.warn.mock.calls)).not.toContain('secret-password');
+  });
+
+  test('网帆未知数字状态按通用传输错误重试而不套用快代理语义', async () => {
+    const candidate = createCandidate('fanproxy_tunnel');
+    const upstreamError = new Error('vendor-specific');
+    upstreamError.response = { status: 441 };
+    mockAcquire.mockResolvedValue();
+    mockAxiosGet.mockRejectedValue(upstreamError);
+
+    await expect(validateProxyProviderCandidate(candidate)).rejects.toMatchObject({
+      code: 'PROXY_TRANSPORT',
+    });
+
+    expect(mockAxiosGet).toHaveBeenCalledTimes(3);
+    expect(candidate.recordProxyFailure).toHaveBeenCalledTimes(3);
   });
 });

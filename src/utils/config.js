@@ -8,7 +8,11 @@
 require('dotenv').config();
 
 const logger = require('./logger');
-const { isSupportedProxyProvider } = require('../services/crawler/proxy/proxyProvider');
+const {
+  DEFAULT_PROXY_PROVIDER,
+  SUPPORTED_PROXY_PROVIDERS,
+  isSupportedProxyProvider,
+} = require('../services/crawler/proxy/proxyProvider');
 
 /**
  * 验证必需的环境变量
@@ -116,7 +120,7 @@ const config = {
   // 代理池配置
   proxy: {
     enabled: process.env.PROXY_ENABLED === 'true',
-    provider: process.env.PROXY_PROVIDER || 'kdl_private',
+    provider: process.env.PROXY_PROVIDER || DEFAULT_PROXY_PROVIDER,
     apiUrl: process.env.PROXY_API_URL,
     apiKey: process.env.PROXY_API_KEY,
     refreshInterval: parseInt(process.env.PROXY_REFRESH_INTERVAL, 10) || 3600000, // 1小时
@@ -131,6 +135,23 @@ const config = {
       stickyPeriod: process.env.KDL_TUNNEL_STICKY_PERIOD || '0.5',
       poolType: process.env.KDL_TUNNEL_POOL_TYPE || 'std',
       poolPriority: process.env.KDL_TUNNEL_POOL_PRIORITY || 'q10',
+    },
+    fanproxyTunnel: {
+      host: process.env.FANPROXY_TUNNEL_HOST,
+      backupHost: process.env.FANPROXY_TUNNEL_BACKUP_HOST,
+      port: parseInt(process.env.FANPROXY_TUNNEL_PORT, 10) || null,
+      account: process.env.FANPROXY_TUNNEL_ACCOUNT,
+      password: process.env.FANPROXY_TUNNEL_PASSWORD,
+      country: process.env.FANPROXY_TUNNEL_COUNTRY || 'CN',
+      region: process.env.FANPROXY_TUNNEL_REGION || null,
+      sessionPoolSize: parseInt(process.env.FANPROXY_TUNNEL_SESSION_POOL_SIZE, 10) || 5,
+      sessionMode: process.env.FANPROXY_TUNNEL_SESSION_MODE || 'sticky_pool',
+    },
+    yiyouHttp: {
+      apiUrl: process.env.YIYOU_HTTP_PROXY_API_URL,
+      poolTtlMs: parseInt(process.env.YIYOU_HTTP_PROXY_TTL_MS, 10) || 240000,
+      badProxyTimeout: parseInt(process.env.PROXY_BAD_TIMEOUT, 10) || 3600000,
+      maxFailCount: parseInt(process.env.PROXY_MAX_FAIL_COUNT, 10) || 2,
     },
   },
 
@@ -151,7 +172,7 @@ const validateConfig = () => {
 
   if (config.proxy.enabled && !isSupportedProxyProvider(config.proxy.provider)) {
     logger.error('配置验证失败', { invalidProxyProvider: true });
-    throw new Error('PROXY_PROVIDER 必须是 kdl_tunnel 或 kdl_private');
+    throw new Error(`PROXY_PROVIDER 必须是 ${SUPPORTED_PROXY_PROVIDERS.join('、')}`);
   }
 
   // 数据库配置必需（除非提供了 DATABASE_URL）
@@ -174,6 +195,15 @@ const validateConfig = () => {
         'KDL_TUNNEL_USERNAME',
         'KDL_TUNNEL_PASSWORD'
       );
+    } else if (config.proxy.provider === 'fanproxy_tunnel') {
+      requiredVars.push(
+        'FANPROXY_TUNNEL_HOST',
+        'FANPROXY_TUNNEL_PORT',
+        'FANPROXY_TUNNEL_ACCOUNT',
+        'FANPROXY_TUNNEL_PASSWORD'
+      );
+    } else if (config.proxy.provider === 'yiyou_http') {
+      requiredVars.push('YIYOU_HTTP_PROXY_API_URL');
     } else {
       requiredVars.push('PROXY_API_URL');
     }

@@ -1,8 +1,10 @@
 const ERROR_CODES = {
   541: 'APPLE_541',
   429: 'APPLE_429',
-  441: 'PROXY_441',
   407: 'PROXY_407',
+};
+const KDL_ERROR_CODES = {
+  441: 'PROXY_441',
   517: 'PROXY_517',
 };
 
@@ -14,6 +16,12 @@ const ERROR_CODES = {
 function classifyRefreshError(error) {
   const status = error?.httpStatus || error?.response?.status;
   if (ERROR_CODES[status]) return ERROR_CODES[status];
+  if (
+    (!error?.proxyProvider || String(error.proxyProvider).startsWith('kdl_')) &&
+    KDL_ERROR_CODES[status]
+  ) {
+    return KDL_ERROR_CODES[status];
+  }
   if (error?.eventType === 'order_identity') return 'IDENTITY';
   if (error?.eventType === 'product_validation') return 'VALIDATION';
   if (error?.eventType === 'parse') return 'PARSE';

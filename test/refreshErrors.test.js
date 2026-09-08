@@ -14,6 +14,22 @@ describe('订单刷新错误分类与脱敏', () => {
     expect(classifyRefreshError({ response: { status } })).toBe(code);
   });
 
+  test('快代理专属状态码不会套用到网帆 Provider', () => {
+    expect(classifyRefreshError({ httpStatus: 441, proxyProvider: 'kdl_tunnel' })).toBe(
+      'PROXY_441'
+    );
+    expect(classifyRefreshError({ httpStatus: 517, proxyProvider: 'kdl_private' })).toBe(
+      'PROXY_517'
+    );
+    expect(
+      classifyRefreshError({
+        httpStatus: 441,
+        proxyProvider: 'fanproxy_tunnel',
+        eventType: 'proxy',
+      })
+    ).toBe('PROXY_TRANSPORT');
+  });
+
   test('错误摘要隐藏 URL、邮箱和代理授权内容', () => {
     const summary = sanitizeRefreshError({
       message: 'request https://www.apple.com.cn/order/u@example.com proxy-authorization=secret',

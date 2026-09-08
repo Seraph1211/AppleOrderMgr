@@ -33,6 +33,15 @@ jest.mock('../src/utils/config', () => ({
         username: 'secret-user',
         password: 'secret-password',
       },
+      fanproxyTunnel: {
+        host: 'fanproxy.example',
+        port: 9000,
+        account: 'fanproxy-account',
+        password: 'fanproxy-password',
+      },
+      yiyouHttp: {
+        apiUrl: 'https://api.yiyouip.com/private',
+      },
     },
   },
 }));
@@ -119,9 +128,14 @@ describe('独立爬虫 Worker 持久化状态与控制', () => {
     });
     expect(payload.data.providers['kdl_tunnel']).toEqual({ configured: true });
     expect(payload.data.providers['kdl_private']).toEqual({ configured: true });
+    expect(payload.data.providers['fanproxy_tunnel']).toEqual({ configured: true });
+    expect(payload.data.providers['yiyou_http']).toEqual({ configured: true });
     expect(JSON.stringify(payload)).not.toContain('secret-user');
     expect(JSON.stringify(payload)).not.toContain('secret-password');
     expect(JSON.stringify(payload)).not.toContain('proxy.example');
+    expect(JSON.stringify(payload)).not.toContain('fanproxy-account');
+    expect(JSON.stringify(payload)).not.toContain('fanproxy-password');
+    expect(JSON.stringify(payload)).not.toContain('yiyouip.com');
   });
 
   test('管理员提交私密代理切换请求并收到 202', async () => {
@@ -157,5 +171,47 @@ describe('独立爬虫 Worker 持久化状态与控制', () => {
       )
     ).rejects.toMatchObject({ statusCode: 400, code: 'VALIDATION_ERROR' });
     expect(mockRequestProxyProviderSwitch).not.toHaveBeenCalled();
+  });
+
+  test('管理员可以提交网帆隧道切换请求', async () => {
+    mockRequestProxyProviderSwitch.mockResolvedValue({
+      requestedProxyProvider: 'fanproxy_tunnel',
+      activeProxyProvider: 'kdl_tunnel',
+      proxySwitchStatus: 'pending',
+      heartbeatAt: new Date(),
+    });
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    await systemController.switchProxyProvider(
+      { body: { provider: 'fanproxy_tunnel' }, user: { id: 7 } },
+      res
+    );
+
+    expect(mockRequestProxyProviderSwitch).toHaveBeenCalledWith('fanproxy_tunnel', 7);
+    expect(res.status).toHaveBeenCalledWith(202);
+  });
+
+  test('管理员可以提交亦优 HTTP 切换请求', async () => {
+    mockRequestProxyProviderSwitch.mockResolvedValue({
+      requestedProxyProvider: 'yiyou_http',
+      activeProxyProvider: 'kdl_private',
+      proxySwitchStatus: 'pending',
+      heartbeatAt: new Date(),
+    });
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn(),
+    };
+
+    await systemController.switchProxyProvider(
+      { body: { provider: 'yiyou_http' }, user: { id: 7 } },
+      res
+    );
+
+    expect(mockRequestProxyProviderSwitch).toHaveBeenCalledWith('yiyou_http', 7);
+    expect(res.status).toHaveBeenCalledWith(202);
   });
 });

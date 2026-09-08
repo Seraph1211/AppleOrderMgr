@@ -27,6 +27,7 @@ function createProxyHealthError(code, message) {
  */
 async function validateProxyProviderCandidate(provider) {
   const providerName = provider.getStatus().provider;
+  const isKdlProvider = providerName.startsWith('kdl_');
   let lastCode = 'PROXY_HEALTH_CHECK_FAILED';
 
   for (let attempt = 1; attempt <= HEALTH_CHECK_ATTEMPTS; attempt++) {
@@ -69,13 +70,15 @@ async function validateProxyProviderCandidate(provider) {
     } catch (error) {
       const statusCode = error.response?.status;
       if (statusCode === 407) lastCode = 'PROXY_407';
-      else if (statusCode === 441) lastCode = 'PROXY_441';
-      else if (statusCode === 517) lastCode = 'PROXY_517';
+      else if (statusCode === 441 && isKdlProvider) lastCode = 'PROXY_441';
+      else if (statusCode === 517 && isKdlProvider) lastCode = 'PROXY_517';
       else if (statusCode === 541) lastCode = 'APPLE_541';
       else lastCode = 'PROXY_TRANSPORT';
 
       if (statusCode === 541) provider.markProxyAsBad(proxy);
-      else if (statusCode !== 407 && statusCode !== 441) provider.recordProxyFailure(proxy);
+      else if (statusCode !== 407 && !(statusCode === 441 && isKdlProvider)) {
+        provider.recordProxyFailure(proxy);
+      }
 
       logger.warn('候选代理 Provider 连通性检查失败', {
         provider: providerName,
@@ -83,7 +86,7 @@ async function validateProxyProviderCandidate(provider) {
         errorCode: lastCode,
         attempt,
       });
-      if (statusCode === 407 || statusCode === 441) break;
+      if (statusCode === 407 || (statusCode === 441 && isKdlProvider)) break;
     }
   }
 

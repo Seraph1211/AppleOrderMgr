@@ -3,6 +3,7 @@ const fs = require('fs');
 
 const MAX_ATTEMPTS = 3;
 const PROGRESS_INTERVAL = 5;
+const SUPPORTED_PROVIDER_NAMES = ['kdl_tunnel', 'kdl_private', 'fanproxy_tunnel', 'yiyou_http'];
 
 /** @returns {Promise<string>} 读取标准输入。 */
 function readStdin() {
@@ -49,11 +50,11 @@ function classifyAttemptError(error) {
   const status = error.response?.status || error.httpStatus;
   if (error.eventType === 'order_identity') return 'IDENTITY';
   if (error.eventType === 'parse') return 'PARSE';
+  if (status >= 400) return `HTTP_${status}`;
   if (error.code === 'ECONNRESET') return 'ECONNRESET';
   if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') return 'TIMEOUT';
   if (error.code === 'ERR_BAD_RESPONSE') return 'STREAM_INTERRUPTED';
   if (error.code === 'ERR_BAD_REQUEST') return 'BAD_REQUEST';
-  if (status) return `HTTP_${status}`;
   return 'TRANSPORT';
 }
 
@@ -155,19 +156,27 @@ async function testOrder(context) {
       return;
     } catch (error) {
       finalError = classifyAttemptError(error);
+      const isKdlProvider = providerName.startsWith('kdl_');
       increment(aggregate.attemptErrors, finalError);
       if (finalError === 'IDENTITY') aggregate.identityMismatch++;
       if (proxy && finalError === 'HTTP_541') provider.markProxyAsBad(proxy);
-      else if (proxy && !['HTTP_407', 'HTTP_441', 'PARSE', 'IDENTITY'].includes(finalError)) {
+      else if (
+        proxy &&
+        !['HTTP_407', 'PARSE', 'IDENTITY'].includes(finalError) &&
+        !(finalError === 'HTTP_441' && isKdlProvider)
+      ) {
         provider.recordProxyFailure(proxy);
       }
-      if (finalError === 'HTTP_407' || finalError === 'HTTP_441') break;
+      if (finalError === 'HTTP_407' || (finalError === 'HTTP_441' && isKdlProvider)) break;
     }
   }
 
   aggregate.failed++;
   increment(aggregate.finalErrors, finalError);
-  if (providerName === 'kdl_private' && provider.getStatus().available === 0) {
+  if (
+    ['kdl_private', 'yiyou_http'].includes(providerName) &&
+    provider.getStatus().available === 0
+  ) {
     try {
       await provider.refresh();
     } catch (_error) {
@@ -188,6 +197,33 @@ function serializeAggregate(aggregate) {
     ...safeAggregate,
     successRate: Number(((aggregate.success / aggregate.total) * 100).toFixed(2)),
   };
+}
+
+/**
+ * 解析本次只读诊断需要运行的 Provider。
+ * @param {Object} runtimeConfig - 标准输入中的运行配置
+ * @returns {string[]} 去重后的 Provider 名称
+ */
+function resolveProviderNames(runtimeConfig) {
+  const defaultProviders = ['kdl_tunnel', 'kdl_private'];
+  if (runtimeConfig.fanproxyTunnel) defaultProviders.push('fanproxy_tunnel');
+  if (runtimeConfig.yiyouHttp) defaultProviders.push('yiyou_http');
+  if (runtimeConfig.providers === undefined) return defaultProviders;
+  if (!Array.isArray(runtimeConfig.providers) || runtimeConfig.providers.length === 0) {
+    throw new Error('Provider 选择不能为空');
+  }
+
+  const providerNames = [...new Set(runtimeConfig.providers)];
+  if (providerNames.some(providerName => !SUPPORTED_PROVIDER_NAMES.includes(providerName))) {
+    throw new Error('Provider 选择包含不支持的值');
+  }
+  if (providerNames.includes('fanproxy_tunnel') && !runtimeConfig.fanproxyTunnel) {
+    throw new Error('网帆隧道运行配置缺失');
+  }
+  if (providerNames.includes('yiyou_http') && !runtimeConfig.yiyouHttp?.apiUrl) {
+    throw new Error('亦优 HTTP 运行配置缺失');
+  }
+  return providerNames;
 }
 
 /** @returns {Promise<void>} 执行交错 A/B。 */
@@ -217,6 +253,8 @@ async function main() {
 
     stage = 'load_runtime';
     const logger = require('../src/utils/logger');
+    const FanProxyTunnelProvider = require('../src/services/crawler/proxy/fanproxyTunnelProvider');
+    const YiyouHttpProvider = require('../src/services/crawler/proxy/yiyouHttpProvider');
     logger.silent = true;
     const KdlPrivateProvider = require('../src/services/crawler/proxy/kdlPrivateProvider');
     const KdlTunnelProvider = require('../src/services/crawler/proxy/kdlTunnelProvider');
@@ -224,8 +262,10 @@ async function main() {
     const crawlerService = require('../src/services/crawlerService');
     ({ sequelize } = require('../src/models'));
 
-    const providers = {
-      kdl_tunnel: new KdlTunnelProvider({
+    const providerNames = resolveProviderNames(runtimeConfig);
+    const providers = {};
+    if (providerNames.includes('kdl_tunnel')) {
+      providers.kdl_tunnel = new KdlTunnelProvider({
         host: runtimeConfig.tunnel.hosts[0],
         backupHost: runtimeConfig.tunnel.hosts[1],
         port: runtimeConfig.tunnel.port,
@@ -234,33 +274,67 @@ async function main() {
         stickyPeriod: '0.5',
         poolType: 'std',
         poolPriority: 'q10',
-      }),
-      kdl_private: new KdlPrivateProvider({
+      });
+    }
+    if (providerNames.includes('kdl_private')) {
+      providers.kdl_private = new KdlPrivateProvider({
         apiUrl: runtimeConfig.privateApiUrl,
         maxFailCount: 2,
         badProxyTimeout: 60000,
-      }),
-    };
-    stage = 'initialize_tunnel';
-    await providers.kdl_tunnel.initialize();
-    stage = 'initialize_private';
-    await providers.kdl_private.initialize();
-    stage = 'validate_private_auth';
-    const privateSample = providers.kdl_private.getNextProxy();
-    if (!privateSample?.auth?.username || !privateSample?.auth?.password) {
-      throw new Error('私密代理提取结果未包含鉴权');
+      });
+    }
+    if (providerNames.includes('fanproxy_tunnel')) {
+      providers.fanproxy_tunnel = new FanProxyTunnelProvider({
+        host: runtimeConfig.fanproxyTunnel.hosts[0],
+        backupHost: runtimeConfig.fanproxyTunnel.hosts[1],
+        port: runtimeConfig.fanproxyTunnel.port,
+        account: runtimeConfig.fanproxyTunnel.account,
+        password: runtimeConfig.fanproxyTunnel.password,
+        country: runtimeConfig.fanproxyTunnel.country || 'CN',
+        region: runtimeConfig.fanproxyTunnel.region || null,
+        sessionPoolSize: runtimeConfig.fanproxyTunnel.sessionPoolSize,
+        sessionMode: runtimeConfig.fanproxyTunnel.sessionMode,
+      });
+    }
+    if (providerNames.includes('yiyou_http')) {
+      providers.yiyou_http = new YiyouHttpProvider({
+        apiUrl: runtimeConfig.yiyouHttp.apiUrl,
+        poolTtlMs: runtimeConfig.yiyouHttp.poolTtlMs || 240000,
+        maxFailCount: 2,
+        badProxyTimeout: 240000,
+      });
+    }
+    for (const [providerName, provider] of Object.entries(providers)) {
+      stage = `initialize_${providerName}`;
+      await provider.initialize();
+    }
+    if (providers.kdl_private) {
+      stage = 'validate_private_auth';
+      const privateSample = providers.kdl_private.getNextProxy();
+      if (!privateSample?.auth?.username || !privateSample?.auth?.password) {
+        throw new Error('私密代理提取结果未包含鉴权');
+      }
+    }
+    if (providers.yiyou_http) {
+      stage = 'validate_yiyou_auth';
+      const yiyouSample = providers.yiyou_http.getNextProxy();
+      if (!yiyouSample?.auth?.username || !yiyouSample?.auth?.password) {
+        throw new Error('亦优 HTTP 提取结果未包含鉴权');
+      }
     }
 
-    const aggregates = {
-      kdl_tunnel: createAggregate('kdl_tunnel', orderUrls.length),
-      kdl_private: createAggregate('kdl_private', orderUrls.length),
-    };
+    const aggregates = Object.fromEntries(
+      providerNames.map(providerName => [
+        providerName,
+        createAggregate(providerName, orderUrls.length),
+      ])
+    );
     const startedAt = Date.now();
     stage = 'run_orders';
 
     for (let index = 0; index < orderUrls.length; index++) {
-      const providerOrder =
-        index % 2 === 0 ? ['kdl_tunnel', 'kdl_private'] : ['kdl_private', 'kdl_tunnel'];
+      const rotation = index % providerNames.length;
+      const providerOrder = [...providerNames.slice(rotation), ...providerNames.slice(0, rotation)];
       await Promise.all(
         providerOrder.map(providerName =>
           testOrder({
@@ -279,24 +353,32 @@ async function main() {
           `${JSON.stringify({
             progress: index + 1,
             total: orderUrls.length,
-            tunnelSuccess: aggregates.kdl_tunnel.success,
-            privateSuccess: aggregates.kdl_private.success,
+            providerSuccess: Object.fromEntries(
+              providerNames.map(providerName => [providerName, aggregates[providerName].success])
+            ),
           })}\n`
         );
       }
     }
 
-    let both = 0;
-    let tunnelOnly = 0;
-    let privateOnly = 0;
-    let neither = 0;
+    const successCombinations = {};
     for (let index = 0; index < orderUrls.length; index++) {
-      const tunnelSucceeded = aggregates.kdl_tunnel.results[index];
-      const privateSucceeded = aggregates.kdl_private.results[index];
-      if (tunnelSucceeded && privateSucceeded) both++;
-      else if (tunnelSucceeded) tunnelOnly++;
-      else if (privateSucceeded) privateOnly++;
-      else neither++;
+      const succeededProviders = providerNames.filter(
+        providerName => aggregates[providerName].results[index]
+      );
+      increment(successCombinations, succeededProviders.join('+') || 'none');
+    }
+    let paired = null;
+    if (aggregates.kdl_tunnel && aggregates.kdl_private) {
+      paired = { both: 0, tunnelOnly: 0, privateOnly: 0, neither: 0 };
+      for (let index = 0; index < orderUrls.length; index++) {
+        const tunnelSucceeded = aggregates.kdl_tunnel.results[index];
+        const privateSucceeded = aggregates.kdl_private.results[index];
+        if (tunnelSucceeded && privateSucceeded) paired.both++;
+        else if (tunnelSucceeded) paired.tunnelOnly++;
+        else if (privateSucceeded) paired.privateOnly++;
+        else paired.neither++;
+      }
     }
 
     process.stdout.write(
@@ -305,15 +387,21 @@ async function main() {
         inputUrlCount: uniqueUrls.length,
         inputOffset: requestedOffset,
         testedOrderCount: orderUrls.length,
-        order: 'alternating_parallel_per_order',
+        order:
+          providerNames.length === 2
+            ? 'alternating_parallel_per_order'
+            : 'rotating_parallel_per_order',
         requestsPerSecond: 1,
         maxAttemptsPerProvider: MAX_ATTEMPTS,
         durationSeconds: Number(((Date.now() - startedAt) / 1000).toFixed(1)),
-        paired: { both, tunnelOnly, privateOnly, neither },
-        providers: {
-          kdl_tunnel: serializeAggregate(aggregates.kdl_tunnel),
-          kdl_private: serializeAggregate(aggregates.kdl_private),
-        },
+        paired,
+        successCombinations,
+        providers: Object.fromEntries(
+          providerNames.map(providerName => [
+            providerName,
+            serializeAggregate(aggregates[providerName]),
+          ])
+        ),
       })}\n`
     );
   } catch (_error) {
@@ -335,4 +423,5 @@ module.exports = {
   classifyAttemptError,
   createAggregate,
   serializeAggregate,
+  resolveProviderNames,
 };

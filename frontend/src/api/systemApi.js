@@ -3,7 +3,7 @@
  * @module api/systemApi
  */
 
-import client from './client';
+import client from "./client";
 
 /**
  * 查询系统日志
@@ -11,7 +11,7 @@ import client from './client';
  * @returns {Promise<Object>} 日志列表
  */
 export const getSystemLogs = (params = {}) => {
-  return client.get('/system/logs', { params });
+  return client.get("/system/logs", { params });
 };
 
 /**
@@ -19,7 +19,7 @@ export const getSystemLogs = (params = {}) => {
  * @returns {Promise<Object>} 自动刷新状态
  */
 export const getAutoRefreshStatus = () => {
-  return client.get('/system/auto-refresh');
+  return client.get("/system/auto-refresh");
 };
 
 /**
@@ -27,7 +27,7 @@ export const getAutoRefreshStatus = () => {
  * @returns {Promise<Object>} 恢复结果
  */
 export const resumeAutoRefresh = () => {
-  return client.post('/system/auto-refresh/resume');
+  return client.post("/system/auto-refresh/resume");
 };
 
 /**
@@ -35,14 +35,14 @@ export const resumeAutoRefresh = () => {
  * @returns {Promise<Object>} 脱敏 Provider 状态
  */
 export const getProxyProviderStatus = () => {
-  return client.get('/system/proxy-provider');
+  return client.get("/system/proxy-provider");
 };
 
 /**
  * 提交代理 Provider 切换请求
- * @param {'kdl_tunnel'|'kdl_private'} provider - 目标 Provider
+ * @param {'kdl_tunnel'|'kdl_private'|'fanproxy_tunnel'|'yiyou_http'} provider - 目标 Provider
  * @returns {Promise<Object>} 切换请求状态
  */
-export const switchProxyProvider = provider => {
-  return client.post('/system/proxy-provider', { provider });
+export const switchProxyProvider = (provider) => {
+  return client.post("/system/proxy-provider", { provider });
 };
