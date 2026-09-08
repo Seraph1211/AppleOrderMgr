@@ -9,5 +9,8 @@ logs
 tmp
 coverage
 test-artifacts
+release-artifacts
+uploads/import/*
+!uploads/import/.gitkeep
 database_backup.sql
 npm-debug.log

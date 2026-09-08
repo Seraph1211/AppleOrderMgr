@@ -115,20 +115,14 @@ async function enqueueRefreshAll(requestedBy) {
 }
 
 /**
- * 为页面可见的已付款订单提交页面刷新任务。
+ * 兼容旧页面刷新入口，不再提交自动任务。
  * @param {number[]} orderIds - 当前页面订单 ID
  * @param {number|null} requestedBy - 当前用户
  * @returns {Promise<Object>} 提交汇总
  */
-async function enqueuePageOpenRefresh(orderIds, requestedBy) {
-  const orders = await Order.findAll({
-    where: { id: { [Op.in]: orderIds }, paymentStatus: 'paid' },
-    attributes: ['id'],
-  });
-  return enqueueMany(
-    orders.map(order => order.id),
-    { trigger: 'page_open', requestedBy }
-  );
+function enqueuePageOpenRefresh(_orderIds, _requestedBy) {
+  // 保留旧客户端契约，但页面打开不再访问官网。
+  return Promise.resolve({ total: 0, created: 0, merged: 0, missing: 0, results: [] });
 }
 
 /**
@@ -171,6 +165,8 @@ async function calculateNextRefresh(orderId) {
       'status',
       'paymentStatus',
       'validationStatus',
+      'validationIssues',
+      'officialAllItemsTerminal',
       'autoRefreshEnabled',
     ],
   });

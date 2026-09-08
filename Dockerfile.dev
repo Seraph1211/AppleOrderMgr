@@ -6,13 +6,15 @@ WORKDIR /app
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
 COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node vendor/xlsx-0.20.3.tgz ./vendor/xlsx-0.20.3.tgz
+COPY --chown=node:node scripts/verifyVendor.js ./scripts/verifyVendor.js
 
 RUN mkdir -p logs uploads/import coverage \
     && chown -R node:node /app
 
 USER node
 
-RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000 npm ci
+RUN --mount=type=cache,target=/home/node/.npm,uid=1000,gid=1000 npm run security:verify-vendor && npm ci
 
 COPY --chown=node:node . .
 

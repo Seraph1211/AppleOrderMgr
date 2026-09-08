@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   AlertTriangle,
@@ -10,21 +10,11 @@ import {
   RefreshCw,
   User,
 } from 'lucide-react';
-import { getOrderDetail, refreshOrder, submitPageOpenRefresh, getRefreshJob } from '../api';
+import { getOrderDetail, refreshOrder, getRefreshJob } from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import OfficialOrderSummary from '../components/OfficialOrderSummary';
+import { ORDER_STATUS_BADGES as STATUS_BADGES } from '../constants/orderStatus';
 import { PERMISSIONS } from '../constants/permissions';
-
-const STATUS_BADGES = {
-  pending: { text: '待处理', className: 'badge-warning' },
-  processing: { text: '处理中', className: 'badge-info' },
-  shipped: { text: '已发货', className: 'badge-info' },
-  ready_for_pickup: { text: '可取货', className: 'badge-success' },
-  completed: { text: '已完成', className: 'badge-success' },
-  delivered: { text: '已送达', className: 'badge-success' },
-  cancelled: { text: '已取消', className: 'badge-error' },
-  pickup_cancelled: { text: '取货已取消', className: 'badge-error' },
-  unknown: { text: '未知', className: 'badge-info' },
-};
 
 const FRESHNESS_BADGES = {
   pending: { text: '排队中', className: 'badge-info' },
@@ -64,7 +54,6 @@ export default function OrderDetail() {
   const [error, setError] = useState('');
   const [refreshJob, setRefreshJob] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
-  const pageOpenSubmitted = useRef(false);
 
   const loadOrderDetail = useCallback(async () => {
     setLoading(true);
@@ -75,12 +64,6 @@ export default function OrderDetail() {
         throw new Error('订单详情响应格式异常');
       }
       setOrder(response.data);
-      if (response.data.payment_status === 'paid' && !pageOpenSubmitted.current) {
-        pageOpenSubmitted.current = true;
-        const queued = await submitPageOpenRefresh([Number(id)]);
-        const jobId = queued.data?.results?.[0]?.jobId;
-        if (jobId) setRefreshJob({ id: jobId, status: 'pending' });
-      }
     } catch (loadError) {
       setOrder(null);
       setError(loadError.message || '订单详情加载失败');
@@ -190,7 +173,7 @@ export default function OrderDetail() {
         </div>
         <div className="flex items-center gap-3">
           <span className={`badge ${freshnessBadge.className}`}>{freshnessBadge.text}</span>
-          <span className={`badge ${badge.className}`}>{badge.text}</span>
+          <span className={`badge ${badge.class}`}>{badge.text}</span>
           {can(PERMISSIONS.ORDERS_REFRESH) && (
             <button
               onClick={handleManualRefresh}
@@ -204,6 +187,7 @@ export default function OrderDetail() {
         </div>
       </div>
 
+      <OfficialOrderSummary order={order} />
       {validationIssues.length > 0 && (
         <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
           <div className="flex items-center gap-2 font-medium">

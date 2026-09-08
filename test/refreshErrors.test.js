@@ -5,6 +5,15 @@ const {
 
 describe('订单刷新错误分类与脱敏', () => {
   test.each([
+    [{ response: { status: 424 }, code: 'ERR_BAD_RESPONSE' }, 'HTTP_424'],
+    [{ response: { status: 200 }, code: 'ERR_BAD_RESPONSE' }, 'RESPONSE_STREAM'],
+    [{ eventType: 'parse' }, 'PARSE'],
+    [{ eventType: 'order_identity' }, 'IDENTITY'],
+    [{ eventType: 'concurrency' }, 'CONCURRENCY'],
+  ])('HTTP、响应中断、解析和身份错误分开记录 %j', (error, expected) => {
+    expect(classifyRefreshError(error)).toBe(expected);
+  });
+  test.each([
     [541, 'APPLE_541'],
     [429, 'APPLE_429'],
     [441, 'PROXY_441'],
@@ -27,7 +36,7 @@ describe('订单刷新错误分类与脱敏', () => {
         proxyProvider: 'fanproxy_tunnel',
         eventType: 'proxy',
       })
-    ).toBe('PROXY_TRANSPORT');
+    ).toBe('HTTP_441');
   });
 
   test('错误摘要隐藏 URL、邮箱和代理授权内容', () => {

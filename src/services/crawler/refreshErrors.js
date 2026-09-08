@@ -26,6 +26,13 @@ function classifyRefreshError(error) {
   if (error?.eventType === 'product_validation') return 'VALIDATION';
   if (error?.eventType === 'parse') return 'PARSE';
   if (error?.eventType === 'database') return 'DATABASE';
+  if (error?.eventType === 'concurrency') return 'CONCURRENCY';
+  if (status >= 400) return `HTTP_${status}`;
+  if (
+    error?.code === 'ERR_BAD_RESPONSE' ||
+    /stream.*(?:interrupt|abort)|premature close/i.test(error?.message || '')
+  )
+    return 'RESPONSE_STREAM';
   if (error?.eventType === 'proxy' || error?.code?.startsWith?.('E')) return 'PROXY_TRANSPORT';
   return 'UNKNOWN';
 }

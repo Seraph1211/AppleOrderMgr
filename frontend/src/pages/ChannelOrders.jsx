@@ -1,32 +1,33 @@
-import { useState, useEffect } from 'react'
-import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, Search, Filter, ExternalLink } from 'lucide-react'
-import { getChannelOrders, getChannelStats } from '../api'
+import { ORDER_STATUS_BADGES, ORDER_STATUS_LABELS } from '../constants/orderStatus';
+import { useState, useEffect } from 'react';
+import { useParams, Link } from 'react-router-dom';
+import { ArrowLeft, Search, Filter, ExternalLink } from 'lucide-react';
+import { getChannelOrders, getChannelStats } from '../api';
 
 export default function ChannelOrders() {
-  const { tag } = useParams()
-  const [orders, setOrders] = useState([])
-  const [stats, setStats] = useState(null)
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState('')
+  const { tag } = useParams();
+  const [orders, setOrders] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
     total: 0,
-  })
+  });
 
   useEffect(() => {
-    loadChannelData()
-  }, [tag, pagination.page, statusFilter])
+    loadChannelData();
+  }, [tag, pagination.page, statusFilter]);
 
   const loadChannelData = async () => {
-    setLoading(true)
+    setLoading(true);
     try {
       // 加载统计数据
-      const statsRes = await getChannelStats(tag)
+      const statsRes = await getChannelStats(tag);
       if (statsRes.success) {
-        setStats(statsRes.data)
+        setStats(statsRes.data);
       }
 
       // 加载订单列表
@@ -35,64 +36,42 @@ export default function ChannelOrders() {
         pageSize: pagination.pageSize,
         status: statusFilter || undefined,
         search: searchTerm || undefined,
-      })
+      });
 
       if (ordersRes.success) {
-        setOrders(ordersRes.data.items || [])
+        setOrders(ordersRes.data.items || []);
         setPagination(prev => ({
           ...prev,
           total: ordersRes.data.total,
-        }))
+        }));
       }
     } catch (error) {
-      console.error('加载渠道数据失败:', error)
+      console.error('加载渠道数据失败:', error);
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
-  }
+  };
 
   const handleSearch = () => {
-    setPagination(prev => ({ ...prev, page: 1 }))
-    loadChannelData()
-  }
+    setPagination(prev => ({ ...prev, page: 1 }));
+    loadChannelData();
+  };
 
-  const handleStatusFilterChange = (status) => {
-    setStatusFilter(status)
-    setPagination(prev => ({ ...prev, page: 1 }))
-  }
+  const handleStatusFilterChange = status => {
+    setStatusFilter(status);
+    setPagination(prev => ({ ...prev, page: 1 }));
+  };
 
-  const getStatusBadgeClass = (status) => {
-    const statusMap = {
-      'pending': 'badge badge-warning',
-      'processing': 'badge badge-info',
-      'shipped': 'badge badge-info',
-      'ready_for_pickup': 'badge badge-success',
-      'completed': 'badge badge-success',
-      'cancelled': 'badge badge-error',
-    }
-    return statusMap[status] || 'badge'
-  }
+  const getStatusBadgeClass = status =>
+    `badge ${ORDER_STATUS_BADGES[status]?.class || 'badge-warning'}`;
 
-  const getStatusText = (status) => {
-    const statusMap = {
-      'pending': '待处理',
-      'processing': '处理中',
-      'shipped': '已发货',
-      'ready_for_pickup': '待取货',
-      'completed': '已完成',
-      'cancelled': '已取消',
-    }
-    return statusMap[status] || status
-  }
+  const getStatusText = status => ORDER_STATUS_LABELS[status] || status;
 
   return (
     <div className="space-y-6">
       {/* 页头 */}
       <div className="flex items-center gap-4">
-        <Link
-          to="/channels"
-          className="text-gray-600 hover:text-gray-900 transition-colors"
-        >
+        <Link to="/channels" className="text-gray-600 hover:text-gray-900 transition-colors">
           <ArrowLeft className="w-6 h-6" />
         </Link>
         <div className="flex-1">
@@ -134,8 +113,8 @@ export default function ChannelOrders() {
               type="text"
               placeholder="搜索订单号、取机人..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              onChange={e => setSearchTerm(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
               className="input pl-10 w-full"
             />
           </div>
@@ -143,16 +122,15 @@ export default function ChannelOrders() {
             <Filter className="w-5 h-5 text-gray-500" />
             <select
               value={statusFilter}
-              onChange={(e) => handleStatusFilterChange(e.target.value)}
+              onChange={e => handleStatusFilterChange(e.target.value)}
               className="input"
             >
               <option value="">全部状态</option>
-              <option value="pending">待处理</option>
-              <option value="processing">处理中</option>
-              <option value="shipped">已发货</option>
-              <option value="ready_for_pickup">待取货</option>
-              <option value="completed">已完成</option>
-              <option value="cancelled">已取消</option>
+              {Object.entries(ORDER_STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
             </select>
           </div>
           <button onClick={handleSearch} className="btn btn-primary">
@@ -177,20 +155,32 @@ export default function ChannelOrders() {
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">订单号</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">商品信息</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    商品信息
+                  </th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">取机人</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">手机号</th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">邮箱</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">取货门店</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">取货时间</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">订单链接</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    取货门店
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    取货时间
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    订单链接
+                  </th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">状态</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">付款方式</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">下单时间</th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    付款方式
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                    下单时间
+                  </th>
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {orders.map((order) => (
+                {orders.map(order => (
                   <tr
                     key={order.id}
                     className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
@@ -266,7 +256,8 @@ export default function ChannelOrders() {
         {pagination.total > pagination.pageSize && (
           <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200">
             <div className="text-sm text-gray-500">
-              共 {pagination.total} 条记录，第 {pagination.page} / {Math.ceil(pagination.total / pagination.pageSize)} 页
+              共 {pagination.total} 条记录，第 {pagination.page} /{' '}
+              {Math.ceil(pagination.total / pagination.pageSize)} 页
             </div>
             <div className="flex gap-2">
               <button
@@ -288,5 +279,5 @@ export default function ChannelOrders() {
         )}
       </div>
     </div>
-  )
+  );
 }

@@ -1,4 +1,4 @@
-const AUTO_STOP_STATUSES = new Set(['completed', 'delivered', 'cancelled', 'pickup_cancelled']);
+const { TERMINAL_STATUSES: AUTO_STOP_STATUSES } = require('./officialOrderData');
 const PAID_STATUSES = new Set(['paid', 'refunded']);
 const AUTO_REFRESH_INTERVAL_MS = 60_000;
 const STALE_AFTER_MS = 90_000;
@@ -19,7 +19,8 @@ const REFRESH_PRIORITIES = new Map([
 function isAutoRefreshEligible(orderLike) {
   const order = typeof orderLike?.toJSON === 'function' ? orderLike.toJSON() : orderLike || {};
   if (!order.orderUrl || order.autoRefreshEnabled === false) return false;
-  if (order.validationStatus === 'abnormal') return false;
+  if ((order.validationIssues || []).some(issue => issue.type === 'order_identity')) return false;
+  if (order.officialAllItemsTerminal) return false;
   if (AUTO_STOP_STATUSES.has(order.status)) return false;
   return !PAID_STATUSES.has(String(order.paymentStatus || '').toLowerCase());
 }

@@ -19,6 +19,7 @@ jobs:
         with:
           node-version: '20'
           cache: npm
+      - run: npm run security:verify-vendor
       - run: npm ci
       - run: npm run lint -- --quiet
       - run: npm test -- --runInBand
@@ -40,6 +41,7 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      - run: npm audit --audit-level=high
 
   secret-scan:
     runs-on: ubuntu-latest

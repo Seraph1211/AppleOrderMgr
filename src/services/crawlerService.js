@@ -19,27 +19,28 @@ const logger = require('../utils/logger');
 const proxyManager = require('../utils/proxyManager');
 const { removeControlCharacters } = require('../utils/helpers');
 const { Order, CrawlLog, PaymentTask, sequelize } = require('../models');
-const { PAYMENT_WINDOW_MS } = require('../constants/business');
+const {
+  APPLE_CURRENT_STATUS_MAP,
+  TERMINAL_STATUSES,
+  summarizeLifecycle,
+  paymentForStatus,
+  pickupForStatus,
+  safeText,
+  parseOfficialFields,
+  mergeOfficialOrder,
+  getOfficialDeadline,
+} = require('./crawler/officialOrderData');
 const { config } = require('../utils/config');
 const { sendTelegramAlert } = require('../utils/telegramNotifier');
 const crawlerRateLimiter = require('./crawler/crawlerRateLimiter');
 const refreshJobRepository = require('./crawler/refreshJobRepository');
-const { classifyRefreshError } = require('./crawler/refreshErrors');
+const { classifyRefreshError, sanitizeRefreshError } = require('./crawler/refreshErrors');
 const { isAutoRefreshEligible } = require('./crawler/refreshPolicy');
+const { PAYMENT_ASSIGNMENT_LOCK_ID } = require('./permissionService');
 
 const MAX_CRAWL_ATTEMPTS = 3;
-const AUTO_STOP_STATUSES = new Set(['completed', 'cancelled', 'pickup_cancelled', 'delivered']);
+const AUTO_STOP_STATUSES = TERMINAL_STATUSES;
 const ORDER_ITEM_KEY_PATTERN = /^orderItem-\d+(?:of\d+)?(?:-\d+)*$/;
-const APPLE_CURRENT_STATUS_MAP = Object.freeze({
-  PROCESSING: 'processing',
-  SHIPPED: 'shipped',
-  READY_FOR_PICKUP: 'ready_for_pickup',
-  DELIVERED: 'delivered',
-  PICKED_UP: 'completed',
-  CANCELLED: 'cancelled',
-  PICKUP_CANCELLED: 'pickup_cancelled',
-  PAYMENT_EXPIRED_STORED_ORDER: 'cancelled',
-});
 const HIDDEN_ORDER_TEXT_SELECTORS = [
   'script',
   'style',
@@ -212,28 +213,6 @@ function getOrderedOrderItemKeys(orderItems) {
 }
 
 /**
- * 读取并标准化首个 Apple 订单项的 currentStatus。
- * @param {Object} orderItems - Apple 订单项容器
- * @returns {string} Apple 原始状态；缺失时为空字符串
- */
-function extractRawCurrentOrderStatus(orderItems) {
-  const firstItemKey = getOrderedOrderItemKeys(orderItems)[0];
-  const currentStatus = orderItems?.[firstItemKey]?.orderItemStatusTracker?.d?.currentStatus;
-  return String(currentStatus || '')
-    .trim()
-    .toUpperCase();
-}
-
-/**
- * 将 Apple currentStatus 映射为系统订单状态。
- * @param {Object} orderItems - Apple 订单项容器
- * @returns {string} 系统订单状态
- */
-function extractCurrentOrderStatus(orderItems) {
-  return APPLE_CURRENT_STATUS_MAP[extractRawCurrentOrderStatus(orderItems)] || 'unknown';
-}
-
-/**
  * 从文本中解析金额
  * @param {string} value - 待解析文本
  * @returns {Object|null} 金额对象
@@ -312,9 +291,8 @@ function extractOfficialAmount(bodyText) {
  */
 function inferPaymentStatus(bodyText, orderStatus = null, rawCurrentStatus = null) {
   const text = String(bodyText || '');
-  if (rawCurrentStatus === 'PAYMENT_EXPIRED_STORED_ORDER') {
-    return 'unpaid';
-  }
+  const mappedPayment = paymentForStatus(APPLE_CURRENT_STATUS_MAP[rawCurrentStatus] || orderStatus);
+  if (mappedPayment) return mappedPayment;
   if (/已收到付款|已付款|支付成功|已支付/.test(text)) {
     return 'paid';
   }
@@ -331,42 +309,13 @@ function inferPaymentStatus(bodyText, orderStatus = null, rawCurrentStatus = nul
 }
 
 /**
- * 从页面文本中推断取货状态
- * @param {string} bodyText - 页面文本
- * @param {string|null} orderStatus - 订单状态
- * @returns {string|null} 标准取货状态
- */
-function inferPickupStatus(bodyText, orderStatus = null) {
-  const text = String(bodyText || '');
-  if (/已取货/.test(text)) {
-    return 'picked_up';
-  }
-  if (/取货已取消/.test(text)) {
-    return 'pickup_cancelled';
-  }
-  if (/准备就绪|可取货|待取货|未取货/.test(text)) {
-    return 'not_picked_up';
-  }
-  if (orderStatus === 'ready_for_pickup') {
-    return 'not_picked_up';
-  }
-  if (['completed', 'delivered'].includes(orderStatus)) {
-    return 'picked_up';
-  }
-  if (orderStatus === 'pickup_cancelled') {
-    return 'pickup_cancelled';
-  }
-  return null;
-}
-
-/**
  * 比对邮件商品和官网商品
  * @param {Array<Object>} emailProducts - 邮件导入商品
  * @param {Array<Object>} officialProducts - 官网商品
  * @param {Object} options - 校验上下文
  * @returns {Object} 校验结果
  */
-function validateProducts(emailProducts = [], officialProducts = [], options = {}) {
+function validateProducts(emailProducts = [], officialProducts = [], _options = {}) {
   try {
     if (!Array.isArray(officialProducts) || officialProducts.length === 0) {
       return {
@@ -430,9 +379,7 @@ function validateProducts(emailProducts = [], officialProducts = [], options = {
       const officialProduct = officialProducts[officialIndex];
       const emailQuantity = Number(emailProduct.quantity || 0);
       const officialQuantity = Number(officialProduct.quantity || 0);
-      const isCancellationQuantity =
-        ['cancelled', 'pickup_cancelled'].includes(options.orderStatus) && officialQuantity === 0;
-      const isQuantityMatched = emailQuantity === officialQuantity || isCancellationQuantity;
+      const isQuantityMatched = emailQuantity === officialQuantity;
 
       if (!isQuantityMatched) {
         issues.push({
@@ -452,7 +399,6 @@ function validateProducts(emailProducts = [], officialProducts = [], options = {
         officialQuantity,
         result: isQuantityMatched ? 'valid' : 'abnormal',
         issue: isQuantityMatched ? null : '数量不一致',
-        quantityCheckSkipped: isCancellationQuantity ? 'official_cancelled_order' : null,
       };
     });
 
@@ -493,15 +439,11 @@ function getAutoRefreshStopReason(orderLike) {
   if (AUTO_STOP_STATUSES.has(status)) {
     return `status:${status}`;
   }
-  if (status === 'ready_for_pickup') {
-    return 'status:ready_for_pickup';
-  }
-  if (orderLike.paymentStatus === 'paid') {
-    return 'payment_status:paid';
-  }
-  if (orderLike.validationStatus === VALIDATION_STATUS.ABNORMAL) {
-    return 'validation_abnormal';
-  }
+  if (orderLike.officialAllItemsTerminal) return 'status:all_items_terminal';
+  if (['paid', 'refunded'].includes(orderLike.paymentStatus))
+    return `payment_status:${orderLike.paymentStatus}`;
+  if ((orderLike.validationIssues || []).some(issue => issue.type === 'order_identity'))
+    return 'order_identity';
   return null;
 }
 
@@ -728,6 +670,15 @@ function extractOrderJson(html) {
   try {
     const $ = cheerio.load(html);
     let orderJson = null;
+    const primary = $('script#init_data');
+    if (primary.length) {
+      try {
+        return JSON.parse(primary.first().html());
+      } catch (_error) {
+        logger.warn('官网 init_data JSON 无效');
+        return null;
+      }
+    }
 
     // 遍历所有 script 标签
     $('script').each((i, elem) => {
@@ -749,7 +700,7 @@ function extractOrderJson(html) {
           // JSON 解析失败，继续查找下一个
           logger.debug('JSON 解析失败，继续查找', {
             scriptIndex: i,
-            error: e.message,
+            reason: 'invalid_json',
           });
         }
       }
@@ -830,55 +781,72 @@ function parseOrderData(orderJson, html) {
       }
     }
 
-    // 2. 以首个订单项的 currentStatus 为权威，页面可见文本仅用于兼容回退
     const orderItems = orderJson.orderDetail?.orderItems || {};
-    const rawCurrentStatus = extractRawCurrentOrderStatus(orderItems);
-    let orderStatus = extractCurrentOrderStatus(orderItems);
+    const keys = getOrderedOrderItemKeys(orderItems);
+    const items = keys.map(key => orderItems[key]);
+    const lifecycle = summarizeLifecycle(items);
+    if (lifecycle.officialStatusNeedsReview)
+      logger.warn('官网订单阶段需要人工核对', { itemCount: items.length });
+    let orderStatus = lifecycle.orderStatus;
     const statusKeywords = {
-      已取货: 'completed',
+      已取货: 'picked_up',
       取货已取消: 'pickup_cancelled',
       已取消: 'cancelled',
       已送达: 'delivered',
       准备就绪: 'ready_for_pickup',
       可取货: 'ready_for_pickup',
+      已收到付款: 'payment_received',
+      等待付款: 'payment_due',
       处理中: 'processing',
       已发货: 'shipped',
     };
-
-    if (orderStatus === 'unknown') {
-      for (const [keyword, status] of Object.entries(statusKeywords)) {
+    // 明确出现未知原始枚举时不得被正文或 possibleStatuses 中的旧轨迹覆盖。
+    if (!items.some(item => item.orderItemStatusTracker?.d?.currentStatus)) {
+      for (const [keyword, value] of Object.entries(statusKeywords)) {
         if (bodyText.includes(keyword)) {
-          orderStatus = status;
+          orderStatus = value;
           break;
         }
       }
+      lifecycle.officialStatusNeedsReview = orderStatus === 'unknown';
+      lifecycle.paymentStatus = inferPaymentStatus(bodyText, orderStatus);
+      lifecycle.pickupStatus = pickupForStatus(orderStatus);
     }
-
-    // 3. 提取商品列表
-    const products = [];
-
-    getOrderedOrderItemKeys(orderItems).forEach(key => {
-      const item = orderItems[key];
-      const itemDetails = item.orderItemDetails?.d;
-      const itemStatus = item.orderItemStatusTracker?.d;
-
-      if (itemDetails) {
-        products.push({
-          name: itemDetails.productName || '',
+    const products = items
+      .filter(item => item.orderItemDetails?.d)
+      .map(item => {
+        const details = item.orderItemDetails.d;
+        const tracker = item.orderItemStatusTracker?.d || {};
+        const hasNumericQuantity =
+          typeof details.quantity === 'number' ||
+          (typeof details.quantity === 'string' && /^\d+$/.test(details.quantity));
+        const quantity =
+          hasNumericQuantity &&
+          Number.isSafeInteger(Number(details.quantity)) &&
+          Number(details.quantity) >= 0
+            ? Number(details.quantity)
+            : null;
+        return {
+          name: safeText(details.productName || details.itemShortName) || '',
           model:
-            itemDetails.partNumber ||
-            itemDetails.sku ||
-            itemDetails.productId ||
-            itemDetails.modelNumber ||
-            '',
-          quantity: itemDetails.quantity || 0,
-          status: itemStatus?.currentStatus || 'unknown',
-          deliveryType: item.d?.deliveryType || 'unknown',
-          pickupType: itemDetails.pickupType || null,
-          deliveryDate: itemDetails.deliveryDate || null,
-        });
-      }
-    });
+            safeText(
+              details.partNumber || details.sku || details.productId || details.modelNumber
+            ) || '',
+          quantity,
+          status: safeText(tracker.currentStatus, 100) || 'unknown',
+          statusDescription: safeText(tracker.statusDescription),
+          deliveryType: safeText(item.d?.deliveryType, 50),
+          pickupType: safeText(
+            details.pickupType || tracker.pickupType || item.shippingInfo?.d?.pickupType,
+            50
+          ),
+          fulfillmentMessage: safeText(details.deliveryDate, 1000),
+        };
+      });
+    const productsComplete =
+      products.length === items.length &&
+      products.length > 0 &&
+      products.every(product => product.name && product.quantity !== null);
 
     // 4. 提取取机门店信息
     let pickupStore = null;
@@ -890,7 +858,7 @@ function parseOrderData(orderJson, html) {
       const firstItem = orderItems[firstItemKey];
       const storeInfo = firstItem?.shippingInfo?.['shipping-address']?.address?.d;
 
-      pickupStore = storeInfo?.companyName || null;
+      pickupStore = safeText(storeInfo?.companyName) || null;
       storeDirectionsUrl = firstItem?.orderItemDetails?.d?.hoursAndDirectionsURL || null;
     }
 
@@ -903,29 +871,38 @@ function parseOrderData(orderJson, html) {
       }
     }
 
-    const amountResult = extractOfficialAmount(bodyText);
+    const officialFields = parseOfficialFields(orderJson.orderDetail || {}, items);
+    if (officialFields.officialFieldDiagnostics.amount === 'missing') {
+      const legacyAmount = extractOfficialAmount(bodyText);
+      if (legacyAmount.amount !== null || legacyAmount.parseError) {
+        officialFields.officialOrderAmount = legacyAmount.amount;
+        officialFields.officialOrderAmountCurrency = legacyAmount.currency;
+        officialFields.officialOrderAmountParseError = legacyAmount.parseError;
+        officialFields.officialFieldDiagnostics.amount = legacyAmount.parseError
+          ? 'invalid'
+          : 'value';
+      }
+    }
 
     return {
       orderNumber,
       orderDate,
       officialOrderCreatedAt,
+      ...lifecycle,
+      ...officialFields,
       orderStatus,
-      paymentStatus: inferPaymentStatus(bodyText, orderStatus, rawCurrentStatus),
-      pickupStatus: inferPickupStatus(bodyText, orderStatus),
+      productsComplete,
       products,
       pickupStore,
       storeDirectionsUrl,
-      officialOrderAmount: amountResult.amount,
-      officialOrderAmountCurrency: amountResult.currency,
-      officialOrderAmountParseError: amountResult.parseError,
-      rawJson: orderJson,
     };
   } catch (error) {
     logger.error('解析订单数据失败', {
-      error: error.message,
-      stack: error.stack,
+      error: '官网业务字段结构无法解析',
     });
-    throw error;
+    const parseError = new Error('官网业务字段结构无法解析');
+    parseError.eventType = 'parse';
+    throw parseError;
   }
 }
 
@@ -1010,7 +987,9 @@ async function fetchWithRetry(orderUrl, maxRetries = 3) {
       const orderJson = extractOrderJson(html);
 
       if (!orderJson) {
-        throw new Error('无法提取订单 JSON 数据');
+        const parseError = new Error('无法提取订单 JSON 数据');
+        parseError.eventType = 'parse';
+        throw parseError;
       }
 
       // 解析订单数据
@@ -1166,6 +1145,12 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       order.orderUrl ||
       `https://www.apple.com.cn/xc/cn/vieworder/${order.orderNumber}/${encodeURIComponent(appleId)}`;
     validateOrderUrl(orderUrl, order.orderNumber, appleId);
+    if (
+      source === 'page_open' ||
+      (!options.manual && !isAutoRefreshEligible({ ...order.toJSON(), orderUrl }))
+    ) {
+      return { success: true, skipped: true, reason: 'automatic_refresh_not_eligible' };
+    }
     const expectedOrderNumber = order.orderNumber;
     const initialUpdatedAt = order.updatedAt ? new Date(order.updatedAt).getTime() : null;
 
@@ -1180,18 +1165,12 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     const crawlResult = await fetchWithRetry(orderUrl, config.crawler.maxRetry);
     const { data: crawledData, proxy } = crawlResult;
     validateCrawledOrderIdentity(crawledData, expectedOrderNumber);
-    const validationResult = validateProducts(order.products, crawledData.products, {
-      orderStatus: crawledData.orderStatus,
-    });
-    const autoRefreshStopReason = getAutoRefreshStopReason({
-      status: crawledData.orderStatus,
-      paymentStatus: crawledData.paymentStatus,
-      pickupStatus: crawledData.pickupStatus,
-      validationStatus: validationResult.status,
-    });
-
     // 网络请求结束后才开启短事务，并在写入前锁定目标行。
     transaction = await sequelize.transaction();
+    await sequelize.query('SELECT pg_advisory_xact_lock(:lockId)', {
+      replacements: { lockId: PAYMENT_ASSIGNMENT_LOCK_ID },
+      transaction,
+    });
     const lockedOrder = await Order.findByPk(orderId, {
       transaction,
       lock: transaction.LOCK?.UPDATE || true,
@@ -1216,71 +1195,29 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     }
     order = lockedOrder;
 
-    // 4. 更新订单数据
-    const updateData = {
-      status: crawledData.orderStatus,
-      paymentStatus: crawledData.paymentStatus,
-      pickupStatus: crawledData.pickupStatus,
-      pickupStore: crawledData.pickupStore,
-      officialProducts: crawledData.products,
-      officialOrderAmount: crawledData.officialOrderAmount,
-      officialOrderAmountCurrency: crawledData.officialOrderAmountCurrency,
-      officialOrderAmountParseError: crawledData.officialOrderAmountParseError,
-      validationStatus: validationResult.status,
-      validationIssues: validationResult.issues,
-      anomalyDetectedAt:
-        validationResult.status === VALIDATION_STATUS.ABNORMAL
-          ? order.anomalyDetectedAt || new Date()
-          : null,
-      autoRefreshEnabled: !autoRefreshStopReason,
-      autoRefreshStopReason: autoRefreshStopReason,
+    const updateData = mergeOfficialOrder(order, crawledData);
+    const autoRefreshStopReason = getAutoRefreshStopReason({ ...order.toJSON(), ...updateData });
+    const validationResult = {
+      status: updateData.validationStatus,
+      issues: updateData.validationIssues,
+      comparisons: [],
+    };
+    // 保留人工关闭；仅由此前校验差异引起的暂停可在成功身份校验后恢复。
+    const manuallyDisabled = order.autoRefreshEnabled === false && !order.autoRefreshStopReason;
+    Object.assign(updateData, {
+      autoRefreshEnabled: !autoRefreshStopReason && !manuallyDisabled,
+      autoRefreshStopReason,
       autoRefreshStoppedAt: autoRefreshStopReason ? new Date() : null,
       lastCrawledAt: new Date(),
       crawlFailCount: 0,
-    };
-
-    // 更新下单日期（如果爬取到）
-    if (crawledData.orderDate) {
-      updateData.orderDate = crawledData.orderDate;
-    }
-    if (crawledData.officialOrderCreatedAt) {
-      updateData.officialOrderCreatedAt = crawledData.officialOrderCreatedAt;
-    }
-
-    // 更新商品信息（合并邮件数据和爬取数据）
-    if (crawledData.products.length > 0) {
-      updateData.products = order.products.map(emailProduct => {
-        // 尝试通过型号匹配爬取的商品
-        const crawledProduct = crawledData.products.find(
-          p =>
-            p.model === emailProduct.model ||
-            (p.name && emailProduct.name && p.name.includes(emailProduct.name))
-        );
-
-        if (crawledProduct) {
-          return {
-            ...emailProduct,
-            // 保留邮件中的数量（权威）
-            quantity: emailProduct.quantity,
-            // 更新爬取的信息
-            status: crawledProduct.status,
-            deliveryType: crawledProduct.deliveryType,
-          };
-        }
-
-        return emailProduct;
-      });
-    }
-
+    });
+    const previousDeadline = getOfficialDeadline(order);
+    const nextDeadline = getOfficialDeadline({ ...order.toJSON(), ...updateData });
     await order.update(updateData, { transaction });
-
-    if (crawledData.officialOrderCreatedAt) {
-      const deadlineAt = new Date(
-        new Date(crawledData.officialOrderCreatedAt).getTime() + PAYMENT_WINDOW_MS
-      );
+    if (nextDeadline && nextDeadline.getTime() !== previousDeadline?.getTime()) {
       await PaymentTask.update(
         {
-          deadlineAt,
+          deadlineAt: nextDeadline,
           deadlineSource: 'official',
           eligibilityVerifiedAt: null,
           eligibilityValidUntil: null,
@@ -1309,12 +1246,12 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
         success: true,
         responseTime,
         errorMessage: null,
-        crawledData: crawledData.rawJson,
+        crawledData: null,
         context: {
           orderNumber: order.orderNumber,
           officialProductCount: crawledData.products.length,
           validationStatus: validationResult.status,
-          validationIssues: validationResult.issues,
+          issueTypes: validationResult.issues.map(issue => issue.type),
           amountParseError: crawledData.officialOrderAmountParseError,
           autoRefreshStopReason,
         },
@@ -1325,14 +1262,6 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
 
     await transaction.commit();
     transaction = null;
-
-    if (validationResult.status === VALIDATION_STATUS.ABNORMAL) {
-      await sendTelegramAlert('订单商品校验异常', {
-        orderNumber: order.orderNumber,
-        issueCount: validationResult.issues.length,
-        stopReason: autoRefreshStopReason,
-      });
-    }
 
     if (crawledData.officialOrderAmountParseError) {
       await createCrawlLog({
@@ -1368,8 +1297,8 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       pickupStore: crawledData.pickupStore,
       paymentStatus: crawledData.paymentStatus,
       pickupStatus: crawledData.pickupStatus,
-      officialOrderAmount: crawledData.officialOrderAmount,
-      officialOrderAmountCurrency: crawledData.officialOrderAmountCurrency,
+      officialOrderAmount: order.officialOrderAmount,
+      officialOrderAmountCurrency: order.officialOrderAmountCurrency,
       validationStatus: validationResult.status,
       validationIssues: validationResult.issues,
       productComparisons: validationResult.comparisons,
@@ -1388,6 +1317,35 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       }
     }
 
+    if (error.eventType === 'order_identity' && order) {
+      try {
+        await sequelize.transaction(async identityTransaction => {
+          await sequelize.query('SELECT pg_advisory_xact_lock(:lockId)', {
+            replacements: { lockId: PAYMENT_ASSIGNMENT_LOCK_ID },
+            transaction: identityTransaction,
+          });
+          await Order.update(
+            {
+              validationStatus: 'abnormal',
+              validationIssues: [
+                {
+                  type: 'order_identity',
+                  field: 'orderNumber',
+                  message: '订单链接或官网返回身份不一致，已拒绝覆盖，请人工核对',
+                },
+              ],
+              anomalyDetectedAt: new Date(),
+              autoRefreshEnabled: false,
+              autoRefreshStopReason: 'order_identity',
+              autoRefreshStoppedAt: new Date(),
+            },
+            { where: { id: orderId, updatedAt: order.updatedAt }, transaction: identityTransaction }
+          );
+        });
+      } catch (_error) {
+        logger.error('保存身份异常失败', { orderId });
+      }
+    }
     // 记录失败日志
     const responseTime = Date.now() - startTime;
     await createCrawlLog({
@@ -1400,8 +1358,8 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       success: false,
       responseTime,
       httpStatus: error.httpStatus || error.response?.status || null,
-      errorMessage: error.message,
-      errorStack: error.stack,
+      errorMessage: sanitizeRefreshError(error),
+      errorStack: null,
       isWindControl: Boolean(error.isWindControl),
       context: {
         manual: Boolean(options.manual),
@@ -1422,8 +1380,7 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
 
     logger.error('订单爬取更新失败', {
       orderId,
-      error: error.message,
-      stack: error.stack,
+      error: sanitizeRefreshError(error),
     });
 
     throw error;

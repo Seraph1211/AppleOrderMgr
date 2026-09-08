@@ -15,12 +15,17 @@ import {
   exportOrders,
   getAutoRefreshStatus,
   refreshAllOrders,
-  submitPageOpenRefresh,
   getRefreshBatch,
 } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
 import ColumnConfigModal from '../components/ColumnConfigModal';
 import OrderDetailModal from '../components/OrderDetailModal';
+import OrderConflictIndicator from '../components/OrderConflictIndicator';
+import {
+  ORDER_STATUS_BADGES,
+  ORDER_STATUS_LABELS,
+  PICKUP_STATUS_LABELS,
+} from '../constants/orderStatus';
 import Pagination from '../components/Pagination';
 import { ordersColumns } from '../constants/tableColumns';
 import { useAuth } from '../contexts/AuthContext';
@@ -129,6 +134,10 @@ export default function Orders() {
           id: order.id,
           orderNumber: order.order_number,
           status: order.status,
+          officialRawStatus: order.official_raw_status,
+          officialStatusObservedAt: order.official_status_observed_at,
+          officialPaymentExpiresAt: order.official_payment_expires_at,
+          officialFulfillmentMessage: order.official_fulfillment_message,
           validationStatus: order.validation_status || 'unchecked',
           validationIssues: order.validation_issues || [],
           anomalyDetectedAt: order.anomaly_detected_at || null,
@@ -137,7 +146,7 @@ export default function Orders() {
           autoRefreshStoppedAt: order.auto_refresh_stopped_at || null,
           paymentStatus: order.payment_status || '-',
           pickupStatus: order.pickup_status || '-',
-          officialOrderAmount: order.official_order_amount || null,
+          officialOrderAmount: order.official_order_amount ?? null,
           officialOrderAmountCurrency: order.official_order_amount_currency || null,
           officialOrderAmountParseError: order.official_order_amount_parse_error || null,
           officialProducts: order.official_products || [],
@@ -186,14 +195,6 @@ export default function Orders() {
           updatedAt: order.updated_at,
         }));
         setOrders(mappedOrders);
-        const paidOrderIds = mappedOrders
-          .filter(order => order.paymentStatus === 'paid')
-          .map(order => order.id);
-        if (paidOrderIds.length > 0) {
-          submitPageOpenRefresh(paidOrderIds).catch(error => {
-            setRefreshMessage(error.message || '提交页面刷新任务失败');
-          });
-        }
 
         // 更新分页信息
         setPagination(prev => ({
@@ -306,18 +307,7 @@ export default function Orders() {
   };
 
   const getStatusBadge = status => {
-    const badges = {
-      pending: { text: '待处理', class: 'badge-warning' },
-      processing: { text: '处理中', class: 'badge-info' },
-      shipped: { text: '已发货', class: 'badge-info' },
-      ready_for_pickup: { text: '可取货', class: 'badge-success' },
-      completed: { text: '已完成', class: 'badge-success' },
-      delivered: { text: '已送达', class: 'badge-success' },
-      cancelled: { text: '已取消', class: 'badge-error' },
-      pickup_cancelled: { text: '取货已取消', class: 'badge-error' },
-      unknown: { text: '未知', class: 'badge-info' },
-    };
-    return badges[status] || badges.pending;
+    return ORDER_STATUS_BADGES[status] || ORDER_STATUS_BADGES.unknown;
   };
 
   // 移除客户端过滤逻辑，现在由后端处理
@@ -327,6 +317,8 @@ export default function Orders() {
     const value = order[column.key];
 
     switch (column.key) {
+      case 'pickupStatus':
+        return <span className="text-sm">{PICKUP_STATUS_LABELS[value] || '-'}</span>;
       case 'orderNumber':
         return <span className="font-mono text-sm text-primary">{value}</span>;
 
@@ -566,15 +558,11 @@ export default function Orders() {
               className="input"
             >
               <option value="">全部状态</option>
-              <option value="pending">待处理</option>
-              <option value="processing">处理中</option>
-              <option value="shipped">已发货</option>
-              <option value="ready_for_pickup">可取货</option>
-              <option value="completed">已完成</option>
-              <option value="delivered">已送达</option>
-              <option value="cancelled">已取消</option>
-              <option value="pickup_cancelled">取货已取消</option>
-              <option value="unknown">未知</option>
+              {Object.entries(ORDER_STATUS_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -671,6 +659,7 @@ export default function Orders() {
             <table className="w-full min-w-max">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="py-3 px-3 w-10" aria-label="订单数据冲突" />
                   {visibleColumns.map(col => (
                     <th
                       key={col.key}
@@ -694,6 +683,9 @@ export default function Orders() {
                         : 'hover:bg-gray-50'
                     }`}
                   >
+                    <td className="py-4 px-3">
+                      <OrderConflictIndicator issues={order.validationIssues} />
+                    </td>
                     {visibleColumns.map(col => (
                       <td
                         key={col.key}

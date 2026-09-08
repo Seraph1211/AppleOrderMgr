@@ -23,6 +23,12 @@ jest.mock('../src/utils/logger', () => ({
 const { buildListFilters } = require('../src/controllers/orderController');
 
 describe('订单列表付款状态筛选', () => {
+  test.each(['payment_due', 'payment_received', 'picked_up', 'payment_expired'])(
+    '新生命周期 %s 可精确筛选',
+    status => {
+      expect(buildListFilters({ status }).where.status).toBe(status);
+    }
+  );
   test('unknown 同时包含字面值、NULL 和空字符串', () => {
     const { where } = buildListFilters({ payment_status: 'unknown' });
     const alternatives = where[Op.and][0][Op.or];

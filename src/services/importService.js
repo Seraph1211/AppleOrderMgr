@@ -77,7 +77,10 @@ function parseExcelFile(filePath, type) {
 
       const rowData = {};
       headers.forEach((header, colIndex) => {
-        const fieldName = mapping[header];
+        // 上传表头不可信；原型继承属性不是列映射，必须按自有键白名单读取。
+        const fieldName = Object.prototype.hasOwnProperty.call(mapping, header)
+          ? mapping[header]
+          : null;
         if (fieldName) {
           const cellValue = row[colIndex];
           rowData[fieldName] = cellValue === '' ? null : String(cellValue).trim();

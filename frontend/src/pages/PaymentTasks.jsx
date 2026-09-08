@@ -1,3 +1,4 @@
+import { ORDER_STATUS_LABELS } from '../constants/orderStatus';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Copy, CreditCard, RefreshCw, Save } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -346,8 +347,15 @@ export default function PaymentTasks() {
                       </div>
                     </td>
                     <td className="px-4 py-4 text-sm">
-                      {task.officialPaymentStatus || '未知'}
-                      <div className="text-xs text-gray-400">{task.officialOrderStatus}</div>
+                      {task.officialPaymentConfirmed
+                        ? '官网已确认付款'
+                        : task.officialPaymentStatus || '未知'}
+                      {task.officialPaymentDiscrepancy && (
+                        <p className="text-xs text-amber-700">人工任务尚未完成</p>
+                      )}
+                      <div className="text-xs text-gray-400">
+                        {ORDER_STATUS_LABELS[task.officialOrderStatus] || task.officialOrderStatus}
+                      </div>
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-700">{task.paymentMethod || '-'}</td>
                     <td

@@ -19,6 +19,11 @@ const {
 const refreshJobService = require('../services/crawler/refreshJobService');
 const { getDisplayedFreshness } = require('../services/crawler/refreshPolicy');
 const logger = require('../utils/logger');
+const {
+  serializePublicProducts,
+  serializeValidationIssues,
+  serializeOfficialFields,
+} = require('../utils/orderSerialization');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
 const { ORDER_STATUSES, PERMISSIONS } = require('../constants/business');
@@ -59,16 +64,17 @@ function serializeOrderListItem(
     recipient_name: plain.recipient
       ? `${plain.recipient.lastName}${plain.recipient.firstName}`
       : null,
-    products: plain.products,
+    products: serializePublicProducts(plain.products),
+    ...serializeOfficialFields(plain),
     status: plain.status,
     payment_status: plain.paymentStatus,
     pickup_status: plain.pickupStatus,
     official_order_amount: plain.officialOrderAmount,
     official_order_amount_currency: plain.officialOrderAmountCurrency,
     official_order_amount_parse_error: plain.officialOrderAmountParseError,
-    official_products: plain.officialProducts,
+    official_products: serializePublicProducts(plain.officialProducts),
     validation_status: plain.validationStatus,
-    validation_issues: plain.validationIssues,
+    validation_issues: serializeValidationIssues(plain.validationIssues),
     anomaly_detected_at: plain.anomalyDetectedAt,
     auto_refresh_enabled: plain.autoRefreshEnabled,
     auto_refresh_stop_reason: plain.autoRefreshStopReason,
@@ -134,16 +140,17 @@ function serializeOrderDetail(
     order_number: plain.orderNumber,
     apple_id: appleId,
     recipient,
-    products: plain.products,
+    products: serializePublicProducts(plain.products),
+    ...serializeOfficialFields(plain),
     status: plain.status,
     payment_status: plain.paymentStatus,
     pickup_status: plain.pickupStatus,
     official_order_amount: plain.officialOrderAmount,
     official_order_amount_currency: plain.officialOrderAmountCurrency,
     official_order_amount_parse_error: plain.officialOrderAmountParseError,
-    official_products: plain.officialProducts,
+    official_products: serializePublicProducts(plain.officialProducts),
     validation_status: plain.validationStatus,
-    validation_issues: plain.validationIssues,
+    validation_issues: serializeValidationIssues(plain.validationIssues),
     anomaly_detected_at: plain.anomalyDetectedAt,
     auto_refresh_enabled: plain.autoRefreshEnabled,
     auto_refresh_stop_reason: plain.autoRefreshStopReason,

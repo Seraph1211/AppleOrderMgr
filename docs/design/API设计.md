@@ -142,7 +142,7 @@
 - 列表和详情由不同序列化函数构建；详情中的 apple_id 是关联对象或 null，不能套用列表的字符串类型。
 - `POST /api/orders/:id/refresh` 只提交或合并 `manual_single` 任务，返回 HTTP `202` 和 `jobId`；任务入队不代表官网已经更新。
 - `POST /api/orders/refresh-all` 为所有具有合法订单链接的订单创建或复用全量批次，返回 HTTP `202` 和 `batchId`。运行中重复提交返回同一批次。
-- `POST /api/orders/page-open-refresh` 接收 `order_ids`（1–100 个去重正整数），仅为其中已付款订单提交 `page_open` 任务；未付款或状态未知订单复用自动调度，不因打开页面重复访问。
+- `POST /api/orders/page-open-refresh` 保留参数校验和权限门禁，但返回空任务结果，不再触发官网请求。打开列表或详情只读取已有数据，已付款订单仅手动刷新。
 - 兼容端点 `POST /api/orders/batch-refresh` 仍接收 `orderIds/order_ids` 或既有筛选字段，但改为异步提交任务并返回 HTTP `202`，不再同步等待爬虫完成。
 - `GET /api/order-refresh/jobs/:id` 返回任务状态、错误分类和订单当前新鲜度；只能查询本人提交的任务，admin 可查询全部，系统自动任务允许所有已认证用户读取其非敏感状态。
 - `GET /api/order-refresh/batches/:id` 返回批次六类计数和完成时间；只能查询本人批次，admin 可查询全部。
@@ -175,10 +175,16 @@
 - 复制订单链接接口只保留 `payment_tasks.link.read_own` 和当前任务归属校验，直接返回该任务关联订单的 `orders.orderUrl`；不再按核实、截止时间、人工处理状态或官网支付／订单状态限制复制。链接为空时返回资源不存在；响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
 - 本人任务刷新提交返回 HTTP `202`、`jobId`、是否新建或合并；`GET /api/payment-tasks/:id/refresh/:jobId` 仅允许当前负责人查询同一关联订单的刷新任务，返回 pending、running、succeeded、failed、skipped、错误摘要和订单最新抓取时间。入队不表示官网已更新；前端应展示提交中、排队／运行、成功／失败，终态后重新加载当前列表，Worker 未运行时明确保持“等待后台处理”。
 - 本人任务列表和详情返回关联订单已有的 `paymentMethod`；该字段只用于展示订单付款方式，不作为任务处理结果或可编辑选项。`updatedAt` 取付款任务与关联订单更新时间中的较新值，前端“最后更新时间”按用户本地时区显示为 `YYYY/MM/DD HH:mm:ss`。
-- 付款倒计时固定使用 `officialOrderCreatedAt + 30 分钟`。官网时间必须包含时分，仅有日期时保持未知；服务端返回 `serverTime`、`deadlineAt` 和 `remainingSeconds`，客户端不得用本机时间决定是否超时。管理员人工截止时间核实接口已取消。
+- 付款倒计时优先使用 `officialPaymentExpiresAt`，回退 `officialOrderCreatedAt + 30 分钟`。官网创建时间必须包含时分，仅有日期时保持未知；服务端返回 `serverTime`、`deadlineAt` 和 `remainingSeconds`，客户端不得用本机时间决定是否超时。管理员人工截止时间核实接口已取消。
 - `GET /api/payment-dispatch/tasks` 支持 `orderNumber`、`productKeyword`、`assignee`、`officialOrderStatus` 和 `processingStatus` 组合筛选；商品匹配在数据库分页前执行。每项返回关联订单已有的 `paymentMethod`、`officialOrderStatus`、`lastCrawledAt` 和派生的 `deadlineAt`，其中页面“最后更新时间”只使用最后一次成功官网抓取时间 `lastCrawledAt`。
 - 批量分配 body 为 `{ tasks: [{ id, expectedVersion }], assigneeUserId, handoffConfirmed?, reason? }`，一次最多 100 项，在同一事务内校验版本、状态、付款窗口、目标权限和容量后全部提交或全部回滚。批量刷新 body 为 `{ taskIds }`，仅把选中任务对应订单提交持久化刷新队列，HTTP 202 不代表官网已更新。
-- payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、完成首次改密、上限有余量、合法付款链接以及官网创建时间对应的 30 分钟付款窗口仍有效。active_count 为 pending＋processing＋exception；completed 释放容量。
+- payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、完成首次改密、上限有余量、合法付款链接以及官网付款窗口仍有效。官网已付款、退款、终态、身份异常和待核对状态禁止新分配；active_count 为 pending＋processing＋exception，completed 释放容量，官网收款不自动修改人工四态。
+
+### 生命周期与来源冲突响应
+
+订单列表和详情增加 `official_raw_status`、`official_status_description`、`official_status_observed_at`、`official_fulfillment_message`、`official_payment_expires_at`、`official_payment_method`、`official_status_needs_review`、`official_all_items_terminal` 和 `official_field_diagnostics`。状态枚举见[数据库架构](../database/数据库架构.md)。`products` 为官网优先的有效商品，商品 `fulfillmentMessage` 为提示文案，不伪造日期；历史 `deliveryDate` 仅兼容已有数据。
+
+`validation_issues` 用于行首叹号的悬停／键盘聚焦提示，包含白名单字段名、来源、原值、官网值和处理结果；身份不一致仅返回安全错误说明，不暴露另一个订单的号码或内容。`source_snapshot` 不整体对外返回，图片、动作 URL、取货说明、原始 JSON 和敏感来源内容不进入 DTO。付款任务增加 `officialPaymentConfirmed`、`officialPaymentDiscrepancy`，分别表达官网确认已付和官网已付但人工任务尚未完成。
 
 ## 专题协议
 

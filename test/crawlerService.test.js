@@ -97,7 +97,7 @@ describe('crawlerService product validation and scheduler rules', () => {
     expect(result.issues).toHaveLength(0);
   });
 
-  test('已取消订单的官网数量 0 不应覆盖或否定邮件权威数量', () => {
+  test('已取消订单的官网零数量应产生来源差异', () => {
     const crawlerService = loadCrawlerService();
     const result = crawlerService.validateProducts(
       [{ model: 'MG714CH/A', name: 'iPhone 17 256G', quantity: 2 }],
@@ -105,9 +105,9 @@ describe('crawlerService product validation and scheduler rules', () => {
       { orderStatus: 'cancelled' }
     );
 
-    expect(result.status).toBe('valid');
+    expect(result.status).toBe('abnormal');
     expect(result.comparisons[0].emailQuantity).toBe(2);
-    expect(result.comparisons[0].quantityCheckSkipped).toBe('official_cancelled_order');
+    expect(result.issues[0].type).toBe('quantity_mismatch');
   });
 
   test('stops automatic refresh for terminal and abnormal orders', () => {
@@ -120,8 +120,9 @@ describe('crawlerService product validation and scheduler rules', () => {
       crawlerService.getAutoRefreshStopReason({
         status: 'processing',
         validationStatus: 'abnormal',
+        validationIssues: [{ type: 'order_identity' }],
       })
-    ).toBe('validation_abnormal');
+    ).toBe('order_identity');
     expect(
       crawlerService.getAutoRefreshStopReason({
         status: 'processing',
@@ -150,6 +151,7 @@ describe('crawlerService product validation and scheduler rules', () => {
         autoRefreshEnabled: true,
         status: 'processing',
         validationStatus: 'abnormal',
+        validationIssues: [{ type: 'order_identity' }],
       })
     ).toBe(false);
   });
@@ -175,7 +177,7 @@ describe('crawlerService product validation and scheduler rules', () => {
 
     expect(result.orderStatus).toBe('ready_for_pickup');
     expect(result.paymentStatus).toBe('paid');
-    expect(result.pickupStatus).toBe('not_picked_up');
+    expect(result.pickupStatus).toBe('ready_for_pickup');
     expect(result.officialOrderCreatedAt).toBeNull();
   });
 
@@ -216,7 +218,7 @@ describe('crawlerService product validation and scheduler rules', () => {
       '<html><body><main>已收到付款 已发货 已取货</main><div hidden>退款说明</div><script>{"help":"退款"}</script></body></html>'
     );
 
-    expect(result.orderStatus).toBe('completed');
+    expect(result.orderStatus).toBe('picked_up');
     expect(result.paymentStatus).toBe('paid');
     expect(result.pickupStatus).toBe('picked_up');
     expect(result.products[0].status).toBe('PICKED_UP');
@@ -242,12 +244,12 @@ describe('crawlerService product validation and scheduler rules', () => {
       '<html><body></body></html>'
     );
 
-    expect(result.orderStatus).toBe('completed');
+    expect(result.orderStatus).toBe('picked_up');
     expect(result.products).toHaveLength(1);
     expect(result.products[0].status).toBe('PICKED_UP');
   });
 
-  test('未知 currentStatus 回退到清理后的可见订单文本', () => {
+  test('未知 currentStatus 保持未知且保存原值', () => {
     const crawlerService = loadCrawlerService();
     const result = crawlerService.parseOrderData(
       {
@@ -264,9 +266,11 @@ describe('crawlerService product validation and scheduler rules', () => {
       '<html><body><main>处理中</main><script>已取货 退款</script></body></html>'
     );
 
-    expect(result.orderStatus).toBe('processing');
+    expect(result.orderStatus).toBe('unknown');
+    expect(result.officialRawStatus).toBe('NEW_APPLE_STATUS');
+    expect(result.officialStatusNeedsReview).toBe(true);
     expect(result.paymentStatus).toBeNull();
-    expect(result.pickupStatus).toBeNull();
+    expect(result.pickupStatus).toBe('unknown');
   });
 
   test.each([
@@ -297,7 +301,7 @@ describe('crawlerService product validation and scheduler rules', () => {
     expect(result.orderStatus).toBe(expectedStatus);
   });
 
-  test('将付款过期的 Apple 存储订单映射为未付款取消状态', () => {
+  test('将付款过期的 Apple 存储订单映射为显式过期状态', () => {
     const crawlerService = loadCrawlerService();
     const result = crawlerService.parseOrderData(
       {
@@ -317,9 +321,9 @@ describe('crawlerService product validation and scheduler rules', () => {
       '<html><body></body></html>'
     );
 
-    expect(result.orderStatus).toBe('cancelled');
+    expect(result.orderStatus).toBe('payment_expired');
     expect(result.paymentStatus).toBe('unpaid');
-    expect(result.pickupStatus).toBeNull();
+    expect(result.pickupStatus).toBe('not_applicable');
     expect(result.products[0].status).toBe('PAYMENT_EXPIRED_STORED_ORDER');
   });
 

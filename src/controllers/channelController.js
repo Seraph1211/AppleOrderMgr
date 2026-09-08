@@ -7,6 +7,7 @@
 const { Op, fn, col, literal } = require('sequelize');
 const { Order, Recipient, AppleId, sequelize } = require('../models');
 const logger = require('../utils/logger');
+const { serializePublicProducts } = require('../utils/orderSerialization');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
 const { maskPhone } = require('../utils/masking');
@@ -26,7 +27,10 @@ exports.getChannels = async (req, res, next) => {
         'tag',
         [fn('COUNT', col('id')), 'totalOrders'],
         [fn('COUNT', literal("CASE WHEN payment_status = 'paid' THEN 1 END")), 'paidOrders'],
-        [fn('COUNT', literal("CASE WHEN status = 'completed' THEN 1 END")), 'deliveredOrders'],
+        [
+          fn('COUNT', literal("CASE WHEN status IN ('completed', 'picked_up') THEN 1 END")),
+          'deliveredOrders',
+        ],
         [fn('COALESCE', fn('SUM', col('official_order_amount')), 0), 'totalAmount'],
         [
           fn(
@@ -44,7 +48,9 @@ exports.getChannels = async (req, res, next) => {
             'COALESCE',
             fn(
               'SUM',
-              literal("CASE WHEN status = 'completed' THEN official_order_amount ELSE 0 END")
+              literal(
+                "CASE WHEN status IN ('completed', 'picked_up') THEN official_order_amount ELSE 0 END"
+              )
             ),
             0
           ),
@@ -124,12 +130,24 @@ exports.getChannelStats = async (req, res, next) => {
     const stats = await Order.findOne({
       attributes: [
         [fn('COUNT', col('id')), 'totalOrders'],
-        [fn('COUNT', literal("CASE WHEN status = 'pending' THEN 1 END")), 'pendingOrders'],
-        [fn('COUNT', literal("CASE WHEN status = 'processing' THEN 1 END")), 'processingOrders'],
+        [
+          fn('COUNT', literal("CASE WHEN status IN ('pending', 'payment_due') THEN 1 END")),
+          'pendingOrders',
+        ],
+        [
+          fn('COUNT', literal("CASE WHEN status IN ('processing', 'payment_received') THEN 1 END")),
+          'processingOrders',
+        ],
         [fn('COUNT', literal("CASE WHEN status = 'shipped' THEN 1 END")), 'shippedOrders'],
         [fn('COUNT', literal("CASE WHEN status = 'ready_for_pickup' THEN 1 END")), 'readyOrders'],
-        [fn('COUNT', literal("CASE WHEN status = 'completed' THEN 1 END")), 'completedOrders'],
-        [fn('COUNT', literal("CASE WHEN status = 'cancelled' THEN 1 END")), 'cancelledOrders'],
+        [
+          fn('COUNT', literal("CASE WHEN status IN ('completed', 'picked_up') THEN 1 END")),
+          'completedOrders',
+        ],
+        [
+          fn('COUNT', literal("CASE WHEN status IN ('cancelled', 'payment_expired') THEN 1 END")),
+          'cancelledOrders',
+        ],
       ],
       where: { tag },
       raw: true,
@@ -250,7 +268,7 @@ exports.getChannelOrders = async (req, res, next) => {
           ? `${plain.recipient.lastName}${plain.recipient.firstName}`
           : plain.recipientName,
         recipientPhone: maskPhone(plain.recipient?.phone || plain.recipientPhone),
-        products: plain.products,
+        products: serializePublicProducts(plain.products),
         status: plain.status,
         pickupStore: plain.pickupStore,
         pickupTimeSlot: plain.pickupTimeSlot,

@@ -258,7 +258,7 @@ async function finishJob(job, outcome) {
     const now = new Date();
     await lockedJob.update(
       {
-        status: outcome.success ? 'succeeded' : 'failed',
+        status: outcome.skipped ? 'skipped' : outcome.success ? 'succeeded' : 'failed',
         leaseOwner: null,
         leaseExpiresAt: null,
         lastErrorCode: outcome.errorCode || null,
@@ -269,7 +269,9 @@ async function finishJob(job, outcome) {
     );
     const schedule = await upsertSchedule(job.orderId, {}, transaction);
     let scheduleUpdate;
-    if (outcome.success) {
+    if (outcome.skipped) {
+      scheduleUpdate = { nextAutoRefreshAt: outcome.nextAutoRefreshAt };
+    } else if (outcome.success) {
       scheduleUpdate = {
         lastSuccessAt: now,
         consecutiveFailures: 0,

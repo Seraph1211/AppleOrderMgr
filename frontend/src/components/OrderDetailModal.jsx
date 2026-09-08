@@ -3,6 +3,8 @@ import { X, Upload, Save, ExternalLink, AlertTriangle, RefreshCw } from 'lucide-
 import { updateOrder, updateOrderPayer, refreshOrder } from '../api/ordersApi';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
+import OfficialOrderSummary from './OfficialOrderSummary';
+import { ORDER_STATUS_BADGES, PICKUP_STATUS_LABELS } from '../constants/orderStatus';
 import AlertModal from './AlertModal';
 
 /**
@@ -202,18 +204,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
   };
 
   const getStatusBadge = status => {
-    const statusMap = {
-      pending: { text: '待处理', class: 'badge-warning' },
-      processing: { text: '处理中', class: 'badge-info' },
-      shipped: { text: '已发货', class: 'badge-info' },
-      ready_for_pickup: { text: '可取货', class: 'badge-success' },
-      completed: { text: '已完成', class: 'badge-success' },
-      delivered: { text: '已送达', class: 'badge-success' },
-      cancelled: { text: '已取消', class: 'badge-error' },
-      pickup_cancelled: { text: '取货已取消', class: 'badge-error' },
-      unknown: { text: '未知', class: 'badge-info' },
-    };
-    return statusMap[status] || { text: status, class: 'badge-info' };
+    return ORDER_STATUS_BADGES[status] || ORDER_STATUS_BADGES.unknown;
   };
 
   const badge = getStatusBadge(order.status);
@@ -289,6 +280,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
               </div>
             )}
 
+            <OfficialOrderSummary order={order} />
             {/* 订单基本信息 */}
             <div className="card">
               <h3 className="text-lg font-semibold mb-4">基本信息</h3>
@@ -305,7 +297,9 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">取货状态</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.pickupStatus || '-'}</p>
+                  <p className="text-sm text-gray-900 mt-1">
+                    {PICKUP_STATUS_LABELS[order.pickupStatus] || '-'}
+                  </p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">下单时间</label>
@@ -339,7 +333,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
 
             {/* 商品信息 */}
             <div className="card">
-              <h3 className="text-lg font-semibold mb-4">商品对比</h3>
+              <h3 className="text-lg font-semibold mb-4">当前商品（来源冲突见官网核对）</h3>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
@@ -351,7 +345,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                         名称
                       </th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                        邮件数量
+                        当前有效数量
                       </th>
                       <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
                         官网数量

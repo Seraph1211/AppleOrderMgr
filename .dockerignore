@@ -9,6 +9,9 @@ backend/.env.production
 logs
 tmp
 coverage
+release-artifacts
+uploads/import/*
+!uploads/import/.gitkeep
 test
 *.md
 .DS_Store

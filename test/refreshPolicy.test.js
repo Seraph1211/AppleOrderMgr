@@ -29,7 +29,14 @@ describe('订单刷新策略', () => {
     [{ ...BASE_ORDER, paymentStatus: 'paid' }, 'paid'],
     [{ ...BASE_ORDER, paymentStatus: 'refunded' }, 'refunded'],
     [{ ...BASE_ORDER, status: 'completed' }, 'terminal'],
-    [{ ...BASE_ORDER, validationStatus: 'abnormal' }, 'abnormal'],
+    [
+      {
+        ...BASE_ORDER,
+        validationStatus: 'abnormal',
+        validationIssues: [{ type: 'order_identity' }],
+      },
+      'identity',
+    ],
     [{ ...BASE_ORDER, orderUrl: null }, 'missing URL'],
   ])('%s 不参与分钟级自动刷新（%s）', (order, _reason) => {
     expect(isAutoRefreshEligible(order)).toBe(false);

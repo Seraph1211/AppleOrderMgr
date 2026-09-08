@@ -5,7 +5,9 @@ WORKDIR /app
 ENV NODE_ENV=production \
     PUPPETEER_SKIP_DOWNLOAD=true
 COPY package.json package-lock.json ./
-RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
+COPY vendor/xlsx-0.20.3.tgz ./vendor/xlsx-0.20.3.tgz
+COPY scripts/verifyVendor.js ./scripts/verifyVendor.js
+RUN npm run security:verify-vendor && npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 FROM ${NODE_IMAGE} AS runtime
 WORKDIR /app
@@ -23,7 +25,9 @@ FROM ${NODE_IMAGE} AS migrator-dependencies
 WORKDIR /app
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 COPY package.json package-lock.json ./
-RUN npm ci --include=dev --no-audit --no-fund && npm cache clean --force
+COPY vendor/xlsx-0.20.3.tgz ./vendor/xlsx-0.20.3.tgz
+COPY scripts/verifyVendor.js ./scripts/verifyVendor.js
+RUN npm run security:verify-vendor && npm ci --include=dev --no-audit --no-fund && npm cache clean --force
 
 FROM ${NODE_IMAGE} AS migrator
 WORKDIR /app

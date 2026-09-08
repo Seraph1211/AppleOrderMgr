@@ -9,7 +9,8 @@ const {
   User,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
-const { PAYMENT_WINDOW_MS } = require('../constants/business');
+const { serializePublicProducts } = require('../utils/orderSerialization');
+const { getOfficialDeadline } = require('./crawler/officialOrderData');
 const refreshJobService = require('./crawler/refreshJobService');
 const { normalizePayerName, updateLockedOrderPayer } = require('./payerService');
 
@@ -74,6 +75,7 @@ function includeTaskRelations() {
         'payerName',
         'payerVersion',
         'officialOrderCreatedAt',
+        'officialPaymentExpiresAt',
         'lastCrawledAt',
         'updatedAt',
       ],
@@ -84,12 +86,7 @@ function includeTaskRelations() {
 
 function serializeTask(task, serverTime = new Date()) {
   const plain = task.toJSON();
-  const officialOrderCreatedAt = plain.order?.officialOrderCreatedAt
-    ? new Date(plain.order.officialOrderCreatedAt)
-    : null;
-  const deadline = officialOrderCreatedAt
-    ? new Date(officialOrderCreatedAt.getTime() + PAYMENT_WINDOW_MS)
-    : null;
+  const deadline = getOfficialDeadline(plain.order);
   const remainingSeconds = deadline
     ? Math.floor((deadline.getTime() - serverTime.getTime()) / 1000)
     : null;
@@ -101,11 +98,14 @@ function serializeTask(task, serverTime = new Date()) {
     id: plain.id,
     orderId: plain.orderId,
     orderNumber: plain.order?.orderNumber,
-    products: plain.order?.products || [],
+    products: serializePublicProducts(plain.order?.products),
     officialOrderStatus: plain.order?.status || null,
     officialPaymentStatus: plain.order?.paymentStatus || null,
+    officialPaymentConfirmed: plain.order?.paymentStatus === 'paid',
+    officialPaymentDiscrepancy:
+      plain.order?.paymentStatus === 'paid' && plain.processingStatus !== 'completed',
     paymentMethod: plain.order?.paymentMethod || null,
-    officialOrderAmount: plain.order?.officialOrderAmount || null,
+    officialOrderAmount: plain.order?.officialOrderAmount ?? null,
     officialOrderAmountCurrency: plain.order?.officialOrderAmountCurrency || null,
     lastCrawledAt: plain.order?.lastCrawledAt || null,
     officialOrderCreatedAt: plain.order?.officialOrderCreatedAt || null,

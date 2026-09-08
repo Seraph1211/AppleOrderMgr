@@ -53,6 +53,10 @@ const buildWhereClause = filters => {
  */
 const STATUS_MAP = {
   待处理: 'pending',
+  等待付款: 'payment_due',
+  官网已收款: 'payment_received',
+  已取货: 'picked_up',
+  付款已过期: 'payment_expired',
   处理中: 'processing',
   已发货: 'shipped',
   可取货: 'ready_for_pickup',
@@ -78,7 +82,15 @@ const getStats = async filters => {
       Order.count({
         where: {
           ...where,
-          status: { [Op.in]: ['pending', 'processing', 'ready_for_pickup'] },
+          status: {
+            [Op.in]: [
+              'pending',
+              'payment_due',
+              'payment_received',
+              'processing',
+              'ready_for_pickup',
+            ],
+          },
         },
       }),
 

@@ -11,17 +11,7 @@ const { sequelize, Order, AppleId, Recipient } = require('../models');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 
-const ORDER_STATUSES = [
-  'pending',
-  'processing',
-  'shipped',
-  'ready_for_pickup',
-  'completed',
-  'delivered',
-  'cancelled',
-  'pickup_cancelled',
-  'unknown',
-];
+const { ORDER_STATUSES } = require('../constants/business');
 
 const START_OF_TODAY = () => {
   const d = new Date();

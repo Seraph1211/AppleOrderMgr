@@ -11,7 +11,8 @@ const {
   Order,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
-const { ORDER_STATUSES, PAYMENT_WINDOW_MS } = require('../constants/business');
+const { getOfficialDeadline, isPaymentBlocked } = require('./crawler/officialOrderData');
+const { ORDER_STATUSES } = require('../constants/business');
 const { PAYMENT_EXECUTION_PERMISSIONS } = require('../constants/permissionCatalog');
 const { PAYMENT_ASSIGNMENT_LOCK_ID, getEffectivePermissions } = require('./permissionService');
 const refreshJobService = require('./crawler/refreshJobService');
@@ -49,12 +50,7 @@ async function getOrCreateSettings(transaction) {
   return settings;
 }
 
-function isOrderExcluded(order) {
-  return (
-    ['paid', 'refunded'].includes(order.paymentStatus) ||
-    ['completed', 'delivered', 'cancelled', 'pickup_cancelled'].includes(order.status)
-  );
-}
+const isOrderExcluded = isPaymentBlocked;
 
 function validatePaymentOrderUrl(orderUrl, orderNumber) {
   try {
@@ -81,13 +77,6 @@ function validatePaymentOrderUrl(orderUrl, orderNumber) {
   }
 }
 
-function getOfficialDeadline(order) {
-  if (!order?.officialOrderCreatedAt) return null;
-  const createdAt = new Date(order.officialOrderCreatedAt);
-  if (Number.isNaN(createdAt.getTime())) return null;
-  return new Date(createdAt.getTime() + PAYMENT_WINDOW_MS);
-}
-
 /**
  * 在订单入库事务内按当前调度范围幂等登记付款任务。
  * @param {Object} order - Order 模型
@@ -104,7 +93,7 @@ async function enrollOrderInTransaction(order, transaction) {
       orderId: order.id,
       processingStatus: 'pending',
       deadlineAt: getOfficialDeadline(order),
-      deadlineSource: order.officialOrderCreatedAt ? 'official' : null,
+      deadlineSource: getOfficialDeadline(order) ? 'official' : null,
       paymentLinkSource: order.orderUrl ? 'order_url' : null,
     },
     transaction,
@@ -393,6 +382,10 @@ async function assignTasks(input, actorUserId) {
             'status',
             'paymentStatus',
             'officialOrderCreatedAt',
+            'officialPaymentExpiresAt',
+            'officialStatusNeedsReview',
+            'officialAllItemsTerminal',
+            'validationIssues',
           ],
         },
       ],
@@ -418,7 +411,7 @@ async function assignTasks(input, actorUserId) {
       const deadlineAt = getOfficialDeadline(task.order);
       if (!deadlineAt || deadlineAt <= now || isOrderExcluded(task.order)) {
         throw ApiError.conflict(
-          '批量任务中存在官网创建时间缺失、付款窗口已结束或官网状态不可付款的订单',
+          '批量任务中存在官网付款截止时间未知、付款窗口已结束或官网状态不可付款的订单',
           { taskId: task.id },
           'PAYMENT_NOT_ELIGIBLE'
         );
@@ -497,6 +490,10 @@ async function assignTasks(input, actorUserId) {
           'payerName',
           'payerVersion',
           'officialOrderCreatedAt',
+          'officialPaymentExpiresAt',
+          'officialStatusNeedsReview',
+          'officialAllItemsTerminal',
+          'validationIssues',
           'lastCrawledAt',
           'updatedAt',
         ],
@@ -636,6 +633,10 @@ async function listDispatchTasks(query = {}) {
           'payerName',
           'payerVersion',
           'officialOrderCreatedAt',
+          'officialPaymentExpiresAt',
+          'officialStatusNeedsReview',
+          'officialAllItemsTerminal',
+          'validationIssues',
           'lastCrawledAt',
           'updatedAt',
         ],
@@ -717,6 +718,10 @@ async function runDispatchScan(limit = 500) {
         'paymentStatus',
         'orderUrl',
         'officialOrderCreatedAt',
+        'officialPaymentExpiresAt',
+        'officialStatusNeedsReview',
+        'officialAllItemsTerminal',
+        'validationIssues',
       ],
       include: [{ model: PaymentTask, as: 'paymentTask', required: false, attributes: ['id'] }],
       order: [['id', 'ASC']],
@@ -748,8 +753,21 @@ async function runDispatchScan(limit = 500) {
         {
           model: Order,
           as: 'order',
-          attributes: ['status', 'paymentStatus', 'officialOrderCreatedAt'],
-          where: { officialOrderCreatedAt: { [Op.ne]: null } },
+          attributes: [
+            'status',
+            'paymentStatus',
+            'officialOrderCreatedAt',
+            'officialPaymentExpiresAt',
+            'officialStatusNeedsReview',
+            'officialAllItemsTerminal',
+            'validationIssues',
+          ],
+          where: {
+            [Op.or]: [
+              { officialPaymentExpiresAt: { [Op.ne]: null } },
+              { officialOrderCreatedAt: { [Op.ne]: null } },
+            ],
+          },
         },
       ],
       order: [
@@ -801,7 +819,9 @@ async function runDispatchScan(limit = 500) {
       .map(row => ({ setting: row, activeCount: counts.get(row.userId) || 0 }));
     let assigned = 0;
     for (const task of tasks) {
-      if (isOrderExcluded(task.order)) continue;
+      const currentDeadline = getOfficialDeadline(task.order);
+      if (isOrderExcluded(task.order) || !currentDeadline || currentDeadline <= new Date())
+        continue;
       candidates.sort((a, b) => {
         const ratioDifference =
           a.activeCount / a.setting.maxActiveTasks - b.activeCount / b.setting.maxActiveTasks;

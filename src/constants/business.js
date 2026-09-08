@@ -6,6 +6,10 @@
 const ACCOUNT_STATUSES = Object.freeze(['未使用', '使用中', '已下架', '异常']);
 
 const ORDER_STATUSES = Object.freeze([
+  'payment_due',
+  'payment_received',
+  'picked_up',
+  'payment_expired',
   'pending',
   'processing',
   'shipped',

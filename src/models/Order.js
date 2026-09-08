@@ -132,12 +132,82 @@ module.exports = sequelize => {
               throw new Error('products不能为空数组');
             }
             value.forEach((product, index) => {
-              if (!product.model || !product.name || !product.quantity) {
-                throw new Error(`products[${index}]缺少必要字段：model、name、quantity`);
+              if (!product.name || !Number.isInteger(product.quantity) || product.quantity < 0) {
+                throw new Error(`products[${index}]缺少必要字段：name、quantity`);
               }
             });
           },
         },
+      },
+      sourceSnapshot: {
+        type: DataTypes.JSONB,
+        field: 'source_snapshot',
+        allowNull: true,
+        defaultValue: null,
+        comment: '首次官网合并前的非敏感导入来源快照',
+      },
+      officialRawStatus: {
+        type: DataTypes.STRING(100),
+        field: 'official_raw_status',
+        allowNull: true,
+        defaultValue: null,
+        comment: 'Apple 原始状态',
+      },
+      officialStatusDescription: {
+        type: DataTypes.STRING(255),
+        field: 'official_status_description',
+        allowNull: true,
+        defaultValue: null,
+        comment: 'Apple 场景码',
+      },
+      officialStatusObservedAt: {
+        type: DataTypes.DATE,
+        field: 'official_status_observed_at',
+        allowNull: true,
+        defaultValue: null,
+        comment: '最近状态观测时间',
+      },
+      officialFulfillmentMessage: {
+        type: DataTypes.TEXT,
+        field: 'official_fulfillment_message',
+        allowNull: true,
+        defaultValue: null,
+        comment: '官网履约提示文案',
+      },
+      officialPaymentExpiresAt: {
+        type: DataTypes.DATE,
+        field: 'official_payment_expires_at',
+        allowNull: true,
+        defaultValue: null,
+        comment: '官网准确付款截止时间',
+      },
+      officialPaymentMethod: {
+        type: DataTypes.STRING(50),
+        field: 'official_payment_method',
+        allowNull: true,
+        defaultValue: null,
+        comment: '官网付款方式',
+      },
+      officialStatusNeedsReview: {
+        type: DataTypes.BOOLEAN,
+        field: 'official_status_needs_review',
+        allowNull: false,
+        defaultValue: false,
+        comment: '官网阶段需要核对',
+      },
+      officialAllItemsTerminal: {
+        type: DataTypes.BOOLEAN,
+        field: 'official_all_items_terminal',
+        allowNull: false,
+        defaultValue: false,
+        comment: '全部商品处于已确认终态',
+      },
+      officialFieldDiagnostics: {
+        type: DataTypes.JSONB,
+        field: 'official_field_diagnostics',
+        allowNull: false,
+        defaultValue: {},
+        comment: '阶段字段存在性诊断',
       },
       // 订单状态
       status: {

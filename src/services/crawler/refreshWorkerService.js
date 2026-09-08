@@ -137,12 +137,13 @@ async function processJob(job) {
   let outcome;
   try {
     const crawlerService = require('../crawlerService');
-    await crawlerService.crawlAndUpdateOrder(job.orderId, {
-      source: job.trigger === 'auto' ? 'scheduled' : 'manual',
-      manual: job.trigger !== 'auto',
+    const result = await crawlerService.crawlAndUpdateOrder(job.orderId, {
+      source: job.trigger === 'auto' ? 'scheduled' : job.trigger,
+      manual: job.trigger.startsWith('manual_'),
     });
     outcome = {
       success: true,
+      skipped: Boolean(result?.skipped),
       nextAutoRefreshAt: await refreshJobService.calculateNextRefresh(job.orderId),
     };
   } catch (error) {

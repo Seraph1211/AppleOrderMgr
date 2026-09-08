@@ -14,23 +14,13 @@ import {
   updatePaymentStaffSettings,
 } from '../api/paymentDispatchApi';
 
+import { ORDER_STATUS_LABELS as OFFICIAL_STATUS_LABELS } from '../constants/orderStatus';
+
 const STATUS_LABELS = {
   pending: '待处理',
   processing: '处理中',
   completed: '已完成',
   exception: '异常',
-};
-
-const OFFICIAL_STATUS_LABELS = {
-  pending: '待处理',
-  processing: '处理中',
-  shipped: '已发货',
-  ready_for_pickup: '可取货',
-  completed: '已完成',
-  delivered: '已送达',
-  cancelled: '已取消',
-  pickup_cancelled: '取货已取消',
-  unknown: '未知',
 };
 
 const INITIAL_FILTERS = {
@@ -658,7 +648,12 @@ export default function PaymentDispatch() {
                         task.officialOrderStatus ||
                         '未知'}
                     </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">{task.paymentMethod || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {task.paymentMethod || '-'}
+                      {task.officialPaymentDiscrepancy && (
+                        <p className="text-xs text-amber-700 mt-1">官网已收款，人工任务尚未完成</p>
+                      )}
+                    </td>
                     <td className="px-4 py-3">
                       <span
                         className={`badge ${
