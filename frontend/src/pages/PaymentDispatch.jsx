@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ListChecks, Play, RefreshCw, RotateCcw, Save, Search, Users, X } from 'lucide-react';
+import { ListChecks, RefreshCw, RotateCcw, Save, ScanSearch, Search, Users, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
@@ -41,6 +41,58 @@ const INITIAL_FILTERS = {
   processingStatus: '',
 };
 
+const BUTTON_LAYOUT_CLASS =
+  'inline-flex items-center justify-center gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50';
+const CHECKBOX_CLASS =
+  'h-4 w-4 shrink-0 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50';
+const PROCESSING_STATUS_BADGE_CLASSES = {
+  pending: 'badge-warning',
+  processing: 'badge-info',
+  completed: 'badge-success',
+  exception: 'badge-error',
+};
+
+function ToggleSwitch({ ariaLabel, checked, disabled, label, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={ariaLabel}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+      className={`inline-flex items-center gap-2 text-sm text-gray-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${
+        disabled ? 'cursor-not-allowed' : 'cursor-pointer'
+      }`}
+    >
+      <span
+        className="relative inline-flex h-6 shrink-0 rounded-full border transition-colors duration-200"
+        style={{
+          width: '2.75rem',
+          backgroundColor: checked ? '#1E3A8A' : '#D1D5DB',
+          borderColor: checked ? '#1E3A8A' : '#D1D5DB',
+          opacity: disabled ? 0.5 : 1,
+        }}
+      >
+        <span
+          className="pointer-events-none absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition-transform duration-200"
+          style={{
+            transform: checked ? 'translateX(1.25rem)' : 'translateX(0)',
+          }}
+        />
+      </span>
+      {label && <span>{label}</span>}
+    </button>
+  );
+}
+
+function hasStaffChanges(person, staffDraft) {
+  return (
+    Number(staffDraft?.maxActiveTasks) !== Number(person.maxActiveTasks) ||
+    Boolean(staffDraft?.autoAssignEnabled) !== Boolean(person.autoAssignEnabled)
+  );
+}
+
 function formatDateTime(value) {
   if (!value) return '尚未获取';
   const date = new Date(value);
@@ -57,7 +109,7 @@ function formatCountdown(deadlineAt, now) {
   if (seconds <= 0) {
     return {
       text: `已超时 ${Math.max(1, Math.ceil(Math.abs(seconds) / 60))} 分钟`,
-      className: 'text-red-600 font-medium',
+      className: 'text-red-500 font-medium',
     };
   }
   const minutes = Math.floor(seconds / 60);
@@ -221,7 +273,7 @@ export default function PaymentDispatch() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
           <ListChecks className="w-6 h-6 text-primary" />
           付款任务调度
         </h1>
@@ -230,7 +282,7 @@ export default function PaymentDispatch() {
       {error && <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3">{error}</div>}
       {notice && <div className="rounded-lg bg-green-50 text-green-700 px-4 py-3">{notice}</div>}
 
-      <div className="card">
+      <div className="card hover:shadow-sm">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h2 className="font-semibold text-gray-900">全局调度</h2>
@@ -242,23 +294,20 @@ export default function PaymentDispatch() {
             </p>
           </div>
           <div className="flex flex-wrap gap-3 items-center">
-            <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
-                checked={Boolean(overview?.settings.enabled)}
-                onChange={event =>
-                  setOverview(previous => ({
-                    ...previous,
-                    settings: {
-                      ...previous.settings,
-                      enabled: event.target.checked,
-                    },
-                  }))
-                }
-              />
-              启用新订单纳入
-            </label>
+            <ToggleSwitch
+              label="启用新订单纳入"
+              disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
+              checked={Boolean(overview?.settings.enabled)}
+              onChange={enabled =>
+                setOverview(previous => ({
+                  ...previous,
+                  settings: {
+                    ...previous.settings,
+                    enabled,
+                  },
+                }))
+              }
+            />
             <select
               className="input w-32"
               disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
@@ -275,7 +324,7 @@ export default function PaymentDispatch() {
             </select>
             {can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE) && (
               <button
-                className="btn btn-primary"
+                className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
                 disabled={Boolean(busyAction)}
                 onClick={() =>
                   runAction(
@@ -290,25 +339,25 @@ export default function PaymentDispatch() {
                   )
                 }
               >
-                <Save className="w-4 h-4 mr-2" />
-                保存
+                <Save className="w-4 h-4" />
+                {busyAction === 'save-settings' ? '保存中...' : '保存设置'}
               </button>
             )}
             {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
               <button
-                className="btn btn-secondary"
+                className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
                 disabled={Boolean(busyAction)}
                 onClick={() => runAction('scan', runPaymentDispatchScan, '调度扫描已完成')}
               >
-                <Play className="w-4 h-4 mr-2" />
-                立即扫描
+                <ScanSearch className="w-4 h-4" />
+                {busyAction === 'scan' ? '扫描中...' : '立即扫描'}
               </button>
             )}
           </div>
         </div>
       </div>
 
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-hidden hover:shadow-sm">
         <div className="px-5 py-4 border-b border-gray-200">
           <h2 className="font-semibold">人员与容量</h2>
         </div>
@@ -317,7 +366,12 @@ export default function PaymentDispatch() {
             <thead className="bg-gray-50">
               <tr>
                 {['用户', '权限完整', '当前负载', '上限', '自动接单', '操作'].map(title => (
-                  <th key={title} className="px-4 py-3 text-left text-sm text-gray-500">
+                  <th
+                    key={title}
+                    className={`px-4 py-3 text-sm font-medium text-gray-500 ${
+                      title === '操作' ? 'text-right' : 'text-left'
+                    }`}
+                  >
                     {title}
                   </th>
                 ))}
@@ -325,7 +379,10 @@ export default function PaymentDispatch() {
             </thead>
             <tbody>
               {overview?.staff.map(person => (
-                <tr key={person.id} className="border-t border-gray-100">
+                <tr
+                  key={person.id}
+                  className="border-t border-gray-100 transition-colors hover:bg-gray-50"
+                >
                   <td className="px-4 py-3 font-medium">{person.username}</td>
                   <td className="px-4 py-3">
                     <span
@@ -357,26 +414,28 @@ export default function PaymentDispatch() {
                     />
                   </td>
                   <td className="px-4 py-3">
-                    <input
-                      type="checkbox"
+                    <ToggleSwitch
+                      ariaLabel={`允许 ${person.username} 自动接单`}
                       disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
                       checked={Boolean(staffDrafts[person.id]?.autoAssignEnabled)}
-                      onChange={event =>
+                      onChange={autoAssignEnabled =>
                         setStaffDrafts(previous => ({
                           ...previous,
                           [person.id]: {
                             ...previous[person.id],
-                            autoAssignEnabled: event.target.checked,
+                            autoAssignEnabled,
                           },
                         }))
                       }
                     />
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-3 text-right">
                     {can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE) && (
                       <button
-                        className="btn btn-secondary"
-                        disabled={Boolean(busyAction)}
+                        className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
+                        disabled={
+                          Boolean(busyAction) || !hasStaffChanges(person, staffDrafts[person.id])
+                        }
                         onClick={() =>
                           runAction(
                             `staff-${person.id}`,
@@ -389,7 +448,7 @@ export default function PaymentDispatch() {
                           )
                         }
                       >
-                        保存
+                        {busyAction === `staff-${person.id}` ? '保存中...' : '保存'}
                       </button>
                     )}
                   </td>
@@ -400,7 +459,7 @@ export default function PaymentDispatch() {
         </div>
       </div>
 
-      <div className="card p-0 overflow-hidden">
+      <div className="card p-0 overflow-hidden hover:shadow-sm">
         <div className="px-5 py-4 border-b border-gray-200 space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <div>
@@ -410,7 +469,7 @@ export default function PaymentDispatch() {
             {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
               <div className="flex flex-wrap gap-2">
                 <button
-                  className="btn btn-secondary"
+                  className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
                   disabled={selectedTaskIds.length === 0 || Boolean(busyAction)}
                   onClick={() =>
                     runAction(
@@ -420,22 +479,22 @@ export default function PaymentDispatch() {
                     )
                   }
                 >
-                  <RefreshCw className="w-4 h-4 mr-2" />
-                  批量刷新
+                  <RefreshCw className="w-4 h-4" />
+                  {busyAction === 'refresh-selected' ? '提交中...' : '批量刷新'}
                 </button>
                 <button
-                  className="btn btn-primary"
+                  className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
                   disabled={selectedTaskIds.length === 0 || Boolean(busyAction)}
                   onClick={openAssignmentModal}
                 >
-                  <Users className="w-4 h-4 mr-2" />
+                  <Users className="w-4 h-4" />
                   分配所选订单
                 </button>
               </div>
             )}
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
             <input
               className="input"
               placeholder="订单号"
@@ -510,32 +569,36 @@ export default function PaymentDispatch() {
                 </option>
               ))}
             </select>
-          </div>
-          <div className="flex gap-2">
-            <button className="btn btn-primary" onClick={() => setFilters(filterDrafts)}>
-              <Search className="w-4 h-4 mr-2" />
-              筛选
-            </button>
-            <button
-              className="btn btn-secondary"
-              onClick={() => {
-                setFilterDrafts(INITIAL_FILTERS);
-                setFilters(INITIAL_FILTERS);
-              }}
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              重置
-            </button>
+            <div className="col-span-full flex justify-end gap-2">
+              <button
+                className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
+                onClick={() => setFilters(filterDrafts)}
+              >
+                <Search className="w-4 h-4" />
+                筛选
+              </button>
+              <button
+                className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
+                onClick={() => {
+                  setFilterDrafts(INITIAL_FILTERS);
+                  setFilters(INITIAL_FILTERS);
+                }}
+              >
+                <RotateCcw className="w-4 h-4" />
+                重置
+              </button>
+            </div>
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1360px]">
+          <table className="w-full min-w-[1460px]">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
+                    className={CHECKBOX_CLASS}
                     aria-label="选择当前列表全部任务"
                     checked={allVisibleSelected}
                     onChange={event =>
@@ -546,13 +609,19 @@ export default function PaymentDispatch() {
                 {[
                   '订单 / 商品',
                   '官网状态',
+                  '付款方式',
                   '处理状态',
                   '负责人',
                   '付款倒计时',
                   '最后更新时间',
                   '操作',
                 ].map(title => (
-                  <th key={title} className="px-4 py-3 text-left text-sm text-gray-500">
+                  <th
+                    key={title}
+                    className={`px-4 py-3 text-sm font-medium text-gray-500 ${
+                      title === '操作' ? 'text-right' : 'text-left'
+                    }`}
+                  >
                     {title}
                   </th>
                 ))}
@@ -563,10 +632,14 @@ export default function PaymentDispatch() {
                 const countdown = formatCountdown(task.deadlineAt, now);
                 const refreshKey = `refresh-${task.id}`;
                 return (
-                  <tr key={task.id} className="border-t border-gray-100">
+                  <tr
+                    key={task.id}
+                    className="border-t border-gray-100 transition-colors hover:bg-gray-50"
+                  >
                     <td className="px-4 py-3">
                       <input
                         type="checkbox"
+                        className={CHECKBOX_CLASS}
                         aria-label={`选择订单 ${task.orderNumber}`}
                         checked={selectedTaskIds.includes(task.id)}
                         onChange={() => toggleTask(task.id)}
@@ -585,17 +658,27 @@ export default function PaymentDispatch() {
                         task.officialOrderStatus ||
                         '未知'}
                     </td>
-                    <td className="px-4 py-3">{STATUS_LABELS[task.processingStatus]}</td>
+                    <td className="px-4 py-3 text-sm text-gray-700">{task.paymentMethod || '-'}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`badge ${
+                          PROCESSING_STATUS_BADGE_CLASSES[task.processingStatus] ||
+                          'bg-gray-100 text-gray-700'
+                        }`}
+                      >
+                        {STATUS_LABELS[task.processingStatus] || task.processingStatus || '未知'}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">{task.assignee?.username || '未分配'}</td>
                     <td className={`px-4 py-3 ${countdown.className}`}>{countdown.text}</td>
                     <td className="px-4 py-3 text-sm text-gray-600">
                       {formatDateTime(task.lastCrawledAt)}
                     </td>
-                    <td className="px-4 py-3">
-                      <div className="flex flex-wrap gap-2">
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex flex-wrap justify-end gap-2">
                         {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
                           <button
-                            className="btn btn-secondary"
+                            className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
                             disabled={Boolean(busyAction)}
                             onClick={() =>
                               runAction(
@@ -606,15 +689,15 @@ export default function PaymentDispatch() {
                             }
                           >
                             <RefreshCw
-                              className={`w-4 h-4 mr-2 ${busyAction === refreshKey ? 'animate-spin' : ''}`}
+                              className={`w-4 h-4 ${busyAction === refreshKey ? 'animate-spin' : ''}`}
                             />
-                            刷新
+                            {busyAction === refreshKey ? '刷新中...' : '刷新'}
                           </button>
                         )}
                         {can(PERMISSIONS.PAYMENT_DISPATCH_CORRECT) &&
                           task.processingStatus === 'completed' && (
                             <button
-                              className="btn btn-secondary"
+                              className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
                               disabled={Boolean(busyAction)}
                               onClick={() => {
                                 const reason = window.prompt('请输入重开原因');
@@ -644,7 +727,7 @@ export default function PaymentDispatch() {
               })}
               {!loading && tasks.length === 0 && (
                 <tr>
-                  <td colSpan="8" className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan="9" className="px-4 py-12 text-center text-gray-500">
                     没有符合条件的付款任务
                   </td>
                 </tr>
@@ -656,14 +739,14 @@ export default function PaymentDispatch() {
 
       {assignModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg">
+          <div className="w-full rounded-xl bg-white shadow-xl" style={{ maxWidth: '28rem' }}>
             <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
               <div>
                 <h2 className="font-semibold text-gray-900">批量分配付款任务</h2>
                 <p className="text-sm text-gray-500 mt-1">共选择 {selectedTasks.length} 个订单</p>
               </div>
               <button
-                className="btn btn-secondary p-2"
+                className={`btn btn-secondary p-2 ${BUTTON_LAYOUT_CLASS}`}
                 aria-label="关闭批量分配弹窗"
                 onClick={() => setAssignModalOpen(false)}
               >
@@ -713,7 +796,7 @@ export default function PaymentDispatch() {
                   <label className="flex items-start gap-2 text-sm text-gray-700">
                     <input
                       type="checkbox"
-                      className="mt-1"
+                      className={`${CHECKBOX_CLASS} mt-1`}
                       checked={assignmentDraft.handoffConfirmed}
                       onChange={event =>
                         setAssignmentDraft(previous => ({
@@ -728,11 +811,14 @@ export default function PaymentDispatch() {
               )}
             </div>
             <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
-              <button className="btn btn-secondary" onClick={() => setAssignModalOpen(false)}>
+              <button
+                className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
+                onClick={() => setAssignModalOpen(false)}
+              >
                 取消
               </button>
               <button
-                className="btn btn-primary"
+                className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
                 disabled={busyAction === 'assign-selected'}
                 onClick={confirmAssignment}
               >

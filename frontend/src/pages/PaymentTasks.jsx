@@ -1,38 +1,38 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, CreditCard, RefreshCw, Save } from "lucide-react";
-import { useAuth } from "../contexts/AuthContext";
-import { PERMISSIONS } from "../constants/permissions";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Copy, CreditCard, RefreshCw, Save } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
 import {
   getPaymentTaskLink,
   getPaymentTaskRefreshJob,
   getPaymentTasks,
   refreshPaymentTask,
   updatePaymentTask,
-} from "../api/paymentTasksApi";
+} from '../api/paymentTasksApi';
 
 const STATUS_LABELS = {
-  pending: "待处理",
-  processing: "处理中",
-  completed: "已完成",
-  exception: "异常",
+  pending: '待处理',
+  processing: '处理中',
+  completed: '已完成',
+  exception: '异常',
 };
 
 const STATUS_STYLES = {
-  pending: "bg-amber-50 border-amber-200 text-amber-700",
-  processing: "bg-blue-50 border-blue-200 text-blue-700",
-  completed: "bg-green-50 border-green-200 text-green-700",
-  exception: "bg-red-50 border-red-200 text-red-700",
+  pending: 'bg-amber-50 border-amber-200 text-amber-700',
+  processing: 'bg-blue-50 border-blue-200 text-blue-700',
+  completed: 'bg-green-50 border-green-200 text-green-700',
+  exception: 'bg-red-50 border-red-200 text-red-700',
 };
 
 const STATUS_BADGES = {
-  pending: "badge badge-warning",
-  processing: "badge badge-info",
-  completed: "badge badge-success",
-  exception: "badge badge-error",
+  pending: 'badge badge-warning',
+  processing: 'badge badge-info',
+  completed: 'badge badge-success',
+  exception: 'badge badge-error',
 };
 
 function formatCountdown(deadlineAt, now) {
-  if (!deadlineAt) return "待核实";
+  if (!deadlineAt) return '待核实';
   const seconds = Math.floor((new Date(deadlineAt).getTime() - now) / 1000);
   if (seconds <= 0) return `已超时 ${Math.ceil(Math.abs(seconds) / 60)} 分钟`;
   const minutes = Math.floor(seconds / 60);
@@ -40,27 +40,26 @@ function formatCountdown(deadlineAt, now) {
 }
 
 function formatDateTime(value) {
-  if (!value) return "-";
+  if (!value) return '-';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "-";
-  const pad = (number) => String(number).padStart(2, "0");
+  if (Number.isNaN(date.getTime())) return '-';
+  const pad = number => String(number).padStart(2, '0');
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-const wait = (milliseconds) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
+const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
 
 export default function PaymentTasks() {
   const { can } = useAuth();
   const [tasks, setTasks] = useState([]);
   const [filters, setFilters] = useState({
-    processingStatus: "",
-    orderNumber: "",
-    productKeyword: "",
+    processingStatus: '',
+    orderNumber: '',
+    productKeyword: '',
   });
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
   const [serverClockOffset, setServerClockOffset] = useState(0);
   const [rowActions, setRowActions] = useState({});
@@ -68,29 +67,25 @@ export default function PaymentTasks() {
   const loadTasks = useCallback(
     async (preserveDrafts = false) => {
       setLoading(true);
-      setError("");
+      setError('');
       try {
-        const params = Object.fromEntries(
-          Object.entries(filters).filter(([, value]) => value),
-        );
+        const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
         const response = await getPaymentTasks(params);
         setTasks(response.data.items);
-        setServerClockOffset(
-          new Date(response.data.serverTime).getTime() - Date.now(),
-        );
-        setDrafts((previous) =>
+        setServerClockOffset(new Date(response.data.serverTime).getTime() - Date.now());
+        setDrafts(previous =>
           Object.fromEntries(
-            response.data.items.map((task) => [
+            response.data.items.map(task => [
               task.id,
               preserveDrafts && previous[task.id]
                 ? previous[task.id]
                 : {
                     status: task.processingStatus,
-                    notes: task.processingNotes || "",
-                    payerName: task.payerName || "",
+                    notes: task.processingNotes || '',
+                    payerName: task.payerName || '',
                   },
-            ]),
-          ),
+            ])
+          )
         );
       } catch (loadError) {
         setError(loadError.message);
@@ -98,17 +93,14 @@ export default function PaymentTasks() {
         setLoading(false);
       }
     },
-    [filters],
+    [filters]
   );
 
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
   useEffect(() => {
-    const timer = setInterval(
-      () => setNow(Date.now() + serverClockOffset),
-      1000,
-    );
+    const timer = setInterval(() => setNow(Date.now() + serverClockOffset), 1000);
     return () => clearInterval(timer);
   }, [serverClockOffset]);
   const summary = useMemo(
@@ -118,158 +110,152 @@ export default function PaymentTasks() {
           ...result,
           [task.processingStatus]: result[task.processingStatus] + 1,
         }),
-        { pending: 0, processing: 0, completed: 0, exception: 0 },
+        { pending: 0, processing: 0, completed: 0, exception: 0 }
       ),
-    [tasks],
+    [tasks]
   );
 
   const updateDraft = (taskId, field, value) => {
-    setDrafts((previous) => ({
+    setDrafts(previous => ({
       ...previous,
       [taskId]: { ...previous[taskId], [field]: value },
     }));
   };
 
   const updateRowAction = (taskId, patch) => {
-    setRowActions((previous) => ({
+    setRowActions(previous => ({
       ...previous,
       [taskId]: { ...previous[taskId], ...patch },
     }));
   };
 
-  const getTaskChanges = (task) => {
+  const getTaskChanges = task => {
     const draft = drafts[task.id];
     if (!draft) return {};
     const payload = {};
     if (
       can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN) &&
-      (draft.status !== task.processingStatus ||
-        draft.notes !== (task.processingNotes || ""))
+      (draft.status !== task.processingStatus || draft.notes !== (task.processingNotes || ''))
     ) {
       payload.processingStatus = draft.status;
       payload.processingNotes = draft.notes;
       payload.expectedVersion = task.version;
     }
     const payerName = draft.payerName.trim();
-    if (
-      can(PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN) &&
-      payerName !== (task.payerName || "")
-    ) {
+    if (can(PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN) && payerName !== (task.payerName || '')) {
       payload.payerName = payerName || null;
       payload.expectedPayerVersion = task.payerVersion;
     }
     return payload;
   };
 
-  const saveTask = async (task) => {
+  const saveTask = async task => {
     const payload = getTaskChanges(task);
     if (Object.keys(payload).length === 0) {
-      updateRowAction(task.id, { type: "info", message: "没有需要保存的修改" });
+      updateRowAction(task.id, { type: 'info', message: '没有需要保存的修改' });
       return;
     }
     updateRowAction(task.id, {
       saving: true,
-      type: "info",
-      message: "保存中...",
+      type: 'info',
+      message: '保存中...',
     });
     try {
-      setError("");
+      setError('');
       await updatePaymentTask(task.id, payload, crypto.randomUUID());
       await loadTasks();
       updateRowAction(task.id, {
         saving: false,
-        type: "success",
-        message: "保存成功",
+        type: 'success',
+        message: '保存成功',
       });
     } catch (actionError) {
       updateRowAction(task.id, {
         saving: false,
-        type: "error",
+        type: 'error',
         message: actionError.message,
       });
     }
   };
 
-  const copyPaymentLink = async (task) => {
+  const copyPaymentLink = async task => {
     updateRowAction(task.id, {
       copying: true,
-      type: "info",
-      message: "复制中...",
+      type: 'info',
+      message: '复制中...',
     });
     try {
-      setError("");
+      setError('');
       const response = await getPaymentTaskLink(task.id);
       await navigator.clipboard.writeText(response.data.paymentUrl);
       updateRowAction(task.id, {
         copying: false,
-        type: "success",
-        message: "订单链接已复制",
+        type: 'success',
+        message: '订单链接已复制',
       });
     } catch (actionError) {
       updateRowAction(task.id, {
         copying: false,
-        type: "error",
+        type: 'error',
         message: actionError.message,
       });
     }
   };
 
-  const refreshTask = async (task) => {
+  const refreshTask = async task => {
     updateRowAction(task.id, {
       refreshing: true,
-      type: "info",
-      message: "正在提交刷新...",
+      type: 'info',
+      message: '正在提交刷新...',
     });
     try {
-      setError("");
+      setError('');
       const response = await refreshPaymentTask(task.id);
       const jobId = response.data.jobId;
       updateRowAction(task.id, {
         refreshing: true,
-        type: "info",
-        message: response.data.created ? "已进入队列" : "已合并到刷新队列",
+        type: 'info',
+        message: response.data.created ? '已进入队列' : '已合并到刷新队列',
       });
 
       for (let attempt = 0; attempt < 20; attempt += 1) {
         await wait(1500);
         const jobResponse = await getPaymentTaskRefreshJob(task.id, jobId);
         const job = jobResponse.data;
-        if (job.status === "pending") {
-          updateRowAction(task.id, { message: "已进入队列，等待后台处理" });
+        if (job.status === 'pending') {
+          updateRowAction(task.id, { message: '已进入队列，等待后台处理' });
           continue;
         }
-        if (job.status === "running") {
-          updateRowAction(task.id, { message: "官网刷新中..." });
+        if (job.status === 'running') {
+          updateRowAction(task.id, { message: '官网刷新中...' });
           continue;
         }
-        if (job.status === "succeeded") {
+        if (job.status === 'succeeded') {
           await loadTasks(true);
           updateRowAction(task.id, {
             refreshing: false,
-            type: "success",
-            message: "官网状态已更新",
+            type: 'success',
+            message: '官网状态已更新',
           });
           return;
         }
         updateRowAction(task.id, {
           refreshing: false,
-          type: "error",
+          type: 'error',
           message:
-            job.status === "skipped"
-              ? "刷新任务已跳过"
-              : job.lastErrorMessage || "官网刷新失败",
+            job.status === 'skipped' ? '刷新任务已跳过' : job.lastErrorMessage || '官网刷新失败',
         });
         return;
       }
       updateRowAction(task.id, {
         refreshing: false,
-        type: "info",
-        message: "已进入队列，等待后台处理",
+        type: 'info',
+        message: '已进入队列，等待后台处理',
       });
     } catch (actionError) {
       updateRowAction(task.id, {
         refreshing: false,
-        type: "error",
+        type: 'error',
         message: actionError.message,
       });
     }
@@ -283,9 +269,7 @@ export default function PaymentTasks() {
             <CreditCard className="w-6 h-6 text-primary" />
             付款任务
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            仅显示当前分配给本人的任务
-          </p>
+          <p className="text-sm text-gray-500 mt-1">仅显示当前分配给本人的任务</p>
         </div>
         <div className="flex flex-wrap gap-2 text-sm">
           {Object.entries(STATUS_LABELS).map(([status, label]) => (
@@ -301,24 +285,18 @@ export default function PaymentTasks() {
           className="input"
           placeholder="订单号"
           value={filters.orderNumber}
-          onChange={(event) =>
-            setFilters({ ...filters, orderNumber: event.target.value })
-          }
+          onChange={event => setFilters({ ...filters, orderNumber: event.target.value })}
         />
         <input
           className="input"
           placeholder="商品名称或型号"
           value={filters.productKeyword}
-          onChange={(event) =>
-            setFilters({ ...filters, productKeyword: event.target.value })
-          }
+          onChange={event => setFilters({ ...filters, productKeyword: event.target.value })}
         />
         <select
           className="input"
           value={filters.processingStatus}
-          onChange={(event) =>
-            setFilters({ ...filters, processingStatus: event.target.value })
-          }
+          onChange={event => setFilters({ ...filters, processingStatus: event.target.value })}
         >
           <option value="">未完成任务</option>
           <option value="pending">待处理</option>
@@ -328,11 +306,7 @@ export default function PaymentTasks() {
         </select>
       </div>
 
-      {error && (
-        <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3">
-          {error}
-        </div>
-      )}
+      {error && <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3">{error}</div>}
       <div className="card p-0 overflow-hidden">
         {loading ? (
           <p className="text-center text-gray-500 py-12">加载中...</p>
@@ -340,52 +314,44 @@ export default function PaymentTasks() {
           <p className="text-center text-gray-500 py-12">暂无匹配的付款任务</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1420px]">
+            <table className="w-full min-w-[1520px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   {[
-                    "订单 / 商品",
-                    "官网状态",
-                    "倒计时",
-                    "处理状态",
-                    "处理备注",
-                    "付款人",
-                    "最后更新时间",
-                    "操作",
-                  ].map((title) => (
-                    <th
-                      key={title}
-                      className="text-left px-4 py-3 text-sm text-gray-500"
-                    >
+                    '订单 / 商品',
+                    '官网状态',
+                    '付款方式',
+                    '倒计时',
+                    '处理状态',
+                    '处理备注',
+                    '付款人',
+                    '最后更新时间',
+                    '操作',
+                  ].map(title => (
+                    <th key={title} className="text-left px-4 py-3 text-sm text-gray-500">
                       {title}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {tasks.map((task) => (
-                  <tr
-                    key={task.id}
-                    className="border-b border-gray-100 align-top"
-                  >
+                {tasks.map(task => (
+                  <tr key={task.id} className="border-b border-gray-100 align-top">
                     <td className="px-4 py-4">
                       <div className="font-medium">{task.orderNumber}</div>
                       <div className="text-xs text-gray-500 mt-1">
                         {task.products
-                          .map(
-                            (product) => `${product.name} ×${product.quantity}`,
-                          )
-                          .join("、")}
+                          .map(product => `${product.name} ×${product.quantity}`)
+                          .join('、')}
                       </div>
                     </td>
                     <td className="px-4 py-4 text-sm">
-                      {task.officialPaymentStatus || "未知"}
-                      <div className="text-xs text-gray-400">
-                        {task.officialOrderStatus}
-                      </div>
+                      {task.officialPaymentStatus || '未知'}
+                      <div className="text-xs text-gray-400">{task.officialOrderStatus}</div>
                     </td>
+                    <td className="px-4 py-4 text-sm text-gray-700">{task.paymentMethod || '-'}</td>
                     <td
-                      className={`px-4 py-4 text-sm ${task.remainingSeconds !== null && task.remainingSeconds <= 300 ? "text-red-600 font-medium" : "text-gray-700"}`}
+                      className={`px-4 py-4 text-sm ${task.remainingSeconds !== null && task.remainingSeconds <= 300 ? 'text-red-600 font-medium' : 'text-gray-700'}`}
                     >
                       {formatCountdown(task.deadlineAt, now)}
                     </td>
@@ -394,9 +360,7 @@ export default function PaymentTasks() {
                         className={`input min-w-28 font-medium ${STATUS_STYLES[drafts[task.id]?.status || task.processingStatus]}`}
                         disabled={!can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN)}
                         value={drafts[task.id]?.status || task.processingStatus}
-                        onChange={(event) =>
-                          updateDraft(task.id, "status", event.target.value)
-                        }
+                        onChange={event => updateDraft(task.id, 'status', event.target.value)}
                       >
                         {Object.entries(STATUS_LABELS).map(([value, label]) => (
                           <option key={value} value={value}>
@@ -411,10 +375,8 @@ export default function PaymentTasks() {
                         rows="2"
                         maxLength="2000"
                         disabled={!can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN)}
-                        value={drafts[task.id]?.notes || ""}
-                        onChange={(event) =>
-                          updateDraft(task.id, "notes", event.target.value)
-                        }
+                        value={drafts[task.id]?.notes || ''}
+                        onChange={event => updateDraft(task.id, 'notes', event.target.value)}
                       />
                     </td>
                     <td className="px-4 py-4">
@@ -423,13 +385,9 @@ export default function PaymentTasks() {
                         type="text"
                         maxLength="100"
                         placeholder="输入实际付款人姓名"
-                        disabled={
-                          !can(PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN)
-                        }
-                        value={drafts[task.id]?.payerName || ""}
-                        onChange={(event) =>
-                          updateDraft(task.id, "payerName", event.target.value)
-                        }
+                        disabled={!can(PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN)}
+                        value={drafts[task.id]?.payerName || ''}
+                        onChange={event => updateDraft(task.id, 'payerName', event.target.value)}
                       />
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap">
@@ -447,7 +405,7 @@ export default function PaymentTasks() {
                             aria-label="保存本行修改"
                           >
                             <Save
-                              className={`w-4 h-4 ${rowActions[task.id]?.saving ? "animate-pulse" : ""}`}
+                              className={`w-4 h-4 ${rowActions[task.id]?.saving ? 'animate-pulse' : ''}`}
                             />
                           </button>
                         )}
@@ -471,7 +429,7 @@ export default function PaymentTasks() {
                             aria-label="刷新官网状态"
                           >
                             <RefreshCw
-                              className={`w-4 h-4 ${rowActions[task.id]?.refreshing ? "animate-spin" : ""}`}
+                              className={`w-4 h-4 ${rowActions[task.id]?.refreshing ? 'animate-spin' : ''}`}
                             />
                           </button>
                         )}
@@ -479,11 +437,11 @@ export default function PaymentTasks() {
                       {rowActions[task.id]?.message && (
                         <p
                           className={`mt-2 text-xs max-w-44 ${
-                            rowActions[task.id].type === "error"
-                              ? "text-red-600"
-                              : rowActions[task.id].type === "success"
-                                ? "text-green-700"
-                                : "text-gray-500"
+                            rowActions[task.id].type === 'error'
+                              ? 'text-red-600'
+                              : rowActions[task.id].type === 'success'
+                                ? 'text-green-700'
+                                : 'text-gray-500'
                           }`}
                         >
                           {rowActions[task.id].message}

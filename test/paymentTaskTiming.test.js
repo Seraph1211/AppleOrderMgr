@@ -19,6 +19,7 @@ describe('付款窗口时间契约', () => {
           products: [],
           status: 'pending',
           paymentStatus: 'unpaid',
+          paymentMethod: '支付宝',
           officialOrderCreatedAt: new Date('2026-09-08T10:00:00.000Z'),
           lastCrawledAt: new Date('2026-09-08T10:04:30.000Z'),
           updatedAt: new Date('2026-09-08T10:01:00.000Z'),
@@ -32,6 +33,7 @@ describe('付款窗口时间契约', () => {
     expect(result.deadlineSource).toBe('official');
     expect(result.remainingSeconds).toBe(25 * 60);
     expect(result.lastCrawledAt.toISOString()).toBe('2026-09-08T10:04:30.000Z');
+    expect(result.paymentMethod).toBe('支付宝');
   });
 
   test('官网只有日期或没有精确时间时不生成倒计时', () => {
