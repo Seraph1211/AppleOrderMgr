@@ -162,3 +162,29 @@ describe('爬虫 Worker 代理 Provider 切换', () => {
     expect(result).toEqual({ switched: true, activeProvider: 'fanproxy_tunnel' });
   });
 });
+
+describe('队列触发类型与爬虫日志来源兼容', () => {
+  test.each([
+    ['manual_single', 'manual', true],
+    ['manual_all', 'manual', true],
+    ['auto', 'scheduled', false],
+    ['page_open', 'page_open', false],
+  ])('%s 使用日志来源 %s', async (trigger, source, manual) => {
+    jest.doMock('../src/services/crawlerService', () => ({
+      crawlAndUpdateOrder: jest
+        .fn()
+        .mockResolvedValue({ success: true, skipped: trigger === 'page_open' }),
+    }));
+    const crawler = require('../src/services/crawlerService');
+    const repository = require('../src/services/crawler/refreshJobRepository');
+    const jobs = require('../src/services/crawler/refreshJobService');
+    jobs.calculateNextRefresh.mockResolvedValue(null);
+    const job = { id: 1, orderId: 108, trigger };
+    await refreshWorkerService.processJob(job);
+    expect(crawler.crawlAndUpdateOrder).toHaveBeenLastCalledWith(108, { source, manual });
+    expect(repository.finishJob).toHaveBeenLastCalledWith(
+      job,
+      expect.objectContaining({ success: true })
+    );
+  });
+});

@@ -579,3 +579,32 @@ describe('crawlerService proxy and wind control', () => {
     );
   });
 });
+
+describe('非标准上游状态的日志保存', () => {
+  test.each([
+    [403, 403],
+    [541, 541],
+    [631, null],
+  ])('%s 不导致日志模型校验失败', async (upstream, expected) => {
+    const crawler = loadCrawlerService();
+    const { CrawlLog } = require('../src/models');
+    await crawler.createCrawlLog({
+      source: 'manual',
+      httpStatus: upstream,
+      context: { manual: true },
+    });
+    const values = CrawlLog.create.mock.calls[0][0];
+    expect(values.httpStatus).toBe(expected);
+    expect(values.context).toEqual(
+      upstream > 599 ? { manual: true, upstreamHttpStatus: upstream } : { manual: true }
+    );
+    const { Sequelize } = require('sequelize');
+    const db = new Sequelize('postgres://fixture:fixture@127.0.0.1/fixture', { logging: false });
+    try {
+      const Model = require('../src/models/CrawlLog')(db);
+      await expect(Model.build(values).validate()).resolves.toBeDefined();
+    } finally {
+      await db.close();
+    }
+  });
+});

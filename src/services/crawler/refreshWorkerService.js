@@ -138,7 +138,12 @@ async function processJob(job) {
   try {
     const crawlerService = require('../crawlerService');
     const result = await crawlerService.crawlAndUpdateOrder(job.orderId, {
-      source: job.trigger === 'auto' ? 'scheduled' : job.trigger,
+      source:
+        job.trigger === 'auto'
+          ? 'scheduled'
+          : job.trigger.startsWith('manual_')
+            ? 'manual'
+            : job.trigger,
       manual: job.trigger.startsWith('manual_'),
     });
     outcome = {

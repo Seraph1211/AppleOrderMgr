@@ -454,6 +454,13 @@ function getAutoRefreshStopReason(orderLike) {
  */
 async function createCrawlLog(logData) {
   try {
+    const upstreamHttpStatus = Number(logData.httpStatus);
+    const validHttpStatus =
+      Number.isInteger(upstreamHttpStatus) &&
+      upstreamHttpStatus >= 100 &&
+      upstreamHttpStatus <= 599;
+    const nonstandardStatus =
+      Number.isInteger(upstreamHttpStatus) && upstreamHttpStatus > 599 && upstreamHttpStatus <= 999;
     return await CrawlLog.create({
       orderId: logData.orderId || null,
       source: logData.source || 'system',
@@ -463,11 +470,13 @@ async function createCrawlLog(logData) {
       proxyIp: logData.proxyIp || null,
       success: Boolean(logData.success),
       responseTime: logData.responseTime || null,
-      httpStatus: logData.httpStatus || null,
+      httpStatus: validHttpStatus ? upstreamHttpStatus : null,
       errorMessage: logData.errorMessage || null,
       errorStack: logData.errorStack || null,
       crawledData: logData.crawledData || null,
-      context: logData.context || null,
+      context: nonstandardStatus
+        ? { ...logData.context, upstreamHttpStatus }
+        : logData.context || null,
       result: logData.result || null,
       isWindControl: Boolean(logData.isWindControl),
       retryCount: logData.retryCount || 0,
