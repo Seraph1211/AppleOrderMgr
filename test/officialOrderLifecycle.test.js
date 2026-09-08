@@ -159,7 +159,10 @@ describe('官网生命周期和来源合并', () => {
     expect(data.products).toHaveLength(2);
     const order = { ...sourceOrder(), ...mergeOfficialOrder(sourceOrder(), data) };
     expect(isPaymentBlocked(order)).toBe(true);
-    expect(isAutoRefreshEligible(order)).toBe(true);
+    expect(
+      isAutoRefreshEligible(order, new Date(order.officialPaymentExpiresAt.getTime() - 60_000))
+    ).toBe(true);
+    expect(isAutoRefreshEligible(order, order.officialPaymentExpiresAt)).toBe(false);
     second.orderItemStatusTracker.d.currentStatus = 'PAYMENT_EXPIRED_STORED_ORDER';
     const terminal = parseOrderData(json, '');
     expect(terminal.officialAllItemsTerminal).toBe(true);

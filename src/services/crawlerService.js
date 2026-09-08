@@ -97,11 +97,10 @@ function summarizeOrderUrl(orderUrl) {
  * 验证待访问的 Apple 订单 URL 与本地订单身份一致。
  * @param {string} orderUrl - 订单 URL
  * @param {string} expectedOrderNumber - 期望订单号
- * @param {string} expectedAppleId - 期望 Apple ID
  * @returns {URL} 验证后的 URL
  * @throws {Error} URL 来源或身份不匹配时抛出异常
  */
-function validateOrderUrl(orderUrl, expectedOrderNumber, expectedAppleId) {
+function validateOrderUrl(orderUrl, expectedOrderNumber) {
   try {
     const parsedUrl = new URL(orderUrl);
     const pathParts = parsedUrl.pathname.split('/').filter(Boolean).map(decodeURIComponent);
@@ -109,10 +108,11 @@ function validateOrderUrl(orderUrl, expectedOrderNumber, expectedAppleId) {
       pathParts.length === 5 &&
       pathParts[0] === 'xc' &&
       pathParts[1] === 'cn' &&
-      pathParts[2] === 'vieworder';
+      pathParts[2] === 'vieworder' &&
+      /^[^\s/@]+@[^\s/@]+\.[^\s/@]+$/.test(pathParts[4]);
+    // 链接末段是订单联系邮箱，不是下单账户 Apple ID。
     const isExpectedIdentity =
-      pathParts[3] === expectedOrderNumber &&
-      pathParts[4]?.toLowerCase() === String(expectedAppleId).toLowerCase();
+      /^W\d{10}$/.test(expectedOrderNumber) && pathParts[3] === expectedOrderNumber;
 
     if (
       parsedUrl.protocol !== 'https:' ||
@@ -1135,7 +1135,7 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       throw new Error('订单号缺失，无法构建爬取 URL');
     }
 
-    if (!order.appleAccount?.appleId && !order.appleId) {
+    if (!order.orderUrl && !order.appleAccount?.appleId && !order.appleId) {
       throw new Error('Apple ID 缺失，无法构建爬取 URL');
     }
 
@@ -1144,7 +1144,7 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     const orderUrl =
       order.orderUrl ||
       `https://www.apple.com.cn/xc/cn/vieworder/${order.orderNumber}/${encodeURIComponent(appleId)}`;
-    validateOrderUrl(orderUrl, order.orderNumber, appleId);
+    validateOrderUrl(orderUrl, order.orderNumber);
     if (
       source === 'page_open' ||
       (!options.manual && !isAutoRefreshEligible({ ...order.toJSON(), orderUrl }))

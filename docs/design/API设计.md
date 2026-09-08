@@ -155,7 +155,7 @@
 
 邮件处理页面、列表、完整详情、指标、重新解析、草稿、入库、批量操作和人工关闭均仅允许 `admin`。`operator`、`readOnly` 和未认证请求由后端拒绝，前端隐藏导航不替代该门禁。
 
-- `GET /api/email-processing`：query 支持 `page`、`limit`、`status`、`error_code`、`order_number`、`date_from`、`date_to`。省略 status 时只返回 `manual_review`。列表按人工优先、接收时间倒序，返回完整邮件主题和 From，不做字段脱敏。
+- `GET /api/email-processing`：query 支持 `page`、`limit`、`status`、`error_code`、`order_number`、`date_from`、`date_to`。省略 status 时只返回 `manual_review`。列表按人工优先、接收时间倒序，返回完整邮件主题和 From，不做字段脱敏；来源过滤错误码包括 `SUBJECT_NOT_ALLOWED` 和 `SENDER_NOT_ALLOWED`，后者保留加密原文并进入人工处理。
 - `GET /api/email-processing/metrics`：返回各状态计数、最近收信、最近成功、24 小时失败数，以及独立 Worker 的连接、30 秒心跳运行判断、连续失败和最近错误码。
 - `GET /api/email-processing/:id`：返回解密后的完整 `raw_mime`、`parsed_data`、`manual_draft`、`final_data`、处理尝试和管理员操作审计；读取完整详情本身写入 `view_full_detail` 审计。若草稿或解析结果中的订单号已存在，返回 `duplicate_order` 入口。
 - `POST /api/email-processing/:id/reparse`：只允许 `manual_review/retry_wait`，使用当前解析器生成预览但不创建订单；返回预览、最新 version 和重复订单结果。
@@ -181,6 +181,8 @@
 - payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、完成首次改密、上限有余量、合法付款链接以及官网付款窗口仍有效。官网已付款、退款、终态、身份异常和待核对状态禁止新分配；active_count 为 pending＋processing＋exception，completed 释放容量，官网收款不自动修改人工四态。
 
 ### 生命周期与来源冲突响应
+
+订单链接末段为订单联系邮箱，可与邮件解析的 Apple ID 不同；保留后者作为下单账户，不以联系邮箱覆盖。域名、路径、协议与订单号校验保持生效。
 
 订单列表和详情增加 `official_raw_status`、`official_status_description`、`official_status_observed_at`、`official_fulfillment_message`、`official_payment_expires_at`、`official_payment_method`、`official_status_needs_review`、`official_all_items_terminal` 和 `official_field_diagnostics`。状态枚举见[数据库架构](../database/数据库架构.md)。`products` 为官网优先的有效商品，商品 `fulfillmentMessage` 为提示文案，不伪造日期；历史 `deliveryDate` 仅兼容已有数据。
 

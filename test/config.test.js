@@ -20,6 +20,7 @@ describe('config telegram environment variables', () => {
     delete process.env.FANPROXY_TUNNEL_SESSION_MODE;
     delete process.env.YIYOU_HTTP_PROXY_API_URL;
     delete process.env.YIYOU_HTTP_PROXY_TTL_MS;
+    delete process.env.IMAP_ALLOWED_SENDER_DOMAINS;
   });
 
   afterAll(() => {
@@ -50,6 +51,22 @@ describe('config telegram environment variables', () => {
     expect(config.imap.allowedSenders).toEqual(['orders@example.com', 'helper@example.com']);
   });
 
+  test('解析邮件发件域名白名单并标准化可选的@前缀', () => {
+    process.env.IMAP_ALLOWED_SENDER_DOMAINS = ' Lanu.CN, @example.com ';
+
+    const { config } = require('../src/utils/config');
+
+    expect(config.imap.allowedSenderDomains).toEqual(['lanu.cn', 'example.com']);
+  });
+
+  test('拒绝无效的邮件发件域名配置', () => {
+    process.env.IMAP_ALLOWED_SENDER_DOMAINS = 'evil-lanu.cn/path';
+
+    const { validateConfig } = require('../src/utils/config');
+
+    expect(() => validateConfig()).toThrow('IMAP_ALLOWED_SENDER_DOMAINS 包含无效域名');
+  });
+
   test('生产环境未显式开启时也保持订单自动刷新关闭', () => {
     process.env.NODE_ENV = 'production';
     delete process.env.AUTO_ORDER_REFRESH_ENABLED;
@@ -67,10 +84,12 @@ describe('config telegram environment variables', () => {
     process.env.IMAP_PASSWORD = 'synthetic-imap-password';
     process.env.PROXY_ENABLED = 'false';
     delete process.env.IMAP_ALLOWED_SENDERS;
+    delete process.env.IMAP_ALLOWED_SENDER_DOMAINS;
 
     const { config, validateConfig } = require('../src/utils/config');
 
     expect(config.imap.allowedSenders).toEqual([]);
+    expect(config.imap.allowedSenderDomains).toEqual([]);
     expect(() => validateConfig()).not.toThrow();
   });
 

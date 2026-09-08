@@ -132,7 +132,7 @@ describe('crawlerService product validation and scheduler rules', () => {
     ).toBe('payment_status:paid');
   });
 
-  test('filters abnormal orders out of automatic refresh candidates', () => {
+  test('filters historical post-payment and abnormal orders out of automatic refresh candidates', () => {
     const crawlerService = loadCrawlerService();
 
     expect(
@@ -143,7 +143,7 @@ describe('crawlerService product validation and scheduler rules', () => {
         status: 'processing',
         validationStatus: 'valid',
       })
-    ).toBe(true);
+    ).toBe(false);
     expect(
       crawlerService.isOrderEligibleForAutoRefresh({
         orderNumber: 'W1234567890',
@@ -339,14 +339,14 @@ describe('crawlerService product validation and scheduler rules', () => {
 });
 
 describe('crawlerService order identity validation', () => {
-  test('只接受与订单号和 Apple ID 完全匹配的 Apple 官网 URL', () => {
+  test('订单联系邮箱可以不同于下单账户，仍只接受同订单的 Apple 官网 URL', () => {
     const crawlerService = loadCrawlerService();
 
     expect(() =>
       crawlerService.validateOrderUrl(
         'https://www.apple.com.cn/xc/cn/vieworder/W1234567890/test%40example.com',
         'W1234567890',
-        'test@example.com'
+        'account@example.net'
       )
     ).not.toThrow();
     expect(() =>
@@ -357,6 +357,74 @@ describe('crawlerService order identity validation', () => {
       )
     ).toThrow('订单 URL 来源或身份');
   });
+
+  test.each([
+    'http://www.apple.com.cn/xc/cn/vieworder/W1234567890/contact@example.com',
+    'https://www.apple.com.cn:8443/xc/cn/vieworder/W1234567890/contact@example.com',
+    'https://user:password@www.apple.com.cn/xc/cn/vieworder/W1234567890/contact@example.com',
+    'https://www.apple.com.cn/xc/cn/vieworder/W0000000000/contact@example.com',
+    'https://www.apple.com.cn/xc/cn/vieworder/W1234567890/contact@example.com/extra',
+    'https://www.apple.com.cn/xc/cn/vieworder/W1234567890/contact%2Fother@example.com',
+    'https://www.apple.com.cn/xc/cn/vieworder/W1234567890/not-an-email',
+  ])('保留来源、路径与订单号限制：%s', url => {
+    expect(() => loadCrawlerService().validateOrderUrl(url, 'W1234567890')).toThrow();
+  });
+
+  test.each(['account@example.net', null])(
+    '有合法订单链接时 Apple ID %s 不阻断官网请求',
+    async appleId => {
+      const crawlerService = loadCrawlerService({
+        proxyEnabled: true,
+        proxy: { host: 'proxy.example', port: 8080 },
+      });
+      const { Order } = require('../src/models');
+      const axios = require('axios');
+      axios.get.mockReset();
+      axios.get.mockRejectedValue(
+        Object.assign(new Error('upstream test failure'), { response: { status: 407 } })
+      );
+      const order = {
+        id: 1,
+        orderNumber: 'W1234567890',
+        orderUrl: 'https://www.apple.com.cn/xc/cn/vieworder/W1234567890/contact@example.com',
+        appleId,
+        status: 'payment_due',
+        paymentStatus: 'unpaid',
+      };
+      order.toJSON = () => ({ ...order });
+      Order.findByPk.mockResolvedValue(order);
+      await expect(crawlerService.crawlAndUpdateOrder(1, { manual: true })).rejects.toThrow();
+      expect(axios.get).toHaveBeenCalledWith(order.orderUrl, expect.any(Object));
+      expect(order.appleId).toBe(appleId);
+    }
+  );
+
+  test.each(['processing', 'ready_for_pickup', 'shipped', 'pending'])(
+    '历史 %s 自动任务在执行前跳过且不访问官网',
+    async status => {
+      const crawlerService = loadCrawlerService();
+      const { Order } = require('../src/models');
+      const axios = require('axios');
+      axios.get.mockClear();
+      const order = {
+        id: 1,
+        orderNumber: 'W1234567890',
+        orderUrl: 'https://www.apple.com.cn/xc/cn/vieworder/W1234567890/contact@example.com',
+        appleId: 'account@example.net',
+        status,
+        paymentStatus: null,
+        orderDate: '2020-01-01T00:00:00Z',
+      };
+      order.toJSON = () => ({ ...order });
+      Order.findByPk.mockResolvedValue(order);
+      await expect(crawlerService.crawlAndUpdateOrder(1)).resolves.toMatchObject({
+        success: true,
+        skipped: true,
+      });
+      expect(axios.get).not.toHaveBeenCalled();
+      expect(Order.increment).not.toHaveBeenCalled();
+    }
+  );
 
   test('官网返回订单号缺失或不匹配时拒绝更新', () => {
     const crawlerService = loadCrawlerService();

@@ -54,21 +54,45 @@ function track(promise) {
 }
 
 /**
- * 判断是否为订单邮件。
+ * 判断邮件是否通过主题与可选 From 地址／域名白名单。
  * @param {Object} metadata - MIME 元数据
- * @returns {boolean} 是否通过主题与可选 From 白名单
+ * @returns {{ accepted: boolean, errorCode: string|null }} 来源判定
  */
-function isOrderEmail(metadata) {
+function classifyOrderEmailSource(metadata) {
   const { subject = '', fromAddresses = [] } = metadata;
   const hasOrderKeyword =
     subject.includes('NULL') || subject.includes('预订助手') || subject.includes('预订成功');
   if (!hasOrderKeyword) {
-    return false;
+    return { accepted: false, errorCode: EMAIL_ERROR_CODES.SUBJECT_NOT_ALLOWED };
   }
-  if (config.imap.allowedSenders.length === 0) {
-    return true;
+
+  const allowedSenders = config.imap.allowedSenders || [];
+  const allowedSenderDomains = config.imap.allowedSenderDomains || [];
+  if (allowedSenders.length === 0 && allowedSenderDomains.length === 0) {
+    return { accepted: true, errorCode: null };
   }
-  return fromAddresses.some(address => config.imap.allowedSenders.includes(address));
+
+  const normalizedAddresses = fromAddresses.map(address => String(address).trim().toLowerCase());
+  const isAllowed = normalizedAddresses.some(address => {
+    if (allowedSenders.includes(address)) {
+      return true;
+    }
+    const separatorIndex = address.lastIndexOf('@');
+    const domain = separatorIndex > 0 ? address.slice(separatorIndex + 1) : '';
+    return allowedSenderDomains.includes(domain);
+  });
+  return isAllowed
+    ? { accepted: true, errorCode: null }
+    : { accepted: false, errorCode: EMAIL_ERROR_CODES.SENDER_NOT_ALLOWED };
+}
+
+/**
+ * 判断是否为订单邮件。
+ * @param {Object} metadata - MIME 元数据
+ * @returns {boolean} 是否通过来源判定
+ */
+function isOrderEmail(metadata) {
+  return classifyOrderEmailSource(metadata).accepted;
 }
 
 async function updateAckFailure(record) {
@@ -174,9 +198,18 @@ async function processReceivedMessage(rawBuffer, emailUid) {
       return;
     }
 
-    if (!isOrderEmail(metadata)) {
-      await emailProcessingService.markIgnored(record);
-      await acknowledgeRecord(record);
+    const sourceDecision = classifyOrderEmailSource(metadata);
+    if (!sourceDecision.accepted) {
+      const rejectedRecord = await emailProcessingService.rejectSourceEmail(
+        record,
+        sourceDecision.errorCode
+      );
+      logger.warn('邮件来源过滤未通过', {
+        emailRecordId: rejectedRecord.id,
+        errorCode: sourceDecision.errorCode,
+        status: rejectedRecord.status,
+      });
+      await acknowledgeRecord(rejectedRecord);
       return;
     }
 
@@ -526,6 +559,7 @@ module.exports = {
   startEmailService,
   stopEmailService,
   getServiceStatus,
+  classifyOrderEmailSource,
   isOrderEmail,
   processEmails,
 };

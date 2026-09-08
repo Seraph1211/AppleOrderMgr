@@ -168,6 +168,10 @@ async function calculateNextRefresh(orderId) {
       'validationIssues',
       'officialAllItemsTerminal',
       'autoRefreshEnabled',
+      'officialPaymentExpiresAt',
+      'officialOrderCreatedAt',
+      'orderDate',
+      'createdAt',
     ],
   });
   return order ? getNextAutoRefreshAt(order) : null;

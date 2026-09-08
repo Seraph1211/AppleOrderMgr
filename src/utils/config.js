@@ -14,6 +14,9 @@ const {
   isSupportedProxyProvider,
 } = require('../services/crawler/proxy/proxyProvider');
 
+const EMAIL_DOMAIN_PATTERN =
+  /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+
 /**
  * 验证必需的环境变量
  * @param {string[]} requiredVars - 必需的环境变量列表
@@ -75,6 +78,10 @@ const config = {
     allowedSenders: (process.env.IMAP_ALLOWED_SENDERS || '')
       .split(',')
       .map(sender => sender.trim().toLowerCase())
+      .filter(Boolean),
+    allowedSenderDomains: (process.env.IMAP_ALLOWED_SENDER_DOMAINS || '')
+      .split(',')
+      .map(domain => domain.trim().toLowerCase().replace(/^@/, ''))
       .filter(Boolean),
   },
 
@@ -169,6 +176,11 @@ const config = {
  */
 const validateConfig = () => {
   const requiredVars = [];
+
+  if (config.imap.allowedSenderDomains.some(domain => !EMAIL_DOMAIN_PATTERN.test(domain))) {
+    logger.error('配置验证失败', { invalidImapAllowedSenderDomain: true });
+    throw new Error('IMAP_ALLOWED_SENDER_DOMAINS 包含无效域名');
+  }
 
   if (config.proxy.enabled && !isSupportedProxyProvider(config.proxy.provider)) {
     logger.error('配置验证失败', { invalidProxyProvider: true });

@@ -6,6 +6,7 @@ const describeDatabase = enabled ? describe : describe.skip;
 describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
   const models = require('../src/models');
   const emailProcessingService = require('../src/services/emailProcessingService');
+  const { EMAIL_ERROR_CODES } = require('../src/services/emailErrors');
   const { saveOrderFromEmail } = require('../src/services/orderService');
   const { buildHtmlBody, buildMime } = require('./fixtures/emailMessages');
   const { sequelize, EmailLog, EmailWorkerState, Order, OrderRefreshSchedule, OrderRefreshJob } =
@@ -186,14 +187,35 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
     record.mimeSha256 = 'b'.repeat(64);
     await record.save();
 
-    await emailProcessingService.markIgnored(record);
+    await emailProcessingService.rejectSourceEmail(record, EMAIL_ERROR_CODES.SUBJECT_NOT_ALLOWED);
     await record.reload();
     expect(record.status).toBe('ignored');
+    expect(record.errorCode).toBe('SUBJECT_NOT_ALLOWED');
+    expect(record.resolutionReason).toBe('subject_not_allowed');
     expect(record.rawContent).toBeNull();
     expect(record.emailSubject).toBeNull();
     expect(record.emailFrom).toBeNull();
     expect(record.messageId).toBeNull();
     expect(record.authenticationResults).toBeNull();
+  });
+
+  test('主题匹配但发件人未授权时保留加密原文供人工恢复', async () => {
+    const record = await createProcessableLog('it-email-sender-rejected-1', null);
+    record.status = 'received';
+    record.processed = false;
+    record.emailSubject = 'NULL预订助手提交预订成功通知';
+    record.emailFrom = 'dynamic@untrusted.example';
+    await record.save();
+
+    await emailProcessingService.rejectSourceEmail(record, EMAIL_ERROR_CODES.SENDER_NOT_ALLOWED);
+    await record.reload();
+
+    expect(record.status).toBe('manual_review');
+    expect(record.errorCode).toBe('SENDER_NOT_ALLOWED');
+    expect(record.errorMessage).toBe('发件人不在允许范围');
+    expect(record.rawContent).not.toBeNull();
+    expect(record.emailSubject).toBe('NULL预订助手提交预订成功通知');
+    expect(record.emailFrom).toBe('dynamic@untrusted.example');
   });
 
   test('人工草稿支持完整敏感字段、乐观锁、入库和操作审计', async () => {

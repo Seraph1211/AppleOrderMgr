@@ -143,9 +143,18 @@ async function registerMetadata(record, metadata) {
 /**
  * 将混合邮箱中的非订单邮件收敛为最小审计记录。
  * @param {Object} record - 邮件记录
+ * @param {Object} [options] - 来源过滤结果
+ * @param {string} [options.errorCode=SUBJECT_NOT_ALLOWED] - 稳定过滤错误码
+ * @param {string} [options.resolutionReason=subject_not_allowed] - 稳定过滤原因
  * @returns {Promise<Object>} 更新后的记录
  */
-async function markIgnored(record) {
+async function markIgnored(
+  record,
+  {
+    errorCode = EMAIL_ERROR_CODES.SUBJECT_NOT_ALLOWED,
+    resolutionReason = 'subject_not_allowed',
+  } = {}
+) {
   record.status = 'ignored';
   record.processed = true;
   record.processedAt = new Date();
@@ -159,11 +168,33 @@ async function markIgnored(record) {
   record.manualDraft = null;
   record.finalData = null;
   record.mimeSha256 = null;
+  record.errorCode = errorCode;
+  record.errorMessage = null;
   record.resolvedAt = new Date();
   record.resolutionType = 'non_order';
+  record.resolutionReason = resolutionReason;
   record.version += 1;
   await record.save();
   return record;
+}
+
+/**
+ * 按稳定原因持久化来源过滤结果。
+ * @param {Object} record - 邮件记录
+ * @param {string} errorCode - SUBJECT_NOT_ALLOWED 或 SENDER_NOT_ALLOWED
+ * @returns {Promise<Object>} ignored 或 manual_review 记录
+ */
+function rejectSourceEmail(record, errorCode) {
+  if (errorCode === EMAIL_ERROR_CODES.SUBJECT_NOT_ALLOWED) {
+    return markIgnored(record);
+  }
+  if (errorCode === EMAIL_ERROR_CODES.SENDER_NOT_ALLOWED) {
+    return markFailure(
+      record,
+      new EmailProcessingError(EMAIL_ERROR_CODES.SENDER_NOT_ALLOWED, '发件人不在允许范围')
+    );
+  }
+  throw new EmailProcessingError(EMAIL_ERROR_CODES.INVALID_STATE, '邮件来源过滤原因无效');
 }
 
 function appendAttempt(record, classification, retryCount) {
@@ -645,6 +676,7 @@ module.exports = {
   receiveEmail,
   registerMetadata,
   markIgnored,
+  rejectSourceEmail,
   markFailure,
   processPersistedRecord,
   claimDueRetries,
