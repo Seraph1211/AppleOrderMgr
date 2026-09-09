@@ -28,7 +28,8 @@
     "security:migrate": "node scripts/migrateSensitiveData.js",
     "docs:check:links": "node scripts/checkDocLinks.js",
     "docs:check:schema": "node scripts/check-doc-consistency.js",
-    "test:browser:orders": "node scripts/testOrdersBrowser.js"
+    "test:browser:orders": "node scripts/testOrdersBrowser.js",
+    "orders:revalidate-conflicts": "node scripts/revalidateOrderConflicts.js"
   },
   "keywords": [
     "apple",

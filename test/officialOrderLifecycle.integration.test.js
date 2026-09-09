@@ -123,6 +123,99 @@ const axios = require('axios');
     expect(JSON.stringify(logs)).not.toContain('synthetic@example.com');
   });
 
+  test.each([
+    ['微信', 'WECHAT'],
+    ['支付宝', 'ALIPAY'],
+  ])('官网抓取合并落库识别 %s 别名和名称表达', async (source, official) => {
+    const name = 'iPhone 17 Pro Max 深蓝色 256G';
+    const officialName = 'iPhone 17 Pro Max 256GB 深蓝色';
+    await order.update({
+      paymentMethod: source,
+      products: [{ name, model: 'MODEL-1', quantity: 2 }],
+    });
+    page('PAYMENT_EXPIRED_STORED_ORDER', json => {
+      json.orderDetail.billingInfo.d.paymentMethodPaymentTypeName = official;
+      const details = json.orderDetail.orderItems['orderItem-0000101'].orderItemDetails.d;
+      details.productName = officialName;
+      details.quantity = 2;
+    });
+    await crawler.crawlAndUpdateOrder(order.id, { manual: true });
+    await order.reload();
+    expect(order.validationIssues).toEqual([]);
+    expect(order.validationStatus).toBe('valid');
+    expect(order.status).toBe('payment_expired');
+    expect(order.autoRefreshEnabled).toBe(false);
+    expect(order.sourceSnapshot.paymentMethod).toBe(source);
+    expect(order.sourceSnapshot.products[0].name).toBe(name);
+    expect(order.paymentMethod).toBe(official);
+    expect(order.products[0].name).toBe(officialName);
+  });
+
+  test('历史表达冲突预览不写库，执行只更新校验字段且幂等', async () => {
+    const { revalidateOrders } = require('../scripts/revalidateOrderConflicts');
+    await order.update({
+      status: 'payment_expired',
+      validationStatus: 'abnormal',
+      anomalyDetectedAt: new Date('2026-09-08T01:00:00Z'),
+      lastCrawledAt: new Date('2026-09-08T02:00:00Z'),
+      validationIssues: [
+        {
+          type: 'source_conflict',
+          field: 'paymentMethod',
+          sourceValue: '支付宝',
+          officialValue: 'ALIPAY',
+        },
+      ],
+    });
+    const before = order.toJSON();
+    await revalidateOrders(models, [order.orderNumber]);
+    await order.reload();
+    expect(order.toJSON()).toEqual(before);
+    await revalidateOrders(models, [order.orderNumber], true);
+    await order.reload();
+    expect(order.toJSON()).toEqual({
+      ...before,
+      validationIssues: [],
+      validationStatus: 'valid',
+      anomalyDetectedAt: null,
+    });
+    await expect(revalidateOrders(models, [order.orderNumber], true)).resolves.toEqual([
+      { orderNumber: order.orderNumber, changed: false, executed: false, remainingIssues: 0 },
+    ]);
+  });
+
+  test('历史重校验后续写入失败时整批回滚', async () => {
+    const { revalidateOrders } = require('../scripts/revalidateOrderConflicts');
+    const issues = [
+      {
+        type: 'source_conflict',
+        field: 'paymentMethod',
+        sourceValue: '微信',
+        officialValue: 'WECHAT',
+      },
+    ];
+    await order.update({ validationIssues: issues, validationStatus: 'abnormal' });
+    sequence++;
+    const second = await models.Order.create({
+      orderNumber: `W${sequence}`,
+      products: [{ name: '测试商品', quantity: 1 }],
+      validationIssues: issues,
+    });
+    models.Order.addHook('beforeUpdate', 'failConflictRevalidation', record => {
+      if (record.id === second.id) throw new Error('synthetic write failure');
+    });
+    try {
+      await expect(
+        revalidateOrders(models, [order.orderNumber, second.orderNumber], true)
+      ).rejects.toThrow('synthetic write failure');
+      await order.reload();
+      expect(order.validationIssues).toEqual(issues);
+      expect(order.validationStatus).toBe('abnormal');
+    } finally {
+      models.Order.removeHook('beforeUpdate', 'failConflictRevalidation');
+    }
+  });
+
   test('付款后已排队自动任务和 page_open 无网络请求，手动仍可刷新', async () => {
     await order.update({ status: 'payment_received', paymentStatus: 'paid' });
     expect(await crawler.crawlAndUpdateOrder(order.id)).toMatchObject({ skipped: true });

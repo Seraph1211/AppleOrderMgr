@@ -1,4 +1,5 @@
 const { PAYMENT_WINDOW_MS } = require('../../constants/business');
+const { normalizeText: normalize, equivalentOrderValue } = require('./orderComparison');
 
 const APPLE_CURRENT_STATUS_MAP = Object.freeze({
   PAYMENT_DUE_STORED_ORDER: 'payment_due',
@@ -28,11 +29,6 @@ const PAID_LIFECYCLE_STATUSES = new Set([
   'completed',
 ]);
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key);
-const normalize = value =>
-  String(value ?? '')
-    .normalize('NFKC')
-    .replace(/\s+/g, '')
-    .toLowerCase();
 
 /** 只保留有界纯文本业务字段，不保存 URL、令牌或对象。 */
 function safeText(value, maxLength = 255) {
@@ -248,26 +244,45 @@ function captureSource(order) {
 
 function matchProducts(reference, incoming) {
   const used = new Set();
-  const matches = incoming.map(product => {
-    let candidates = reference
-      .map((candidate, index) => ({ candidate, index }))
-      .filter(({ index }) => !used.has(index));
-    const models = candidates.filter(
-      ({ candidate }) =>
-        product.model && candidate.model && normalize(product.model) === normalize(candidate.model)
-    );
-    if (models.length) {
-      candidates = models;
-    } else {
-      candidates = candidates.filter(
-        ({ candidate }) =>
-          product.name && candidate.name && normalize(product.name) === normalize(candidate.name)
-      );
-    }
-    if (candidates.length !== 1) return -1;
-    used.add(candidates[0].index);
-    return candidates[0].index;
-  });
+  const matches = incoming.map(() => -1);
+  // 先完成全部 SKU 匹配，再比较名称，避免前面的缺 SKU 商品占用后面的精确匹配。
+  for (const mode of ['model', 'name']) {
+    const candidates = incoming.map((product, incomingIndex) => {
+      if (matches[incomingIndex] !== -1) return [];
+      let indexes = reference
+        .map((_candidate, index) => index)
+        .filter(index => {
+          if (used.has(index)) return false;
+          const candidate = reference[index];
+          const bothModels = normalize(product.model) && normalize(candidate.model);
+          if (mode === 'model') {
+            return bothModels && normalize(product.model) === normalize(candidate.model);
+          }
+          if (bothModels && normalize(product.model) !== normalize(candidate.model)) return false;
+          return (
+            normalize(product.name) &&
+            normalize(candidate.name) &&
+            equivalentOrderValue('name', product.name, candidate.name)
+          );
+        });
+      if (mode === 'model' && indexes.length > 1) {
+        indexes = indexes.filter(
+          index =>
+            normalize(product.name) &&
+            normalize(reference[index].name) &&
+            equivalentOrderValue('name', product.name, reference[index].name)
+        );
+      }
+      return indexes;
+    });
+    candidates.forEach((indexes, incomingIndex) => {
+      if (indexes.length !== 1) return;
+      const [index] = indexes;
+      if (candidates.filter(other => other.includes(index)).length !== 1) return;
+      matches[incomingIndex] = index;
+      used.add(index);
+    });
+  }
   const missing = matches.map((index, i) => (index < 0 ? i : -1)).filter(i => i >= 0);
   const remaining = reference.map((_product, i) => i).filter(i => !used.has(i));
   if (missing.length === 1 && remaining.length === 1) matches[missing[0]] = remaining[0];
@@ -314,7 +329,11 @@ function mergeOfficialOrder(order, data, observedAt = new Date()) {
       sourceValue !== undefined &&
       sourceValue !== null &&
       sourceValue !== '' &&
-      normalize(sourceValue) !== normalize(officialValue)
+      !equivalentOrderValue(
+        /^products\.\d+\.name$/.test(field) ? 'name' : field,
+        sourceValue,
+        officialValue
+      )
     ) {
       issues.push({
         type: 'source_conflict',
