@@ -88,7 +88,7 @@ async function loadRecord(id) {
   const record = await EmailLog.findByPk(id, {
     include: [
       { model: Order, as: 'order', attributes: ['id', 'orderNumber'] },
-      { model: User, as: 'resolver', attributes: ['id', 'username'] },
+      { model: User, as: 'resolver', paranoid: false, attributes: ['id', 'username'] },
     ],
   });
   if (!record) {
@@ -136,7 +136,7 @@ async function listRecords(req, res) {
 
     const { count, rows } = await EmailLog.findAndCountAll({
       where,
-      include: [{ model: User, as: 'resolver', attributes: ['id', 'username'] }],
+      include: [{ model: User, as: 'resolver', paranoid: false, attributes: ['id', 'username'] }],
       order: [
         [
           literal(`CASE "EmailLog"."status"

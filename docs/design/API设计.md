@@ -236,3 +236,8 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 ### 过期任务手动分配（2026-09-09）
 
 `PUT /api/payment-dispatch/tasks/assignee` 及单项兼容入口允许管理员手动分配／转派已过期的现有任务，`reason` 选填、最多 500 字；存在转派仍要求 `handoffConfirmed=true`。仅解除过期拦截，不放宽已付、退款、取消、状态待核实、未知付款截止和链接身份校验；容量、版本及整批原子性保持。自动分配不纳入过期订单。审计记录可空原因和 `expiredAtAssignment`，不修改订单官网状态或付款时间。
+
+## 人员批量配置与账号软删除（2026-09-09）
+
+- `PUT /api/payment-dispatch/staff`：管理员具备 payment_dispatch.configure，提交 `{ staff: [{ userId, maxActiveTasks, autoAssignEnabled, expectedVersion }] }`，仅提交修改行，1–1000 人且 ID 不重复。整批在同一事务及调度锁下校验版本、权限和有效账号；任一失败全部回滚。保留单人兼容入口。
+- `DELETE /api/users/:id` 改为软删除。禁止删除自己和最后一个有效管理员；有未交接任务返回 409 及任务数量，历史审计记录不再阻止删除。删除后隐藏账号、拒绝登录及旧 Token、关闭接单，保留历史引用和用户名占用。

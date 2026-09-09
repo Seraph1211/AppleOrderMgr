@@ -66,6 +66,7 @@ describeIntegration('账号管理隔离库验收', () => {
     app.use('/api/auth', require('../src/routes/auth'));
     app.use('/api', require('../src/middleware/authMiddleware').authenticate);
     app.use('/api/users', require('../src/routes/users'));
+    app.use('/api/payment-dispatch', require('../src/routes/paymentDispatch'));
     app.use('/api/system', require('../src/routes/system'));
     app.use('/api/email-processing', require('../src/routes/emailProcessing'));
     app.use('/api/dashboard', require('../src/routes/dashboardRoutes'));
@@ -523,6 +524,153 @@ describeIntegration('账号管理隔离库验收', () => {
     },
     90000
   );
+
+  test('批量人员配置一次保存多行，冲突时配置与审计整批回滚', async () => {
+    const admin = await freshUser('admin');
+    const one = await freshUser('admin');
+    const two = await freshUser('admin');
+    const token = (await login(admin)).body.data.token;
+    const rows = [one, two].map(user => ({
+      userId: user.id,
+      maxActiveTasks: 10,
+      autoAssignEnabled: true,
+      expectedVersion: 0,
+    }));
+    const saved = await request('/api/payment-dispatch/staff', {
+      token,
+      method: 'PUT',
+      body: { staff: rows },
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.data.count).toBe(2);
+    const eventCount = await models.PaymentDispatchEvent.count();
+    const failed = await request('/api/payment-dispatch/staff', {
+      token,
+      method: 'PUT',
+      body: {
+        staff: rows.map((row, index) => ({
+          ...row,
+          maxActiveTasks: 20,
+          expectedVersion: index === 0 ? 1 : 0,
+        })),
+      },
+    });
+    expect(failed.status).toBe(409);
+    expect(failed.body.error.code).toBe('CONCURRENT_MODIFICATION');
+    for (const user of [one, two])
+      expect(
+        (await models.PaymentStaffSetting.findOne({ where: { userId: user.id } })).maxActiveTasks
+      ).toBe(10);
+    expect(await models.PaymentDispatchEvent.count()).toBe(eventCount);
+    const invalid = await request('/api/payment-dispatch/staff', {
+      token,
+      method: 'PUT',
+      body: { staff: [rows[0], rows[0]] },
+    });
+    expect(invalid.status).toBe(400);
+    const noPermission = await freshUser();
+    const denied = await request('/api/payment-dispatch/staff', {
+      token: (await login(noPermission)).body.data.token,
+      method: 'PUT',
+      body: { staff: rows },
+    });
+    expect(denied.status).toBe(403);
+  });
+
+  test('有历史授权及已完成任务的账号可以软删除，保留历史并撤销所有会话和接单', async () => {
+    const admin = await freshUser('admin');
+    const user = await freshUser();
+    const token = (await login(admin)).body.data.token;
+    const userToken = (await login(user)).body.data.token;
+    await models.UserPermissionEvent.create({
+      userId: user.id,
+      actorUserId: admin.id,
+      beforeVersion: 0,
+      afterVersion: 1,
+      source: 'create_user',
+    });
+    await models.PaymentStaffSetting.create({
+      userId: user.id,
+      autoAssignEnabled: true,
+      maxActiveTasks: 10,
+    });
+    const order = await models.Order.create({
+      orderNumber: `W${String(++sequence).slice(-10)}`,
+      products: [{ name: '合成商品', quantity: 1 }],
+      status: 'pending',
+      orderDate: new Date(),
+    });
+    const task = await models.PaymentTask.create({
+      orderId: order.id,
+      assigneeUserId: user.id,
+      processingStatus: 'completed',
+    });
+    const deleted = await request(`/api/users/${user.id}`, { token, method: 'DELETE' });
+    expect(deleted.status).toBe(200);
+    expect(await models.User.findByPk(user.id)).toBeNull();
+    const retained = await models.User.findByPk(user.id, { paranoid: false });
+    expect(retained.deletedAt).toBeInstanceOf(Date);
+    expect(retained.activeSessions).toEqual([]);
+    expect(retained.status).toBe('locked');
+    expect(
+      (await models.PaymentStaffSetting.findOne({ where: { userId: user.id } })).autoAssignEnabled
+    ).toBe(false);
+    expect(await models.UserPermissionEvent.count({ where: { userId: user.id } })).toBe(1);
+    expect(
+      (
+        await models.PaymentTask.findByPk(task.id, {
+          include: [{ model: models.User, as: 'assignee', paranoid: false }],
+        })
+      ).assignee.username
+    ).toBe(user.username);
+    expect((await request('/api/auth/me', { token: userToken })).status).toBe(401);
+    expect((await login(user)).status).toBe(401);
+    const overview = await request('/api/payment-dispatch/overview', { token });
+    expect(overview.body.data.staff.some(row => row.id === user.id)).toBe(false);
+    const reserved = await request('/api/users', {
+      token,
+      method: 'POST',
+      body: { username: user.username, password, role: 'operator' },
+    });
+    expect(reserved.status).toBe(400);
+    expect((await request(`/api/users/${user.id}`, { token, method: 'DELETE' })).status).toBe(404);
+  });
+
+  test('锁定不等于完成交接，三种未完成状态仍拒绝删除；禁止删除自己', async () => {
+    const admin = await freshUser('admin');
+    const user = await freshUser('operator', { status: 'locked' });
+    const token = (await login(admin)).body.data.token;
+    const order = await models.Order.create({
+      orderNumber: `W${String(++sequence).slice(-10)}`,
+      products: [{ name: '合成商品', quantity: 1 }],
+      status: 'pending',
+      orderDate: new Date(),
+    });
+    const task = await models.PaymentTask.create({ orderId: order.id, assigneeUserId: user.id });
+    for (const processingStatus of ['pending', 'processing', 'exception']) {
+      await task.update({ processingStatus });
+      const result = await request(`/api/users/${user.id}`, { token, method: 'DELETE' });
+      expect(result.status).toBe(409);
+      expect(result.body.error.code).toBe('USER_HAS_ACTIVE_TASKS');
+      expect(await models.User.findByPk(user.id)).not.toBeNull();
+    }
+    expect((await request(`/api/users/${admin.id}`, { token, method: 'DELETE' })).status).toBe(400);
+  });
+
+  test('软删除迁移 down/up 保留原账号数据', async () => {
+    const migration = require('../migrations/20260909000005-add-user-soft-delete');
+    const qi = models.sequelize.getQueryInterface();
+    const [before] = await models.sequelize.query(
+      'SELECT id, username, password FROM users ORDER BY id'
+    );
+    await migration.down(qi);
+    expect((await qi.describeTable('users')).deleted_at).toBeUndefined();
+    await migration.up(qi, models.Sequelize);
+    const [after] = await models.sequelize.query(
+      'SELECT id, username, password FROM users ORDER BY id'
+    );
+    expect(after).toEqual(before);
+  });
 
   test('三会话迁移回退再升级保留最新登录和用户资料，约束拒绝第四条', async () => {
     const user = await freshUser();

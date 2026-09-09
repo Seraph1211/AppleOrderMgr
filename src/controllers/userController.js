@@ -1,14 +1,6 @@
 const { accountId, normalizeNickname } = require('../utils/accountIdentity');
-const {
-  User,
-  PaymentTask,
-  PaymentTaskEvent,
-  UserPermissionEvent,
-  OrderPayerEvent,
-  PaymentStaffSetting,
-  PaymentDispatchEvent,
-  sequelize,
-} = require('../models');
+const { User, sequelize } = require('../models');
+const { softDeleteUser } = require('../services/accountService');
 const { Op } = require('sequelize');
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
@@ -164,12 +156,13 @@ async function createUser(req, res) {
     // 检查用户名是否已存在
     const existingUser = await User.findOne({
       where: { username },
+      paranoid: false,
     });
 
     if (existingUser) {
       return res.status(400).json({
         success: false,
-        message: '用户名已存在',
+        message: '用户名已存在或已被历史账号占用',
       });
     }
 
@@ -334,87 +327,12 @@ async function updateUser(req, res) {
  */
 async function deleteUser(req, res) {
   try {
-    const { id } = req.params;
-    const currentUserId = req.user.id;
-
-    // 不能删除自己
-    if (parseInt(id, 10) === currentUserId) {
-      return res.status(400).json({
-        success: false,
-        message: '不能删除当前登录的用户',
-      });
-    }
-
-    // 查找用户
-    const user = await User.findByPk(id);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: '用户不存在',
-      });
-    }
-
-    // 检查是否是最后一个管理员
-    if (user.role === 'admin') {
-      const adminCount = await User.count({
-        where: { role: 'admin' },
-      });
-
-      if (adminCount <= 1) {
-        return res.status(400).json({
-          success: false,
-          message: '不能删除最后一个管理员账号',
-        });
-      }
-    }
-
-    const referenceCounts = await Promise.all([
-      PaymentTask.count({ where: { assigneeUserId: user.id } }),
-      PaymentStaffSetting.count({ where: { userId: user.id } }),
-      UserPermissionEvent.count({
-        where: { [Op.or]: [{ userId: user.id }, { actorUserId: user.id }] },
-      }),
-      PaymentTaskEvent.count({
-        where: {
-          [Op.or]: [{ actorUserId: user.id }, { fromUserId: user.id }, { toUserId: user.id }],
-        },
-      }),
-      OrderPayerEvent.count({ where: { actorUserId: user.id } }),
-      PaymentDispatchEvent.count({ where: { actorUserId: user.id } }),
-    ]);
-    if (referenceCounts.some(count => count > 0)) {
-      return res.status(409).json({
-        success: false,
-        message: '用户已被付款任务或审计记录引用，请锁定账号并完成交接',
-      });
-    }
-
-    // 删除用户
-    await user.destroy();
-
-    logger.info('删除用户成功', {
-      userId: user.id,
-      username: user.username,
-      role: user.role,
-      deletedBy: req.user.username,
-    });
-
-    return res.status(200).json({
-      success: true,
-      message: '用户已删除',
-    });
+    const user = await softDeleteUser(Number(req.params.id), req.user.id);
+    req.auditTarget = `账号 ${accountId(user.id)}（${user.username}）`;
+    return res.json({ success: true, message: '账号已删除，历史记录保留' });
   } catch (error) {
-    logger.error('删除用户失败', {
-      userId: req.params.id,
-      error: error.message,
-      stack: error.stack,
-    });
-
-    return res.status(500).json({
-      success: false,
-      message: '删除用户失败',
-    });
+    logger.error('删除用户失败', { userId: req.params.id, error: error.message });
+    throw error;
   }
 }
 

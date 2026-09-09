@@ -23,6 +23,11 @@ router.put(
   asyncHandler(controller.updateSettings)
 );
 router.put(
+  '/staff',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE),
+  asyncHandler(controller.updateStaffSettingsBatch)
+);
+router.put(
   '/staff/:userId',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE),
   asyncHandler(controller.updateStaffSettings)

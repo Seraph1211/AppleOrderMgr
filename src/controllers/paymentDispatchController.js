@@ -1,4 +1,5 @@
 const paymentDispatchService = require('../services/paymentDispatchService');
+const logger = require('../utils/logger');
 
 /** 查询调度概览。 */
 async function getOverview(_req, res) {
@@ -27,6 +28,17 @@ async function updateStaffSettings(req, res) {
     req.user.id
   );
   return res.json({ success: true, data });
+}
+
+/** 原子保存多个人员配置。 */
+async function updateStaffSettingsBatch(req, res) {
+  try {
+    const data = await paymentDispatchService.updateStaffSettingsBatch(req.body.staff, req.user.id);
+    return res.json({ success: true, data });
+  } catch (error) {
+    logger.error('批量更新人员配置失败', { actorUserId: req.user.id, error: error.message });
+    throw error;
+  }
 }
 
 /** 手动分配或转派任务。 */
@@ -81,6 +93,7 @@ module.exports = {
   listTasks,
   updateSettings,
   updateStaffSettings,
+  updateStaffSettingsBatch,
   assignTasks,
   assignTask,
   refreshTasks,

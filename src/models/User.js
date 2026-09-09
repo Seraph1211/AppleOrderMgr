@@ -40,6 +40,7 @@ module.exports = sequelize => {
         },
       },
       nickname: { type: DataTypes.STRING(50), allowNull: true },
+      deletedAt: { type: DataTypes.DATE, allowNull: true, field: 'deleted_at' },
       activeSessions: {
         type: DataTypes.JSONB,
         allowNull: false,
@@ -149,6 +150,7 @@ module.exports = sequelize => {
     },
     {
       tableName: 'users',
+      paranoid: true,
       timestamps: true,
       underscored: true,
       indexes: [

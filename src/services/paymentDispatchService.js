@@ -246,51 +246,105 @@ async function updateDispatchSettings(input, actorUserId) {
  * @param {number} userId - 用户 ID
  * @param {Object} input - 配置
  * @param {number} actorUserId - 管理员 ID
+ * @param {Object|null} transaction - 可选批量保存事务
  * @returns {Promise<Object>} 更新后配置
  */
-async function updateStaffSettings(userId, input, actorUserId) {
-  const expectedVersion = validateExpectedVersion(input.expectedVersion);
-  const maxActiveTasks = Number(input.maxActiveTasks);
-  if (!Number.isInteger(maxActiveTasks) || maxActiveTasks < 0 || maxActiveTasks > 1000) {
-    throw ApiError.badRequest('maxActiveTasks 必须是 0-1000 的整数');
-  }
-  return await sequelize.transaction(async transaction => {
-    await lockDispatch(transaction);
-    const user = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!user) throw ApiError.badRequest('付款执行人员不存在');
-    const permissions = await getEffectivePermissions(user, { transaction });
-    const hasFullSet = PAYMENT_EXECUTION_PERMISSIONS.every(code => permissions.includes(code));
-    if (input.autoAssignEnabled && (!hasFullSet || user.status !== 'active')) {
-      throw ApiError.badRequest('开启自动接单前必须具备完整付款权限、账号正常');
+async function updateStaffSettings(userId, input, actorUserId, transaction = null) {
+  try {
+    const expectedVersion = validateExpectedVersion(input.expectedVersion);
+    const maxActiveTasks = Number(input.maxActiveTasks);
+    if (!Number.isInteger(maxActiveTasks) || maxActiveTasks < 0 || maxActiveTasks > 1000) {
+      throw ApiError.badRequest('maxActiveTasks 必须是 0-1000 的整数');
     }
-    const [setting] = await PaymentStaffSetting.findOrCreate({
-      where: { userId },
-      defaults: { userId, maxActiveTasks: 0, autoAssignEnabled: false, updatedBy: actorUserId },
-      transaction,
+    const apply = async transaction => {
+      try {
+        const user = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
+        if (!user) throw ApiError.badRequest('付款执行人员不存在');
+        const permissions = await getEffectivePermissions(user, { transaction });
+        const hasFullSet = PAYMENT_EXECUTION_PERMISSIONS.every(code => permissions.includes(code));
+        if (input.autoAssignEnabled && (!hasFullSet || user.status !== 'active')) {
+          throw ApiError.badRequest('开启自动接单前必须具备完整付款权限、账号正常');
+        }
+        const [setting] = await PaymentStaffSetting.findOrCreate({
+          where: { userId },
+          defaults: { userId, maxActiveTasks: 0, autoAssignEnabled: false, updatedBy: actorUserId },
+          transaction,
+        });
+        await setting.reload({ transaction, lock: transaction.LOCK.UPDATE });
+        if (setting.version !== expectedVersion) {
+          throw ApiError.conflict(
+            '人员配置已被更新',
+            { currentVersion: setting.version },
+            'CONCURRENT_MODIFICATION'
+          );
+        }
+        setting.autoAssignEnabled = Boolean(input.autoAssignEnabled);
+        setting.maxActiveTasks = maxActiveTasks;
+        setting.updatedBy = actorUserId;
+        setting.version += 1;
+        await setting.save({ transaction });
+        await PaymentDispatchEvent.create(
+          {
+            eventType: 'staff_settings_updated',
+            actorUserId,
+            details: { userId, autoAssignEnabled: setting.autoAssignEnabled, maxActiveTasks },
+          },
+          { transaction }
+        );
+        return setting;
+      } catch (error) {
+        logger.error('更新人员配置失败', { userId, error: error.message });
+        throw error;
+      }
+    };
+    if (transaction) return await apply(transaction);
+    return await sequelize.transaction(async currentTransaction => {
+      try {
+        await lockDispatch(currentTransaction);
+        return await apply(currentTransaction);
+      } catch (error) {
+        logger.error('人员配置事务失败', { userId, error: error.message });
+        throw error;
+      }
     });
-    await setting.reload({ transaction, lock: transaction.LOCK.UPDATE });
-    if (setting.version !== expectedVersion) {
-      throw ApiError.conflict(
-        '人员配置已被更新',
-        { currentVersion: setting.version },
-        'CONCURRENT_MODIFICATION'
-      );
-    }
-    setting.autoAssignEnabled = Boolean(input.autoAssignEnabled);
-    setting.maxActiveTasks = maxActiveTasks;
-    setting.updatedBy = actorUserId;
-    setting.version += 1;
-    await setting.save({ transaction });
-    await PaymentDispatchEvent.create(
-      {
-        eventType: 'staff_settings_updated',
-        actorUserId,
-        details: { userId, autoAssignEnabled: setting.autoAssignEnabled, maxActiveTasks },
-      },
-      { transaction }
-    );
-    return setting;
-  });
+  } catch (error) {
+    logger.error('保存人员配置失败', { userId, error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * 同一事务保存全部修改人员，版本冲突时全部回滚。
+ * @param {Object[]} staff - 修改行
+ * @param {number} actorUserId - 管理员 ID
+ * @returns {Promise<Object>} 批量结果
+ */
+async function updateStaffSettingsBatch(staff, actorUserId) {
+  try {
+    if (!Array.isArray(staff) || !staff.length || staff.length > 1000)
+      throw ApiError.badRequest('请选择 1–1000 个需要修改的人员');
+    const ids = staff.map(row => row?.userId);
+    if (ids.some(id => !Number.isInteger(id) || id <= 0) || new Set(ids).size !== ids.length)
+      throw ApiError.badRequest('人员 ID 无效或重复');
+    if (staff.some(row => typeof row.autoAssignEnabled !== 'boolean'))
+      throw ApiError.badRequest('自动接单必须为开或关');
+    return await sequelize.transaction(async transaction => {
+      try {
+        await lockDispatch(transaction);
+        const items = [];
+        for (const row of [...staff].sort((a, b) => a.userId - b.userId)) {
+          items.push(await updateStaffSettings(row.userId, row, actorUserId, transaction));
+        }
+        return { count: items.length, items };
+      } catch (error) {
+        logger.error('批量人员配置事务失败', { actorUserId, error: error.message });
+        throw error;
+      }
+    });
+  } catch (error) {
+    logger.error('批量人员配置失败', { actorUserId, error: error.message });
+    throw error;
+  }
 }
 
 async function assertAssignableUser(userId, transaction, requireAuto = false) {
@@ -515,7 +569,7 @@ async function assignTasks(input, actorUserId) {
           'updatedAt',
         ],
       },
-      { model: User, as: 'assignee', attributes: ['id', 'username'] },
+      { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
     ],
     order: [['id', 'ASC']],
   });
@@ -666,7 +720,7 @@ async function listDispatchTasks(query = {}) {
           ],
           where: orderWhere,
         },
-        { model: User, as: 'assignee', attributes: ['id', 'username'] },
+        { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
       ],
       order: [
         ['deadlineAt', 'ASC'],
@@ -902,6 +956,7 @@ module.exports = {
   getDispatchOverview,
   updateDispatchSettings,
   updateStaffSettings,
+  updateStaffSettingsBatch,
   assignTasks,
   assignTask,
   refreshTasks,

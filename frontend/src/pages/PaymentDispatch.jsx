@@ -15,7 +15,7 @@ import {
   reopenPaymentTask,
   runPaymentDispatchScan,
   updatePaymentDispatchSettings,
-  updatePaymentStaffSettings,
+  updatePaymentStaffSettingsBatch,
 } from '../api/paymentDispatchApi';
 
 import { ORDER_STATUS_LABELS as OFFICIAL_STATUS_LABELS } from '../constants/orderStatus';
@@ -125,6 +125,9 @@ export default function PaymentDispatch() {
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const loadRequest = useRef(0);
   const [staffDrafts, setStaffDrafts] = useState({});
+  const [staffRows, setStaffRows] = useState([]);
+  const [staffModalOpen, setStaffModalOpen] = useState(false);
+  const [staffError, setStaffError] = useState('');
   const [filterDrafts, setFilterDrafts] = useState(INITIAL_FILTERS);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
@@ -167,18 +170,6 @@ export default function PaymentDispatch() {
         const serverTime = new Date(tasksResponse.data.serverTime);
         setNow(serverTime);
         setServerTimeOffsetMs(serverTime.getTime() - Date.now());
-        if (!quiet)
-          setStaffDrafts(
-            Object.fromEntries(
-              overviewResponse.data.staff.map(item => [
-                item.id,
-                {
-                  autoAssignEnabled: item.autoAssignEnabled,
-                  maxActiveTasks: item.maxActiveTasks,
-                },
-              ])
-            )
-          );
         const visibleIds = new Set(tasksResponse.data.items.map(item => item.id));
         setSelectedTaskIds(previous => previous.filter(id => visibleIds.has(id)));
       } catch (loadError) {
@@ -300,17 +291,99 @@ export default function PaymentDispatch() {
     }
   };
 
+  const changedStaff = staffRows.filter(person => hasStaffChanges(person, staffDrafts[person.id]));
+  const openStaffSettings = () => {
+    const rows = overview?.staff || [];
+    setStaffRows(rows);
+    setStaffDrafts(
+      Object.fromEntries(
+        rows.map(person => [
+          person.id,
+          {
+            maxActiveTasks: person.maxActiveTasks,
+            autoAssignEnabled: person.autoAssignEnabled,
+            expectedVersion: person.version,
+          },
+        ])
+      )
+    );
+    setStaffError('');
+    setStaffModalOpen(true);
+  };
+  const saveStaffSettings = async event => {
+    event.preventDefault();
+    if (!changedStaff.length || busyAction) return;
+    setBusyAction('staff-batch');
+    setStaffError('');
+    try {
+      await updatePaymentStaffSettingsBatch(
+        changedStaff.map(person => ({
+          userId: person.id,
+          ...staffDrafts[person.id],
+          maxActiveTasks: Number(staffDrafts[person.id].maxActiveTasks),
+        }))
+      );
+      setStaffModalOpen(false);
+      setNotice(`已保存 ${changedStaff.length} 人的接单设置`);
+      await loadCurrent.current();
+    } catch (saveError) {
+      setStaffError(
+        `${saveError.message}。保存未确认，草稿已保留。如配置已被他人修改，请取消后刷新页面重试。`
+      );
+    } finally {
+      setBusyAction('');
+    }
+  };
+  useEffect(() => {
+    if (!staffModalOpen) return undefined;
+    const onKeyDown = event => {
+      if (event.key === 'Escape' && !busyAction) setStaffModalOpen(false);
+      if (event.key === 'Tab') {
+        const dialog = document.getElementById('staff-modal-title')?.closest('[role="dialog"]');
+        const focusable = Array.from(
+          dialog?.querySelectorAll('button:not(:disabled), input:not(:disabled)') || []
+        );
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
+      }
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [staffModalOpen, busyAction]);
+
   if (loading && !overview)
     return <div className="card text-center text-gray-500 py-12">加载中...</div>;
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
-          <ListChecks className="w-6 h-6 text-primary" />
-          付款任务调度
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">配置任务范围、人员容量并完成批量分配</p>
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <ListChecks className="w-6 h-6 text-primary" />
+            付款任务调度
+          </h1>
+          <p className="text-sm text-gray-500 mt-1">配置任务范围、人员容量并完成批量分配</p>
+        </div>
+        <button
+          className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
+          disabled={loading || Boolean(busyAction)}
+          onClick={openStaffSettings}
+        >
+          <Users className="w-4 h-4" />
+          人员与容量
+        </button>
       </div>
       {error && (
         <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3 flex items-center justify-between gap-3">
@@ -394,115 +467,6 @@ export default function PaymentDispatch() {
               </button>
             )}
           </div>
-        </div>
-      </div>
-
-      <div className="card p-0 overflow-hidden hover:shadow-sm">
-        <div className="px-5 py-4 border-b border-gray-200">
-          <h2 className="font-semibold">人员与容量</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px]">
-            <thead className="bg-gray-50">
-              <tr>
-                {['用户', '权限完整', '当前负载', '上限', '自动接单', '操作'].map(title => (
-                  <th
-                    key={title}
-                    title={
-                      title === '下单时间'
-                        ? '北京时间，邮件或人工录入来源；缺失时采用官网精确时间'
-                        : undefined
-                    }
-                    className={`px-4 py-3 text-sm font-medium text-gray-500 ${
-                      title === '操作' ? 'text-right' : 'text-left'
-                    }`}
-                  >
-                    {title}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {overview?.staff.map(person => (
-                <tr
-                  key={person.id}
-                  className="border-t border-gray-100 transition-colors hover:bg-gray-50"
-                >
-                  <td className="px-4 py-3 font-medium">
-                    {person.nickname || person.username}（{person.username}）
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`badge ${person.hasExecutionPermissions ? 'badge-success' : 'badge-warning'}`}
-                    >
-                      {person.hasExecutionPermissions ? '完整' : '缺失'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-sm">
-                    {person.activeCount} / {person.maxActiveTasks}
-                  </td>
-                  <td className="px-4 py-3">
-                    <input
-                      type="number"
-                      min="0"
-                      max="1000"
-                      className="input w-24"
-                      disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
-                      value={staffDrafts[person.id]?.maxActiveTasks ?? 0}
-                      onChange={event =>
-                        setStaffDrafts(previous => ({
-                          ...previous,
-                          [person.id]: {
-                            ...previous[person.id],
-                            maxActiveTasks: Number(event.target.value),
-                          },
-                        }))
-                      }
-                    />
-                  </td>
-                  <td className="px-4 py-3">
-                    <ToggleSwitch
-                      ariaLabel={`允许 ${person.nickname || person.username}（${person.username}） 自动接单`}
-                      disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
-                      checked={Boolean(staffDrafts[person.id]?.autoAssignEnabled)}
-                      onChange={autoAssignEnabled =>
-                        setStaffDrafts(previous => ({
-                          ...previous,
-                          [person.id]: {
-                            ...previous[person.id],
-                            autoAssignEnabled,
-                          },
-                        }))
-                      }
-                    />
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    {can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE) && (
-                      <button
-                        className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
-                        disabled={
-                          Boolean(busyAction) || !hasStaffChanges(person, staffDrafts[person.id])
-                        }
-                        onClick={() =>
-                          runAction(
-                            `staff-${person.id}`,
-                            () =>
-                              updatePaymentStaffSettings(person.id, {
-                                ...staffDrafts[person.id],
-                                expectedVersion: person.version,
-                              }),
-                            `${person.nickname || person.username}（${person.username}） 的接单设置已保存`
-                          )
-                        }
-                      >
-                        {busyAction === `staff-${person.id}` ? '保存中...' : '保存'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
       </div>
 
@@ -846,6 +810,159 @@ export default function PaymentDispatch() {
           }}
           pageSizeOptions={[10, 20, 50, 100]}
         />
+      )}
+
+      {staffModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <form
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="staff-modal-title"
+            onSubmit={saveStaffSettings}
+            className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden"
+          >
+            <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between gap-4 shrink-0">
+              <div>
+                <h2 id="staff-modal-title" className="text-lg font-semibold text-gray-900">
+                  人员与容量
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  统一配置接单上限与自动接单，修改后点击保存全部。
+                </p>
+              </div>
+              <button
+                type="button"
+                autoFocus
+                aria-label="关闭人员配置"
+                disabled={Boolean(busyAction)}
+                className={`btn btn-secondary p-2 ${BUTTON_LAYOUT_CLASS}`}
+                onClick={() => setStaffModalOpen(false)}
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-auto min-h-0">
+              {staffError && (
+                <div
+                  role="alert"
+                  className="m-4 p-3 rounded-lg bg-red-50 text-red-700 text-sm break-words"
+                >
+                  {staffError}
+                </div>
+              )}
+              <table className="w-full min-w-[640px]">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {['用户', '权限完整', '当前负载', '上限', '自动接单'].map(title => (
+                      <th
+                        key={title}
+                        title={
+                          title === '下单时间'
+                            ? '北京时间，邮件或人工录入来源；缺失时采用官网精确时间'
+                            : undefined
+                        }
+                        className={`px-4 py-3 text-sm font-medium text-gray-500 ${
+                          title === '操作' ? 'text-right' : 'text-left'
+                        }`}
+                      >
+                        {title}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {staffRows.map(person => (
+                    <tr
+                      key={person.id}
+                      className="border-t border-gray-100 transition-colors hover:bg-gray-50"
+                    >
+                      <td className="px-4 py-3 font-medium">
+                        {person.nickname || person.username}（{person.username}）
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`badge ${person.hasExecutionPermissions ? 'badge-success' : 'badge-warning'}`}
+                        >
+                          {person.hasExecutionPermissions ? '完整' : '缺失'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        {person.activeCount} / {person.maxActiveTasks}
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          aria-label={`${person.username} 的接单上限`}
+                          type="number"
+                          required
+                          min="0"
+                          max="1000"
+                          className="input w-24"
+                          disabled={
+                            Boolean(busyAction) || !can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)
+                          }
+                          value={staffDrafts[person.id]?.maxActiveTasks ?? 0}
+                          onChange={event =>
+                            setStaffDrafts(previous => ({
+                              ...previous,
+                              [person.id]: {
+                                ...previous[person.id],
+                                maxActiveTasks: event.target.value,
+                              },
+                            }))
+                          }
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <ToggleSwitch
+                          ariaLabel={`允许 ${person.nickname || person.username}（${person.username}） 自动接单`}
+                          disabled={
+                            Boolean(busyAction) || !can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)
+                          }
+                          checked={Boolean(staffDrafts[person.id]?.autoAssignEnabled)}
+                          onChange={autoAssignEnabled =>
+                            setStaffDrafts(previous => ({
+                              ...previous,
+                              [person.id]: {
+                                ...previous[person.id],
+                                autoAssignEnabled,
+                              },
+                            }))
+                          }
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!staffRows.length && (
+                <p className="py-10 text-center text-sm text-gray-500">暂无人员</p>
+              )}
+            </div>
+            <div className="px-5 py-4 border-t border-gray-200 flex flex-wrap items-center justify-between gap-3 shrink-0">
+              <span className="text-sm text-gray-500">已修改 {changedStaff.length} 人</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
+                  disabled={Boolean(busyAction)}
+                  onClick={() => setStaffModalOpen(false)}
+                >
+                  取消
+                </button>
+                {can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE) && (
+                  <button
+                    type="submit"
+                    className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
+                    disabled={Boolean(busyAction) || !changedStaff.length}
+                  >
+                    <Save className="w-4 h-4" />
+                    {busyAction === 'staff-batch' ? '保存中...' : '保存全部'}
+                  </button>
+                )}
+              </div>
+            </div>
+          </form>
+        </div>
       )}
 
       {assignModalOpen && (

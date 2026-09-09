@@ -85,7 +85,7 @@ export default function Users() {
   const handleDelete = user => {
     setConfirmModal({
       title: '确认删除',
-      message: `确定要删除用户 "${user.username}" 吗？此操作不可恢复。`,
+      message: `确定要删除用户 "${user.username}" 吗？删除后将禁止登录并从列表隐藏，历史记录会保留。`,
       onConfirm: async () => {
         try {
           const response = await client.delete(`/users/${user.id}`);

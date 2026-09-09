@@ -81,7 +81,7 @@ function includeTaskRelations() {
         'updatedAt',
       ],
     },
-    { model: User, as: 'assignee', attributes: ['id', 'username'] },
+    { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
   ];
 }
 

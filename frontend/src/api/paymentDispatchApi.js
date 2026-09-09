@@ -23,3 +23,6 @@ export const reopenPaymentTask = (taskId, payload, idempotencyKey) =>
     headers: { 'Idempotency-Key': idempotencyKey },
   });
 export const runPaymentDispatchScan = () => client.post('/payment-dispatch/scan');
+
+export const updatePaymentStaffSettingsBatch = staff =>
+  client.put('/payment-dispatch/staff', { staff });
