@@ -226,6 +226,11 @@ export default function PaymentDispatch() {
     if (!assigneeUserId) return false;
     return selectedTasks.some(task => task.assignee && Number(task.assignee.id) !== assigneeUserId);
   }, [assignmentDraft.assigneeUserId, selectedTasks]);
+  const expiredAssignmentCount = selectedTasks.filter(
+    task =>
+      task.officialOrderStatus === 'payment_expired' ||
+      (task.deadlineAt && new Date(task.deadlineAt) <= now)
+  ).length;
   const allVisibleSelected = tasks.length > 0 && selectedTaskIds.length === tasks.length;
 
   const runAction = async (actionKey, action, successMessage) => {
@@ -268,11 +273,8 @@ export default function PaymentDispatch() {
       setError('请选择负责人');
       return;
     }
-    if (
-      assignmentHasTransfer &&
-      (!assignmentDraft.handoffConfirmed || !assignmentDraft.reason.trim())
-    ) {
-      setError('批量中包含转派任务，请确认原负责人已停止并填写转派原因');
+    if (assignmentHasTransfer && !assignmentDraft.handoffConfirmed) {
+      setError('批量中包含转派任务，请确认原负责人已停止处理');
       return;
     }
     const succeeded = await runAction(
@@ -863,12 +865,28 @@ export default function PaymentDispatch() {
               </button>
             </div>
             <div className="p-5 space-y-4">
+              {expiredAssignmentCount > 0 && (
+                <div
+                  role="note"
+                  className="rounded-lg bg-amber-50 text-amber-800 px-4 py-3 text-sm"
+                >
+                  所选订单中有 {expiredAssignmentCount}{' '}
+                  个已过期。此次分配仅调整负责人，不恢复付款资格，也不延长付款时间。
+                </div>
+              )}
               {error && (
-                <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3 flex items-center justify-between gap-3">
-                  <span>{error}</span>
-                  <button className="btn btn-secondary" onClick={() => load()}>
-                    重新加载
-                  </button>
+                <div role="alert" className="rounded-lg border border-red-100 bg-red-50 px-4 py-3">
+                  <p className="text-sm leading-6 text-red-700 break-words">{error}</p>
+                  <div className="mt-3 flex justify-end">
+                    <button
+                      type="button"
+                      className={`btn btn-secondary text-sm whitespace-nowrap shrink-0 ${BUTTON_LAYOUT_CLASS}`}
+                      onClick={() => load()}
+                    >
+                      <RefreshCw className="w-4 h-4" aria-hidden="true" />
+                      重新加载
+                    </button>
+                  </div>
                 </div>
               )}
               <label className="block">
@@ -897,7 +915,9 @@ export default function PaymentDispatch() {
               {assignmentHasTransfer && (
                 <>
                   <label className="block">
-                    <span className="block text-sm font-medium text-gray-700 mb-2">转派原因</span>
+                    <span className="block text-sm font-medium text-gray-700 mb-2">
+                      转派原因（选填）
+                    </span>
                     <textarea
                       className="input w-full min-h-24"
                       maxLength="500"

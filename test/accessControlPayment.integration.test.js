@@ -208,9 +208,9 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       limit: 2,
       order: [['id', 'ASC']],
     });
-    const originalOfficialTime = tasks[1].order.officialOrderCreatedAt;
+    const originalPaymentStatus = tasks[1].order.paymentStatus;
     await tasks[1].order.update({
-      officialOrderCreatedAt: new Date(Date.now() - 31 * 60_000),
+      paymentStatus: 'paid',
     });
 
     try {
@@ -231,7 +231,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       });
       expect(unchanged.every(task => task.assigneeUserId === staffOne.id)).toBe(true);
     } finally {
-      await tasks[1].order.update({ officialOrderCreatedAt: originalOfficialTime });
+      await tasks[1].order.update({ paymentStatus: originalPaymentStatus });
     }
   });
 
@@ -748,5 +748,109 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       admin.id
     );
     expect(replay.permissions).toEqual([]);
+  });
+  test('过期订单不自动分配，手动分配与转派原因可空且仍要求交接', async () => {
+    const oldDate = new Date(Date.now() - 3600000);
+    const order = await models.Order.create({
+      orderNumber: 'W9999988888',
+      orderUrl: 'https://www.apple.com.cn/xc/cn/vieworder/W9999988888/synthetic',
+      products: [{ model: 'TEST', name: '过期任务回归', quantity: 1 }],
+      orderDate: oldDate,
+      officialOrderCreatedAt: oldDate,
+      status: 'payment_expired',
+      paymentStatus: 'unpaid',
+      officialAllItemsTerminal: true,
+    });
+    const task = await models.PaymentTask.create({
+      orderId: order.id,
+      processingStatus: 'pending',
+      deadlineAt: new Date(oldDate.getTime() + 1800000),
+      deadlineSource: 'official',
+    });
+    await dispatchService.runDispatchScan(500);
+    expect((await task.reload()).assigneeUserId).toBeNull();
+    await models.PaymentStaffSetting.update(
+      { maxActiveTasks: 500 },
+      { where: { userId: admin.id } }
+    );
+    await dispatchService.assignTask(
+      task.id,
+      {
+        assigneeUserId: admin.id,
+        expectedVersion: task.version,
+        idempotencyKey: 'expired-first-no-reason',
+      },
+      admin.id
+    );
+    await task.reload();
+    expect(task.assigneeUserId).toBe(admin.id);
+    expect(task.processingStatus).toBe('pending');
+    expect(task.deadlineAt.getTime()).toBe(oldDate.getTime() + 1800000);
+    await expect(
+      dispatchService.assignTask(
+        task.id,
+        {
+          assigneeUserId: staffTwo.id,
+          expectedVersion: task.version,
+          idempotencyKey: 'expired-no-handoff',
+        },
+        admin.id
+      )
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await models.PaymentStaffSetting.update(
+      { maxActiveTasks: 500 },
+      { where: { userId: staffTwo.id } }
+    );
+    await dispatchService.assignTask(
+      task.id,
+      {
+        assigneeUserId: staffTwo.id,
+        expectedVersion: task.version,
+        handoffConfirmed: true,
+        idempotencyKey: 'expired-transfer-no-reason',
+      },
+      admin.id
+    );
+    expect((await task.reload()).assigneeUserId).toBe(staffTwo.id);
+    expect((await order.reload()).status).toBe('payment_expired');
+    const event = await models.PaymentTaskEvent.findOne({
+      where: { paymentTaskId: task.id, eventType: 'transferred' },
+    });
+    expect(event.details).toMatchObject({ reason: null, expiredAtAssignment: true });
+    await expect(paymentTaskService.getOwnTask(task.id, admin.id)).rejects.toMatchObject({
+      statusCode: 404,
+    });
+    for (const blockedFields of [
+      { paymentStatus: 'paid' },
+      { paymentStatus: 'refunded' },
+      { status: 'cancelled' },
+      { officialStatusNeedsReview: true },
+      { officialOrderCreatedAt: null },
+      { validationIssues: [{ type: 'order_identity' }] },
+    ]) {
+      await order.update({
+        status: 'payment_expired',
+        paymentStatus: 'unpaid',
+        officialStatusNeedsReview: false,
+        officialOrderCreatedAt: oldDate,
+        validationIssues: [],
+        ...blockedFields,
+      });
+      await expect(
+        dispatchService.assignTask(
+          task.id,
+          {
+            assigneeUserId: admin.id,
+            expectedVersion: task.version,
+            handoffConfirmed: true,
+            idempotencyKey:
+              'expired-block-' +
+              Object.keys(blockedFields)[0] +
+              String(Object.values(blockedFields)[0]),
+          },
+          admin.id
+        )
+      ).rejects.toMatchObject({ statusCode: 409, code: 'PAYMENT_NOT_ELIGIBLE' });
+    }
   });
 });

@@ -53,6 +53,18 @@ async function getOrCreateSettings(transaction) {
 
 const isOrderExcluded = isPaymentBlocked;
 
+// 手动分配用于过期任务交接，仅豁免付款过期，不放宽其他官网风险状态。
+function isManualAssignmentBlocked(order) {
+  if (order.status !== 'payment_expired') return isOrderExcluded(order);
+  return isOrderExcluded({
+    status: 'payment_due',
+    paymentStatus: order.paymentStatus,
+    officialStatusNeedsReview: order.officialStatusNeedsReview,
+    validationIssues: order.validationIssues,
+    officialAllItemsTerminal: false,
+  });
+}
+
 function validatePaymentOrderUrl(orderUrl, orderNumber) {
   try {
     const parsed = new URL(orderUrl);
@@ -408,9 +420,9 @@ async function assignTasks(input, actorUserId) {
         throw ApiError.conflict('已完成任务必须先重开才能转派', undefined, 'INVALID_STATE');
       }
       const deadlineAt = getOfficialDeadline(task.order);
-      if (!deadlineAt || deadlineAt <= now || isOrderExcluded(task.order)) {
+      if (!deadlineAt || isManualAssignmentBlocked(task.order)) {
         throw ApiError.conflict(
-          '批量任务中存在官网付款截止时间未知、付款窗口已结束或官网状态不可付款的订单',
+          '批量任务中存在付款截止时间未知，或已付款、取消、状态待核实等不允许分配的订单',
           { taskId: task.id },
           'PAYMENT_NOT_ELIGIBLE'
         );
@@ -421,8 +433,8 @@ async function assignTasks(input, actorUserId) {
     const hasTransfer = tasks.some(
       task => task.assigneeUserId && Number(task.assigneeUserId) !== assigneeUserId
     );
-    if (hasTransfer && (!input.handoffConfirmed || !reason)) {
-      throw ApiError.badRequest('批量转派必须确认原执行方已停止且填写 reason');
+    if (hasTransfer && !input.handoffConfirmed) {
+      throw ApiError.badRequest('批量转派必须确认原执行方已停止处理');
     }
     const { setting, activeCount } = await assertAssignableUser(assigneeUserId, transaction, false);
     const addedCount = tasks.filter(task => Number(task.assigneeUserId) !== assigneeUserId).length;
@@ -459,7 +471,12 @@ async function assignTasks(input, actorUserId) {
           toUserId: assigneeUserId,
           beforeStatus: task.processingStatus,
           afterStatus: task.processingStatus,
-          details: { reason: reason || null, batchSize: tasks.length },
+          details: {
+            reason: reason || null,
+            batchSize: tasks.length,
+            expiredAtAssignment:
+              task.order.status === 'payment_expired' || getOfficialDeadline(task.order) <= now,
+          },
           idempotencyKey: buildAssignmentEventKey(idempotencyKey, task.id),
         },
         { transaction }
