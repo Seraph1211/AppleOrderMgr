@@ -1,5 +1,8 @@
+import { getRefreshJob } from '../api/ordersApi';
+import Pagination from '../components/Pagination';
+import usePaymentRefresh from '../hooks/usePaymentRefresh';
 import { getPaymentStageLabel } from '../utils/paymentStage';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ListChecks, RefreshCw, RotateCcw, Save, ScanSearch, Search, Users, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
@@ -8,7 +11,6 @@ import {
   getPaymentDispatchOverview,
   getPaymentDispatchTasks,
   refreshPaymentDispatchTask,
-  refreshPaymentDispatchTasks,
   reopenPaymentTask,
   runPaymentDispatchScan,
   updatePaymentDispatchSettings,
@@ -117,6 +119,10 @@ export default function PaymentDispatch() {
   const { can } = useAuth();
   const [overview, setOverview] = useState(null);
   const [tasks, setTasks] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
+  const loadRequest = useRef(0);
   const [staffDrafts, setStaffDrafts] = useState({});
   const [filterDrafts, setFilterDrafts] = useState(INITIAL_FILTERS);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
@@ -134,39 +140,57 @@ export default function PaymentDispatch() {
   const [now, setNow] = useState(new Date());
   const [serverTimeOffsetMs, setServerTimeOffsetMs] = useState(0);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const query = Object.fromEntries(Object.entries(filters).filter(([, value]) => value !== ''));
-      const [overviewResponse, tasksResponse] = await Promise.all([
-        getPaymentDispatchOverview(),
-        getPaymentDispatchTasks(query),
-      ]);
-      setOverview(overviewResponse.data);
-      setTasks(tasksResponse.data.items);
-      const serverTime = new Date(tasksResponse.data.serverTime);
-      setNow(serverTime);
-      setServerTimeOffsetMs(serverTime.getTime() - Date.now());
-      setStaffDrafts(
-        Object.fromEntries(
-          overviewResponse.data.staff.map(item => [
-            item.id,
-            {
-              autoAssignEnabled: item.autoAssignEnabled,
-              maxActiveTasks: item.maxActiveTasks,
-            },
-          ])
-        )
-      );
-      const visibleIds = new Set(tasksResponse.data.items.map(item => item.id));
-      setSelectedTaskIds(previous => previous.filter(id => visibleIds.has(id)));
-    } catch (loadError) {
-      setError(loadError.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+  const load = useCallback(
+    async (quiet = false) => {
+      const request = ++loadRequest.current;
+      if (!quiet) setLoading(true);
+      setError('');
+      try {
+        const query = Object.fromEntries(
+          Object.entries(filters).filter(([, value]) => value !== '')
+        );
+        const [overviewResponse, tasksResponse] = await Promise.all([
+          getPaymentDispatchOverview(),
+          getPaymentDispatchTasks({ ...query, page, limit: pageSize }),
+        ]);
+        if (request !== loadRequest.current) return;
+        setPagination(tasksResponse.data.pagination);
+        const lastPage = Math.max(1, tasksResponse.data.pagination.totalPages);
+        if (page > lastPage) {
+          setSelectedTaskIds([]);
+          setPage(lastPage);
+          return;
+        }
+        setOverview(overviewResponse.data);
+        setTasks(tasksResponse.data.items);
+        const serverTime = new Date(tasksResponse.data.serverTime);
+        setNow(serverTime);
+        setServerTimeOffsetMs(serverTime.getTime() - Date.now());
+        if (!quiet)
+          setStaffDrafts(
+            Object.fromEntries(
+              overviewResponse.data.staff.map(item => [
+                item.id,
+                {
+                  autoAssignEnabled: item.autoAssignEnabled,
+                  maxActiveTasks: item.maxActiveTasks,
+                },
+              ])
+            )
+          );
+        const visibleIds = new Set(tasksResponse.data.items.map(item => item.id));
+        setSelectedTaskIds(previous => previous.filter(id => visibleIds.has(id)));
+      } catch (loadError) {
+        if (request === loadRequest.current) {
+          setError(loadError.message);
+          setTasks([]);
+        }
+      } finally {
+        if (request === loadRequest.current) setLoading(false);
+      }
+    },
+    [filters, page, pageSize]
+  );
 
   useEffect(() => {
     load();
@@ -178,6 +202,17 @@ export default function PaymentDispatch() {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [serverTimeOffsetMs]);
+
+  const { progress, refreshTask, refreshSelected, submittingBatch } = usePaymentRefresh({
+    submit: refreshPaymentDispatchTask,
+    getJob: (_taskId, jobId) => getRefreshJob(jobId),
+    onComplete: () => load(true),
+  });
+  const changeFilters = next => {
+    setSelectedTaskIds([]);
+    setPage(1);
+    setFilters(next);
+  };
 
   const selectedTasks = useMemo(
     () => tasks.filter(task => selectedTaskIds.includes(task.id)),
@@ -272,7 +307,14 @@ export default function PaymentDispatch() {
         </h1>
         <p className="text-sm text-gray-500 mt-1">配置任务范围、人员容量并完成批量分配</p>
       </div>
-      {error && <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3">{error}</div>}
+      {error && (
+        <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3 flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button className="btn btn-secondary" onClick={() => load()}>
+            重新加载
+          </button>
+        </div>
+      )}
       {notice && <div className="rounded-lg bg-green-50 text-green-700 px-4 py-3">{notice}</div>}
 
       <div className="card hover:shadow-sm">
@@ -457,27 +499,31 @@ export default function PaymentDispatch() {
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <div>
               <h2 className="font-semibold">任务队列</h2>
-              <p className="text-sm text-gray-500 mt-1">已选择 {selectedTaskIds.length} 项</p>
+              <p className="text-sm text-gray-500 mt-1">
+                已选择 {selectedTaskIds.length} 项（当前页）
+              </p>
             </div>
             {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
               <div className="flex flex-wrap gap-2">
                 <button
                   className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
-                  disabled={selectedTaskIds.length === 0 || Boolean(busyAction)}
-                  onClick={() =>
-                    runAction(
-                      'refresh-selected',
-                      () => refreshPaymentDispatchTasks(selectedTaskIds),
-                      `已提交 ${selectedTaskIds.length} 个官网刷新任务`
-                    )
+                  disabled={
+                    loading ||
+                    submittingBatch ||
+                    Boolean(busyAction) ||
+                    !selectedTasks.some(task => !progress[task.id]?.refreshing)
                   }
+                  onClick={() => {
+                    setNotice('');
+                    refreshSelected(selectedTasks);
+                  }}
                 >
-                  <RefreshCw className="w-4 h-4" />
-                  {busyAction === 'refresh-selected' ? '提交中...' : '批量刷新'}
+                  <RefreshCw className={`w-4 h-4 ${submittingBatch ? 'animate-spin' : ''}`} />
+                  {submittingBatch ? '提交中...' : '批量刷新'}
                 </button>
                 <button
                   className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
-                  disabled={selectedTaskIds.length === 0 || Boolean(busyAction)}
+                  disabled={loading || selectedTaskIds.length === 0 || Boolean(busyAction)}
                   onClick={openAssignmentModal}
                 >
                   <Users className="w-4 h-4" />
@@ -565,7 +611,7 @@ export default function PaymentDispatch() {
             <div className="col-span-full flex justify-end gap-2">
               <button
                 className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
-                onClick={() => setFilters(filterDrafts)}
+                onClick={() => changeFilters({ ...filterDrafts })}
               >
                 <Search className="w-4 h-4" />
                 筛选
@@ -574,7 +620,7 @@ export default function PaymentDispatch() {
                 className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
                 onClick={() => {
                   setFilterDrafts(INITIAL_FILTERS);
-                  setFilters(INITIAL_FILTERS);
+                  changeFilters(INITIAL_FILTERS);
                 }}
               >
                 <RotateCcw className="w-4 h-4" />
@@ -585,14 +631,20 @@ export default function PaymentDispatch() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1460px]">
+          <table className="w-full min-w-[1660px]">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
                     className={CHECKBOX_CLASS}
-                    aria-label="选择当前列表全部任务"
+                    aria-label="选择当前页全部任务"
+                    disabled={loading}
+                    ref={element => {
+                      if (element)
+                        element.indeterminate =
+                          selectedTaskIds.length > 0 && selectedTaskIds.length < tasks.length;
+                    }}
                     checked={allVisibleSelected}
                     onChange={event =>
                       setSelectedTaskIds(event.target.checked ? tasks.map(task => task.id) : [])
@@ -601,6 +653,7 @@ export default function PaymentDispatch() {
                 </th>
                 {[
                   '订单 / 商品',
+                  '下单时间',
                   '官网状态',
                   '付款方式',
                   '处理状态',
@@ -621,111 +674,137 @@ export default function PaymentDispatch() {
               </tr>
             </thead>
             <tbody>
-              {tasks.map(task => {
-                const countdown = formatCountdown(task.deadlineAt, now, task);
-                const refreshKey = `refresh-${task.id}`;
-                return (
-                  <tr
-                    key={task.id}
-                    className="border-t border-gray-100 transition-colors hover:bg-gray-50"
-                  >
-                    <td className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        className={CHECKBOX_CLASS}
-                        aria-label={`选择订单 ${task.orderNumber}`}
-                        checked={selectedTaskIds.includes(task.id)}
-                        onChange={() => toggleTask(task.id)}
-                      />
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium">{task.orderNumber}</div>
-                      <div className="text-xs text-gray-500 max-w-72 truncate">
-                        {task.products
-                          .map(product => `${product.name || ''} ${product.model || ''}`.trim())
-                          .join('、') || '无商品信息'}
-                      </div>
-                    </td>
-                    <td className="px-4 py-3">
-                      {OFFICIAL_STATUS_LABELS[task.officialOrderStatus] ||
-                        task.officialOrderStatus ||
-                        '未知'}
-                    </td>
-                    <td className="px-4 py-3 text-sm text-gray-700">
-                      {task.paymentMethod || '-'}
-                      {task.officialPaymentDiscrepancy && (
-                        <p className="text-xs text-amber-700 mt-1">官网已收款，人工任务尚未完成</p>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`badge ${
-                          PROCESSING_STATUS_BADGE_CLASSES[task.processingStatus] ||
-                          'bg-gray-100 text-gray-700'
-                        }`}
-                      >
-                        {STATUS_LABELS[task.processingStatus] || task.processingStatus || '未知'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{task.assignee?.username || '未分配'}</td>
-                    <td className={`px-4 py-3 ${countdown.className}`}>{countdown.text}</td>
-                    <td className="px-4 py-3 text-sm text-gray-600">
-                      {formatDateTime(task.lastCrawledAt)}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex flex-wrap justify-end gap-2">
-                        {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
-                          <button
-                            className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
-                            disabled={Boolean(busyAction)}
-                            onClick={() =>
-                              runAction(
-                                refreshKey,
-                                () => refreshPaymentDispatchTask(task.id),
-                                `订单 ${task.orderNumber} 已进入刷新队列`
-                              )
-                            }
-                          >
-                            <RefreshCw
-                              className={`w-4 h-4 ${busyAction === refreshKey ? 'animate-spin' : ''}`}
-                            />
-                            {busyAction === refreshKey ? '刷新中...' : '刷新'}
-                          </button>
+              {!loading &&
+                tasks.map(task => {
+                  const countdown = formatCountdown(task.deadlineAt, now, task);
+                  return (
+                    <tr
+                      key={task.id}
+                      className="border-t border-gray-100 transition-colors hover:bg-gray-50"
+                    >
+                      <td className="px-4 py-3">
+                        <input
+                          type="checkbox"
+                          className={CHECKBOX_CLASS}
+                          aria-label={`选择订单 ${task.orderNumber}`}
+                          checked={selectedTaskIds.includes(task.id)}
+                          onChange={() => toggleTask(task.id)}
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="font-medium">{task.orderNumber}</div>
+                        <div className="text-xs text-gray-500 max-w-72 truncate">
+                          {task.products
+                            .map(product => `${product.name || ''} ${product.model || ''}`.trim())
+                            .join('、') || '无商品信息'}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
+                        {task.officialOrderCreatedAt
+                          ? formatDateTime(task.officialOrderCreatedAt)
+                          : '待核实'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {OFFICIAL_STATUS_LABELS[task.officialOrderStatus] ||
+                          task.officialOrderStatus ||
+                          '未知'}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {task.paymentMethod || '-'}
+                        {task.officialPaymentDiscrepancy && (
+                          <p className="text-xs text-amber-700 mt-1">
+                            官网已收款，人工任务尚未完成
+                          </p>
                         )}
-                        {can(PERMISSIONS.PAYMENT_DISPATCH_CORRECT) &&
-                          task.processingStatus === 'completed' && (
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`badge ${
+                            PROCESSING_STATUS_BADGE_CLASSES[task.processingStatus] ||
+                            'bg-gray-100 text-gray-700'
+                          }`}
+                        >
+                          {STATUS_LABELS[task.processingStatus] || task.processingStatus || '未知'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">{task.assignee?.username || '未分配'}</td>
+                      <td className={`px-4 py-3 ${countdown.className}`}>{countdown.text}</td>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {formatDateTime(task.lastCrawledAt)}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex flex-wrap justify-end gap-2">
+                          {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
                             <button
                               className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
-                              disabled={Boolean(busyAction)}
+                              disabled={progress[task.id]?.refreshing}
+                              aria-label={`刷新官网状态 ${task.orderNumber}`}
                               onClick={() => {
-                                const reason = window.prompt('请输入重开原因');
-                                if (reason)
-                                  runAction(
-                                    `reopen-${task.id}`,
-                                    () =>
-                                      reopenPaymentTask(
-                                        task.id,
-                                        {
-                                          reason,
-                                          expectedVersion: task.version,
-                                        },
-                                        crypto.randomUUID()
-                                      ),
-                                    `订单 ${task.orderNumber} 已重开为异常`
-                                  );
+                                setNotice('');
+                                refreshTask(task);
                               }}
                             >
-                              重开为异常
+                              <RefreshCw
+                                className={`w-4 h-4 ${progress[task.id]?.refreshing ? 'animate-spin' : ''}`}
+                              />
+                              {progress[task.id]?.status === 'submitting'
+                                ? '提交中...'
+                                : progress[task.id]?.status === 'pending'
+                                  ? '排队中'
+                                  : progress[task.id]?.status === 'running'
+                                    ? '刷新中...'
+                                    : '刷新'}
                             </button>
                           )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
+                          {can(PERMISSIONS.PAYMENT_DISPATCH_CORRECT) &&
+                            task.processingStatus === 'completed' && (
+                              <button
+                                className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
+                                disabled={Boolean(busyAction)}
+                                onClick={() => {
+                                  const reason = window.prompt('请输入重开原因');
+                                  if (reason)
+                                    runAction(
+                                      `reopen-${task.id}`,
+                                      () =>
+                                        reopenPaymentTask(
+                                          task.id,
+                                          {
+                                            reason,
+                                            expectedVersion: task.version,
+                                          },
+                                          crypto.randomUUID()
+                                        ),
+                                      `订单 ${task.orderNumber} 已重开为异常`
+                                    );
+                                }}
+                              >
+                                重开为异常
+                              </button>
+                            )}
+                        </div>
+                        {progress[task.id]?.message && (
+                          <p
+                            role="status"
+                            className={`mt-2 text-xs ${progress[task.id].type === 'error' ? 'text-red-600' : progress[task.id].type === 'success' ? 'text-green-700' : 'text-gray-500'}`}
+                          >
+                            {progress[task.id].message}
+                          </p>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              {loading && (
+                <tr>
+                  <td colSpan="10" className="px-4 py-12 text-center text-gray-500">
+                    加载中...
+                  </td>
+                </tr>
+              )}
               {!loading && tasks.length === 0 && (
                 <tr>
-                  <td colSpan="9" className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan="10" className="px-4 py-12 text-center text-gray-500">
                     没有符合条件的付款任务
                   </td>
                 </tr>
@@ -734,6 +813,25 @@ export default function PaymentDispatch() {
           </table>
         </div>
       </div>
+
+      {!loading && pagination.total > 0 && (
+        <Pagination
+          currentPage={page}
+          totalPages={pagination.totalPages}
+          totalItems={pagination.total}
+          pageSize={pageSize}
+          onPageChange={next => {
+            setSelectedTaskIds([]);
+            setPage(next);
+          }}
+          onPageSizeChange={size => {
+            setSelectedTaskIds([]);
+            setPage(1);
+            setPageSize(size);
+          }}
+          pageSizeOptions={[10, 20, 50, 100]}
+        />
+      )}
 
       {assignModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
@@ -752,7 +850,14 @@ export default function PaymentDispatch() {
               </button>
             </div>
             <div className="p-5 space-y-4">
-              {error && <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3">{error}</div>}
+              {error && (
+                <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3 flex items-center justify-between gap-3">
+                  <span>{error}</span>
+                  <button className="btn btn-secondary" onClick={() => load()}>
+                    重新加载
+                  </button>
+                </div>
+              )}
               <label className="block">
                 <span className="block text-sm font-medium text-gray-700 mb-2">负责人</span>
                 <select

@@ -1,6 +1,8 @@
+import Pagination from '../components/Pagination';
+import usePaymentRefresh from '../hooks/usePaymentRefresh';
 import { getPaymentStageLabel } from '../utils/paymentStage';
 import { ORDER_STATUS_LABELS } from '../constants/orderStatus';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, CreditCard, RefreshCw, Save } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
@@ -51,11 +53,13 @@ function formatDateTime(value) {
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
-const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
-
 export default function PaymentTasks() {
   const { can } = useAuth();
   const [tasks, setTasks] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
+  const loadRequest = useRef(0);
   const [filters, setFilters] = useState({
     processingStatus: '',
     orderNumber: '',
@@ -67,14 +71,26 @@ export default function PaymentTasks() {
   const [now, setNow] = useState(Date.now());
   const [serverClockOffset, setServerClockOffset] = useState(0);
   const [rowActions, setRowActions] = useState({});
+  const [selectedTaskIds, setSelectedTaskIds] = useState([]);
 
   const loadTasks = useCallback(
     async (preserveDrafts = false) => {
-      setLoading(true);
+      const request = ++loadRequest.current;
+      if (!preserveDrafts) setLoading(true);
       setError('');
       try {
         const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
-        const response = await getPaymentTasks(params);
+        const response = await getPaymentTasks({ ...params, page, limit: pageSize });
+        if (request !== loadRequest.current) return;
+        setPagination(response.data.pagination);
+        const lastPage = Math.max(1, response.data.pagination.totalPages);
+        if (page > lastPage) {
+          setSelectedTaskIds([]);
+          setPage(lastPage);
+          return;
+        }
+        const visibleIds = new Set(response.data.items.map(task => task.id));
+        setSelectedTaskIds(previous => previous.filter(id => visibleIds.has(id)));
         setTasks(response.data.items);
         setServerClockOffset(new Date(response.data.serverTime).getTime() - Date.now());
         setDrafts(previous =>
@@ -92,12 +108,15 @@ export default function PaymentTasks() {
           )
         );
       } catch (loadError) {
-        setError(loadError.message);
+        if (request === loadRequest.current) {
+          setError(loadError.message);
+          setTasks([]);
+        }
       } finally {
-        setLoading(false);
+        if (request === loadRequest.current) setLoading(false);
       }
     },
-    [filters]
+    [filters, page, pageSize]
   );
 
   useEffect(() => {
@@ -206,63 +225,16 @@ export default function PaymentTasks() {
     }
   };
 
-  const refreshTask = async task => {
-    updateRowAction(task.id, {
-      refreshing: true,
-      type: 'info',
-      message: '正在提交刷新...',
-    });
-    try {
-      setError('');
-      const response = await refreshPaymentTask(task.id);
-      const jobId = response.data.jobId;
-      updateRowAction(task.id, {
-        refreshing: true,
-        type: 'info',
-        message: response.data.created ? '已进入队列' : '已合并到刷新队列',
-      });
+  const { progress, refreshTask, refreshSelected, submittingBatch } = usePaymentRefresh({
+    submit: refreshPaymentTask,
+    getJob: getPaymentTaskRefreshJob,
+    onComplete: () => loadTasks(true),
+  });
 
-      for (let attempt = 0; attempt < 20; attempt += 1) {
-        await wait(1500);
-        const jobResponse = await getPaymentTaskRefreshJob(task.id, jobId);
-        const job = jobResponse.data;
-        if (job.status === 'pending') {
-          updateRowAction(task.id, { message: '已进入队列，等待后台处理' });
-          continue;
-        }
-        if (job.status === 'running') {
-          updateRowAction(task.id, { message: '官网刷新中...' });
-          continue;
-        }
-        if (job.status === 'succeeded') {
-          await loadTasks(true);
-          updateRowAction(task.id, {
-            refreshing: false,
-            type: 'success',
-            message: '官网状态已更新',
-          });
-          return;
-        }
-        updateRowAction(task.id, {
-          refreshing: false,
-          type: 'error',
-          message:
-            job.status === 'skipped' ? '刷新任务已跳过' : job.lastErrorMessage || '官网刷新失败',
-        });
-        return;
-      }
-      updateRowAction(task.id, {
-        refreshing: false,
-        type: 'info',
-        message: '已进入队列，等待后台处理',
-      });
-    } catch (actionError) {
-      updateRowAction(task.id, {
-        refreshing: false,
-        type: 'error',
-        message: actionError.message,
-      });
-    }
+  const changeFilters = next => {
+    setSelectedTaskIds([]);
+    setPage(1);
+    setFilters(next);
   };
 
   return (
@@ -275,7 +247,8 @@ export default function PaymentTasks() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">仅显示当前分配给本人的任务</p>
         </div>
-        <div className="flex flex-wrap gap-2 text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <span className="text-gray-500">本页统计</span>
           {Object.entries(STATUS_LABELS).map(([status, label]) => (
             <span key={status} className={STATUS_BADGES[status]}>
               {label} {summary[status]}
@@ -289,18 +262,18 @@ export default function PaymentTasks() {
           className="input"
           placeholder="订单号"
           value={filters.orderNumber}
-          onChange={event => setFilters({ ...filters, orderNumber: event.target.value })}
+          onChange={event => changeFilters({ ...filters, orderNumber: event.target.value })}
         />
         <input
           className="input"
           placeholder="商品名称或型号"
           value={filters.productKeyword}
-          onChange={event => setFilters({ ...filters, productKeyword: event.target.value })}
+          onChange={event => changeFilters({ ...filters, productKeyword: event.target.value })}
         />
         <select
           className="input"
           value={filters.processingStatus}
-          onChange={event => setFilters({ ...filters, processingStatus: event.target.value })}
+          onChange={event => changeFilters({ ...filters, processingStatus: event.target.value })}
         >
           <option value="">未完成任务</option>
           <option value="pending">待处理</option>
@@ -310,7 +283,35 @@ export default function PaymentTasks() {
         </select>
       </div>
 
-      {error && <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3">{error}</div>}
+      {error && (
+        <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3 flex items-center justify-between gap-3">
+          <span>{error}</span>
+          <button className="btn btn-secondary" onClick={() => loadTasks()}>
+            重新加载
+          </button>
+        </div>
+      )}
+      {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-gray-500">
+            已选择 {selectedTaskIds.length} 项（当前页）
+          </span>
+          <button
+            className="btn btn-secondary inline-flex items-center gap-2"
+            disabled={
+              loading ||
+              submittingBatch ||
+              !tasks.some(
+                task => selectedTaskIds.includes(task.id) && !progress[task.id]?.refreshing
+              )
+            }
+            onClick={() => refreshSelected(tasks.filter(task => selectedTaskIds.includes(task.id)))}
+          >
+            <RefreshCw className={`w-4 h-4 ${submittingBatch ? 'animate-spin' : ''}`} />
+            {submittingBatch ? '提交中...' : '批量刷新'}
+          </button>
+        </div>
+      )}
       <div className="card p-0 overflow-hidden">
         {loading ? (
           <p className="text-center text-gray-500 py-12">加载中...</p>
@@ -318,11 +319,30 @@ export default function PaymentTasks() {
           <p className="text-center text-gray-500 py-12">暂无匹配的付款任务</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1520px]">
+            <table className="w-full min-w-[1740px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
+                  {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
+                    <th className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 cursor-pointer accent-primary"
+                        aria-label="选择当前页全部任务"
+                        checked={tasks.length > 0 && selectedTaskIds.length === tasks.length}
+                        ref={element => {
+                          if (element)
+                            element.indeterminate =
+                              selectedTaskIds.length > 0 && selectedTaskIds.length < tasks.length;
+                        }}
+                        onChange={event =>
+                          setSelectedTaskIds(event.target.checked ? tasks.map(task => task.id) : [])
+                        }
+                      />
+                    </th>
+                  )}
                   {[
                     '订单 / 商品',
+                    '下单时间',
                     '官网状态',
                     '付款方式',
                     '倒计时',
@@ -340,7 +360,24 @@ export default function PaymentTasks() {
               </thead>
               <tbody>
                 {tasks.map(task => (
-                  <tr key={task.id} className="border-b border-gray-100 align-top">
+                  <tr key={task.id} className="border-b border-gray-100 align-top hover:bg-gray-50">
+                    {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
+                      <td className="px-4 py-4">
+                        <input
+                          type="checkbox"
+                          className="h-4 w-4 cursor-pointer accent-primary"
+                          aria-label={`选择订单 ${task.orderNumber}`}
+                          checked={selectedTaskIds.includes(task.id)}
+                          onChange={() =>
+                            setSelectedTaskIds(previous =>
+                              previous.includes(task.id)
+                                ? previous.filter(id => id !== task.id)
+                                : [...previous, task.id]
+                            )
+                          }
+                        />
+                      </td>
+                    )}
                     <td className="px-4 py-4">
                       <div className="font-medium">{task.orderNumber}</div>
                       <div className="text-xs text-gray-500 mt-1">
@@ -348,6 +385,11 @@ export default function PaymentTasks() {
                           .map(product => `${product.name} ×${product.quantity}`)
                           .join('、')}
                       </div>
+                    </td>
+                    <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap">
+                      {task.officialOrderCreatedAt
+                        ? formatDateTime(task.officialOrderCreatedAt)
+                        : '待核实'}
                     </td>
                     <td className="px-4 py-4 text-sm">
                       {task.officialPaymentConfirmed
@@ -435,16 +477,24 @@ export default function PaymentTasks() {
                           <button
                             className="btn btn-secondary px-2"
                             onClick={() => refreshTask(task)}
-                            disabled={rowActions[task.id]?.refreshing}
+                            disabled={progress[task.id]?.refreshing}
                             title="刷新官网状态"
                             aria-label="刷新官网状态"
                           >
                             <RefreshCw
-                              className={`w-4 h-4 ${rowActions[task.id]?.refreshing ? 'animate-spin' : ''}`}
+                              className={`w-4 h-4 ${progress[task.id]?.refreshing ? 'animate-spin' : ''}`}
                             />
                           </button>
                         )}
                       </div>
+                      {progress[task.id]?.message && (
+                        <p
+                          role="status"
+                          className={`mt-2 text-xs max-w-44 ${progress[task.id].type === 'error' ? 'text-red-600' : progress[task.id].type === 'success' ? 'text-green-700' : 'text-gray-500'}`}
+                        >
+                          {progress[task.id].message}
+                        </p>
+                      )}
                       {rowActions[task.id]?.message && (
                         <p
                           className={`mt-2 text-xs max-w-44 ${
@@ -466,6 +516,25 @@ export default function PaymentTasks() {
           </div>
         )}
       </div>
+
+      {!loading && pagination.total > 0 && (
+        <Pagination
+          currentPage={page}
+          totalPages={pagination.totalPages}
+          totalItems={pagination.total}
+          pageSize={pageSize}
+          onPageChange={next => {
+            setSelectedTaskIds([]);
+            setPage(next);
+          }}
+          onPageSizeChange={size => {
+            setSelectedTaskIds([]);
+            setPage(1);
+            setPageSize(size);
+          }}
+          pageSizeOptions={[10, 20, 50, 100]}
+        />
+      )}
     </div>
   );
 }

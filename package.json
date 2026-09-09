@@ -28,6 +28,7 @@
     "security:migrate": "node scripts/migrateSensitiveData.js",
     "docs:check:links": "node scripts/checkDocLinks.js",
     "docs:check:schema": "node scripts/check-doc-consistency.js",
+    "test:browser:payments": "node scripts/testPaymentPagesBrowser.js",
     "test:browser:orders": "node scripts/testOrdersBrowser.js",
     "orders:revalidate-conflicts": "node scripts/revalidateOrderConflicts.js"
   },

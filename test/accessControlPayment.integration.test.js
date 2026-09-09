@@ -112,6 +112,47 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     expect(counts.map(row => Number(row.count)).sort((a, b) => a - b)).toEqual([75, 75]);
   });
 
+  test('付款队列分页覆盖全部 150 单，组合筛选先于分页且保留下单时间', async () => {
+    const pages = [];
+    for (let page = 1; page <= 8; page += 1) {
+      const result = await dispatchService.listDispatchTasks({ page, limit: 20 });
+      expect(result.pagination).toEqual({ page, limit: 20, total: 150, totalPages: 8 });
+      expect(result.items).toHaveLength(page === 8 ? 10 : 20);
+      expect(result.items.every(item => item.officialOrderCreatedAt)).toBe(true);
+      pages.push(...result.items.map(item => item.id));
+    }
+    expect(new Set(pages).size).toBe(150);
+    const filter = { productKeyword: 'MODEL-1', processingStatus: 'pending' };
+    const first = await dispatchService.listDispatchTasks({ ...filter, page: 1, limit: 20 });
+    const second = await dispatchService.listDispatchTasks({ ...filter, page: 2, limit: 20 });
+    expect(first.pagination.total).toBe(30);
+    expect(second.items).toHaveLength(10);
+    expect(new Set([...first.items, ...second.items].map(item => item.id)).size).toBe(30);
+    const empty = await dispatchService.listDispatchTasks({ orderNumber: 'not-found' });
+    expect(empty.pagination.total).toBe(0);
+    expect(empty.items).toEqual([]);
+    const beyond = await dispatchService.listDispatchTasks({ page: 9, limit: 20 });
+    expect(beyond.items).toEqual([]);
+    for (const query of [
+      { page: 0 },
+      { page: -1 },
+      { page: 1.5 },
+      { page: 'bad' },
+      { page: 100001 },
+      { limit: 0 },
+      { limit: 201 },
+    ]) {
+      await expect(dispatchService.listDispatchTasks(query)).rejects.toMatchObject({
+        statusCode: 400,
+      });
+    }
+    const own = await paymentTaskService.listOwnTasks(staffOne.id, { page: 2, limit: 20 });
+    expect(own.pagination).toEqual({ page: 2, limit: 20, total: 75, totalPages: 4 });
+    expect(
+      own.items.every(item => item.assignee.id === staffOne.id && item.officialOrderCreatedAt)
+    ).toBe(true);
+  });
+
   test('批量分配在同一事务校验并更新全部选中任务', async () => {
     const tasks = await models.PaymentTask.findAll({
       where: { assigneeUserId: staffOne.id, processingStatus: 'pending' },

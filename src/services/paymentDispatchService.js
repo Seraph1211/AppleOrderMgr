@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const { Op, fn, col, Sequelize } = require('sequelize');
 const {
   sequelize,
@@ -572,86 +573,103 @@ async function reopenTask(taskId, input, actorUserId) {
   });
 }
 
+/** 查询管理员付款队列，先筛选再按稳定顺序分页。 */
 async function listDispatchTasks(query = {}) {
-  const where = {};
-  const orderWhere = {};
-  if (query.assignee === 'unassigned') where.assigneeUserId = null;
-  else if (query.assignee) {
-    const assigneeUserId = Number(query.assignee);
-    if (!Number.isInteger(assigneeUserId) || assigneeUserId <= 0) {
-      throw ApiError.badRequest('assignee 必须是正整数或 unassigned');
+  try {
+    const where = {};
+    const orderWhere = {};
+    if (query.assignee === 'unassigned') where.assigneeUserId = null;
+    else if (query.assignee) {
+      const assigneeUserId = Number(query.assignee);
+      if (!Number.isInteger(assigneeUserId) || assigneeUserId <= 0) {
+        throw ApiError.badRequest('assignee 必须是正整数或 unassigned');
+      }
+      where.assigneeUserId = assigneeUserId;
     }
-    where.assigneeUserId = assigneeUserId;
-  }
-  if (query.processingStatus) {
-    if (!['pending', 'processing', 'completed', 'exception'].includes(query.processingStatus)) {
-      throw ApiError.badRequest('processingStatus 非法');
+    if (query.processingStatus) {
+      if (!['pending', 'processing', 'completed', 'exception'].includes(query.processingStatus)) {
+        throw ApiError.badRequest('processingStatus 非法');
+      }
+      where.processingStatus = query.processingStatus;
     }
-    where.processingStatus = query.processingStatus;
-  }
-  const orderNumber = String(query.orderNumber || '').trim();
-  if (orderNumber) {
-    if (orderNumber.length > 20) throw ApiError.badRequest('orderNumber 过长');
-    orderWhere.orderNumber = { [Op.iLike]: `%${orderNumber}%` };
-  }
-  const productKeyword = String(query.productKeyword || '').trim();
-  if (productKeyword) {
-    if (productKeyword.length > 100) throw ApiError.badRequest('productKeyword 过长');
-    const pattern = sequelize.escape(`%${productKeyword}%`);
-    orderWhere[Op.and] = [
-      Sequelize.literal(
-        'EXISTS (SELECT 1 FROM jsonb_array_elements("order"."products") AS item ' +
-          `WHERE item->>'name' ILIKE ${pattern} OR item->>'model' ILIKE ${pattern})`
-      ),
-    ];
-  }
-  if (query.officialOrderStatus) {
-    if (!ORDER_STATUSES.includes(query.officialOrderStatus)) {
-      throw ApiError.badRequest('officialOrderStatus 非法');
+    const orderNumber = String(query.orderNumber || '').trim();
+    if (orderNumber) {
+      if (orderNumber.length > 20) throw ApiError.badRequest('orderNumber 过长');
+      orderWhere.orderNumber = { [Op.iLike]: `%${orderNumber}%` };
     }
-    orderWhere.status = query.officialOrderStatus;
+    const productKeyword = String(query.productKeyword || '').trim();
+    if (productKeyword) {
+      if (productKeyword.length > 100) throw ApiError.badRequest('productKeyword 过长');
+      const pattern = sequelize.escape(`%${productKeyword}%`);
+      orderWhere[Op.and] = [
+        Sequelize.literal(
+          'EXISTS (SELECT 1 FROM jsonb_array_elements("order"."products") AS item ' +
+            `WHERE item->>'name' ILIKE ${pattern} OR item->>'model' ILIKE ${pattern})`
+        ),
+      ];
+    }
+    if (query.officialOrderStatus) {
+      if (!ORDER_STATUSES.includes(query.officialOrderStatus)) {
+        throw ApiError.badRequest('officialOrderStatus 非法');
+      }
+      orderWhere.status = query.officialOrderStatus;
+    }
+    const page = query.page === undefined ? 1 : Number(query.page);
+    if (!Number.isInteger(page) || page <= 0 || page > 100000) {
+      throw ApiError.badRequest('page 必须是 1-100000 之间的整数');
+    }
+    const limit = query.limit === undefined ? 100 : Number(query.limit);
+    if (!Number.isInteger(limit) || limit <= 0 || limit > 200) {
+      throw ApiError.badRequest('limit 必须是 1-200 之间的整数');
+    }
+    const { count, rows } = await PaymentTask.findAndCountAll({
+      where,
+      include: [
+        {
+          model: Order,
+          as: 'order',
+          attributes: [
+            'id',
+            'orderNumber',
+            'products',
+            'status',
+            'paymentStatus',
+            'paymentMethod',
+            'officialOrderAmount',
+            'officialOrderAmountCurrency',
+            'payerName',
+            'payerVersion',
+            'officialOrderCreatedAt',
+            'officialPaymentExpiresAt',
+            'officialStatusNeedsReview',
+            'officialAllItemsTerminal',
+            'validationIssues',
+            'lastCrawledAt',
+            'updatedAt',
+          ],
+          where: orderWhere,
+        },
+        { model: User, as: 'assignee', attributes: ['id', 'username'] },
+      ],
+      order: [
+        ['deadlineAt', 'ASC'],
+        ['id', 'ASC'],
+      ],
+      distinct: true,
+      limit,
+      offset: (page - 1) * limit,
+    });
+    const serverTime = new Date();
+    return {
+      items: rows.map(task => serializeTask(task, serverTime)),
+      pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+      serverTime,
+    };
+  } catch (error) {
+    if (!(error instanceof ApiError))
+      logger.error('查询付款调度列表失败', { error: error.message });
+    throw error;
   }
-  const limit = Number(query.limit || 100);
-  if (!Number.isInteger(limit) || limit <= 0 || limit > 200) {
-    throw ApiError.badRequest('limit 必须是 1-200 之间的整数');
-  }
-  const tasks = await PaymentTask.findAll({
-    where,
-    include: [
-      {
-        model: Order,
-        as: 'order',
-        attributes: [
-          'id',
-          'orderNumber',
-          'products',
-          'status',
-          'paymentStatus',
-          'paymentMethod',
-          'officialOrderAmount',
-          'officialOrderAmountCurrency',
-          'payerName',
-          'payerVersion',
-          'officialOrderCreatedAt',
-          'officialPaymentExpiresAt',
-          'officialStatusNeedsReview',
-          'officialAllItemsTerminal',
-          'validationIssues',
-          'lastCrawledAt',
-          'updatedAt',
-        ],
-        where: orderWhere,
-      },
-      { model: User, as: 'assignee', attributes: ['id', 'username'] },
-    ],
-    order: [
-      ['deadlineAt', 'ASC'],
-      ['id', 'ASC'],
-    ],
-    limit,
-  });
-  const serverTime = new Date();
-  return { items: tasks.map(task => serializeTask(task, serverTime)), serverTime };
 }
 
 function normalizeTaskIds(taskIds) {
