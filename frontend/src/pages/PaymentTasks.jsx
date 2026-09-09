@@ -389,8 +389,8 @@ export default function PaymentTasks() {
                       </div>
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap">
-                      {task.officialOrderCreatedAt
-                        ? formatDateTime(task.officialOrderCreatedAt)
+                      {task.orderDate || task.officialOrderCreatedAt
+                        ? formatDateTime(task.orderDate || task.officialOrderCreatedAt)
                         : '待核实'}
                     </td>
                     <td className="px-4 py-4 text-sm">

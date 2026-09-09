@@ -43,7 +43,8 @@ async function main() {
       payerName: '',
       version: 0,
       payerVersion: 0,
-      officialOrderCreatedAt: id === 2 ? null : '2026-09-09T01:02:03Z',
+      orderDate: id === 2 ? null : '2026-09-09T01:02:03Z',
+      officialOrderCreatedAt: id === 2 || id === 4 ? null : '2026-09-09T01:00:00Z',
       deadlineAt: null,
       remainingSeconds: null,
       updatedAt: updated.has(id) ? '2026-09-09T03:00:00Z' : '2026-09-09T02:00:00Z',
@@ -99,7 +100,10 @@ async function main() {
             },
             serverTime: new Date().toISOString(),
           };
-        } else if (/^\/api\/payment-tasks\/\d+$/.test(url.pathname) && route.request().method() === 'PUT') {
+        } else if (
+          /^\/api\/payment-tasks\/\d+$/.test(url.pathname) &&
+          route.request().method() === 'PUT'
+        ) {
           await new Promise(resolve => setTimeout(resolve, 800));
           data = task(Number(url.pathname.split('/').at(-1)));
         } else if (
@@ -153,6 +157,7 @@ async function main() {
       assert.equal(await rows.count(), 20);
       assert.match(await rows.first().innerText(), /2026\/09\/09 09:02:03/);
       assert.match(await rows.nth(1).innerText(), /待核实/);
+      assert.match(await rows.nth(3).innerText(), /2026\/09\/09 09:02:03/);
       assert.equal(
         await page.getByRole('button', { name: '批量刷新', exact: true }).isDisabled(),
         true
@@ -226,13 +231,19 @@ async function main() {
       await refresh.click();
       assert.equal(await refresh.isDisabled(), true);
       await rows.nth(1).getByText('官网状态已更新', { exact: true }).waitFor();
-      await page.screenshot({ path: `${process.env.PAYMENT_BROWSER_OUTPUT || '/tmp'}/${mode}-desktop.png`, fullPage: true });
+      await page.screenshot({
+        path: `${process.env.PAYMENT_BROWSER_OUTPUT || '/tmp'}/${mode}-desktop.png`,
+        fullPage: true,
+      });
       await page.setViewportSize({ width: 375, height: 812 });
       assert.equal(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
         true
       );
-      await page.screenshot({ path: `${process.env.PAYMENT_BROWSER_OUTPUT || '/tmp'}/${mode}-mobile.png`, fullPage: true });
+      await page.screenshot({
+        path: `${process.env.PAYMENT_BROWSER_OUTPUT || '/tmp'}/${mode}-mobile.png`,
+        fullPage: true,
+      });
       await page.setViewportSize({ width: 1440, height: 1000 });
       // 活跃刷新跨页完成后，只重新读取当前页；总数缩减时自动退回有效末页。
       hold = true;
@@ -252,8 +263,14 @@ async function main() {
         await page.reload({ waitUntil: 'networkidle' });
         await rows.first().locator('textarea').fill('保存期间翻页');
         let saveReturned = false;
-        const saved = page.waitForResponse(response => response.request().method() === 'PUT').then(() => { saveReturned = true; });
-        const reloaded = page.waitForResponse(response => saveReturned && new URL(response.url()).pathname === '/api/payment-tasks');
+        const saved = page
+          .waitForResponse(response => response.request().method() === 'PUT')
+          .then(() => {
+            saveReturned = true;
+          });
+        const reloaded = page.waitForResponse(
+          response => saveReturned && new URL(response.url()).pathname === '/api/payment-tasks'
+        );
         await rows.first().getByRole('button', { name: '保存本行修改' }).click();
         await page.getByRole('button', { name: '下一页', exact: true }).click();
         await rows.first().getByText('W0000000021', { exact: true }).waitFor();

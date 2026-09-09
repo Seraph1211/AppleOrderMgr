@@ -82,6 +82,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         status: 'pending',
         paymentStatus: 'unpaid',
         orderUrl: `https://www.apple.com.cn/xc/cn/vieworder/W${String(index + 1).padStart(10, '0')}/synthetic-${index}`,
+        orderDate: new Date(now),
         officialOrderCreatedAt: new Date(now),
         createdAt: new Date(now),
         updatedAt: new Date(now),
@@ -118,7 +119,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       const result = await dispatchService.listDispatchTasks({ page, limit: 20 });
       expect(result.pagination).toEqual({ page, limit: 20, total: 150, totalPages: 8 });
       expect(result.items).toHaveLength(page === 8 ? 10 : 20);
-      expect(result.items.every(item => item.officialOrderCreatedAt)).toBe(true);
+      expect(result.items.every(item => item.officialOrderCreatedAt && item.orderDate)).toBe(true);
       pages.push(...result.items.map(item => item.id));
     }
     expect(new Set(pages).size).toBe(150);
@@ -146,10 +147,27 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         statusCode: 400,
       });
     }
+    const withoutOfficialTime = await models.Order.findByPk(1);
+    const originalOfficialTime = withoutOfficialTime.officialOrderCreatedAt;
+    await withoutOfficialTime.update({ officialOrderCreatedAt: null });
+    const dateOnlyTask = await dispatchService.listDispatchTasks({
+      orderNumber: withoutOfficialTime.orderNumber,
+    });
+    expect(dateOnlyTask.items[0].orderDate).toEqual(withoutOfficialTime.orderDate);
+    expect(dateOnlyTask.items[0].officialOrderCreatedAt).toBeNull();
+    const ownDateOnlyTask = await paymentTaskService.listOwnTasks(
+      dateOnlyTask.items[0].assignee.id,
+      { orderNumber: withoutOfficialTime.orderNumber }
+    );
+    expect(ownDateOnlyTask.items[0].orderDate).toEqual(withoutOfficialTime.orderDate);
+    expect(ownDateOnlyTask.items[0].deadlineAt).toBeNull();
+    await withoutOfficialTime.update({ officialOrderCreatedAt: originalOfficialTime });
     const own = await paymentTaskService.listOwnTasks(staffOne.id, { page: 2, limit: 20 });
     expect(own.pagination).toEqual({ page: 2, limit: 20, total: 75, totalPages: 4 });
     expect(
-      own.items.every(item => item.assignee.id === staffOne.id && item.officialOrderCreatedAt)
+      own.items.every(
+        item => item.assignee.id === staffOne.id && item.officialOrderCreatedAt && item.orderDate
+      )
     ).toBe(true);
   });
 
