@@ -112,12 +112,12 @@ describe('config telegram environment variables', () => {
     expect(config.proxy.tunnel.password).toBeUndefined();
   });
 
-  test('未显式配置 Provider 时默认选择亦优 HTTP', () => {
+  test('未显式配置 Provider 时默认选择网帆隧道', () => {
     delete process.env.PROXY_PROVIDER;
 
     const { config } = require('../src/utils/config');
 
-    expect(config.proxy.provider).toBe('yiyou_http');
+    expect(config.proxy.provider).toBe('fanproxy_tunnel');
   });
 
   test('代理启用时拒绝未知 Provider 配置', () => {
@@ -127,7 +127,7 @@ describe('config telegram environment variables', () => {
     const { validateConfig } = require('../src/utils/config');
 
     expect(() => validateConfig()).toThrow(
-      'PROXY_PROVIDER 必须是 yiyou_http、kdl_tunnel、kdl_private、fanproxy_tunnel'
+      'PROXY_PROVIDER 必须是 fanproxy_tunnel、kdl_tunnel、kdl_private、yiyou_http'
     );
   });
 

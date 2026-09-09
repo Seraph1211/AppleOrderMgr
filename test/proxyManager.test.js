@@ -156,12 +156,12 @@ describe('proxyManager 安全切换与敏感信息保护', () => {
 
   test('工厂支持四种 Provider 并创建独立网帆与亦优实现', () => {
     expect(SUPPORTED_PROXY_PROVIDERS).toEqual([
-      'yiyou_http',
+      'fanproxy_tunnel',
       'kdl_tunnel',
       'kdl_private',
-      'fanproxy_tunnel',
+      'yiyou_http',
     ]);
-    expect(DEFAULT_PROXY_PROVIDER).toBe('yiyou_http');
+    expect(DEFAULT_PROXY_PROVIDER).toBe('fanproxy_tunnel');
     expect(
       createProxyProvider({
         provider: 'fanproxy_tunnel',

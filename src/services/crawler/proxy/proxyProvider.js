@@ -3,12 +3,12 @@ const KdlPrivateProvider = require('./kdlPrivateProvider');
 const FanProxyTunnelProvider = require('./fanproxyTunnelProvider');
 const YiyouHttpProvider = require('./yiyouHttpProvider');
 
-const DEFAULT_PROXY_PROVIDER = 'yiyou_http';
+const DEFAULT_PROXY_PROVIDER = 'fanproxy_tunnel';
 const SUPPORTED_PROXY_PROVIDERS = [
   DEFAULT_PROXY_PROVIDER,
   'kdl_tunnel',
   'kdl_private',
-  'fanproxy_tunnel',
+  'yiyou_http',
 ];
 
 /**

@@ -31,16 +31,16 @@ const LOG_TYPES = [
 ];
 const SEVERITIES = ["error", "warn", "info", "debug"];
 const PROXY_PROVIDERS = [
-  "yiyou_http",
+  "fanproxy_tunnel",
   "kdl_tunnel",
   "kdl_private",
-  "fanproxy_tunnel",
+  "yiyou_http",
 ];
 const PROXY_PROVIDER_LABELS = {
-  yiyou_http: "亦优 HTTP 代理（首选）",
+  yiyou_http: "亦优 HTTP 代理",
   kdl_tunnel: "快代理隧道 Pro",
   kdl_private: "快代理私密代理",
-  fanproxy_tunnel: "网帆隧道代理",
+  fanproxy_tunnel: "网帆隧道代理（首选）",
 };
 
 export default function SystemLogs() {
