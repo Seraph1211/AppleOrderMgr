@@ -1,4 +1,8 @@
 export const PERMISSIONS = Object.freeze({
+  IDENTITY_READ: 'identity.read',
+  IDENTITY_VERIFY: 'identity.verify',
+  IDENTITY_BATCH: 'identity.batch',
+  IDENTITY_EXPORT: 'identity.export',
   DASHBOARD_READ: 'dashboard.read',
   STATS_READ: 'stats.read',
   ORDERS_READ: 'orders.read',

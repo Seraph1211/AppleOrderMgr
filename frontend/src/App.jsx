@@ -18,6 +18,7 @@ import SystemLogs from './pages/SystemLogs';
 import EmailProcessing from './pages/EmailProcessing';
 import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
+import IdentityVerifications from './pages/IdentityVerifications';
 import { PERMISSIONS } from './constants/permissions';
 
 function permissionRoute(permission, element) {
@@ -38,6 +39,7 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Routes>
+                  <Route path="/identity-verifications" element={permissionRoute(PERMISSIONS.IDENTITY_READ, <IdentityVerifications />)} />
                   <Route path="/profile" element={<Profile />} />
                   <Route
                     path="/operation-logs"

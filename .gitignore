@@ -57,6 +57,7 @@ uploads/import/*
 !uploads/import/.gitkeep
 
 # Secrets and private keys
+.secrets/
 *.pem
 *.key
 *.p12

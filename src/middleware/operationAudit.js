@@ -2,6 +2,7 @@ const { OperationLog } = require('../models');
 const logger = require('../utils/logger');
 
 const MODULE_LABELS = {
+  'identity-verifications': '身份核验',
   auth: '账号',
   users: '系统账号',
   orders: '订单',

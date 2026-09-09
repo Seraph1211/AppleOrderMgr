@@ -37,6 +37,7 @@ const { sequelize } = require('./models');
 const emailService = require('./services/emailService');
 const refreshWorkerService = require('./services/crawler/refreshWorkerService');
 const paymentDispatchScheduler = require('./services/paymentDispatchScheduler');
+const identityVerificationRunner = require('./services/identityVerificationRunner');
 
 const DEFAULT_PORT = parseInt(process.env.PORT, 10) || 3000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -120,6 +121,7 @@ app.use('/api/channels', channelsRouter);
 app.use('/api/system', systemRouter);
 app.use('/api/payment-tasks', paymentTasksRouter);
 app.use('/api/payment-dispatch', paymentDispatchRouter);
+app.use('/api/identity-verifications', require('./routes/identityVerifications'));
 
 // ---------- 404 兜底 ----------
 app.use((req, _res, next) => {
@@ -145,6 +147,7 @@ const server = app.listen(DEFAULT_PORT, () => {
   });
 
   paymentDispatchScheduler.start();
+  identityVerificationRunner.start();
 
   if (process.env.RUN_WORKERS_IN_API === 'true') {
     try {
@@ -166,6 +169,7 @@ function shutdown(signal) {
   // 停止领取新的后台任务；邮件在途处理在关闭数据库前等待完成。
   const crawlerStopped = refreshWorkerService.stop();
   paymentDispatchScheduler.stop();
+  const identityStopped = identityVerificationRunner.stop();
 
   server.close(async err => {
     if (err) {
@@ -175,6 +179,7 @@ function shutdown(signal) {
 
     try {
       await crawlerStopped;
+      await identityStopped;
       await emailService.stopEmailService();
       await sequelize.close();
       logger.info('数据库连接已关闭');

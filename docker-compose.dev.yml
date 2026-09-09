@@ -17,6 +17,8 @@ x-backend-service: &backend-service
     RUN_WORKERS_IN_API: 'false'
     ALLOW_LOCAL_SENSITIVE_DISPLAY: 'true'
   volumes:
+    - ./.secrets:/run/secrets:ro
+    - ./templates:/app/templates:ro
     - ./src:/app/src
     - ./config:/app/config
     - ./migrations:/app/migrations

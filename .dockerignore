@@ -4,10 +4,14 @@ npm-debug.log
 .gitignore
 .env
 .env.local
+.env.*.local
+.secrets
 .env.example
 backend/.env.production
 logs
 tmp
+.tmp
+test-artifacts
 coverage
 release-artifacts
 uploads/import/*

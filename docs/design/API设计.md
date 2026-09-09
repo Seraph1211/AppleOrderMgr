@@ -121,7 +121,25 @@
 | POST   | /api/payment-dispatch/tasks/:id/reopen   | payment_dispatch.correct（admin 保留）                                                 |
 | POST   | /api/payment-dispatch/scan               | payment_dispatch.assign（admin 保留）                                                  |
 
-## 认证与用户
+## 身份核验（2026-09-09 已确认契约）
+
+独立入口 `/api/identity-verifications`，继承 JWT 与账号会话检查。`identity.read` 控制读取，`identity.verify` 控制单人核验，`identity.batch` 控制批量预览／执行，`identity.export` 控制原始结果导出；后三项依赖 read，管理员默认拥有，普通用户显式授予。普通用户只能访问本人批次，管理员可查全部。按用户确认，返回及导出完整原始姓名、身份证号；其他模块脱敏规则不变。响应 `Cache-Control: no-store`，日志不含输入和供应商原始响应。
+
+| 方法及路径（相对此入口） | 契约 |
+| --- | --- |
+| GET /status | read；配置状态、批量上限和速率，不返回凭据或推测余额 |
+| GET /template | batch；xlsx，工作表「身份核验」，列「姓名」「身份证号」为文本 |
+| POST /single | verify；`{name,idCardNumber}`，`Idempotency-Key` UUID 必填；返回202及batchId；同一用户同键同内容返回原批次，内容冲突409 |
+| POST /preview | batch；multipart file，仅xlsx，10MB、1000非空行；只预览不扣次，返回draft批次、原始行和有效／错误／重复计数，15分钟有效 |
+| POST /batches/:id/start | batch；开始draft或恢复paused中的pending行；queued/running重复调用幂等；不重发unknown/error/已完成行 |
+| POST /batches/:id/stop | 根据single/excel来源要求verify/batch；停止未开始行，在途行等待结果，停止后不可恢复 |
+| GET /batches | read；page、limit（最多50）、source（single/excel）、from/to日期；分页返回批次和进度 |
+| GET /batches/:id | read；返回批次和最多1000原始行；duplicateOf指同批首个相同组合行号，结果解析到该行 |
+| GET /batches/:id/export | export；xlsx，保留行号、原始姓名／身份证、结果、说明、重复来源、时间及地区／性别／生日／流水号 |
+
+批次：draft/queued/running/paused/completed/cancelled；行：pending/processing/matched/mismatched/error/unknown/invalid/duplicate/cancelled。只有 `error_code=0` 且布尔 `result.isok` 确定一致与否；超时、未知返回、进程中断标unknown，不自动重试。凭据或额度错误暂停队列。每次开始和领取锁用户复查权限、账号状态；全局PostgreSQL会话锁保证单请求在途、请求起点至少相隔500ms（上限2RPS），与Apple爬虫独立。见[身份核验接入方案](../planning/身份核验接入方案.md)。
+
+## 认证与用户规则
 
 - 登录提交 username、password，密码至少 8 位，返回 Token 与用户信息；账号/IP 限流与锁定分别生效。
 - 改密提交 oldPassword、newPassword、confirmPassword；新密码至少 8 位，不再强制首次改密；改密成功后当前会话失效，需使用新密码重新登录。

@@ -22,6 +22,9 @@ const ADMIN_RESERVED_PERMISSIONS = Object.freeze([
 ]);
 
 const PERMISSION_DEPENDENCIES = Object.freeze({
+  [PERMISSIONS.IDENTITY_VERIFY]: [PERMISSIONS.IDENTITY_READ],
+  [PERMISSIONS.IDENTITY_BATCH]: [PERMISSIONS.IDENTITY_READ],
+  [PERMISSIONS.IDENTITY_EXPORT]: [PERMISSIONS.IDENTITY_READ],
   [PERMISSIONS.ORDERS_EDIT]: [PERMISSIONS.ORDERS_READ],
   [PERMISSIONS.ORDERS_EXPORT]: [PERMISSIONS.ORDERS_READ],
   [PERMISSIONS.ORDERS_REFRESH]: [PERMISSIONS.ORDERS_READ],
@@ -62,6 +65,7 @@ const PERMISSION_DEPENDENCIES = Object.freeze({
 
 /* eslint-disable camelcase -- 权限模块名与对外权限码完全一致 */
 const PERMISSION_MODULE_NAMES = Object.freeze({
+  identity: '身份核验',
   dashboard: '仪表板',
   stats: '统计',
   orders: '订单',
@@ -78,6 +82,10 @@ const PERMISSION_MODULE_NAMES = Object.freeze({
 /* eslint-enable camelcase */
 
 const PERMISSION_LABELS = Object.freeze({
+  [PERMISSIONS.IDENTITY_READ]: '查看身份核验原始记录（本人；管理员全部）',
+  [PERMISSIONS.IDENTITY_VERIFY]: '单人身份核验',
+  [PERMISSIONS.IDENTITY_BATCH]: 'Excel批量身份核验',
+  [PERMISSIONS.IDENTITY_EXPORT]: '导出身份核验原始结果',
   [PERMISSIONS.DASHBOARD_READ]: '查看仪表板',
   [PERMISSIONS.STATS_READ]: '查看统计',
   [PERMISSIONS.ORDERS_READ]: '查看全局订单',

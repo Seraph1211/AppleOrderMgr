@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
+  ShieldCheck,
   LayoutDashboard,
   Package,
   User,
@@ -27,6 +28,12 @@ const baseNavigation = [
   { name: '订单管理', href: '/orders', icon: Package, permission: PERMISSIONS.ORDERS_READ },
   { name: 'Apple ID', href: '/apple-ids', icon: Apple, permission: PERMISSIONS.APPLE_IDS_READ },
   { name: '取机人', href: '/recipients', icon: User, permission: PERMISSIONS.RECIPIENTS_READ },
+  {
+    name: '身份核验',
+    href: '/identity-verifications',
+    icon: ShieldCheck,
+    permission: PERMISSIONS.IDENTITY_READ,
+  },
   { name: '渠道管理', href: '/channels', icon: TrendingUp, permission: PERMISSIONS.CHANNELS_READ },
 ];
 

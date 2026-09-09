@@ -24,6 +24,8 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  IdentityVerificationBatch: require('./IdentityVerificationBatch')(sequelize),
+  IdentityVerificationItem: require('./IdentityVerificationItem')(sequelize),
   User: require('./User')(sequelize),
   OperationLog: require('./OperationLog')(sequelize),
   AppleId: require('./AppleId')(sequelize),
