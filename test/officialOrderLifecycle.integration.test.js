@@ -137,6 +137,7 @@ const axios = require('axios');
     try {
       await refreshJobs.enqueueInitialRefresh(order);
       await worker.runOnce();
+      await worker.waitForIdle();
       await dispatch.runDispatchScan();
       await order.reload();
       const task = await models.PaymentTask.findOne({ where: { orderId: order.id } });
@@ -170,6 +171,110 @@ const axios = require('axios');
     const state = await repository.ensureSystemState();
     expect(state.workerProxyReady).toBe(false);
     expect(state.activeProxyProvider).toBe('fanproxy_tunnel');
+  });
+
+  test('慢订单未完成时，下一轮可在真实队列领取晚入队订单', async () => {
+    const worker = require('../src/services/crawler/refreshWorkerService');
+    const proxy = require('../src/utils/proxyManager');
+    const config = require('../src/utils/config').config;
+    const oldConcurrency = config.crawler.workerConcurrency;
+    config.crawler.workerConcurrency = 2;
+    const proxyStatus = jest.spyOn(proxy, 'getStatus').mockReturnValue({
+      activeProvider: 'fanproxy_tunnel',
+      isInitialized: true,
+    });
+    await (
+      await repository.ensureSystemState()
+    ).update({
+      activeProxyProvider: 'fanproxy_tunnel',
+      requestedProxyProvider: 'fanproxy_tunnel',
+      proxySwitchStatus: 'succeeded',
+      isPaused: false,
+    });
+    const secondOrder = await models.Order.create({
+      orderNumber: `W${++sequence}`,
+      products: [{ name: '测试手机', quantity: 1 }],
+      status: 'cancelled',
+      paymentStatus: 'unpaid',
+    });
+    const pending = [];
+    const crawl = jest
+      .spyOn(crawler, 'crawlAndUpdateOrder')
+      .mockImplementation(() => new Promise(resolve => pending.push(resolve)));
+    try {
+      const first = await repository.enqueueJob(order.id, {
+        trigger: 'manual_single',
+        priority: 100,
+        scheduledAt: new Date(),
+      });
+      await worker.runOnce();
+      expect(pending).toHaveLength(1);
+      const second = await repository.enqueueJob(secondOrder.id, {
+        trigger: 'manual_single',
+        priority: 100,
+        scheduledAt: new Date(),
+      });
+      await worker.runOnce();
+      expect(pending).toHaveLength(2);
+      await first.job.reload();
+      await second.job.reload();
+      expect(first.job.status).toBe('running');
+      expect(first.job.finishedAt).toBeNull();
+      expect(second.job.status).toBe('running');
+      expect(second.job.startedAt.getTime()).toBeGreaterThanOrEqual(first.job.startedAt.getTime());
+      pending.forEach(resolve => resolve({ success: true }));
+      await worker.waitForIdle();
+      await first.job.reload();
+      await second.job.reload();
+      expect(first.job.status).toBe('succeeded');
+      expect(second.job.status).toBe('succeeded');
+    } finally {
+      pending.forEach(resolve => resolve({ success: true }));
+      await worker.waitForIdle();
+      crawl.mockRestore();
+      proxyStatus.mockRestore();
+      config.crawler.workerConcurrency = oldConcurrency;
+    }
+  });
+
+  test('续租只保护本进程在途任务，其他过期租约仍可恢复', async () => {
+    const first = await repository.enqueueJob(order.id, {
+      trigger: 'manual_single',
+      priority: 100,
+      scheduledAt: new Date(),
+    });
+    const otherOrder = await models.Order.create({
+      orderNumber: `W${++sequence}`,
+      products: [{ name: '测试手机', quantity: 1 }],
+      status: 'cancelled',
+    });
+    const second = await repository.enqueueJob(otherOrder.id, {
+      trigger: 'manual_single',
+      priority: 100,
+      scheduledAt: new Date(),
+    });
+    const expired = new Date(Date.now() - 1000);
+    await first.job.update({
+      status: 'running',
+      leaseOwner: 'live-worker',
+      leaseExpiresAt: expired,
+    });
+    await second.job.update({
+      status: 'running',
+      leaseOwner: 'other-worker',
+      leaseExpiresAt: expired,
+    });
+    expect(
+      await repository.renewActiveLeases('live-worker', [first.job.id, second.job.id], 300000)
+    ).toBe(1);
+    await repository.recoverExpiredLeases();
+    await first.job.reload();
+    await second.job.reload();
+    expect(first.job.status).toBe('running');
+    expect(first.job.leaseExpiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(second.job.status).toBe('pending');
+    await first.job.update({ status: 'skipped', leaseOwner: null, leaseExpiresAt: null });
+    await second.job.update({ status: 'skipped' });
   });
 
   test('五阶段落库、来源快照幂等、准确截止同步，不篡改人工付款任务四态', async () => {

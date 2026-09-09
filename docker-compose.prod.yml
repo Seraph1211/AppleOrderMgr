@@ -71,6 +71,7 @@ services:
 
   crawler-worker:
     <<: *service-defaults
+    stop_grace_period: 120s
     command: ['node', 'src/workers/crawlerWorker.js']
     environment:
       NODE_ENV: production

@@ -13,7 +13,7 @@ const { validateEncryptionConfiguration } = require('../utils/fieldEncryption');
 async function shutdown(signal) {
   try {
     logger.info('爬虫 Worker 正在关闭', { signal });
-    refreshWorkerService.stop();
+    await refreshWorkerService.stop();
     await sequelize.close();
     process.exit(0);
   } catch (error) {

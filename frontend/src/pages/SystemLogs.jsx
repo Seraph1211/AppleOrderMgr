@@ -297,7 +297,7 @@ export default function SystemLogs() {
                 </div>
                 <p className="text-sm text-gray-500 mt-2">
                   切换请求由独立 Worker
-                  在当前批次结束后验证；候选失败时继续使用原 Provider。
+                  等待在途任务结束后验证；候选失败时继续使用原 Provider。
                 </p>
                 <p role="status" className={proxyProviderStatus.workerReady ? "text-sm text-green-700 mt-2" : "text-sm text-amber-700 mt-2"}>
                   {proxyProviderStatus.workerReady ? "爬虫代理已就绪" : proxyProviderStatus.workerBlockedReason || "爬虫代理尚未就绪"}

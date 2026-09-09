@@ -162,7 +162,7 @@ function shutdown(signal) {
   logger.info(`收到 ${signal} 信号，准备关闭服务`);
 
   // 停止领取新的后台任务；邮件在途处理在关闭数据库前等待完成。
-  refreshWorkerService.stop();
+  const crawlerStopped = refreshWorkerService.stop();
   paymentDispatchScheduler.stop();
 
   server.close(async err => {
@@ -172,6 +172,7 @@ function shutdown(signal) {
     }
 
     try {
+      await crawlerStopped;
       await emailService.stopEmailService();
       await sequelize.close();
       logger.info('数据库连接已关闭');

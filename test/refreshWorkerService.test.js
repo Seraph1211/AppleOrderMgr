@@ -54,6 +54,7 @@ jest.mock('../src/services/crawler/refreshJobRepository', () => ({
   failProxyProviderSwitch: mockFailProxyProviderSwitch,
   heartbeat: jest.fn(),
   recoverExpiredLeases: jest.fn(),
+  renewActiveLeases: jest.fn(),
   claimDueJobs: jest.fn(),
   finishJob: jest.fn(),
   pause: jest.fn(),

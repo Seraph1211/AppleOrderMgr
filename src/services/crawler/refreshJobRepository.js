@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const logger = require('../../utils/logger');
 
 const {
   sequelize,
@@ -227,6 +228,27 @@ function claimDueJobs(workerId, limit, leaseMs) {
 }
 
 /**
+ * 仅为本进程仍持有的在途任务续租，避免补位扫描回收仍在执行的任务。
+ * @param {string} workerId - Worker 标识
+ * @param {number[]} jobIds - 在途任务 ID
+ * @param {number} leaseMs - 租约时长
+ * @returns {Promise<number>} 续租数量
+ */
+async function renewActiveLeases(workerId, jobIds, leaseMs) {
+  try {
+    if (jobIds.length === 0) return 0;
+    const [count] = await OrderRefreshJob.update(
+      { leaseExpiresAt: new Date(Date.now() + leaseMs) },
+      { where: { id: { [Op.in]: jobIds }, status: 'running', leaseOwner: workerId } }
+    );
+    return count;
+  } catch (error) {
+    logger.error('刷新任务续租失败', { workerId, jobCount: jobIds.length });
+    throw error;
+  }
+}
+
+/**
  * 查询到期的逐订单调度。
  * @param {number} limit - 查询上限
  * @param {Date} now - 当前时间
@@ -433,6 +455,7 @@ module.exports = {
   getOrCreateActiveBatch,
   refreshBatchCounts,
   recoverExpiredLeases,
+  renewActiveLeases,
   claimDueJobs,
   listDueSchedules,
   finishJob,

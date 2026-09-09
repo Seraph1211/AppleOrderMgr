@@ -15,6 +15,9 @@ const workerState = {
   workerId: `${os.hostname()}:${process.pid}`,
   timer: null,
   running: false,
+  stopping: false,
+  tickFinished: Promise.resolve(),
+  inFlight: new Map(),
   recoveryKey: null,
   recoveryRetryAt: 0,
 };
@@ -228,14 +231,26 @@ async function processJob(job) {
  * @returns {Promise<Object>} 循环摘要
  */
 async function runOnce() {
+  if (workerState.stopping) return { skipped: true, reason: 'worker_stopping' };
   if (workerState.running) {
     await repository.heartbeat(workerState.workerId);
     return { skipped: true, reason: 'previous_tick_running' };
   }
   workerState.running = true;
+  let finishTick;
+  workerState.tickFinished = new Promise(resolve => {
+    finishTick = resolve;
+  });
   try {
     const state = await repository.heartbeat(workerState.workerId);
-    const proxySwitch = await reconcileProxyProvider(state);
+    await repository.renewActiveLeases(
+      workerState.workerId,
+      [...workerState.inFlight.keys()],
+      config.crawler.jobLeaseMs
+    );
+    const proxySwitch = workerState.inFlight.size
+      ? { skipped: true, reason: 'active_jobs_running' }
+      : await reconcileProxyProvider(state);
     const localProxy = proxyManager.getStatus();
     const proxyReady = Boolean(
       config.proxy.enabled && localProxy.activeProvider && localProxy.isInitialized
@@ -257,27 +272,39 @@ async function runOnce() {
       };
     }
     if (state.isPaused) return { skipped: true, reason: state.pauseReason || 'paused' };
+    if (workerState.inFlight.size > 0 && requiresProxySwitch(state)) {
+      return { skipped: true, reason: 'proxy_switch_draining' };
+    }
+    const availableSlots = config.crawler.workerConcurrency - workerState.inFlight.size;
+    if (availableSlots <= 0) return { skipped: true, reason: 'concurrency_full' };
     const recovered = await repository.recoverExpiredLeases();
     const scheduled = await refreshJobService.enqueueDueAutoJobs(config.crawler.scheduleScanLimit);
+    // 扫描期间可能出现暂停、切换或退出请求，领取前重新检查。
+    const latestState = await repository.ensureSystemState();
+    if (workerState.stopping) return { skipped: true, reason: 'worker_stopping' };
+    if (latestState.isPaused) return { skipped: true, reason: 'paused' };
+    if (requiresProxySwitch(latestState)) {
+      return { skipped: true, reason: 'proxy_switch_draining' };
+    }
     const jobs = await repository.claimDueJobs(
       workerState.workerId,
-      config.crawler.workerConcurrency,
+      availableSlots,
       config.crawler.jobLeaseMs
     );
-    const outcomes = await Promise.allSettled(jobs.map(processJob));
-    const persistenceFailures = outcomes.filter(outcome => outcome.status === 'rejected');
-    if (persistenceFailures.length > 0) {
-      logger.error('刷新任务结果持久化失败，任务将等待租约恢复', {
-        count: persistenceFailures.length,
-        errors: persistenceFailures.map(outcome => outcome.reason?.message || 'unknown'),
-      });
+    for (const job of jobs) {
+      const completion = processJob(job)
+        .catch(() => {
+          logger.error('刷新任务结果持久化失败，任务将等待租约恢复', { jobId: job.id });
+        })
+        .finally(() => workerState.inFlight.delete(job.id));
+      workerState.inFlight.set(job.id, completion);
     }
     return {
       skipped: false,
       recovered,
       scheduled,
       claimed: jobs.length,
-      persistenceFailures: persistenceFailures.length,
+      inFlight: workerState.inFlight.size,
       proxySwitch,
     };
   } catch (error) {
@@ -285,7 +312,22 @@ async function runOnce() {
     throw error;
   } finally {
     workerState.running = false;
+    finishTick();
   }
+}
+
+/**
+ * 是否需要先排空在途任务再处理代理切换。
+ * @param {Object} state - 持久化系统状态
+ * @returns {boolean} 是否停止补位
+ */
+function requiresProxySwitch(state) {
+  if (state.proxySwitchStatus === 'failed') return false;
+  const target = state.requestedProxyProvider || config.proxy.provider;
+  return (
+    target !== proxyManager.getStatus().activeProvider ||
+    ['pending', 'switching'].includes(state.proxySwitchStatus)
+  );
 }
 
 /**
@@ -299,6 +341,7 @@ async function start() {
       return getStatus();
     }
     if (workerState.timer) return getStatus();
+    workerState.stopping = false;
     await repository.ensureSystemState();
     await repository.heartbeat(workerState.workerId, {
       workerProxyReady: false,
@@ -322,12 +365,30 @@ async function start() {
 }
 
 /**
- * 停止 Worker 新一轮领取。
- * @returns {void}
+ * 停止新领取并等待在途任务持久化完成。
+ * @returns {Promise<void>}
  */
-function stop() {
-  if (workerState.timer) clearInterval(workerState.timer);
-  workerState.timer = null;
+async function stop() {
+  try {
+    workerState.stopping = true;
+    if (workerState.timer) clearInterval(workerState.timer);
+    workerState.timer = null;
+    await waitForIdle();
+  } catch (error) {
+    logger.error('等待爬虫在途任务结束失败', { error: error.message });
+    throw error;
+  }
+}
+
+/** 等待当前领取与执行完成，不启动新的调度轮次。 @returns {Promise<void>} */
+async function waitForIdle() {
+  try {
+    await workerState.tickFinished;
+    await Promise.allSettled([...workerState.inFlight.values()]);
+  } catch (error) {
+    logger.error('等待爬虫任务完成失败', { error: error.message });
+    throw error;
+  }
 }
 
 /**
@@ -339,7 +400,8 @@ function getStatus() {
     enabled: config.crawler.autoRefreshEnabled,
     workerId: workerState.workerId,
     isRunning: Boolean(workerState.timer),
-    isProcessing: workerState.running,
+    isProcessing: workerState.running || workerState.inFlight.size > 0,
+    inFlight: workerState.inFlight.size,
   };
 }
 
@@ -354,6 +416,7 @@ function getPersistentState() {
 module.exports = {
   start,
   stop,
+  waitForIdle,
   runOnce,
   processJob,
   getStatus,
