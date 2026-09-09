@@ -10,10 +10,13 @@ const { classifyRefreshError, sanitizeRefreshError } = require('./refreshErrors'
 const { isProxyProviderConfigured, isSupportedProxyProvider } = require('./proxy/proxyProvider');
 const { validateProxyProviderCandidate } = require('./proxy/proxyHealthCheck');
 
+const RECOVERY_RETRY_MS = 60_000;
 const workerState = {
   workerId: `${os.hostname()}:${process.pid}`,
   timer: null,
   running: false,
+  recoveryKey: null,
+  recoveryRetryAt: 0,
 };
 
 /**
@@ -58,6 +61,59 @@ async function reconcileProxyProvider(state) {
   if (!config.proxy.enabled) return { skipped: true, reason: 'proxy_disabled' };
   const targetProvider = state.requestedProxyProvider || config.proxy.provider;
   const localStatus = proxyManager.getStatus();
+
+  // 数据库 active 是上次有效值，新进程必须重新建立自己的代理实例。
+  if (!localStatus.isInitialized && state.proxySwitchStatus === 'failed') {
+    const recoveryProvider = state.activeProxyProvider;
+    if (
+      !recoveryProvider ||
+      !isSupportedProxyProvider(recoveryProvider) ||
+      !isProxyProviderConfigured(config.proxy, recoveryProvider)
+    ) {
+      return { skipped: true, reason: 'PROXY_RECOVERY_UNAVAILABLE' };
+    }
+    const recoveryKey = `${recoveryProvider}:${targetProvider}:${state.proxySwitchRequestedAt || ''}`;
+    if (workerState.recoveryKey === recoveryKey && Date.now() < workerState.recoveryRetryAt) {
+      return { skipped: true, reason: 'PROXY_RECOVERY_FAILED' };
+    }
+    workerState.recoveryKey = recoveryKey;
+    workerState.recoveryRetryAt = Date.now() + RECOVERY_RETRY_MS;
+    try {
+      await proxyManager.switchProvider(recoveryProvider, {
+        validateCandidate: async candidate => {
+          try {
+            await validateProxyProviderCandidate(candidate);
+            const latest = await repository.ensureSystemState();
+            if (
+              latest.activeProxyProvider !== recoveryProvider ||
+              latest.requestedProxyProvider !== state.requestedProxyProvider ||
+              String(latest.proxySwitchRequestedAt) !== String(state.proxySwitchRequestedAt)
+            ) {
+              const error = new Error('恢复期间切换请求已更新');
+              error.code = 'PROXY_SWITCH_SUPERSEDED';
+              throw error;
+            }
+          } catch (error) {
+            error.code = error.code || 'PROXY_RECOVERY_FAILED';
+            throw error;
+          }
+        },
+      });
+      workerState.recoveryRetryAt = 0;
+      logger.info('爬虫 Worker 已恢复最后有效代理', { activeProvider: recoveryProvider });
+      return { switched: false, recovered: true, activeProvider: recoveryProvider };
+    } catch (rawError) {
+      const error = sanitizeProxySwitchError(rawError);
+      if (error.code === 'PROXY_SWITCH_SUPERSEDED') {
+        return { skipped: true, reason: 'switch_request_superseded' };
+      }
+      logger.warn('爬虫 Worker 代理恢复失败，暂停领取任务', {
+        provider: recoveryProvider,
+        errorCode: error.code,
+      });
+      return { skipped: true, reason: 'PROXY_RECOVERY_FAILED' };
+    }
+  }
 
   if (!isSupportedProxyProvider(targetProvider)) {
     const unsupportedError = new Error('unsupported');
@@ -180,10 +236,20 @@ async function runOnce() {
   try {
     const state = await repository.heartbeat(workerState.workerId);
     const proxySwitch = await reconcileProxyProvider(state);
+    const localProxy = proxyManager.getStatus();
+    const proxyReady = Boolean(
+      config.proxy.enabled && localProxy.activeProvider && localProxy.isInitialized
+    );
+    let blockedReason = proxySwitch.errorCode || proxySwitch.reason || 'PROXY_UNAVAILABLE';
+    if (!config.proxy.enabled) blockedReason = 'PROXY_DISABLED';
+    await repository.heartbeat(workerState.workerId, {
+      workerProxyReady: proxyReady,
+      workerProxyErrorCode: proxyReady ? null : blockedReason,
+    });
     if (!config.proxy.enabled) {
       return { skipped: true, reason: 'proxy_disabled', proxySwitch };
     }
-    if (!proxyManager.getStatus().activeProvider) {
+    if (!proxyReady) {
       return {
         skipped: true,
         reason: proxySwitch.errorCode || proxySwitch.reason || 'proxy_unavailable',
@@ -234,6 +300,10 @@ async function start() {
     }
     if (workerState.timer) return getStatus();
     await repository.ensureSystemState();
+    await repository.heartbeat(workerState.workerId, {
+      workerProxyReady: false,
+      workerProxyErrorCode: 'PROXY_INITIALIZING',
+    });
     workerState.timer = setInterval(() => {
       runOnce().catch(error => logger.error('订单刷新调度循环失败', { error: error.message }));
     }, config.crawler.schedulerTickMs);

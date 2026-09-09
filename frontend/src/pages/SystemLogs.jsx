@@ -76,9 +76,9 @@ export default function SystemLogs() {
   }, [pagination.currentPage, pagination.pageSize]);
 
   useEffect(() => {
-    if (!["pending", "switching"].includes(proxyProviderStatus?.switchStatus))
-      return undefined;
-    const timer = window.setInterval(loadProxyProviderStatus, 2000);
+    const interval = ["pending", "switching"].includes(proxyProviderStatus?.switchStatus)
+      ? 2000 : 5000;
+    const timer = window.setInterval(loadProxyProviderStatus, interval);
     return () => window.clearInterval(timer);
   }, [proxyProviderStatus?.switchStatus]);
 
@@ -285,8 +285,8 @@ export default function SystemLogs() {
                   爬虫代理 Provider
                 </h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600">
-                  <span>当前生效：</span>
-                  <span className="badge badge-success">
+                  <span>{proxyProviderStatus.workerReady ? "当前生效：" : "上次生效："}</span>
+                  <span className={proxyProviderStatus.workerReady ? "badge badge-success" : "badge badge-warning"}>
                     {getProviderLabel(proxyProviderStatus.activeProvider)}
                   </span>
                   <span>目标：</span>
@@ -298,6 +298,9 @@ export default function SystemLogs() {
                 <p className="text-sm text-gray-500 mt-2">
                   切换请求由独立 Worker
                   在当前批次结束后验证；候选失败时继续使用原 Provider。
+                </p>
+                <p role="status" className={proxyProviderStatus.workerReady ? "text-sm text-green-700 mt-2" : "text-sm text-amber-700 mt-2"}>
+                  {proxyProviderStatus.workerReady ? "爬虫代理已就绪" : proxyProviderStatus.workerBlockedReason || "爬虫代理尚未就绪"}
                 </p>
                 {proxyProviderStatus.switchError && (
                   <p className="text-sm text-red-600 mt-2">
@@ -315,7 +318,7 @@ export default function SystemLogs() {
                   proxyProviderStatus.switchStatus,
                 );
                 const isActive =
-                  proxyProviderStatus.activeProvider === provider && !isBusy;
+                  proxyProviderStatus.workerReady && proxyProviderStatus.activeProvider === provider && !isBusy;
                 return (
                   <button
                     key={provider}

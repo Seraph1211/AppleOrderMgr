@@ -161,6 +161,89 @@ describe('爬虫 Worker 代理 Provider 切换', () => {
     expect(mockCompleteProxyProviderSwitch).toHaveBeenCalledWith('fanproxy_tunnel');
     expect(result).toEqual({ switched: true, activeProvider: 'fanproxy_tunnel' });
   });
+
+  test('切换失败后冷启动先恢复网帆，保留失败候选诊断并继续领取任务', async () => {
+    const state = {
+      requestedProxyProvider: 'kdl_private',
+      activeProxyProvider: 'fanproxy_tunnel',
+      proxySwitchStatus: 'failed',
+    };
+    const repository = require('../src/services/crawler/refreshJobRepository');
+    const jobs = require('../src/services/crawler/refreshJobService');
+    repository.heartbeat.mockResolvedValue(state);
+    repository.claimDueJobs.mockResolvedValue([]);
+    mockEnsureSystemState.mockResolvedValue(state);
+    mockProxyStatus.mockReturnValue({ activeProvider: null, isInitialized: false });
+    mockSwitchProvider.mockImplementation(async (provider, options) => {
+      await options.validateCandidate({});
+      mockProxyStatus.mockReturnValue({ activeProvider: provider, isInitialized: true });
+      return { changed: true, activeProvider: provider };
+    });
+    const result = await refreshWorkerService.runOnce();
+    expect(result.skipped).toBe(false);
+    expect(mockSwitchProvider.mock.calls[0][0]).toBe('fanproxy_tunnel');
+    expect(mockValidateCandidate).toHaveBeenCalled();
+    expect(mockCompleteProxyProviderSwitch).not.toHaveBeenCalled();
+    expect(mockFailProxyProviderSwitch).not.toHaveBeenCalled();
+    expect(jobs.enqueueDueAutoJobs).toHaveBeenCalled();
+    expect(repository.claimDueJobs).toHaveBeenCalled();
+    expect(repository.heartbeat).toHaveBeenCalledWith(expect.any(String), {
+      workerProxyReady: true,
+      workerProxyErrorCode: null,
+    });
+  });
+
+  test('原代理恢复失败公开阻塞且一分钟内不反复请求', async () => {
+    const state = {
+      requestedProxyProvider: 'kdl_private',
+      activeProxyProvider: 'fanproxy_tunnel',
+      proxySwitchStatus: 'failed',
+      proxySwitchRequestedAt: 'recovery-failure',
+    };
+    const repository = require('../src/services/crawler/refreshJobRepository');
+    repository.heartbeat.mockResolvedValue(state);
+    mockProxyStatus.mockReturnValue({ activeProvider: null, isInitialized: false });
+    mockSwitchProvider.mockRejectedValue(new Error('secret upstream details'));
+    expect((await refreshWorkerService.runOnce()).reason).toBe('PROXY_RECOVERY_FAILED');
+    expect((await refreshWorkerService.runOnce()).reason).toBe('PROXY_RECOVERY_FAILED');
+    expect(mockSwitchProvider).toHaveBeenCalledTimes(1);
+    expect(repository.claimDueJobs).not.toHaveBeenCalled();
+    expect(repository.heartbeat).toHaveBeenCalledWith(expect.any(String), {
+      workerProxyReady: false,
+      workerProxyErrorCode: 'PROXY_RECOVERY_FAILED',
+    });
+  });
+
+  test('没有历史有效代理时不冒充就绪', async () => {
+    mockProxyStatus.mockReturnValue({ activeProvider: null, isInitialized: false });
+    expect(
+      await refreshWorkerService.reconcileProxyProvider({
+        requestedProxyProvider: 'kdl_private',
+        proxySwitchStatus: 'failed',
+      })
+    ).toMatchObject({ reason: 'PROXY_RECOVERY_UNAVAILABLE' });
+    expect(mockSwitchProvider).not.toHaveBeenCalled();
+  });
+
+  test('恢复期间新切换请求不被旧恢复结果覆盖', async () => {
+    mockProxyStatus.mockReturnValue({ activeProvider: null, isInitialized: false });
+    mockEnsureSystemState.mockResolvedValue({
+      requestedProxyProvider: 'kdl_tunnel',
+      activeProxyProvider: 'fanproxy_tunnel',
+    });
+    mockSwitchProvider.mockImplementation(async (_provider, options) => {
+      await options.validateCandidate({});
+    });
+    expect(
+      await refreshWorkerService.reconcileProxyProvider({
+        requestedProxyProvider: 'kdl_private',
+        activeProxyProvider: 'fanproxy_tunnel',
+        proxySwitchStatus: 'failed',
+        proxySwitchRequestedAt: 'new-request',
+      })
+    ).toMatchObject({ reason: 'switch_request_superseded' });
+    expect(mockCompleteProxyProviderSwitch).not.toHaveBeenCalled();
+  });
 });
 
 describe('队列触发类型与爬虫日志来源兼容', () => {

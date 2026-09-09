@@ -1,3 +1,4 @@
+import { getPaymentStageLabel } from '../utils/paymentStage';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ListChecks, RefreshCw, RotateCcw, Save, ScanSearch, Search, Users, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -93,7 +94,9 @@ function formatDateTime(value) {
   )}:${part(date.getMinutes())}:${part(date.getSeconds())}`;
 }
 
-function formatCountdown(deadlineAt, now) {
+function formatCountdown(deadlineAt, now, task) {
+  const stage = getPaymentStageLabel(task);
+  if (stage) return { text: stage, className: 'text-gray-600' };
   if (!deadlineAt) return { text: '等待官网时间', className: 'text-gray-500' };
   const seconds = Math.floor((new Date(deadlineAt).getTime() - now.getTime()) / 1000);
   if (seconds <= 0) {
@@ -619,7 +622,7 @@ export default function PaymentDispatch() {
             </thead>
             <tbody>
               {tasks.map(task => {
-                const countdown = formatCountdown(task.deadlineAt, now);
+                const countdown = formatCountdown(task.deadlineAt, now, task);
                 const refreshKey = `refresh-${task.id}`;
                 return (
                   <tr

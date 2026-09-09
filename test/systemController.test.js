@@ -138,6 +138,23 @@ describe('独立爬虫 Worker 持久化状态与控制', () => {
     expect(JSON.stringify(payload)).not.toContain('yiyouip.com');
   });
 
+  test.each([
+    [false, new Date(), false],
+    [true, new Date(Date.now() - 60_000), false],
+    [true, new Date(), true],
+  ])('代理就绪 %s、心跳 %s 共同决定可服务状态', async (ready, heartbeatAt, expected) => {
+    mockEnsureSystemState.mockResolvedValue({
+      workerProxyReady: ready,
+      heartbeatAt,
+      activeProxyProvider: 'fanproxy_tunnel',
+    });
+    const res = { json: jest.fn() };
+    await systemController.getProxyProviderStatus({}, res);
+    const data = res.json.mock.calls[0][0].data;
+    expect(data.workerReady).toBe(expected);
+    if (!expected) expect(data.workerBlockedReason).toBeTruthy();
+  });
+
   test('管理员提交私密代理切换请求并收到 202', async () => {
     mockRequestProxyProviderSwitch.mockResolvedValue({
       requestedProxyProvider: 'kdl_private',

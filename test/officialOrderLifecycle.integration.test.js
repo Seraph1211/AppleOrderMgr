@@ -13,6 +13,7 @@ jest.mock('../src/utils/proxyManager', () => ({
   getNextProxy: () => ({ host: '127.0.0.1', port: 1234 }),
   recordProxySuccess: jest.fn(),
   recordProxyFailure: jest.fn(),
+  switchProvider: jest.fn(),
 }));
 
 const enabled = process.env.RUN_LIFECYCLE_DB_INTEGRATION === 'true';
@@ -84,6 +85,91 @@ const axios = require('axios');
       paymentMethod: '银行卡',
       products: [{ name: '测试手机 256GB 蓝色', model: 'MODEL-1', quantity: 2 }],
     });
+  });
+
+  test('切换失败后重启恢复代理，新单抓取截止后自动分配', async () => {
+    const proxy = require('../src/utils/proxyManager');
+    const worker = require('../src/services/crawler/refreshWorkerService');
+    const refreshJobs = require('../src/services/crawler/refreshJobService');
+    const config = require('../src/utils/config').config;
+    const oldConfig = config.proxy.fanproxyTunnel;
+    config.proxy.fanproxyTunnel = {
+      host: 'fixture',
+      port: 9000,
+      account: 'fixture',
+      password: 'fixture',
+    };
+    const proxyStatus = jest
+      .spyOn(proxy, 'getStatus')
+      .mockReturnValue({ activeProvider: null, isInitialized: false });
+    const state = await repository.ensureSystemState();
+    await state.update({
+      activeProxyProvider: 'fanproxy_tunnel',
+      requestedProxyProvider: 'yiyou_http',
+      proxySwitchStatus: 'failed',
+      workerProxyReady: false,
+    });
+    await models.PaymentDispatchSetting.update(
+      { enabled: true, mode: 'auto', scopeStartedAt: new Date(Date.now() - 60_000) },
+      { where: {} }
+    );
+    await models.PaymentDispatchSetting.findOrCreate({
+      where: { id: 1 },
+      defaults: { enabled: true, mode: 'auto', scopeStartedAt: new Date(Date.now() - 60_000) },
+    });
+    await models.PaymentStaffSetting.update(
+      { autoAssignEnabled: true },
+      { where: { userId: admin.id } }
+    );
+    page('PAYMENT_DUE_STORED_ORDER', json => {
+      json.orderDetail.orderItems['orderItem-11'].orderItemDetails.d.paymentTimeToExpiryEpoch =
+        Math.floor(Date.now() / 1000) + 1200;
+    });
+    proxy.switchProvider.mockImplementation(async (provider, options) => {
+      await options.validateCandidate({
+        getStatus: () => ({ provider }),
+        getNextProxy: () => ({ host: '127.0.0.1', port: 1 }),
+        recordProxySuccess() {},
+      });
+      proxyStatus.mockReturnValue({ activeProvider: provider, isInitialized: true });
+      return { changed: true };
+    });
+    try {
+      await refreshJobs.enqueueInitialRefresh(order);
+      await worker.runOnce();
+      await dispatch.runDispatchScan();
+      await order.reload();
+      const task = await models.PaymentTask.findOne({ where: { orderId: order.id } });
+      expect(order.status).toBe('payment_due');
+      expect(order.officialPaymentExpiresAt).toBeTruthy();
+      expect(task.deadlineAt).toEqual(order.officialPaymentExpiresAt);
+      expect(task.assigneeUserId).toBe(admin.id);
+      await state.reload();
+      expect(state.workerProxyReady).toBe(true);
+      expect(state.proxySwitchStatus).toBe('failed');
+      expect(state.requestedProxyProvider).toBe('yiyou_http');
+    } finally {
+      proxyStatus.mockRestore();
+      config.proxy.fanproxyTunnel = oldConfig;
+      await models.PaymentDispatchSetting.update({ enabled: false }, { where: { id: 1 } });
+      await models.PaymentStaffSetting.update(
+        { autoAssignEnabled: false },
+        { where: { userId: admin.id } }
+      );
+    }
+  });
+
+  test('代理运行状态 Migration 可回退并重新升级', async () => {
+    const migration = require('../migrations/20260909000002-add-proxy-worker-readiness');
+    const queryInterface = models.sequelize.getQueryInterface();
+    await migration.down(queryInterface);
+    expect(
+      (await queryInterface.describeTable('order_refresh_system_states')).worker_proxy_ready
+    ).toBeUndefined();
+    await migration.up(queryInterface, models.Sequelize);
+    const state = await repository.ensureSystemState();
+    expect(state.workerProxyReady).toBe(false);
+    expect(state.activeProxyProvider).toBe('fanproxy_tunnel');
   });
 
   test('五阶段落库、来源快照幂等、准确截止同步，不篡改人工付款任务四态', async () => {

@@ -300,9 +300,9 @@ async function finishJob(job, outcome) {
  * @param {string} workerId - Worker ID
  * @returns {Promise<Object>} 系统状态
  */
-async function heartbeat(workerId) {
+async function heartbeat(workerId, runtime = {}) {
   const state = await ensureSystemState();
-  await state.update({ workerId, heartbeatAt: new Date() });
+  await state.update({ workerId, heartbeatAt: new Date(), ...runtime });
   return state;
 }
 
@@ -343,11 +343,10 @@ function requestProxyProviderSwitch(providerName, userId) {
   return sequelize.transaction(async transaction => {
     const state = await ensureSystemState(transaction);
     await state.reload({ transaction, lock: transaction.LOCK.UPDATE });
-    const alreadyActive = state.activeProxyProvider === providerName;
     await state.update(
       {
         requestedProxyProvider: providerName,
-        proxySwitchStatus: alreadyActive ? 'succeeded' : 'pending',
+        proxySwitchStatus: 'pending',
         proxySwitchErrorCode: null,
         proxySwitchErrorMessage: null,
         proxySwitchRequestedAt: new Date(),

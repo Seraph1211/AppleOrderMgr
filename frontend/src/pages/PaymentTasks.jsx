@@ -1,3 +1,4 @@
+import { getPaymentStageLabel } from '../utils/paymentStage';
 import { ORDER_STATUS_LABELS } from '../constants/orderStatus';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Copy, CreditCard, RefreshCw, Save } from 'lucide-react';
@@ -32,7 +33,9 @@ const STATUS_BADGES = {
   exception: 'badge badge-error',
 };
 
-function formatCountdown(deadlineAt, now) {
+function formatCountdown(deadlineAt, now, task) {
+  const stage = getPaymentStageLabel(task);
+  if (stage) return stage;
   if (!deadlineAt) return '待核实';
   const seconds = Math.floor((new Date(deadlineAt).getTime() - now) / 1000);
   if (seconds <= 0) return `已超时 ${Math.ceil(Math.abs(seconds) / 60)} 分钟`;
@@ -361,7 +364,7 @@ export default function PaymentTasks() {
                     <td
                       className={`px-4 py-4 text-sm ${task.remainingSeconds !== null && task.remainingSeconds <= 300 ? 'text-red-600 font-medium' : 'text-gray-700'}`}
                     >
-                      {formatCountdown(task.deadlineAt, now)}
+                      {formatCountdown(task.deadlineAt, now, task)}
                     </td>
                     <td className="px-4 py-4">
                       <select

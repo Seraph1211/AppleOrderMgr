@@ -27,6 +27,13 @@ module.exports = sequelize => {
       },
       workerId: { type: DataTypes.STRING(100), field: 'worker_id' },
       heartbeatAt: { type: DataTypes.DATE, field: 'heartbeat_at' },
+      workerProxyReady: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'worker_proxy_ready',
+      },
+      workerProxyErrorCode: { type: DataTypes.STRING(50), field: 'worker_proxy_error_code' },
       nextRequestAt: { type: DataTypes.DATE, field: 'next_request_at' },
       requestedProxyProvider: {
         type: DataTypes.STRING(30),

@@ -35,7 +35,25 @@ function serializeProxyProviderStatus(state) {
       message: state.proxySwitchErrorMessage,
     };
   }
+  const heartbeatFresh =
+    state.heartbeatAt && Date.now() - new Date(state.heartbeatAt).getTime() < 20_000;
+  const workerReady = Boolean(
+    config.proxy.enabled && heartbeatFresh && state.workerProxyReady && !state.isPaused
+  );
+  let workerBlockedReason = null;
+  if (!config.proxy.enabled) workerBlockedReason = '代理未启用';
+  else if (!heartbeatFresh) workerBlockedReason = '爬虫 Worker 心跳已过期或尚未启动';
+  else if (state.isPaused) workerBlockedReason = '爬虫调度已暂停';
+  else if (!state.workerProxyReady)
+    workerBlockedReason =
+      {
+        PROXY_INITIALIZING: '代理正在初始化',
+        PROXY_RECOVERY_FAILED: '原代理恢复失败，暂不领取订单任务，稍后重试',
+        PROXY_RECOVERY_UNAVAILABLE: '没有可恢复的代理，请重新选择可用通道',
+      }[state.workerProxyErrorCode] || '代理未就绪，订单任务等待处理';
   return {
+    workerReady,
+    workerBlockedReason,
     enabled: config.proxy.enabled,
     configuredDefaultProvider: config.proxy.provider,
     requestedProvider: state.requestedProxyProvider || config.proxy.provider,
