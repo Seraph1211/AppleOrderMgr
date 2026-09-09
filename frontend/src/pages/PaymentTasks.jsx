@@ -122,6 +122,8 @@ export default function PaymentTasks() {
   useEffect(() => {
     loadTasks();
   }, [loadTasks]);
+  const loadCurrent = useRef(loadTasks);
+  loadCurrent.current = loadTasks;
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now() + serverClockOffset), 1000);
     return () => clearInterval(timer);
@@ -186,7 +188,7 @@ export default function PaymentTasks() {
     try {
       setError('');
       await updatePaymentTask(task.id, payload, crypto.randomUUID());
-      await loadTasks();
+      await loadCurrent.current();
       updateRowAction(task.id, {
         saving: false,
         type: 'success',

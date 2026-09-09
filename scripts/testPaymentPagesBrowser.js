@@ -99,6 +99,9 @@ async function main() {
             },
             serverTime: new Date().toISOString(),
           };
+        } else if (/^\/api\/payment-tasks\/\d+$/.test(url.pathname) && route.request().method() === 'PUT') {
+          await new Promise(resolve => setTimeout(resolve, 800));
+          data = task(Number(url.pathname.split('/').at(-1)));
         } else if (
           /\/(?:payment-tasks|payment-dispatch\/tasks)\/\d+\/refresh$/.test(url.pathname)
         ) {
@@ -245,6 +248,19 @@ async function main() {
       assert.equal(queries.at(-1).currentPage, 2);
       assert.equal(await rows.count(), 2);
       total = 45;
+      if (mode === 'payment-tasks') {
+        await page.reload({ waitUntil: 'networkidle' });
+        await rows.first().locator('textarea').fill('保存期间翻页');
+        let saveReturned = false;
+        const saved = page.waitForResponse(response => response.request().method() === 'PUT').then(() => { saveReturned = true; });
+        const reloaded = page.waitForResponse(response => saveReturned && new URL(response.url()).pathname === '/api/payment-tasks');
+        await rows.first().getByRole('button', { name: '保存本行修改' }).click();
+        await page.getByRole('button', { name: '下一页', exact: true }).click();
+        await rows.first().getByText('W0000000021', { exact: true }).waitFor();
+        await Promise.all([saved, reloaded]);
+        assert.equal(queries.at(-1).currentPage, 2);
+        await rows.first().getByText('W0000000021', { exact: true }).waitFor();
+      }
     }
     mode = 'payment-tasks';
     permitted = false;

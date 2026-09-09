@@ -195,6 +195,8 @@ export default function PaymentDispatch() {
   useEffect(() => {
     load();
   }, [load]);
+  const loadCurrent = useRef(load);
+  loadCurrent.current = load;
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -232,7 +234,7 @@ export default function PaymentDispatch() {
     try {
       await action();
       if (successMessage) setNotice(successMessage);
-      await load();
+      await loadCurrent.current();
       return true;
     } catch (actionError) {
       setError(actionError.message);
