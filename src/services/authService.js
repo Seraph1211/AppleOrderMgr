@@ -1,5 +1,13 @@
-const { User } = require('../models');
-const { generateToken } = require('../utils/jwtUtils');
+const { randomUUID } = require('crypto');
+const { User, sequelize } = require('../models');
+const ApiError = require('../utils/ApiError');
+const { accountId, normalizeNickname } = require('../utils/accountIdentity');
+const {
+  generateToken,
+  generateConfirmationToken,
+  verifyToken,
+  decodeToken,
+} = require('../utils/jwtUtils');
 const logger = require('../utils/logger');
 const { MIN_PASSWORD_LENGTH } = require('../constants/business');
 const permissionService = require('./permissionService');
@@ -18,109 +26,103 @@ const permissionService = require('./permissionService');
  * @returns {Promise<Object>} 包含 token 和用户信息的对象
  * @throws {Error} 当登录失败时
  */
-async function login(username, password, loginIp = null) {
+async function login(username, password, loginIp = null, options = {}) {
   try {
-    // 验证参数
-    if (!username || !password) {
-      throw new Error('用户名和密码不能为空');
-    }
-
-    // 查找用户
-    const user = await User.findOne({
-      where: { username },
-    });
-
-    if (!user) {
-      logger.warn('登录失败：用户不存在', { username, loginIp });
-      throw new Error('用户名或密码错误');
-    }
-
-    // 临时锁定到期后先恢复账号状态，避免签发无法使用的 token。
-    if (user.status === 'locked' && user.lockedUntil && user.lockedUntil <= new Date()) {
-      await user.unlockAccount();
-    }
-
-    // 检查账号是否被锁定
-    if (user.isLocked()) {
-      const lockedMinutes = Math.ceil((user.lockedUntil - new Date()) / 60000);
-      logger.warn('登录失败：账号已锁定', {
-        userId: user.id,
-        username: user.username,
-        lockedUntil: user.lockedUntil,
-        loginIp,
-      });
-
-      throw new Error(`账号已被锁定，请在 ${lockedMinutes} 分钟后重试`);
-    }
-
-    // 验证密码
-    const isPasswordValid = await user.comparePassword(password);
-
-    if (!isPasswordValid) {
-      // 密码错误，递增失败次数
-      await user.incrementFailedAttempts();
-
-      const remainingAttempts =
-        parseInt(process.env.MAX_LOGIN_ATTEMPTS || '5', 10) - user.failedLoginAttempts;
-
-      logger.warn('登录失败：密码错误', {
-        userId: user.id,
-        username: user.username,
-        failedAttempts: user.failedLoginAttempts,
-        remainingAttempts,
-        loginIp,
-      });
-
-      if (remainingAttempts > 0) {
-        throw new Error(`用户名或密码错误，剩余尝试次数: ${remainingAttempts}`);
-      } else {
-        throw new Error('登录失败次数过多，账号已被锁定 15 分钟');
+    const outcome = await sequelize.transaction(async transaction => {
+      try {
+        const user = await User.findOne({
+          where: { username },
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+        if (!user) return { error: new ApiError(401, 'INVALID_CREDENTIALS', '用户名或密码错误') };
+        options.onIdentify?.({
+          id: user.id,
+          username: user.username,
+          nickname: user.nickname || user.username,
+        });
+        if (user.status === 'locked' && user.lockedUntil && user.lockedUntil <= new Date()) {
+          user.status = 'active';
+          user.lockedUntil = null;
+          user.failedLoginAttempts = 0;
+        }
+        if (user.isLocked())
+          return {
+            error: new ApiError(403, 'ACCOUNT_LOCKED', '账号已被锁定，请稍后重试或联系管理员'),
+          };
+        if (!(await user.comparePassword(password))) {
+          user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+          if (user.failedLoginAttempts >= Number(process.env.MAX_LOGIN_ATTEMPTS || 5)) {
+            user.status = 'locked';
+            user.lockedUntil = new Date(
+              Date.now() + Number(process.env.LOCK_DURATION_MINUTES || 15) * 60000
+            );
+          }
+          await user.save({ transaction });
+          // 返回错误而非事务内抛出，确保失败次数和锁定状态提交。
+          return { error: new ApiError(401, 'INVALID_CREDENTIALS', '用户名或密码错误') };
+        }
+        const active =
+          user.activeSessionId &&
+          user.activeSessionExpiresAt &&
+          new Date(user.activeSessionExpiresAt) > new Date();
+        const current = options.currentToken ? verifyToken(options.currentToken) : null;
+        const sameSession =
+          current?.userId === user.id && current?.sessionId === user.activeSessionId;
+        const confirmation = options.confirmationToken
+          ? verifyToken(options.confirmationToken)
+          : null;
+        const confirmed =
+          confirmation?.purpose === 'login_takeover' &&
+          confirmation?.userId === user.id &&
+          confirmation?.previousSessionId === user.activeSessionId;
+        if (active && !sameSession && !confirmed) {
+          return {
+            error: ApiError.conflict(
+              '继续登录将使上一台设备退出登录。',
+              { confirmationToken: generateConfirmationToken(user) },
+              'SESSION_CONFIRMATION_REQUIRED'
+            ),
+          };
+        }
+        user.activeSessionId = randomUUID();
+        const token = generateToken({
+          userId: user.id,
+          username: user.username,
+          role: user.role,
+          sessionId: user.activeSessionId,
+        });
+        user.activeSessionExpiresAt = new Date(decodeToken(token).exp * 1000);
+        user.lastLoginAt = new Date();
+        user.lastLoginIp = loginIp;
+        user.failedLoginAttempts = 0;
+        user.forcePasswordChange = false;
+        await user.save({ transaction });
+        const permissions = await permissionService.getEffectivePermissions(user, { transaction });
+        return {
+          token,
+          user: {
+            id: user.id,
+            accountId: accountId(user.id),
+            username: user.username,
+            nickname: user.nickname || user.username,
+            role: user.role,
+            forcePasswordChange: false,
+            permissions,
+            permissionsVersion: user.permissionsVersion,
+            availableHome: permissionService.resolveAvailableHome(permissions),
+          },
+        };
+      } catch (error) {
+        logger.error('账号事务失败', { error: error.message });
+        throw error;
       }
-    }
-
-    // 密码正确，重置失败次数
-    if (user.failedLoginAttempts > 0) {
-      await user.resetFailedAttempts();
-    }
-
-    // 更新最后登录时间和 IP
-    user.lastLoginAt = new Date();
-    user.lastLoginIp = loginIp;
-    await user.save();
-
-    // 生成 JWT token
-    const token = generateToken({
-      userId: user.id,
-      username: user.username,
-      role: user.role,
     });
-
-    logger.info('用户登录成功', {
-      userId: user.id,
-      username: user.username,
-      role: user.role,
-      loginIp,
-    });
-
-    const permissions = await permissionService.getEffectivePermissions(user);
-    return {
-      token,
-      user: {
-        id: user.id,
-        username: user.username,
-        role: user.role,
-        forcePasswordChange: user.forcePasswordChange,
-        permissions,
-        permissionsVersion: user.permissionsVersion,
-        availableHome: permissionService.resolveAvailableHome(permissions),
-      },
-    };
+    if (outcome.error) throw outcome.error;
+    logger.info('用户登录成功', { userId: outcome.user.id, loginIp });
+    return outcome;
   } catch (error) {
-    logger.error('登录服务执行失败', {
-      username,
-      error: error.message,
-      stack: error.stack,
-    });
+    if (!(error instanceof ApiError)) logger.error('登录服务失败', { error: error.message });
     throw error;
   }
 }
@@ -133,10 +135,15 @@ async function login(username, password, loginIp = null) {
  * @returns {Promise<void>}
  * @throws {Error} 当修改失败时
  */
-async function changePassword(userId, oldPassword, newPassword) {
+async function changePassword(userId, oldPassword, newPassword, sessionId) {
   try {
     // 验证参数
-    if (!oldPassword || !newPassword) {
+    if (
+      typeof oldPassword !== 'string' ||
+      typeof newPassword !== 'string' ||
+      !oldPassword ||
+      !newPassword
+    ) {
       throw new Error('旧密码和新密码不能为空');
     }
 
@@ -144,32 +151,30 @@ async function changePassword(userId, oldPassword, newPassword) {
       throw new Error(`新密码长度不能少于 ${MIN_PASSWORD_LENGTH} 位`);
     }
 
+    if (Buffer.byteLength(newPassword) > 72) throw ApiError.badRequest('密码不能超过 72 字节');
+
     if (oldPassword === newPassword) {
       throw new Error('新密码不能与旧密码相同');
     }
 
-    // 查找用户
-    const user = await User.findByPk(userId);
-
-    if (!user) {
-      throw new Error('用户不存在');
-    }
-
-    // 验证旧密码
-    const isOldPasswordValid = await user.comparePassword(oldPassword);
-
-    if (!isOldPasswordValid) {
-      logger.warn('修改密码失败：旧密码错误', {
-        userId: user.id,
-        username: user.username,
-      });
-      throw new Error('旧密码错误');
-    }
-
-    // 更新密码（beforeUpdate hook 会自动加密）
-    user.password = newPassword;
-    user.forcePasswordChange = false;
-    await user.save();
+    const user = await sequelize.transaction(async transaction => {
+      try {
+        const target = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
+        if (!target) throw new Error('用户不存在');
+        if (sessionId && target.activeSessionId !== sessionId)
+          throw new ApiError(401, 'SESSION_REPLACED', '登录已失效，请重新登录');
+        if (!(await target.comparePassword(oldPassword))) throw new Error('旧密码错误');
+        target.password = newPassword;
+        target.forcePasswordChange = false;
+        target.activeSessionId = null;
+        target.activeSessionExpiresAt = null;
+        await target.save({ transaction });
+        return target;
+      } catch (error) {
+        logger.error('账号事务失败', { error: error.message });
+        throw error;
+      }
+    });
 
     logger.info('用户密码修改成功', {
       userId: user.id,
@@ -237,6 +242,7 @@ async function getUserInfo(userId) {
       attributes: [
         'id',
         'username',
+        'nickname',
         'role',
         'status',
         'forcePasswordChange',
@@ -255,9 +261,11 @@ async function getUserInfo(userId) {
     return {
       id: user.id,
       username: user.username,
+      accountId: accountId(user.id),
+      nickname: user.nickname || user.username,
       role: user.role,
       status: user.status,
-      forcePasswordChange: user.forcePasswordChange,
+      forcePasswordChange: false,
       permissions,
       permissionsVersion: user.permissionsVersion,
       availableHome: permissionService.resolveAvailableHome(permissions),
@@ -275,7 +283,79 @@ async function getUserInfo(userId) {
   }
 }
 
+/**
+ * 退出时只撤销调用方会话，避免旧请求退出新设备。
+ * @param {number} userId - 用户 ID
+ * @param {string} sessionId - 当前会话
+ * @returns {Promise<void>}
+ */
+async function logout(userId, sessionId) {
+  try {
+    await User.update(
+      { activeSessionId: null, activeSessionExpiresAt: null },
+      { where: { id: userId, activeSessionId: sessionId } }
+    );
+  } catch (error) {
+    logger.error('撤销登录失败', { userId, error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * 更新本人昵称。
+ * @param {number} userId - 用户 ID
+ * @param {string} nickname - 昵称
+ * @returns {Promise<Object>} 最新本人资料
+ */
+async function updateProfile(userId, nickname) {
+  try {
+    await User.update({ nickname: normalizeNickname(nickname) }, { where: { id: userId } });
+    return await getUserInfo(userId);
+  } catch (error) {
+    logger.error('更新昵称失败', { userId, error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * 管理员重置密码并撤销目标会话。
+ * @param {number} userId - 目标用户 ID
+ * @param {string} newPassword - 新密码
+ * @returns {Promise<void>}
+ */
+async function resetPassword(userId, newPassword) {
+  try {
+    if (
+      typeof newPassword !== 'string' ||
+      newPassword.length < MIN_PASSWORD_LENGTH ||
+      Buffer.byteLength(newPassword) > 72
+    ) {
+      throw ApiError.badRequest('密码至少 8 位且不能超过 72 字节');
+    }
+    await sequelize.transaction(async transaction => {
+      try {
+        const user = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
+        if (!user) throw ApiError.notFound('用户不存在');
+        user.password = newPassword;
+        user.forcePasswordChange = false;
+        user.activeSessionId = null;
+        user.activeSessionExpiresAt = null;
+        await user.save({ transaction });
+      } catch (error) {
+        logger.error('账号事务失败', { error: error.message });
+        throw error;
+      }
+    });
+  } catch (error) {
+    logger.error('重置密码失败', { userId, error: error.message });
+    throw error;
+  }
+}
+
 module.exports = {
+  logout,
+  updateProfile,
+  resetPassword,
   login,
   changePassword,
   unlockUser,

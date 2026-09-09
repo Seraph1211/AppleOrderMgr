@@ -10,7 +10,7 @@
 
 ## 通用约束
 
-前缀为 /api。除登录和健康检查外均需认证；auth 下改密、登出、me 各自经过 authenticate，其余业务统一经过全局认证与强制改密检查。Bearer Token 不放入 URL。
+前缀为 /api。除登录和健康检查外均需认证；auth 下改密、登出、me 各自经过 authenticate，其余业务统一经过全局认证与单会话校验。Bearer Token 不放入 URL。
 
 角色字段继续保留 admin、operator、readOnly，但普通业务授权以数据库 `user_permissions` 为唯一来源。admin 通过受保护身份获得代码目录中的全部有效权限；operator/readOnly 仅作为存量标签，不再在请求时隐式叠加权限。所有业务路由显式声明权限，未登记入口默认拒绝。权限目录与依赖见[用户权限方案](../planning/用户权限分配与访问控制方案.md)。
 
@@ -38,9 +38,12 @@
 | GET    | /api/health/ready                        | 公开；数据库检查，失败 503                                                             |
 | GET    | /api/health                              | 公开；307 到 ready                                                                     |
 | POST   | /api/auth/login                          | 公开；登录限流                                                                         |
-| POST   | /api/auth/logout                         | 登录；允许强制改密状态                                                                 |
-| POST   | /api/auth/change-password                | 登录；允许强制改密状态                                                                 |
-| GET    | /api/auth/me                             | 登录；允许强制改密状态                                                                 |
+| POST   | /api/auth/logout                         | 有效登录会话；所有角色可用                                                                 |
+| POST   | /api/auth/change-password                | 有效登录会话；所有角色可用                                                                 |
+| GET    | /api/auth/me                             | 有效登录会话；所有角色可用                                                                 |
+| PATCH  | /api/auth/profile                       | 已登录本人，无业务权限要求                                                             |
+| POST   | /api/users/:id/reset-password             | admin 且 users.manage                                                                 |
+| GET    | /api/system/operation-logs               | admin 且 system.logs.read                                                              |
 | GET    | /api/users/permission-catalog            | users.permissions.manage（admin 保留）                                                 |
 | GET    | /api/users                               | users.read（admin 保留）                                                               |
 | POST   | /api/users                               | users.manage（admin 保留）                                                             |
@@ -121,7 +124,7 @@
 ## 认证与用户
 
 - 登录提交 username、password，密码至少 8 位，返回 Token 与用户信息；账号/IP 限流与锁定分别生效。
-- 改密提交 oldPassword、newPassword、confirmPassword；新密码至少 8 位，首次改密完成后才可访问业务 API。
+- 改密提交 oldPassword、newPassword、confirmPassword；新密码至少 8 位，不再强制首次改密；改密成功后当前会话失效，需使用新密码重新登录。
 - 登出目前由客户端移除 Token，不能理解成服务端已维护 JWT 撤销名单。
 - 用户管理的 role 必须使用当前三个枚举，创建用户的初始密码至少 8 位。用户列表、增改、删除、解锁输入以[userController.js](../../src/controllers/userController.js)为准；解锁方法是 PUT。
 - 登录和 `/auth/me` 返回 `permissions`、`permissionsVersion` 和 `availableHome`。普通用户权限每次请求从数据库重新读取；撤权提交后旧 Token 的后续业务请求立即按新集合判定。
@@ -178,7 +181,7 @@
 - 付款倒计时优先使用 `officialPaymentExpiresAt`，回退 `officialOrderCreatedAt + 30 分钟`。官网创建时间必须包含时分，仅有日期时保持未知；服务端返回 `serverTime`、`deadlineAt` 和 `remainingSeconds`，客户端不得用本机时间决定是否超时。管理员人工截止时间核实接口已取消。
 - `GET /api/payment-dispatch/tasks` 新增 `page`（默认 1，1–100000）和 `pagination: { page, limit, total, totalPages }`；`limit` 保持默认 100、上限 200，页面使用 10/20/50/100。两个付款列表新增返回 `orderDate`（关联订单已有的下单时间，与订单管理一致），`officialOrderCreatedAt` 继续供官网时间和截止规则使用；下单时间展示优先 `orderDate`、缺失时回退已确认的 `officialOrderCreatedAt`，都缺失保持未知。支持 `orderNumber`、`productKeyword`、`assignee`、`officialOrderStatus` 和 `processingStatus` 组合筛选；商品匹配在数据库分页前执行。每项返回关联订单已有的 `paymentMethod`、`officialOrderStatus`、`lastCrawledAt` 和派生的 `deadlineAt`，其中页面“最后更新时间”只使用最后一次成功官网抓取时间 `lastCrawledAt`。
 - 批量分配 body 为 `{ tasks: [{ id, expectedVersion }], assigneeUserId, handoffConfirmed?, reason? }`，一次最多 100 项，在同一事务内校验版本、状态、付款窗口、目标权限和容量后全部提交或全部回滚。批量刷新 body 为 `{ taskIds }`，仅把选中任务对应订单提交持久化刷新队列，HTTP 202 不代表官网已更新。
-- payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、完成首次改密、上限有余量、合法付款链接以及官网付款窗口仍有效。官网已付款、退款、终态、身份异常和待核对状态禁止新分配；active_count 为 pending＋processing＋exception，completed 释放容量，官网收款不自动修改人工四态。
+- payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、上限有余量、合法付款链接以及官网付款窗口仍有效。官网已付款、退款、终态、身份异常和待核对状态禁止新分配；active_count 为 pending＋processing＋exception，completed 释放容量，官网收款不自动修改人工四态。
 
 ### 生命周期与来源冲突响应
 
@@ -214,3 +217,18 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 ### 下单时间精度与时区（2026-09-09 修复）
 
 `orderDate` / `order_date` 保留邮件或人工录入的来源下单时间，官网只有日期时禁止覆盖，官网精确时间独立保存在 `officialOrderCreatedAt`。日期冲突提示核对，不用官网日期补造时分秒。页面和导出统一北京时间（Asia/Shanghai）；日期筛选包含北京时间的完整起止日。仅有日期时仅展示日期，未知时间不使用入库时间或付款截止倒推。人工录入必须包含时分；无时区输入按北京时间解释。付款截止仍只使用官网截止或精确官网时间。历史修复只恢复可核验来源快照，不将来源时间宣称为官网精确时间。
+
+## 账号与操作记录补充契约（2026-09-09）
+
+- 新账号登录后按 `availableHome` 进入第一个有权限的页面；零业务权限进入 `/profile` 个人设置。
+- 用户 DTO 增加 `accountId`（`U` 加补齐至少四位的数字 ID）和 `nickname`。登录账号和 ID 不可由编辑接口修改；创建时昵称可选（默认登录账号），昵称输入去首尾空格后为 1–50 字符。
+- `PATCH /api/auth/profile`：所有已登录账号可提交 `{ nickname }`，只更新本人昵称，未知字段返回 400；返回最新本人 DTO。
+- `POST /api/users` 支持 nickname；`PUT /api/users/:id` 支持管理员配置 nickname。账号列表 keyword 支持昵称、登录账号和完整账号 ID。
+- `POST /api/users/:id/reset-password`：仅 `admin` 且具备 users.manage，提交 `{ newPassword, confirmPassword }`，至少 8 位且两次一致。重置后清除该账号当前会话，不自动解锁账号，不强制下次改密；不返回原密码或密码哈希。新密码由管理员当次填写，可在弹窗临时显示。
+- 登录遇到仍有效的其他会话，返回 409 `SESSION_CONFIRMATION_REQUIRED` 与 `error.details.confirmationToken`。客户端展示接管弹窗，确认后重提账号、密码、confirmationToken。短期签名确认凭证绑定当时的旧会话、两分钟有效；期间会话改变须再次确认。取消不改变旧会话。
+- 同一有效 Bearer 会话重新登录可直接续签；不同浏览器或独立浏览器配置按不同设备会话处理。同一浏览器的多个标签页可共用同一个会话，不使用指纹推断物理设备。
+- JWT 增加 sessionId；每个受保护请求核对数据库当前会话。被接管返回 401 `SESSION_REPLACED`；清除或迁移前旧 Token 返回 401 `SESSION_EXPIRED`。旧页面每 5 秒及恢复前台时检查会话并退出，服务端即时拒绝旧凭证。`POST /auth/logout` 撤销当前服务端会话。
+- `GET /api/system/operation-logs`：仅管理员具备 system.logs.read，分页 page/limit（最大 100）；筛选 keyword（登录账号／昵称／完整账号 ID）、action、result、dateFrom/dateTo。返回 data.logs、total、page、limit；每条含操作人 ID/账号/昵称、中文动作、目标、IP、时间与中文结果说明。
+- 记录已到达系统的账号 API 操作（包括读取、导入、导出、失败与拒绝），不记录鼠标点击、输入草稿、健康检查和 `/auth/me` 自动心跳。失败登录保留尝试账号。未知路由只记录所属模块；不保存密码、令牌、原始链接、请求正文或查询参数值。新记录从本次迁移启用后开始，历史缺失不能补造。
+- 操作记录保存到数据库；写入失败记录结构化应急运行日志，不能保证数据库故障或进程突然退出时绝对无遗漏。运行环境需正确设置 TRUST_PROXY 才能在反向代理后记录实际客户端 IP。
+- 系统运行日志保留原技术代码供排障，页面主要展示中文类型、级别、事件、结果和说明。

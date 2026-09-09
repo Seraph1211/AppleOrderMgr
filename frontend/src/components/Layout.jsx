@@ -12,12 +12,14 @@ import {
   Users,
   LogOut,
   Lock,
+  Settings,
   ScrollText,
   CreditCard,
   ListChecks,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getEmailProcessingMetrics } from '../api';
+import AlertModal from './AlertModal';
 import { PERMISSIONS } from '../constants/permissions';
 
 const baseNavigation = [
@@ -48,10 +50,17 @@ const adminNavigation = [
     icon: ScrollText,
     permission: PERMISSIONS.SYSTEM_LOGS_READ,
   },
+  {
+    name: '操作记录',
+    href: '/operation-logs',
+    icon: ScrollText,
+    permission: PERMISSIONS.SYSTEM_LOGS_READ,
+  },
   { name: '用户管理', href: '/users', icon: Users, permission: PERMISSIONS.USERS_READ },
 ];
 
 export default function Layout({ children }) {
+  const [logoutError, setLogoutError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [emailWorker, setEmailWorker] = useState(null);
@@ -61,12 +70,18 @@ export default function Layout({ children }) {
   const { user, logout, can } = useAuth();
 
   // 根据用户角色生成导航菜单
-  const navigation = [...baseNavigation, ...adminNavigation].filter(item => can(item.permission));
+  const navigation = [...baseNavigation, ...adminNavigation]
+    .filter(item => can(item.permission))
+    .concat({ name: '个人设置', href: '/profile', icon: Settings });
 
   // 处理登出
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    try {
+      await logout();
+      navigate('/login');
+    } catch (_error) {
+      setLogoutError('退出失败，请检查网络后重试');
+    }
   };
 
   // 点击外部关闭下拉菜单
@@ -185,11 +200,11 @@ export default function Layout({ children }) {
 
             <div className="flex-1" />
 
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center gap-2 sm:gap-4 min-w-0">
               {can(PERMISSIONS.EMAIL_READ) && (
                 <Link
                   to="/email-processing"
-                  className="flex items-center space-x-2 text-sm text-gray-500 hover:text-primary"
+                  className="hidden md:flex items-center space-x-2 text-sm text-gray-500 hover:text-primary"
                   title={
                     emailWorker?.heartbeatAt
                       ? `最近心跳：${new Date(emailWorker.heartbeatAt).toLocaleString()}`
@@ -208,17 +223,23 @@ export default function Layout({ children }) {
               )}
 
               {/* 分隔线 */}
-              <div className="h-6 w-px bg-gray-200"></div>
+              <div className="hidden md:block h-6 w-px bg-gray-200"></div>
 
               {/* 用户信息 */}
-              <div className="flex items-center space-x-3">
-                <div className="flex items-center space-x-2">
+              <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+                <div className="flex items-center gap-2 min-w-0">
                   <User className="w-4 h-4 text-gray-600" />
-                  <span className="text-sm font-medium text-gray-900">{user?.username}</span>
+                  <span
+                    className="text-sm font-medium text-gray-900 truncate max-w-[120px] sm:max-w-xs"
+                    title={`${user?.nickname || user?.username}（${user?.username}）`}
+                  >
+                    {user?.nickname || user?.username}
+                    <span className="hidden sm:inline">（{user?.username}）</span>
+                  </span>
                   {user?.role === 'admin' ? (
-                    <span className="badge badge-error">管理员</span>
+                    <span className="badge badge-error shrink-0 whitespace-nowrap">管理员</span>
                   ) : (
-                    <span className="badge badge-info">用户</span>
+                    <span className="badge badge-info shrink-0 whitespace-nowrap">用户</span>
                   )}
                 </div>
 
@@ -238,12 +259,12 @@ export default function Layout({ children }) {
                         <button
                           onClick={() => {
                             setMenuOpen(false);
-                            navigate('/change-password');
+                            navigate('/profile');
                           }}
                           className="w-full flex items-center space-x-2 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
                         >
                           <Lock className="w-4 h-4" />
-                          <span>修改密码</span>
+                          <span>个人设置／修改密码</span>
                         </button>
                         <div className="border-t border-gray-200 my-2"></div>
                         <button
@@ -267,6 +288,9 @@ export default function Layout({ children }) {
 
         {/* 页面内容 */}
         <main className="p-6">{children}</main>
+        {logoutError && (
+          <AlertModal title="退出失败" message={logoutError} onClose={() => setLogoutError('')} />
+        )}
       </div>
     </div>
   );

@@ -16,11 +16,11 @@ describe('付款权限与入口契约', () => {
     );
   });
 
-  test('本人付款任务首页优先且空权限没有业务首页', () => {
+  test('首页遵循导航顺序，空权限进入个人设置', () => {
     expect(
       resolveAvailableHome([PERMISSIONS.ORDERS_READ, PERMISSIONS.PAYMENT_TASKS_READ_OWN])
-    ).toBe('/payment-tasks');
-    expect(resolveAvailableHome([])).toBeNull();
+    ).toBe('/orders');
+    expect(resolveAvailableHome([])).toBe('/profile');
   });
 
   test('付款人仅接受可清空且不超过 100 字的自由文本姓名', async () => {

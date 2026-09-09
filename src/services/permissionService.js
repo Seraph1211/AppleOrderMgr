@@ -255,20 +255,22 @@ async function createUserWithPermissions(userAttributes, permissions, actorUserI
 /**
  * 按固定顺序选择登录后首页。
  * @param {string[]} permissions - 有效权限
- * @returns {string|null} 前端路径
+ * @returns {string} 前端路径
  */
 function resolveAvailableHome(permissions) {
   const candidates = [
-    [PERMISSIONS.PAYMENT_TASKS_READ_OWN, '/payment-tasks'],
     [PERMISSIONS.DASHBOARD_READ, '/'],
     [PERMISSIONS.ORDERS_READ, '/orders'],
     [PERMISSIONS.APPLE_IDS_READ, '/apple-ids'],
     [PERMISSIONS.RECIPIENTS_READ, '/recipients'],
     [PERMISSIONS.CHANNELS_READ, '/channels'],
     [PERMISSIONS.PAYMENT_DISPATCH_READ, '/payment-dispatch'],
+    [PERMISSIONS.PAYMENT_TASKS_READ_OWN, '/payment-tasks'],
+    [PERMISSIONS.EMAIL_READ, '/email-processing'],
+    [PERMISSIONS.SYSTEM_LOGS_READ, '/system-logs'],
     [PERMISSIONS.USERS_READ, '/users'],
   ];
-  return candidates.find(([permission]) => permissions.includes(permission))?.[1] || null;
+  return candidates.find(([permission]) => permissions.includes(permission))?.[1] || '/profile';
 }
 
 module.exports = {

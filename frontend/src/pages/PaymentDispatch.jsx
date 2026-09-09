@@ -426,7 +426,9 @@ export default function PaymentDispatch() {
                   key={person.id}
                   className="border-t border-gray-100 transition-colors hover:bg-gray-50"
                 >
-                  <td className="px-4 py-3 font-medium">{person.username}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {person.nickname || person.username}（{person.username}）
+                  </td>
                   <td className="px-4 py-3">
                     <span
                       className={`badge ${person.hasExecutionPermissions ? 'badge-success' : 'badge-warning'}`}
@@ -458,7 +460,7 @@ export default function PaymentDispatch() {
                   </td>
                   <td className="px-4 py-3">
                     <ToggleSwitch
-                      ariaLabel={`允许 ${person.username} 自动接单`}
+                      ariaLabel={`允许 ${person.nickname || person.username}（${person.username}） 自动接单`}
                       disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
                       checked={Boolean(staffDrafts[person.id]?.autoAssignEnabled)}
                       onChange={autoAssignEnabled =>
@@ -487,7 +489,7 @@ export default function PaymentDispatch() {
                                 ...staffDrafts[person.id],
                                 expectedVersion: person.version,
                               }),
-                            `${person.username} 的接单设置已保存`
+                            `${person.nickname || person.username}（${person.username}） 的接单设置已保存`
                           )
                         }
                       >
@@ -578,7 +580,7 @@ export default function PaymentDispatch() {
               <option value="unassigned">未分配</option>
               {overview?.staff.map(person => (
                 <option key={person.id} value={person.id}>
-                  {person.username}
+                  {person.nickname || person.username}（{person.username}）
                 </option>
               ))}
             </select>
@@ -886,7 +888,8 @@ export default function PaymentDispatch() {
                     .filter(person => person.hasExecutionPermissions)
                     .map(person => (
                       <option key={person.id} value={person.id}>
-                        {person.username}（剩余容量 {person.remainingCapacity}）
+                        {person.nickname || person.username}（{person.username}）（剩余容量{' '}
+                        {person.remainingCapacity}）
                       </option>
                     ))}
                 </select>

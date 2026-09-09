@@ -11,6 +11,8 @@ import Recipients from './pages/Recipients';
 import Channels from './pages/Channels';
 import ChannelOrders from './pages/ChannelOrders';
 import Users from './pages/Users';
+import Profile from './pages/Profile';
+import OperationLogs from './pages/OperationLogs';
 import ChangePassword from './pages/ChangePassword';
 import SystemLogs from './pages/SystemLogs';
 import EmailProcessing from './pages/EmailProcessing';
@@ -36,6 +38,11 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Routes>
+                  <Route path="/profile" element={<Profile />} />
+                  <Route
+                    path="/operation-logs"
+                    element={permissionRoute(PERMISSIONS.SYSTEM_LOGS_READ, <OperationLogs />)}
+                  />
                   <Route
                     path="/"
                     element={permissionRoute(PERMISSIONS.DASHBOARD_READ, <Dashboard />)}

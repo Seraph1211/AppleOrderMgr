@@ -41,6 +41,7 @@ router.post('/login', loginIpLimiter, loginAccountLimiter, asyncHandler(controll
 // 需要认证的接口
 router.post('/logout', authenticate, asyncHandler(controller.logout));
 router.post('/change-password', authenticate, asyncHandler(controller.changePassword));
+router.patch('/profile', authenticate, asyncHandler(controller.updateProfile));
 router.get('/me', authenticate, asyncHandler(controller.getCurrentUser));
 
 module.exports = router;

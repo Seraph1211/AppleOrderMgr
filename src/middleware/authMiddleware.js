@@ -6,7 +6,7 @@ const permissionService = require('../services/permissionService');
 /**
  * 认证中间件
  * @module middleware/authMiddleware
- * @description 提供 JWT 认证、角色权限检查和密码修改强制检查
+ * @description 提供 JWT 认证、角色权限检查和单会话校验
  */
 
 /**
@@ -52,7 +52,16 @@ async function authenticate(req, res, next) {
 
     // 从数据库查询用户信息（验证用户是否仍然存在且状态正常）
     const user = await User.findByPk(decoded.userId, {
-      attributes: ['id', 'username', 'role', 'status', 'forcePasswordChange', 'permissionsVersion'],
+      attributes: [
+        'id',
+        'username',
+        'role',
+        'status',
+        'nickname',
+        'activeSessionId',
+        'activeSessionExpiresAt',
+        'permissionsVersion',
+      ],
     });
 
     if (!user) {
@@ -65,6 +74,33 @@ async function authenticate(req, res, next) {
         success: false,
         message: '用户不存在或已被删除',
       });
+    }
+
+    req.auditActor = {
+      id: user.id,
+      username: user.username,
+      nickname: user.nickname || user.username,
+    };
+    if (
+      !decoded.sessionId ||
+      !user.activeSessionId ||
+      !user.activeSessionExpiresAt ||
+      new Date(user.activeSessionExpiresAt) <= new Date()
+    ) {
+      return res
+        .status(401)
+        .json({
+          success: false,
+          error: { code: 'SESSION_EXPIRED', message: '登录已失效，请重新登录' },
+        });
+    }
+    if (decoded.sessionId !== user.activeSessionId) {
+      return res
+        .status(401)
+        .json({
+          success: false,
+          error: { code: 'SESSION_REPLACED', message: '你的账号已在其他设备登录，请重新登录' },
+        });
     }
 
     if (user.status === 'locked') {
@@ -86,7 +122,8 @@ async function authenticate(req, res, next) {
       id: user.id,
       username: user.username,
       role: user.role,
-      forcePasswordChange: user.forcePasswordChange,
+      nickname: user.nickname || user.username,
+      sessionId: decoded.sessionId,
       permissions,
       permissionsVersion: user.permissionsVersion,
     };
@@ -265,57 +302,10 @@ function requireAnyPermission(permissions) {
   };
 }
 
-/**
- * 检查是否需要强制修改密码中间件
- * @description 如果用户需要强制修改密码，只允许访问修改密码接口
- * @param {Object} req - Express 请求对象
- * @param {Object} res - Express 响应对象
- * @param {Function} next - Express next 函数
- */
-function checkPasswordChangeRequired(req, res, next) {
-  try {
-    // 确保已经过 authenticate 中间件
-    if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: '请先登录',
-      });
-    }
-
-    // 该中间件只挂载在业务 API 前；改密、登出和当前用户接口已先行挂载。
-    if (req.user.forcePasswordChange) {
-      logger.warn('强制修改密码检查：用户尝试访问业务接口', {
-        userId: req.user.id,
-        username: req.user.username,
-        path: req.path,
-      });
-
-      return res.status(403).json({
-        success: false,
-        message: '首次登录需要修改密码，请先修改密码后再使用系统',
-        forcePasswordChange: true,
-      });
-    }
-
-    next();
-  } catch (error) {
-    logger.error('密码修改检查中间件执行失败', {
-      error: error.message,
-      stack: error.stack,
-    });
-
-    return res.status(500).json({
-      success: false,
-      message: '密码修改检查过程中发生错误',
-    });
-  }
-}
-
 module.exports = {
   authenticate,
   requireRole,
   requirePermission,
   requireAllPermissions,
   requireAnyPermission,
-  checkPasswordChangeRequired,
 };

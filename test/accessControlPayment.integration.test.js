@@ -41,7 +41,8 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         password: 'synthetic-password',
         role: 'operator',
         status: 'active',
-        forcePasswordChange: false,
+        // 存量强制改密标记不再影响接单。
+        forcePasswordChange: true,
       }),
       models.User.create({
         username: 'integration_staff_2',

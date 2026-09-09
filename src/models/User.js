@@ -39,6 +39,13 @@ module.exports = sequelize => {
           },
         },
       },
+      nickname: { type: DataTypes.STRING(50), allowNull: true },
+      activeSessionId: { type: DataTypes.UUID, allowNull: true, field: 'active_session_id' },
+      activeSessionExpiresAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'active_session_expires_at',
+      },
       password: {
         type: DataTypes.STRING(255),
         allowNull: false,
@@ -92,7 +99,7 @@ module.exports = sequelize => {
         allowNull: false,
         defaultValue: false,
         field: 'force_password_change',
-        comment: '是否强制修改密码（首次登录）',
+        comment: '历史兼容字段，不再作为登录门禁',
       },
       permissionsVersion: {
         type: DataTypes.INTEGER,

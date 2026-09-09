@@ -5,6 +5,7 @@ import AlertModal from './AlertModal';
 
 export default function EditUserModal({ user, onClose, onSuccess }) {
   const [formData, setFormData] = useState({
+    nickname: user.nickname || user.username,
     role: user.role,
     status: user.status,
   });
@@ -27,6 +28,7 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
 
     try {
       const response = await client.put(`/users/${user.id}`, {
+        nickname: formData.nickname.trim(),
         role: formData.role,
         status: formData.status,
       });
@@ -72,13 +74,36 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* 用户名（只读） */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">用户名</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2">账号 ID</label>
+              <input className="input bg-gray-50" value={user.accountId} readOnly />
+            </div>
+            {/* 登录账号（只读） */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">登录账号</label>
               <input type="text" value={user.username} className="input bg-gray-50" disabled />
-              <p className="text-sm text-gray-500 mt-1">用户名不可修改</p>
+              <p className="text-sm text-gray-500 mt-1">登录账号不可修改</p>
             </div>
 
+            <div>
+              <label
+                htmlFor="user-nickname"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                昵称
+              </label>
+              <input
+                id="user-nickname"
+                name="nickname"
+                required
+                className="input"
+                value={formData.nickname}
+                onChange={handleChange}
+                maxLength={50}
+                disabled={loading}
+                placeholder="填写姓名或方便辨认的称呼"
+              />
+            </div>
             {/* 角色 */}
             <div>
               <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">

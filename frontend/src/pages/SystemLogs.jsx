@@ -1,4 +1,6 @@
-import { useEffect, useState } from "react";
+import { logLabel, logErrorSummary } from '../constants/logLabels';
+import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import {
   AlertTriangle,
   CheckCircle,
@@ -9,38 +11,33 @@ import {
   RotateCcw,
   Search,
   X,
-} from "lucide-react";
+} from 'lucide-react';
 import {
   getSystemLogs,
   getAutoRefreshStatus,
   resumeAutoRefresh,
   getProxyProviderStatus,
   switchProxyProvider,
-} from "../api";
-import AlertModal from "../components/AlertModal";
-import Pagination from "../components/Pagination";
-import { useAuth } from "../contexts/AuthContext";
+} from '../api';
+import AlertModal from '../components/AlertModal';
+import Pagination from '../components/Pagination';
+import { useAuth } from '../contexts/AuthContext';
 
 const LOG_TYPES = [
-  "crawler",
-  "proxy",
-  "wind_control",
-  "product_validation",
-  "amount_parse",
-  "scheduler",
+  'crawler',
+  'proxy',
+  'wind_control',
+  'product_validation',
+  'amount_parse',
+  'scheduler',
 ];
-const SEVERITIES = ["error", "warn", "info", "debug"];
-const PROXY_PROVIDERS = [
-  "fanproxy_tunnel",
-  "kdl_tunnel",
-  "kdl_private",
-  "yiyou_http",
-];
+const SEVERITIES = ['error', 'warn', 'info', 'debug'];
+const PROXY_PROVIDERS = ['fanproxy_tunnel', 'kdl_tunnel', 'kdl_private', 'yiyou_http'];
 const PROXY_PROVIDER_LABELS = {
-  yiyou_http: "亦优 HTTP 代理",
-  kdl_tunnel: "快代理隧道 Pro",
-  kdl_private: "快代理私密代理",
-  fanproxy_tunnel: "网帆隧道代理（首选）",
+  yiyou_http: '亦优 HTTP 代理',
+  kdl_tunnel: '快代理隧道 Pro',
+  kdl_private: '快代理私密代理',
+  fanproxy_tunnel: '网帆隧道代理（首选）',
 };
 
 export default function SystemLogs() {
@@ -59,14 +56,14 @@ export default function SystemLogs() {
     totalPages: 0,
   });
   const [filters, setFilters] = useState({
-    dateFrom: "",
-    dateTo: "",
-    type: "",
-    severity: "",
-    orderNumber: "",
-    keyword: "",
-    isWindControl: "",
-    success: "",
+    dateFrom: '',
+    dateTo: '',
+    type: '',
+    severity: '',
+    orderNumber: '',
+    keyword: '',
+    isWindControl: '',
+    success: '',
   });
 
   useEffect(() => {
@@ -76,8 +73,9 @@ export default function SystemLogs() {
   }, [pagination.currentPage, pagination.pageSize]);
 
   useEffect(() => {
-    const interval = ["pending", "switching"].includes(proxyProviderStatus?.switchStatus)
-      ? 2000 : 5000;
+    const interval = ['pending', 'switching'].includes(proxyProviderStatus?.switchStatus)
+      ? 2000
+      : 5000;
     const timer = window.setInterval(loadProxyProviderStatus, interval);
     return () => window.clearInterval(timer);
   }, [proxyProviderStatus?.switchStatus]);
@@ -101,7 +99,7 @@ export default function SystemLogs() {
       const res = await getSystemLogs(buildParams());
       if (res.success) {
         setLogs(res.data.logs || []);
-        setPagination((prev) => ({
+        setPagination(prev => ({
           ...prev,
           totalItems: res.data.total,
           totalPages: Math.ceil(res.data.total / prev.pageSize),
@@ -109,8 +107,8 @@ export default function SystemLogs() {
       }
     } catch (error) {
       setAlertInfo({
-        title: "加载失败",
-        message: error.message || "系统日志加载失败",
+        title: '加载失败',
+        message: error.message || '系统日志加载失败',
       });
     } finally {
       setLoading(false);
@@ -125,8 +123,8 @@ export default function SystemLogs() {
       }
     } catch (error) {
       setAlertInfo({
-        title: "加载失败",
-        message: error.message || "自动刷新状态加载失败",
+        title: '加载失败',
+        message: error.message || '自动刷新状态加载失败',
       });
     }
   };
@@ -137,36 +135,36 @@ export default function SystemLogs() {
       if (res.success) setProxyProviderStatus(res.data);
     } catch (error) {
       setAlertInfo({
-        title: "加载失败",
-        message: error.message || "代理状态加载失败",
+        title: '加载失败',
+        message: error.message || '代理状态加载失败',
       });
     }
   };
 
   const handleFilterChange = (key, value) => {
-    setFilters((prev) => ({ ...prev, [key]: value }));
-    setPagination((prev) => ({ ...prev, currentPage: 1 }));
+    setFilters(prev => ({ ...prev, [key]: value }));
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
 
   const resetFilters = () => {
     setFilters({
-      dateFrom: "",
-      dateTo: "",
-      type: "",
-      severity: "",
-      orderNumber: "",
-      keyword: "",
-      isWindControl: "",
-      success: "",
+      dateFrom: '',
+      dateTo: '',
+      type: '',
+      severity: '',
+      orderNumber: '',
+      keyword: '',
+      isWindControl: '',
+      success: '',
     });
-    setPagination((prev) => ({ ...prev, currentPage: 1 }));
+    setPagination(prev => ({ ...prev, currentPage: 1 }));
   };
 
   const applyFilters = () => {
     if (pagination.currentPage === 1) {
       loadLogs();
     } else {
-      setPagination((prev) => ({ ...prev, currentPage: 1 }));
+      setPagination(prev => ({ ...prev, currentPage: 1 }));
     }
   };
 
@@ -175,74 +173,69 @@ export default function SystemLogs() {
       const res = await resumeAutoRefresh();
       if (res.success) {
         setAutoRefreshStatus(res.data);
-        setAlertInfo({ title: "已恢复", message: "自动刷新已恢复运行" });
+        setAlertInfo({ title: '已恢复', message: '自动刷新已恢复运行' });
         loadLogs();
       }
     } catch (error) {
       setAlertInfo({
-        title: "恢复失败",
-        message: error.message || "自动刷新恢复失败",
+        title: '恢复失败',
+        message: error.message || '自动刷新恢复失败',
       });
     }
   };
 
-  const handleProxySwitch = async (provider) => {
+  const handleProxySwitch = async provider => {
     setSwitchingProvider(provider);
     try {
       const res = await switchProxyProvider(provider);
       if (res.success) {
         setProxyProviderStatus(res.data);
-        setAlertInfo({ title: "切换请求已提交", message: res.message });
+        setAlertInfo({ title: '切换请求已提交', message: res.message });
       }
     } catch (error) {
       setAlertInfo({
-        title: "切换失败",
-        message: error.message || "代理切换请求失败",
+        title: '切换失败',
+        message: error.message || '代理切换请求失败',
       });
     } finally {
       setSwitchingProvider(null);
     }
   };
 
-  const getProviderLabel = (provider) => {
-    return PROXY_PROVIDER_LABELS[provider] || "尚未确认";
+  const getProviderLabel = provider => {
+    return PROXY_PROVIDER_LABELS[provider] || '尚未确认';
   };
 
-  const getSeverityBadge = (severity) => {
+  const getSeverityBadge = severity => {
     const classes = {
-      error: "badge-error",
-      warn: "badge-warning",
-      info: "badge-info",
-      debug: "badge-info",
+      error: 'badge-error',
+      warn: 'badge-warning',
+      info: 'badge-info',
+      debug: 'badge-info',
     };
     return (
-      <span className={`badge ${classes[severity] || "badge-info"}`}>
-        {severity}
-      </span>
+      <span className={`badge ${classes[severity] || 'badge-info'}`}>{logLabel(severity)}</span>
     );
   };
 
-  const activeFiltersCount = Object.values(filters).filter(
-    (value) => value !== "",
-  ).length;
+  const activeFiltersCount = Object.values(filters).filter(value => value !== '').length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">系统日志</h1>
-          <p className="text-gray-500 mt-1">
-            查看爬虫、代理、风控和调度器运行记录
-          </p>
+          <p className="text-gray-500 mt-1">查看订单同步、代理服务、访问风控和自动调度记录</p>
         </div>
-        <button
-          onClick={loadLogs}
-          className="btn btn-primary flex items-center space-x-2"
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
+        <button onClick={loadLogs} className="btn btn-primary flex items-center space-x-2">
+          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           <span>刷新</span>
         </button>
       </div>
+
+      <Link to="/operation-logs" className="text-primary hover:underline text-sm">
+        查看账号操作记录 →
+      </Link>
 
       {autoRefreshStatus?.isPaused && (
         <div className="border border-red-200 bg-red-50 rounded-lg px-4 py-3 flex items-center justify-between">
@@ -251,12 +244,11 @@ export default function SystemLogs() {
             <div>
               <p className="text-sm font-medium text-red-700">自动刷新已暂停</p>
               <p className="text-sm text-red-600 mt-1">
-                {autoRefreshStatus.pauseReason || "系统检测到关键异常"}
+                {autoRefreshStatus.pauseReason || '系统检测到关键异常'}
               </p>
               {!autoRefreshStatus.controlAvailable && (
                 <p className="text-sm text-red-600 mt-1">
-                  调度器运行在独立
-                  Worker，需由授权运维人员确认风控原因后恢复进程。
+                  调度器运行在独立 Worker，需由授权运维人员确认风控原因后恢复进程。
                 </p>
               )}
             </div>
@@ -281,26 +273,38 @@ export default function SystemLogs() {
                 <Network className="w-5 h-5 text-primary" />
               </div>
               <div>
-                <h2 className="text-xl font-semibold text-gray-900">
-                  爬虫代理 Provider
-                </h2>
+                <h2 className="text-xl font-semibold text-gray-900">爬虫代理服务</h2>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-sm text-gray-600">
-                  <span>{proxyProviderStatus.workerReady ? "当前生效：" : "上次生效："}</span>
-                  <span className={proxyProviderStatus.workerReady ? "badge badge-success" : "badge badge-warning"}>
+                  <span>{proxyProviderStatus.workerReady ? '当前生效：' : '上次生效：'}</span>
+                  <span
+                    className={
+                      proxyProviderStatus.workerReady
+                        ? 'badge badge-success'
+                        : 'badge badge-warning'
+                    }
+                  >
                     {getProviderLabel(proxyProviderStatus.activeProvider)}
                   </span>
                   <span>目标：</span>
                   <span className="badge badge-info">
                     {getProviderLabel(proxyProviderStatus.requestedProvider)}
                   </span>
-                  <span>状态：{proxyProviderStatus.switchStatus}</span>
+                  <span>状态：{logLabel(proxyProviderStatus.switchStatus)}</span>
                 </div>
                 <p className="text-sm text-gray-500 mt-2">
-                  切换请求由独立 Worker
-                  等待在途任务结束后验证；候选失败时继续使用原 Provider。
+                  切换请求由独立 Worker 等待在途任务结束后验证；候选失败时继续使用原代理服务。
                 </p>
-                <p role="status" className={proxyProviderStatus.workerReady ? "text-sm text-green-700 mt-2" : "text-sm text-amber-700 mt-2"}>
-                  {proxyProviderStatus.workerReady ? "爬虫代理已就绪" : proxyProviderStatus.workerBlockedReason || "爬虫代理尚未就绪"}
+                <p
+                  role="status"
+                  className={
+                    proxyProviderStatus.workerReady
+                      ? 'text-sm text-green-700 mt-2'
+                      : 'text-sm text-amber-700 mt-2'
+                  }
+                >
+                  {proxyProviderStatus.workerReady
+                    ? '爬虫代理已就绪'
+                    : proxyProviderStatus.workerBlockedReason || '爬虫代理尚未就绪'}
                 </p>
                 {proxyProviderStatus.switchError && (
                   <p className="text-sm text-red-600 mt-2">
@@ -311,38 +315,26 @@ export default function SystemLogs() {
               </div>
             </div>
             <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2">
-              {PROXY_PROVIDERS.map((provider) => {
-                const configured =
-                  proxyProviderStatus.providers?.[provider]?.configured;
-                const isBusy = ["pending", "switching"].includes(
-                  proxyProviderStatus.switchStatus,
-                );
+              {PROXY_PROVIDERS.map(provider => {
+                const configured = proxyProviderStatus.providers?.[provider]?.configured;
+                const isBusy = ['pending', 'switching'].includes(proxyProviderStatus.switchStatus);
                 const isActive =
-                  proxyProviderStatus.workerReady && proxyProviderStatus.activeProvider === provider && !isBusy;
+                  proxyProviderStatus.workerReady &&
+                  proxyProviderStatus.activeProvider === provider &&
+                  !isBusy;
                 return (
                   <button
                     key={provider}
                     type="button"
                     onClick={() => handleProxySwitch(provider)}
-                    disabled={
-                      !configured ||
-                      isBusy ||
-                      isActive ||
-                      switchingProvider === provider
-                    }
+                    disabled={!configured || isBusy || isActive || switchingProvider === provider}
                     className="btn btn-secondary flex items-center justify-center space-x-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title={
-                      !configured ? "该 Provider 的环境配置不完整" : undefined
-                    }
+                    title={!configured ? '该代理服务的环境配置不完整' : undefined}
                   >
                     <RefreshCw
-                      className={`w-4 h-4 ${switchingProvider === provider ? "animate-spin" : ""}`}
+                      className={`w-4 h-4 ${switchingProvider === provider ? 'animate-spin' : ''}`}
                     />
-                    <span>
-                      {isActive
-                        ? "当前使用"
-                        : `切换到${getProviderLabel(provider)}`}
-                    </span>
+                    <span>{isActive ? '当前使用' : `切换到${getProviderLabel(provider)}`}</span>
                   </button>
                 );
               })}
@@ -375,42 +367,36 @@ export default function SystemLogs() {
           <input
             type="datetime-local"
             value={filters.dateFrom}
-            onChange={(event) =>
-              handleFilterChange("dateFrom", event.target.value)
-            }
+            onChange={event => handleFilterChange('dateFrom', event.target.value)}
             className="input"
           />
           <input
             type="datetime-local"
             value={filters.dateTo}
-            onChange={(event) =>
-              handleFilterChange("dateTo", event.target.value)
-            }
+            onChange={event => handleFilterChange('dateTo', event.target.value)}
             className="input"
           />
           <select
             value={filters.type}
-            onChange={(event) => handleFilterChange("type", event.target.value)}
+            onChange={event => handleFilterChange('type', event.target.value)}
             className="input"
           >
             <option value="">全部类型</option>
-            {LOG_TYPES.map((type) => (
-              <option key={type} value={type}>
-                {type}
+            {LOG_TYPES.map(type => (
+              <option key={logLabel(type)} value={logLabel(type)}>
+                {logLabel(type)}
               </option>
             ))}
           </select>
           <select
             value={filters.severity}
-            onChange={(event) =>
-              handleFilterChange("severity", event.target.value)
-            }
+            onChange={event => handleFilterChange('severity', event.target.value)}
             className="input"
           >
             <option value="">全部严重程度</option>
-            {SEVERITIES.map((severity) => (
-              <option key={severity} value={severity}>
-                {severity}
+            {SEVERITIES.map(severity => (
+              <option key={logLabel(severity)} value={logLabel(severity)}>
+                {logLabel(severity)}
               </option>
             ))}
           </select>
@@ -418,9 +404,7 @@ export default function SystemLogs() {
             type="text"
             placeholder="订单号"
             value={filters.orderNumber}
-            onChange={(event) =>
-              handleFilterChange("orderNumber", event.target.value)
-            }
+            onChange={event => handleFilterChange('orderNumber', event.target.value)}
             className="input"
           />
           <div className="relative">
@@ -429,17 +413,13 @@ export default function SystemLogs() {
               type="text"
               placeholder="关键词"
               value={filters.keyword}
-              onChange={(event) =>
-                handleFilterChange("keyword", event.target.value)
-              }
+              onChange={event => handleFilterChange('keyword', event.target.value)}
               className="input pl-10"
             />
           </div>
           <select
             value={filters.isWindControl}
-            onChange={(event) =>
-              handleFilterChange("isWindControl", event.target.value)
-            }
+            onChange={event => handleFilterChange('isWindControl', event.target.value)}
             className="input"
           >
             <option value="">全部风控</option>
@@ -448,9 +428,7 @@ export default function SystemLogs() {
           </select>
           <select
             value={filters.success}
-            onChange={(event) =>
-              handleFilterChange("success", event.target.value)
-            }
+            onChange={event => handleFilterChange('success', event.target.value)}
             className="input"
           >
             <option value="">全部结果</option>
@@ -483,18 +461,18 @@ export default function SystemLogs() {
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
                   {[
-                    "时间",
-                    "严重程度",
-                    "类型",
-                    "订单号",
-                    "事件",
-                    "代理 IP",
-                    "HTTP 状态",
-                    "耗时",
-                    "结果",
-                    "错误摘要",
-                    "操作",
-                  ].map((label) => (
+                    '时间',
+                    '严重程度',
+                    '类型',
+                    '订单号',
+                    '事件',
+                    '代理 IP',
+                    'HTTP 状态',
+                    '耗时',
+                    '结果',
+                    '错误摘要',
+                    '操作',
+                  ].map(label => (
                     <th
                       key={label}
                       className="text-left py-3 px-4 text-sm font-medium text-gray-500 whitespace-nowrap"
@@ -505,49 +483,39 @@ export default function SystemLogs() {
                 </tr>
               </thead>
               <tbody className="bg-white">
-                {logs.map((log) => (
+                {logs.map(log => (
                   <tr
                     key={log.id}
                     className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
                   >
                     <td className="py-4 px-4 text-sm text-gray-600">
-                      {new Date(log.time).toLocaleString("zh-CN")}
+                      {new Date(log.time).toLocaleString('zh-CN')}
                     </td>
-                    <td className="py-4 px-4">
-                      {getSeverityBadge(log.severity)}
-                    </td>
-                    <td className="py-4 px-4 text-sm text-gray-600">
-                      {log.type}
-                    </td>
+                    <td className="py-4 px-4">{getSeverityBadge(log.severity)}</td>
+                    <td className="py-4 px-4 text-sm text-gray-600">{logLabel(log.type)}</td>
                     <td className="py-4 px-4 text-sm font-mono text-primary">
-                      {log.order_number || "-"}
+                      {log.order_number || '-'}
                     </td>
-                    <td className="py-4 px-4 text-sm text-gray-900">
-                      {log.event || "-"}
-                    </td>
+                    <td className="py-4 px-4 text-sm text-gray-900">{logLabel(log.event)}</td>
+                    <td className="py-4 px-4 text-sm text-gray-600">{log.proxy_ip || '-'}</td>
+                    <td className="py-4 px-4 text-sm text-gray-600">{log.http_status || '-'}</td>
                     <td className="py-4 px-4 text-sm text-gray-600">
-                      {log.proxy_ip || "-"}
-                    </td>
-                    <td className="py-4 px-4 text-sm text-gray-600">
-                      {log.http_status || "-"}
-                    </td>
-                    <td className="py-4 px-4 text-sm text-gray-600">
-                      {log.response_time ? `${log.response_time}ms` : "-"}
+                      {log.response_time ? `${log.response_time}ms` : '-'}
                     </td>
                     <td className="py-4 px-4">
                       <span
-                        className={`badge ${log.success ? "badge-success" : "badge-error"} inline-flex items-center gap-1`}
+                        className={`badge ${log.success ? 'badge-success' : 'badge-error'} inline-flex items-center gap-1`}
                       >
                         {log.success ? (
                           <CheckCircle className="w-3 h-3" />
                         ) : (
                           <AlertTriangle className="w-3 h-3" />
                         )}
-                        {log.result || (log.success ? "success" : "failed")}
+                        {logLabel(log.result || (log.success ? 'success' : 'failed'))}
                       </span>
                     </td>
                     <td className="py-4 px-4 text-sm text-gray-600 max-w-xs truncate">
-                      {log.error_summary || "-"}
+                      {logErrorSummary(log)}
                     </td>
                     <td className="py-4 px-4">
                       <button
@@ -571,11 +539,9 @@ export default function SystemLogs() {
           totalPages={pagination.totalPages}
           totalItems={pagination.totalItems}
           pageSize={pagination.pageSize}
-          onPageChange={(page) =>
-            setPagination((prev) => ({ ...prev, currentPage: page }))
-          }
-          onPageSizeChange={(size) =>
-            setPagination((prev) => ({
+          onPageChange={page => setPagination(prev => ({ ...prev, currentPage: page }))}
+          onPageSizeChange={size =>
+            setPagination(prev => ({
               ...prev,
               pageSize: size,
               currentPage: 1,
@@ -593,7 +559,7 @@ export default function SystemLogs() {
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">日志详情</h2>
                 <p className="text-gray-500 mt-1">
-                  {selectedLog.event || selectedLog.type}
+                  {logLabel(selectedLog.event || selectedLog.type)}
                 </p>
               </div>
               <button
@@ -613,23 +579,25 @@ export default function SystemLogs() {
                   <ExternalLink className="w-3 h-3" />
                 </a>
               )}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm text-gray-700">
+                <p>事件：{logLabel(selectedLog.event)}</p>
+                <p>级别：{logLabel(selectedLog.severity)}</p>
+                <p>
+                  结果：
+                  {logLabel(selectedLog.result || (selectedLog.success ? 'success' : 'failed'))}
+                </p>
+                <p>原始事件代码：{selectedLog.event || '—'}</p>
+                <p>原始错误：{selectedLog.error_summary || '—'}</p>
+              </div>
               <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-2">
-                  上下文 JSON
-                </h3>
+                <h3 className="text-sm font-medium text-gray-700 mb-2">技术详情（供排障使用）</h3>
                 <pre className="bg-gray-50 border border-gray-200 rounded-lg p-4 text-xs text-gray-700 overflow-x-auto">
-                  {JSON.stringify(
-                    selectedLog.context || selectedLog.crawled_data || {},
-                    null,
-                    2,
-                  )}
+                  {JSON.stringify(selectedLog.context || selectedLog.crawled_data || {}, null, 2)}
                 </pre>
               </div>
               {selectedLog.error_stack && (
                 <div>
-                  <h3 className="text-sm font-medium text-gray-700 mb-2">
-                    错误堆栈
-                  </h3>
+                  <h3 className="text-sm font-medium text-gray-700 mb-2">错误堆栈</h3>
                   <pre className="bg-red-50 border border-red-200 rounded-lg p-4 text-xs text-red-700 overflow-x-auto whitespace-pre-wrap">
                     {selectedLog.error_stack}
                   </pre>

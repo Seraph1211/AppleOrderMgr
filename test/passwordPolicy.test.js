@@ -89,7 +89,7 @@ describe('密码长度接口契约', () => {
 
     await authController.changePassword(request, response);
 
-    expect(mockChangePassword).toHaveBeenCalledWith(1, 'old-password', '12345678');
+    expect(mockChangePassword).toHaveBeenCalledWith(1, 'old-password', '12345678', undefined);
     expect(response.status).toHaveBeenCalledWith(200);
   });
 
@@ -134,10 +134,11 @@ describe('密码长度接口契约', () => {
     expect(mockCreateUserWithPermissions).toHaveBeenCalledWith(
       {
         username: 'operator',
+        nickname: 'operator',
         password: '12345678',
         role: 'operator',
         status: 'active',
-        forcePasswordChange: true,
+        forcePasswordChange: false,
       },
       [],
       1

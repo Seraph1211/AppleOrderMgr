@@ -7,11 +7,7 @@ jest.mock('../src/utils/logger', () => ({
   error: jest.fn(),
 }));
 
-const {
-  checkPasswordChangeRequired,
-  requirePermission,
-  requireRole,
-} = require('../src/middleware/authMiddleware');
+const { requirePermission, requireRole } = require('../src/middleware/authMiddleware');
 const { PERMISSIONS, ROLE_PERMISSIONS } = require('../src/constants/business');
 
 function createResponse() {
@@ -97,18 +93,14 @@ describe('逐用户权限矩阵', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  test('被标记强制改密的用户不得访问业务 API', () => {
+  test('存量强制改密标记不再阻止已授权业务', () => {
     const req = {
-      user: { id: 4, username: 'new-user', role: 'operator', forcePasswordChange: true },
+      user: { id: 4, forcePasswordChange: true, permissions: [PERMISSIONS.ORDERS_READ] },
       path: '/orders',
     };
     const res = createResponse();
     const next = jest.fn();
-
-    checkPasswordChangeRequired(req, res, next);
-
-    expect(res.statusCode).toBe(403);
-    expect(res.body.forcePasswordChange).toBe(true);
-    expect(next).not.toHaveBeenCalled();
+    requirePermission(PERMISSIONS.ORDERS_READ)(req, res, next);
+    expect(next).toHaveBeenCalledTimes(1);
   });
 });

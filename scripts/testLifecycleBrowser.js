@@ -169,7 +169,7 @@ async function main() {
     assert.equal(apiCalls.filter(call => call.path === '/api/users').length, 0);
     authMode = 'force-change';
     await page.goto(`${baseUrl.origin}/orders`, { waitUntil: 'networkidle' });
-    await page.waitForFunction(() => location.pathname === '/change-password');
+    await page.waitForFunction(() => location.pathname === '/orders');
     authMode = 'expired';
     await page.goto(`${baseUrl.origin}/orders`, { waitUntil: 'networkidle' });
     await page.waitForFunction(() => location.pathname === '/login');
@@ -198,7 +198,7 @@ async function main() {
         '页面无自动刷新',
         '客户端导航与后退',
         '越权路由回退',
-        '强制改密跳转',
+        '取消首次强制改密',
         '过期会话跳转',
         '未登录跳转',
       ],

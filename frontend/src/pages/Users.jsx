@@ -1,9 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Unlock, Users as UsersIcon, ShieldCheck } from 'lucide-react';
+import {
+  Plus,
+  Edit,
+  Trash2,
+  Unlock,
+  Users as UsersIcon,
+  ShieldCheck,
+  KeyRound,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import client from '../api/client';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
+import ResetPasswordModal from '../components/ResetPasswordModal';
 import AddUserModal from '../components/AddUserModal';
 import EditUserModal from '../components/EditUserModal';
 import PermissionConfigModal from '../components/PermissionConfigModal';
@@ -11,6 +20,8 @@ import { PERMISSIONS } from '../constants/permissions';
 
 export default function Users() {
   const { isAdmin, can } = useAuth();
+  const [resetUser, setResetUser] = useState(null);
+  const [keyword, setKeyword] = useState('');
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [alertModal, setAlertModal] = useState(null);
@@ -26,7 +37,9 @@ export default function Users() {
   const fetchUsers = async (page = 1) => {
     setLoading(true);
     try {
-      const response = await client.get(`/users?page=${page}&limit=${pagination.limit}`);
+      const response = await client.get(
+        `/users?page=${page}&limit=${pagination.limit}&keyword=${encodeURIComponent(keyword)}`
+      );
       if (response.success && response.data) {
         setUsers(response.data.users);
         setPagination(prev => ({
@@ -185,13 +198,43 @@ export default function Users() {
           </div>
         </div>
         {can(PERMISSIONS.USERS_MANAGE) && (
-          <button onClick={handleAdd} className="btn btn-primary">
-            <Plus className="w-4 h-4 mr-2" />
-            新增用户
+          <button
+            type="button"
+            onClick={handleAdd}
+            className="btn btn-primary inline-flex items-center justify-center gap-2 shrink-0 whitespace-nowrap"
+          >
+            <Plus className="w-4 h-4 shrink-0" aria-hidden="true" />
+            <span>新增用户</span>
           </button>
         )}
       </div>
 
+      <form
+        className="flex gap-3 mb-4"
+        onSubmit={event => {
+          event.preventDefault();
+          fetchUsers(1);
+        }}
+      >
+        <input
+          className="input max-w-md"
+          aria-label="搜索账号"
+          placeholder="账号 ID、登录账号或昵称"
+          value={keyword}
+          onChange={event => setKeyword(event.target.value)}
+        />
+        <button className="btn btn-secondary">查询</button>
+      </form>
+      {resetUser && (
+        <ResetPasswordModal
+          user={resetUser}
+          onClose={() => setResetUser(null)}
+          onSuccess={() => {
+            setResetUser(null);
+            setAlertModal({ title: '重置成功', message: '新密码已生效，原登录已失效' });
+          }}
+        />
+      )}
       {/* 用户列表 */}
       <div className="card">
         {loading ? (
@@ -211,8 +254,12 @@ export default function Users() {
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                      用户名
+                      账号 ID
                     </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
+                      登录账号
+                    </th>
+                    <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">昵称</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">角色</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">状态</th>
                     <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
@@ -233,9 +280,11 @@ export default function Users() {
                       key={user.id}
                       className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
                     >
+                      <td className="py-4 px-4 text-sm text-gray-600">{user.accountId}</td>
                       <td className="py-4 px-4">
                         <span className="font-medium text-gray-900">{user.username}</span>
                       </td>
+                      <td className="py-4 px-4 text-sm text-gray-900">{user.nickname}</td>
                       <td className="py-4 px-4">{renderRoleBadge(user.role)}</td>
                       <td className="py-4 px-4">{renderStatusBadge(user.status)}</td>
                       <td className="py-4 px-4 text-sm text-gray-600">
@@ -249,6 +298,16 @@ export default function Users() {
                       </td>
                       <td className="py-4 px-4">
                         <div className="flex items-center justify-end space-x-2">
+                          {can(PERMISSIONS.USERS_MANAGE) && (
+                            <button
+                              onClick={() => setResetUser(user)}
+                              className="text-primary flex items-center gap-1 whitespace-nowrap"
+                              title="重置密码"
+                            >
+                              <KeyRound className="w-4 h-4" />
+                              重置密码
+                            </button>
+                          )}
                           {can(PERMISSIONS.USERS_PERMISSIONS_MANAGE) && (
                             <button
                               onClick={() => setPermissionUser(user)}

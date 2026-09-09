@@ -136,7 +136,7 @@ async function enrollOrderInTransaction(order, transaction) {
 async function getDispatchOverview() {
   const settings = await getOrCreateSettings();
   const users = await User.findAll({
-    attributes: ['id', 'username', 'role', 'status', 'forcePasswordChange'],
+    attributes: ['id', 'username', 'role', 'status', 'nickname'],
     include: [
       { model: UserPermission, as: 'permissionGrants', attributes: ['permissionCode'] },
       { model: PaymentStaffSetting, as: 'paymentStaffSetting', required: false },
@@ -169,7 +169,7 @@ async function getDispatchOverview() {
         id: user.id,
         username: user.username,
         status: user.status,
-        forcePasswordChange: user.forcePasswordChange,
+        nickname: user.nickname || user.username,
         hasExecutionPermissions: PAYMENT_EXECUTION_PERMISSIONS.every(code =>
           permissions.includes(code)
         ),
@@ -248,11 +248,8 @@ async function updateStaffSettings(userId, input, actorUserId) {
     if (!user) throw ApiError.badRequest('付款执行人员不存在');
     const permissions = await getEffectivePermissions(user, { transaction });
     const hasFullSet = PAYMENT_EXECUTION_PERMISSIONS.every(code => permissions.includes(code));
-    if (
-      input.autoAssignEnabled &&
-      (!hasFullSet || user.status !== 'active' || user.forcePasswordChange)
-    ) {
-      throw ApiError.badRequest('开启自动接单前必须具备完整付款权限、账号正常且已完成首次改密');
+    if (input.autoAssignEnabled && (!hasFullSet || user.status !== 'active')) {
+      throw ApiError.badRequest('开启自动接单前必须具备完整付款权限、账号正常');
     }
     const [setting] = await PaymentStaffSetting.findOrCreate({
       where: { userId },
@@ -286,7 +283,7 @@ async function updateStaffSettings(userId, input, actorUserId) {
 
 async function assertAssignableUser(userId, transaction, requireAuto = false) {
   const user = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
-  if (!user || user.status !== 'active' || user.forcePasswordChange) {
+  if (!user || user.status !== 'active') {
     throw ApiError.badRequest('目标执行人员账号不可用');
   }
   const permissions = await getEffectivePermissions(user, { transaction });
@@ -809,7 +806,7 @@ async function runDispatchScan(limit = 500) {
           model: User,
           as: 'user',
           required: true,
-          where: { status: 'active', forcePasswordChange: false },
+          where: { status: 'active' },
           include: [
             { model: UserPermission, as: 'permissionGrants', attributes: ['permissionCode'] },
           ],

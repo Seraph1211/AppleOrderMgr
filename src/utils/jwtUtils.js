@@ -29,7 +29,7 @@ function getJwtSecret() {
  */
 function generateToken(payload) {
   try {
-    const { userId, username, role } = payload;
+    const { userId, username, role, sessionId } = payload;
 
     if (!userId || !username || !role) {
       throw new Error('生成 token 需要 userId、username 和 role 参数');
@@ -40,6 +40,7 @@ function generateToken(payload) {
         userId,
         username,
         role,
+        sessionId,
         iat: Math.floor(Date.now() / 1000),
       },
       getJwtSecret(),
@@ -59,7 +60,7 @@ function generateToken(payload) {
   } catch (error) {
     logger.error('JWT token 生成失败', {
       error: error.message,
-      payload,
+      userId: payload?.userId,
     });
     throw error;
   }
@@ -146,7 +147,21 @@ function decodeToken(token) {
   }
 }
 
+/**
+ * 签发只允许接管指定旧会话的短期凭证。
+ * @param {Object} user - 用户
+ * @returns {string} 确认凭证
+ */
+function generateConfirmationToken(user) {
+  return jwt.sign(
+    { purpose: 'login_takeover', userId: user.id, previousSessionId: user.activeSessionId },
+    getJwtSecret(),
+    { expiresIn: '2m' }
+  );
+}
+
 module.exports = {
+  generateConfirmationToken,
   generateToken,
   verifyToken,
   extractTokenFromHeader,

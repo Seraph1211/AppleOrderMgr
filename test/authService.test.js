@@ -7,12 +7,16 @@ jest.mock('../src/models', () => ({
     findOne: mockFindOne,
     findByPk: mockFindByPk,
   },
+  sequelize: { transaction: jest.fn(callback => callback({ LOCK: { UPDATE: 'UPDATE' } })) },
   UserPermission: {
     findAll: jest.fn(() => Promise.resolve([])),
   },
 }));
 jest.mock('../src/utils/jwtUtils', () => ({
   generateToken: mockGenerateToken,
+  decodeToken: jest.fn(() => ({ exp: Math.floor(Date.now() / 1000) + 3600 })),
+  verifyToken: jest.fn(),
+  generateConfirmationToken: jest.fn(() => 'confirmation'),
 }));
 jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),
@@ -52,7 +56,8 @@ describe('账户锁定恢复', () => {
 
     const result = await authService.login('operator', 'correct-password', '127.0.0.1');
 
-    expect(user.unlockAccount).toHaveBeenCalledTimes(1);
+    expect(user.status).toBe('active');
+    expect(user.lockedUntil).toBeNull();
     expect(user.comparePassword).toHaveBeenCalledWith('correct-password');
     expect(mockGenerateToken).toHaveBeenCalledTimes(1);
     expect(result.token).toBe('signed-token');

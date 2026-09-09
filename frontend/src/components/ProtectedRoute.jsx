@@ -24,9 +24,6 @@ export default function ProtectedRoute({
     );
   }
   if (!isAuthenticated()) return <Navigate to="/login" state={{ from: location }} replace />;
-  if (user?.forcePasswordChange && location.pathname !== '/change-password') {
-    return <Navigate to="/change-password" replace />;
-  }
   const forbidden =
     (requiredRole === 'admin' && !isAdmin()) ||
     (requiredPermission && !can(requiredPermission)) ||

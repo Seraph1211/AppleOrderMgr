@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Apple, Lock, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import client from '../api/client';
+import ConfirmModal from '../components/ConfirmModal';
 import AlertModal from '../components/AlertModal';
 import { MIN_PASSWORD_LENGTH } from '../constants/auth';
 
@@ -18,6 +19,13 @@ export default function Login() {
 
   const [loading, setLoading] = useState(false);
   const [alertModal, setAlertModal] = useState(null);
+  const [confirmation, setConfirmation] = useState(null);
+  useEffect(() => {
+    const message = sessionStorage.getItem('authNotice');
+    if (message) {
+      setAlertModal({ title: '登录提示', message });
+    }
+  }, []);
   const [lockInfo, setLockInfo] = useState(null);
 
   const handleChange = e => {
@@ -26,6 +34,7 @@ export default function Login() {
       ...prev,
       [name]: type === 'checkbox' ? checked : value,
     }));
+    sessionStorage.removeItem('authNotice');
     // 清除错误信息
     setAlertModal(null);
     setLockInfo(null);
@@ -51,14 +60,15 @@ export default function Login() {
     return `${minutes} 分 ${seconds} 秒`;
   };
 
-  const handleSubmit = async e => {
-    e.preventDefault();
+  const handleSubmit = async (e, confirmationToken) => {
+    e?.preventDefault();
+    if (loading) return;
 
     // 前端验证
     if (!formData.username.trim()) {
       setAlertModal({
         title: '提示',
-        message: '请输入用户名',
+        message: '请输入登录账号',
       });
       return;
     }
@@ -87,6 +97,7 @@ export default function Login() {
       const response = await client.post('/auth/login', {
         username: formData.username,
         password: formData.password,
+        confirmationToken,
       });
 
       // 登录成功
@@ -97,22 +108,12 @@ export default function Login() {
         login(
           {
             token,
-            username: user.username,
-            role: user.role,
-            forcePasswordChange: user.forcePasswordChange,
-            permissions: user.permissions,
-            permissionsVersion: user.permissionsVersion,
-            availableHome: user.availableHome,
+            ...user,
           },
           formData.rememberMe
         );
 
-        // 检查是否需要强制修改密码
-        if (user.forcePasswordChange) {
-          navigate('/change-password');
-        } else {
-          navigate(user.availableHome || '/change-password');
-        }
+        navigate(user.availableHome || '/profile', { replace: true });
       } else {
         setAlertModal({
           title: '登录失败',
@@ -120,6 +121,10 @@ export default function Login() {
         });
       }
     } catch (error) {
+      if (error.code === 'SESSION_CONFIRMATION_REQUIRED') {
+        setConfirmation(error.details?.confirmationToken);
+        return;
+      }
       // 处理登录失败
       let errorMessage = '登录失败，请重试';
       let lockUntil = null;
@@ -178,7 +183,7 @@ export default function Login() {
             {/* 用户名 */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
-                用户名
+                登录账号
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -192,7 +197,7 @@ export default function Login() {
                   value={formData.username}
                   onChange={handleChange}
                   className="input pl-10"
-                  placeholder="请输入用户名"
+                  placeholder="请输入登录账号"
                   disabled={loading}
                 />
               </div>
@@ -249,12 +254,27 @@ export default function Login() {
         <p className="text-center text-sm text-gray-500 mt-8">Apple 订单管理系统 v1.0.0</p>
       </div>
 
+      {confirmation && (
+        <ConfirmModal
+          title="账号已在其他设备登录"
+          message="继续登录将使上一台设备退出登录。是否继续？"
+          onCancel={() => setConfirmation(null)}
+          onConfirm={() => {
+            const token = confirmation;
+            setConfirmation(null);
+            handleSubmit(null, token);
+          }}
+        />
+      )}
       {/* 错误提示 Modal */}
       {alertModal && (
         <AlertModal
           title={alertModal.title}
           message={alertModal.message}
-          onClose={() => setAlertModal(null)}
+          onClose={() => {
+            sessionStorage.removeItem('authNotice');
+            setAlertModal(null);
+          }}
         />
       )}
 

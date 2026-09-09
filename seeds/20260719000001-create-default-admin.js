@@ -32,7 +32,7 @@ module.exports = {
           status: 'active',
           failed_login_attempts: 0,
           locked_until: null,
-          force_password_change: true,
+          force_password_change: false,
           last_login_at: null,
           last_login_ip: null,
           created_at: new Date(),

@@ -47,6 +47,13 @@ client.interceptors.response.use(
       const isLoginRequest = config.url.includes('/auth/login');
 
       if (status === 401 && !isLoginRequest) {
+        const currentToken = localStorage.getItem('token') || sessionStorage.getItem('token');
+        if (currentToken && config.headers?.Authorization !== `Bearer ${currentToken}`)
+          return Promise.reject(new Error('原会话请求已失效'));
+        sessionStorage.setItem(
+          'authNotice',
+          data?.error?.message || data?.message || '登录已过期，请重新登录'
+        );
         // Token 过期或无效：清除存储并跳转登录页
         localStorage.removeItem('token');
         localStorage.removeItem('user');
@@ -61,7 +68,8 @@ client.interceptors.response.use(
         return Promise.reject(new Error('登录已过期，请重新登录'));
       } else if (status === 403 && !isLoginRequest) {
         // 权限不足（非登录请求）
-        window.dispatchEvent(new Event('auth-permissions-stale'));
+        if (!config.url.includes('/auth/me'))
+          window.dispatchEvent(new Event('auth-permissions-stale'));
         return Promise.reject(new Error(data?.error?.message || '权限不足'));
       } else if (status === 404) {
         return Promise.reject(new Error(data?.error?.message || '请求的资源不存在'));
@@ -70,7 +78,11 @@ client.interceptors.response.use(
       }
 
       // 对于登录请求的 401/403，保留原始错误信息
-      return Promise.reject(new Error(data?.error?.message || data?.message || error.message));
+      const failure = new Error(data?.error?.message || data?.message || error.message);
+      failure.code = data?.error?.code;
+      failure.details = data?.error?.details;
+      failure.response = error.response;
+      return Promise.reject(failure);
     } else if (error.request) {
       // 请求发出但没有响应
       return Promise.reject(new Error('网络错误，请检查连接'));

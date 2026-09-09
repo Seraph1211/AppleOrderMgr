@@ -14,7 +14,7 @@ const crypto = require('crypto');
 function requestLogger() {
   return function requestLoggerMiddleware(req, res, next) {
     const startTime = process.hrtime.bigint();
-    req.requestId = req.headers['x-request-id'] || crypto.randomUUID();
+    req.requestId = crypto.randomUUID();
     res.setHeader('X-Request-Id', req.requestId);
 
     res.on('finish', () => {
@@ -22,10 +22,11 @@ function requestLogger() {
 
       const logPayload = {
         method: req.method,
-        url: req.originalUrl,
+        url: req.route?.path || '/unmatched',
+        userId: req.user?.id || req.auditActor?.id,
         status: res.statusCode,
         costMs: Math.round(costMs * 100) / 100,
-        ip: req.ip || req.headers['x-forwarded-for'] || req.socket?.remoteAddress,
+        ip: req.ip || req.socket?.remoteAddress,
         userAgent: req.headers['user-agent'],
         requestId: req.requestId,
       };

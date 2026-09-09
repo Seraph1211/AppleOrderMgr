@@ -42,4 +42,11 @@ router.post(
   asyncHandler(systemController.switchProxyProvider)
 );
 
+router.get(
+  '/operation-logs',
+  requireRole(['admin']),
+  requirePermission(PERMISSIONS.SYSTEM_LOGS_READ),
+  asyncHandler(require('../controllers/operationLogController').listOperationLogs)
+);
+
 module.exports = router;

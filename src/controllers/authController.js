@@ -1,3 +1,5 @@
+const ApiError = require('../utils/ApiError');
+const { extractTokenFromHeader } = require('../utils/jwtUtils');
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
 const { MIN_PASSWORD_LENGTH } = require('../constants/business');
@@ -19,7 +21,7 @@ async function login(req, res) {
     const { username, password } = req.body;
 
     // 输入验证
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
       return res.status(400).json({
         success: false,
         message: '用户名和密码不能为空',
@@ -44,7 +46,14 @@ async function login(req, res) {
     const loginIp = req.ip || req.connection.remoteAddress;
 
     // 调用服务层处理登录
-    const result = await authService.login(username, password, loginIp);
+    const result = await authService.login(username, password, loginIp, {
+      confirmationToken:
+        typeof req.body.confirmationToken === 'string' ? req.body.confirmationToken : undefined,
+      currentToken: extractTokenFromHeader(req),
+      onIdentify: actor => {
+        req.auditActor = actor;
+      },
+    });
 
     return res.status(200).json({
       success: true,
@@ -52,6 +61,7 @@ async function login(req, res) {
       message: '登录成功',
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     logger.error('登录接口执行失败', {
       error: error.message,
       stack: error.stack,
@@ -85,10 +95,9 @@ async function login(req, res) {
  * @param {Object} req - Express 请求对象
  * @param {Object} res - Express 响应对象
  */
-function logout(req, res) {
+async function logout(req, res) {
   try {
-    // JWT 是无状态的，登出操作由客户端删除 token 实现
-    // 服务端只需记录日志
+    await authService.logout(req.user.id, req.user.sessionId);
     logger.info('用户登出', {
       userId: req.user?.id,
       username: req.user?.username,
@@ -99,6 +108,7 @@ function logout(req, res) {
       message: '登出成功',
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     logger.error('登出接口执行失败', {
       error: error.message,
       stack: error.stack,
@@ -123,7 +133,11 @@ async function changePassword(req, res) {
     const userId = req.user.id;
 
     // 输入验证
-    if (!oldPassword || !newPassword || !confirmPassword) {
+    if (
+      ![oldPassword, newPassword, confirmPassword].every(
+        value => typeof value === 'string' && value.length > 0
+      )
+    ) {
       return res.status(400).json({
         success: false,
         message: '旧密码、新密码和确认密码不能为空',
@@ -145,13 +159,14 @@ async function changePassword(req, res) {
     }
 
     // 调用服务层处理密码修改
-    await authService.changePassword(userId, oldPassword, newPassword);
+    await authService.changePassword(userId, oldPassword, newPassword, req.user.sessionId);
 
     return res.status(200).json({
       success: true,
       message: '密码修改成功，请重新登录',
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     logger.error('修改密码接口执行失败', {
       userId: req.user?.id,
       error: error.message,
@@ -198,6 +213,7 @@ async function getCurrentUser(req, res) {
       data: userInfo,
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     logger.error('获取当前用户信息失败', {
       userId: req.user?.id,
       error: error.message,
@@ -211,7 +227,25 @@ async function getCurrentUser(req, res) {
   }
 }
 
+/**
+ * 更新本人昵称，不接受身份、权限或其他字段。
+ * @param {Object} req - 请求
+ * @param {Object} res - 响应
+ */
+async function updateProfile(req, res) {
+  try {
+    if (Object.keys(req.body).some(key => key !== 'nickname'))
+      throw ApiError.badRequest('仅允许修改昵称');
+    const user = await authService.updateProfile(req.user.id, req.body.nickname);
+    return res.json({ success: true, data: user, message: '昵称已更新' });
+  } catch (error) {
+    logger.error('账号操作失败', { error: error.message });
+    throw error;
+  }
+}
+
 module.exports = {
+  updateProfile,
   login,
   logout,
   changePassword,

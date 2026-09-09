@@ -6,7 +6,7 @@
 
 const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
-const { requirePermission } = require('../middleware/authMiddleware');
+const { requirePermission, requireRole } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
 const controller = require('../controllers/userController');
 const permissionController = require('../controllers/permissionController');
@@ -44,6 +44,13 @@ router.put(
   '/:id/unlock',
   requirePermission(PERMISSIONS.USERS_MANAGE),
   asyncHandler(controller.unlockUser)
+);
+
+router.post(
+  '/:id/reset-password',
+  requireRole(['admin']),
+  requirePermission(PERMISSIONS.USERS_MANAGE),
+  asyncHandler(controller.resetPassword)
 );
 
 module.exports = router;

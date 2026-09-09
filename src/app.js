@@ -11,11 +11,12 @@ const express = require('express');
 const cors = require('cors');
 
 const logger = require('./utils/logger');
+const { operationAudit } = require('./middleware/operationAudit');
 const requestLogger = require('./middleware/requestLogger');
 const errorHandler = require('./middleware/errorHandler');
 const ApiError = require('./utils/ApiError');
 const { validateEncryptionConfiguration } = require('./utils/fieldEncryption');
-const { authenticate, checkPasswordChangeRequired } = require('./middleware/authMiddleware');
+const { authenticate } = require('./middleware/authMiddleware');
 
 const appleIdsRouter = require('./routes/appleIds');
 const recipientsRouter = require('./routes/recipients');
@@ -73,6 +74,7 @@ app.use(
 );
 
 app.use(requestLogger());
+app.use(operationAudit);
 
 // ---------- 健康检查 ----------
 app.get('/api/health/live', (_req, res) => {
@@ -104,7 +106,7 @@ app.get('/api/health', (_req, res) => res.redirect(307, '/api/health/ready'));
 
 // ---------- 业务路由 ----------
 app.use('/api/auth', authRouter);
-app.use('/api', authenticate, checkPasswordChangeRequired);
+app.use('/api', authenticate);
 app.use('/api/users', usersRouter);
 app.use('/api/apple-ids', appleIdsRouter);
 app.use('/api/recipients', recipientsRouter);

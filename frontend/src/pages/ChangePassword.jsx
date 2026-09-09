@@ -8,7 +8,7 @@ import { MIN_PASSWORD_LENGTH } from '../constants/auth';
 
 export default function ChangePassword() {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { logout } = useAuth();
 
   const [formData, setFormData] = useState({
     oldPassword: '',
@@ -18,9 +18,6 @@ export default function ChangePassword() {
 
   const [loading, setLoading] = useState(false);
   const [alertModal, setAlertModal] = useState(null);
-
-  // 判断是否是强制修改密码
-  const isForceChange = user?.forcePasswordChange === true;
 
   const handleChange = e => {
     const { name, value } = e.target;
@@ -84,22 +81,10 @@ export default function ChangePassword() {
       });
 
       if (response.success) {
-        setAlertModal({
-          title: '成功',
-          message: '密码修改成功',
-          onClose: () => {
-            // 如果是强制修改密码，需要更新用户信息
-            if (isForceChange) {
-              // 清除 forcePasswordChange 标志（后端已更新，前端也需同步）
-              const storage = user.storageType === 'localStorage' ? localStorage : sessionStorage;
-              const storedUser = JSON.parse(storage.getItem('user'));
-              storedUser.forcePasswordChange = false;
-              storage.setItem('user', JSON.stringify(storedUser));
-            }
-            // 返回首页
-            navigate('/');
-          },
-        });
+        await logout(false);
+        sessionStorage.setItem('authNotice', '密码修改成功，请用新密码重新登录');
+        navigate('/login', { replace: true });
+
       } else {
         setAlertModal({
           title: '修改失败',
@@ -124,37 +109,22 @@ export default function ChangePassword() {
     }
   };
 
-  const handleBack = () => {
-    // 如果是强制修改密码，不允许返回，只能登出
-    if (isForceChange) {
-      logout();
-      navigate('/login');
-    } else {
-      navigate(-1);
-    }
-  };
+  const handleBack = () => navigate('/profile');
 
   return (
     <div className="max-w-2xl mx-auto">
       {/* 页面标题 */}
       <div className="flex items-center mb-6">
-        {!isForceChange && (
+        {
           <button
             onClick={handleBack}
             className="mr-4 text-gray-400 hover:text-gray-600 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-        )}
+        }
         <h1 className="text-2xl font-bold text-gray-900">修改密码</h1>
       </div>
-
-      {/* 强制修改密码提示 */}
-      {isForceChange && (
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg px-4 py-3 mb-6">
-          <p className="text-sm text-yellow-800">首次登录需要修改密码，修改后才能继续使用系统。</p>
-        </div>
-      )}
 
       {/* 修改密码表单 */}
       <div className="card">
@@ -204,9 +174,7 @@ export default function ChangePassword() {
                 disabled={loading}
               />
             </div>
-            <p className="text-sm text-gray-500 mt-1">
-              密码长度至少为 {MIN_PASSWORD_LENGTH} 位
-            </p>
+            <p className="text-sm text-gray-500 mt-1">密码长度至少为 {MIN_PASSWORD_LENGTH} 位</p>
           </div>
 
           {/* 确认密码 */}
@@ -244,7 +212,7 @@ export default function ChangePassword() {
               className="btn btn-secondary"
               disabled={loading}
             >
-              {isForceChange ? '登出' : '取消'}
+              取消
             </button>
             <button type="submit" className="btn btn-primary" disabled={loading}>
               {loading ? '提交中...' : '确认修改'}

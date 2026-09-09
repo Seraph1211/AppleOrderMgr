@@ -72,18 +72,18 @@ function errorHandler(err, req, res, _next) {
     if (err.statusCode >= 500) {
       logger.error('API 业务错误', {
         method: req.method,
-        url: req.originalUrl,
+        url: req.route?.path || '/unmatched',
         code: err.code,
         message: err.message,
-        details: err.details,
+        details: err.code === 'SESSION_CONFIRMATION_REQUIRED' ? undefined : err.details,
       });
     } else {
       logger.warn('API 业务错误', {
         method: req.method,
-        url: req.originalUrl,
+        url: req.route?.path || '/unmatched',
         code: err.code,
         message: err.message,
-        details: err.details,
+        details: err.code === 'SESSION_CONFIRMATION_REQUIRED' ? undefined : err.details,
       });
     }
 
@@ -98,7 +98,7 @@ function errorHandler(err, req, res, _next) {
   if (seqError) {
     logger.error('数据库错误', {
       method: req.method,
-      url: req.originalUrl,
+      url: req.route?.path || '/unmatched',
       message: seqError.message,
       details: seqError.details,
     });
@@ -112,7 +112,7 @@ function errorHandler(err, req, res, _next) {
   if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
     logger.warn('请求体 JSON 解析失败', {
       method: req.method,
-      url: req.originalUrl,
+      url: req.route?.path || '/unmatched',
       error: err.message,
     });
     return res.status(400).json({
@@ -128,7 +128,7 @@ function errorHandler(err, req, res, _next) {
   // 兜底：未知错误
   logger.error('未处理异常', {
     method: req.method,
-    url: req.originalUrl,
+    url: req.route?.path || '/unmatched',
     message: err.message,
     stack: err.stack,
   });

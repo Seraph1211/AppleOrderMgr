@@ -77,7 +77,7 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
           <div>
             <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
               <ShieldCheck className="w-5 h-5 text-primary" />
-              配置 {user.username} 的权限
+              配置 {user.nickname || user.username}（{user.username}）的权限
             </h2>
             <p className="text-sm text-gray-500 mt-1">普通用户仅拥有此处明确勾选的权限</p>
           </div>

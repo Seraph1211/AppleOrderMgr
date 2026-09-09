@@ -1,3 +1,4 @@
+const { accountId, normalizeNickname } = require('../utils/accountIdentity');
 const {
   User,
   PaymentTask,
@@ -43,9 +44,13 @@ async function listUsers(req, res) {
     }
 
     if (keyword) {
-      where.username = {
-        [Op.iLike]: `%${keyword}%`,
-      };
+      const term = String(keyword).trim();
+      where[Op.or] = [
+        { username: { [Op.iLike]: `%${term}%` } },
+        { nickname: { [Op.iLike]: `%${term}%` } },
+      ];
+      if (/^U\d+$/i.test(term) && Number(term.slice(1)) <= 2147483647)
+        where[Op.or].push({ id: Number(term.slice(1)) });
     }
 
     // 分页参数
@@ -59,6 +64,7 @@ async function listUsers(req, res) {
       attributes: [
         'id',
         'username',
+        'nickname',
         'role',
         'status',
         'failedLoginAttempts',
@@ -86,7 +92,11 @@ async function listUsers(req, res) {
         total: count,
         page: pageNum,
         limit: limitNum,
-        users: rows,
+        users: rows.map(user => ({
+          ...user.toJSON(),
+          accountId: accountId(user.id),
+          nickname: user.nickname || user.username,
+        })),
       },
     });
   } catch (error) {
@@ -111,9 +121,10 @@ async function listUsers(req, res) {
 async function createUser(req, res) {
   try {
     const { username, password, role = 'operator', permissions = [] } = req.body;
+    const nickname = normalizeNickname(req.body.nickname ?? username);
 
     // 输入验证
-    if (!username || !password) {
+    if (typeof username !== 'string' || typeof password !== 'string' || !username || !password) {
       return res.status(400).json({
         success: false,
         message: '用户名和密码不能为空',
@@ -133,6 +144,8 @@ async function createUser(req, res) {
         message: '用户名只能包含字母、数字和下划线',
       });
     }
+
+    if (Buffer.byteLength(password) > 72) throw ApiError.badRequest('密码不能超过 72 字节');
 
     if (password.length < MIN_PASSWORD_LENGTH) {
       return res.status(400).json({
@@ -164,15 +177,17 @@ async function createUser(req, res) {
     const created = await permissionService.createUserWithPermissions(
       {
         username,
+        nickname,
         password,
         role,
         status: 'active',
-        forcePasswordChange: true,
+        forcePasswordChange: false,
       },
       permissions,
       req.user.id
     );
     const { user } = created;
+    req.auditTarget = `账号 ${accountId(user.id)}（${user.username}）`;
 
     logger.info('创建用户成功', {
       userId: user.id,
@@ -186,6 +201,8 @@ async function createUser(req, res) {
       data: {
         id: user.id,
         username: user.username,
+        accountId: accountId(user.id),
+        nickname: user.nickname || user.username,
         role: user.role,
         status: user.status,
         createdAt: user.createdAt,
@@ -220,6 +237,10 @@ async function updateUser(req, res) {
   try {
     const { id } = req.params;
     const { role, status } = req.body;
+    if (Object.keys(req.body).some(key => !['role', 'status', 'nickname'].includes(key)))
+      throw ApiError.badRequest('只允许修改角色、状态和昵称');
+    const nickname =
+      req.body.nickname === undefined ? undefined : normalizeNickname(req.body.nickname);
 
     // 验证更新字段
     if (role && !USER_ROLES.includes(role)) {
@@ -259,6 +280,12 @@ async function updateUser(req, res) {
 
       target.role = nextRole;
       target.status = nextStatus;
+      if (nickname !== undefined) target.nickname = nickname;
+      if (status === 'locked') {
+        target.lockedUntil = null;
+        target.activeSessionId = null;
+        target.activeSessionExpiresAt = null;
+      }
       await target.save({ transaction });
       return target;
     });
@@ -275,6 +302,8 @@ async function updateUser(req, res) {
       data: {
         id: user.id,
         username: user.username,
+        accountId: accountId(user.id),
+        nickname: user.nickname || user.username,
         role: user.role,
         status: user.status,
         updatedAt: user.updatedAt,
@@ -433,7 +462,26 @@ async function unlockUser(req, res) {
   }
 }
 
+/**
+ * 管理员重置目标账号密码。
+ * @param {Object} req - 请求
+ * @param {Object} res - 响应
+ */
+async function resetPassword(req, res) {
+  try {
+    const { newPassword, confirmPassword } = req.body;
+    if (!/^\d+$/.test(req.params.id)) throw ApiError.badRequest('账号 ID 无效');
+    if (newPassword !== confirmPassword) throw ApiError.badRequest('两次输入的新密码不一致');
+    await authService.resetPassword(req.params.id, newPassword);
+    return res.json({ success: true, message: '密码已重置，原登录已失效' });
+  } catch (error) {
+    logger.error('账号操作失败', { error: error.message });
+    throw error;
+  }
+}
+
 module.exports = {
+  resetPassword,
   listUsers,
   createUser,
   updateUser,

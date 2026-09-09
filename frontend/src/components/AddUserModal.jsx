@@ -7,6 +7,7 @@ import { MIN_PASSWORD_LENGTH } from '../constants/auth';
 export default function AddUserModal({ onClose, onSuccess }) {
   const [formData, setFormData] = useState({
     username: '',
+    nickname: '',
     password: '',
     confirmPassword: '',
     role: 'operator',
@@ -30,7 +31,7 @@ export default function AddUserModal({ onClose, onSuccess }) {
     if (!formData.username.trim()) {
       setAlertModal({
         title: '提示',
-        message: '请输入用户名',
+        message: '请输入登录账号',
       });
       return;
     }
@@ -38,7 +39,7 @@ export default function AddUserModal({ onClose, onSuccess }) {
     if (formData.username.length < 3) {
       setAlertModal({
         title: '提示',
-        message: '用户名长度至少为 3 位',
+        message: '登录账号长度至少为 3 位',
       });
       return;
     }
@@ -73,6 +74,7 @@ export default function AddUserModal({ onClose, onSuccess }) {
       const response = await client.post('/users', {
         username: formData.username,
         password: formData.password,
+        nickname: formData.nickname.trim() || formData.username,
         role: formData.role,
       });
 
@@ -117,10 +119,10 @@ export default function AddUserModal({ onClose, onSuccess }) {
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* 用户名 */}
+            {/* 登录账号 */}
             <div>
               <label htmlFor="username" className="block text-sm font-medium text-gray-700 mb-2">
-                用户名
+                登录账号
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -133,7 +135,7 @@ export default function AddUserModal({ onClose, onSuccess }) {
                   value={formData.username}
                   onChange={handleChange}
                   className="input pl-10"
-                  placeholder="请输入用户名（至少3位）"
+                  placeholder="请输入登录账号（至少3位）"
                   disabled={loading}
                 />
               </div>
@@ -188,6 +190,24 @@ export default function AddUserModal({ onClose, onSuccess }) {
               </div>
             </div>
 
+            <div>
+              <label
+                htmlFor="user-nickname"
+                className="block text-sm font-medium text-gray-700 mb-2"
+              >
+                昵称
+              </label>
+              <input
+                id="user-nickname"
+                name="nickname"
+                className="input"
+                value={formData.nickname}
+                onChange={handleChange}
+                maxLength={50}
+                disabled={loading}
+                placeholder="填写姓名或方便辨认的称呼"
+              />
+            </div>
             {/* 角色 */}
             <div>
               <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">

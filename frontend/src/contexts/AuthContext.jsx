@@ -30,6 +30,7 @@ export function AuthProvider({ children }) {
       return null;
     }
     const response = await client.get('/auth/me');
+    if (getStoredSession()?.token !== session.token) return null;
     const nextUser = { ...response.data, ...session };
     persistUser(response.data, session.storageType);
     setUser(nextUser);
@@ -69,13 +70,46 @@ export function AuthProvider({ children }) {
     setUser({ ...userInfo, token, storageType });
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async (revoke = true) => {
+    try {
+      if (revoke && getStoredSession()) await client.post('/auth/logout');
+    } catch (_error) {
+      // 401 交由拦截器处理；网络故障保留会话，让用户重试退出。
+      if (getStoredSession() && revoke) throw _error;
+    }
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('user');
     setUser(null);
   }, []);
+
+  const hasUser = Boolean(user);
+  useEffect(() => {
+    if (!hasUser) return undefined;
+    let checking = false;
+    const check = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        await refreshCurrentUser();
+      } catch (_error) {
+        // 网络异常不误踢；失效由客户端拦截器统一处理。
+      } finally {
+        checking = false;
+      }
+    };
+    const timer = setInterval(check, 5000);
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('storage', check);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('storage', check);
+    };
+  }, [hasUser, refreshCurrentUser]);
 
   const getToken = useCallback(
     () => user?.token || getStoredSession()?.token || null,

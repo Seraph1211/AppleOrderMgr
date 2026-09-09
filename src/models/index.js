@@ -25,6 +25,7 @@ const sequelize = config.url
 // 导入所有模型
 const models = {
   User: require('./User')(sequelize),
+  OperationLog: require('./OperationLog')(sequelize),
   AppleId: require('./AppleId')(sequelize),
   Recipient: require('./Recipient')(sequelize),
   Order: require('./Order')(sequelize),
