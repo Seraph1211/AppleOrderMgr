@@ -71,6 +71,28 @@ describe('网帆隧道代理 Provider', () => {
     expect(provider.getNextProxy().auth.username).toBe('acc-trial.user@example.com-cty-CN');
   });
 
+  test('20 并发套餐前 20 次使用不同槽，持续取用不会扩展会话池', async () => {
+    let sessionSequence = 0;
+    const sessionIdFactory = jest.fn(() => `slot${++sessionSequence}`);
+    const provider = new FanProxyTunnelProvider({
+      host: 'primary.example',
+      port: 9000,
+      account: 'testaccount',
+      password: 'test-password',
+      sessionPoolSize: 20,
+      sessionIdFactory,
+    });
+
+    await provider.initialize();
+    const firstRound = Array.from({ length: 20 }, () => provider.getNextProxy().auth.username);
+    expect(new Set(firstRound).size).toBe(20);
+    for (let index = 0; index < 100; index += 1) {
+      expect(provider.getNextProxy().auth.username).toBe(firstRound[index % 20]);
+    }
+    expect(sessionIdFactory).toHaveBeenCalledTimes(20);
+    expect(provider.getStatus()).toMatchObject({ sessionPoolSize: 20, sessionMode: 'sticky_pool' });
+  });
+
   test('拒绝会破坏账密参数结构的配置', async () => {
     const commonOptions = {
       host: 'primary.example',
