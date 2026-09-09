@@ -283,6 +283,7 @@ async function updateUser(req, res) {
       if (nickname !== undefined) target.nickname = nickname;
       if (status === 'locked') {
         target.lockedUntil = null;
+        target.activeSessions = [];
         target.activeSessionId = null;
         target.activeSessionExpiresAt = null;
       }

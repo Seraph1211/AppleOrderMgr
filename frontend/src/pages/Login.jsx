@@ -256,8 +256,8 @@ export default function Login() {
 
       {confirmation && (
         <ConfirmModal
-          title="账号已在其他设备登录"
-          message="继续登录将使上一台设备退出登录。是否继续？"
+          title="已达到 3 台设备登录上限"
+          message="继续登录将使最早登录的一台设备退出，其余两台不受影响。是否继续？"
           onCancel={() => setConfirmation(null)}
           onConfirm={() => {
             const token = confirmation;

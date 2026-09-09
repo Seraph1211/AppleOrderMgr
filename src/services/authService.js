@@ -1,4 +1,9 @@
 const { randomUUID } = require('crypto');
+const {
+  MAX_ACCOUNT_SESSIONS,
+  getActiveSessions,
+  sessionFingerprint,
+} = require('../utils/accountSessions');
 const { User, sequelize } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { accountId, normalizeNickname } = require('../utils/accountIdentity');
@@ -62,37 +67,51 @@ async function login(username, password, loginIp = null, options = {}) {
           // 返回错误而非事务内抛出，确保失败次数和锁定状态提交。
           return { error: new ApiError(401, 'INVALID_CREDENTIALS', '用户名或密码错误') };
         }
-        const active =
-          user.activeSessionId &&
-          user.activeSessionExpiresAt &&
-          new Date(user.activeSessionExpiresAt) > new Date();
+        const sessions = getActiveSessions(user);
         const current = options.currentToken ? verifyToken(options.currentToken) : null;
         const sameSession =
-          current?.userId === user.id && current?.sessionId === user.activeSessionId;
+          current?.userId === user.id
+            ? sessions.find(session => session.id === current.sessionId)
+            : null;
         const confirmation = options.confirmationToken
           ? verifyToken(options.confirmationToken)
           : null;
         const confirmed =
           confirmation?.purpose === 'login_takeover' &&
           confirmation?.userId === user.id &&
-          confirmation?.previousSessionId === user.activeSessionId;
-        if (active && !sameSession && !confirmed) {
+          confirmation?.previousSessionId === sessions[0]?.id &&
+          confirmation?.sessionFingerprint === sessionFingerprint(sessions);
+        if (sessions.length >= MAX_ACCOUNT_SESSIONS && !sameSession && !confirmed) {
           return {
             error: ApiError.conflict(
-              '继续登录将使上一台设备退出登录。',
-              { confirmationToken: generateConfirmationToken(user) },
+              '账号已在 3 台设备登录，继续登录将使最早登录的一台设备退出。',
+              { confirmationToken: generateConfirmationToken(user, sessions) },
               'SESSION_CONFIRMATION_REQUIRED'
             ),
           };
         }
-        user.activeSessionId = randomUUID();
+        const sessionId = randomUUID();
         const token = generateToken({
           userId: user.id,
           username: user.username,
           role: user.role,
-          sessionId: user.activeSessionId,
+          sessionId,
         });
-        user.activeSessionExpiresAt = new Date(decodeToken(token).exp * 1000);
+        const retained = sameSession
+          ? sessions.filter(session => session.id !== sameSession.id)
+          : sessions.length >= MAX_ACCOUNT_SESSIONS
+            ? sessions.slice(1)
+            : sessions;
+        user.activeSessions = [
+          ...retained,
+          {
+            id: sessionId,
+            expiresAt: new Date(decodeToken(token).exp * 1000).toISOString(),
+            createdAt: new Date().toISOString(),
+          },
+        ];
+        user.activeSessionId = null;
+        user.activeSessionExpiresAt = null;
         user.lastLoginAt = new Date();
         user.lastLoginIp = loginIp;
         user.failedLoginAttempts = 0;
@@ -161,11 +180,12 @@ async function changePassword(userId, oldPassword, newPassword, sessionId) {
       try {
         const target = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
         if (!target) throw new Error('用户不存在');
-        if (sessionId && target.activeSessionId !== sessionId)
+        if (sessionId && !getActiveSessions(target).some(session => session.id === sessionId))
           throw new ApiError(401, 'SESSION_REPLACED', '登录已失效，请重新登录');
         if (!(await target.comparePassword(oldPassword))) throw new Error('旧密码错误');
         target.password = newPassword;
         target.forcePasswordChange = false;
+        target.activeSessions = [];
         target.activeSessionId = null;
         target.activeSessionExpiresAt = null;
         await target.save({ transaction });
@@ -291,10 +311,19 @@ async function getUserInfo(userId) {
  */
 async function logout(userId, sessionId) {
   try {
-    await User.update(
-      { activeSessionId: null, activeSessionExpiresAt: null },
-      { where: { id: userId, activeSessionId: sessionId } }
-    );
+    await sequelize.transaction(async transaction => {
+      try {
+        const user = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
+        if (!user) return;
+        user.activeSessions = getActiveSessions(user).filter(session => session.id !== sessionId);
+        user.activeSessionId = null;
+        user.activeSessionExpiresAt = null;
+        await user.save({ transaction });
+      } catch (error) {
+        logger.error('退出会话事务失败', { userId, error: error.message });
+        throw error;
+      }
+    });
   } catch (error) {
     logger.error('撤销登录失败', { userId, error: error.message });
     throw error;
@@ -336,6 +365,7 @@ async function resetPassword(userId, newPassword) {
       try {
         const user = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
         if (!user) throw ApiError.notFound('用户不存在');
+        user.activeSessions = [];
         user.password = newPassword;
         user.forcePasswordChange = false;
         user.activeSessionId = null;

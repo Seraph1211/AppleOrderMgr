@@ -40,6 +40,12 @@ module.exports = sequelize => {
         },
       },
       nickname: { type: DataTypes.STRING(50), allowNull: true },
+      activeSessions: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [],
+        field: 'active_sessions',
+      },
       activeSessionId: { type: DataTypes.UUID, allowNull: true, field: 'active_session_id' },
       activeSessionExpiresAt: {
         type: DataTypes.DATE,

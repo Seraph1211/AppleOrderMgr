@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const logger = require('./logger');
+const { sessionFingerprint } = require('./accountSessions');
 
 /**
  * JWT 工具函数
@@ -150,11 +151,17 @@ function decodeToken(token) {
 /**
  * 签发只允许接管指定旧会话的短期凭证。
  * @param {Object} user - 用户
+ * @param {Object[]} sessions - 有效会话
  * @returns {string} 确认凭证
  */
-function generateConfirmationToken(user) {
+function generateConfirmationToken(user, sessions) {
   return jwt.sign(
-    { purpose: 'login_takeover', userId: user.id, previousSessionId: user.activeSessionId },
+    {
+      purpose: 'login_takeover',
+      userId: user.id,
+      previousSessionId: sessions[0]?.id,
+      sessionFingerprint: sessionFingerprint(sessions),
+    },
     getJwtSecret(),
     { expiresIn: '2m' }
   );

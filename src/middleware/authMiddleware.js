@@ -1,12 +1,13 @@
 const { verifyToken, extractTokenFromHeader } = require('../utils/jwtUtils');
 const { User } = require('../models');
+const { getActiveSessions } = require('../utils/accountSessions');
 const logger = require('../utils/logger');
 const permissionService = require('../services/permissionService');
 
 /**
  * 认证中间件
  * @module middleware/authMiddleware
- * @description 提供 JWT 认证、角色权限检查和单会话校验
+ * @description 提供 JWT 认证、角色权限检查和多设备会话校验
  */
 
 /**
@@ -58,8 +59,7 @@ async function authenticate(req, res, next) {
         'role',
         'status',
         'nickname',
-        'activeSessionId',
-        'activeSessionExpiresAt',
+        'activeSessions',
         'permissionsVersion',
       ],
     });
@@ -81,26 +81,18 @@ async function authenticate(req, res, next) {
       username: user.username,
       nickname: user.nickname || user.username,
     };
-    if (
-      !decoded.sessionId ||
-      !user.activeSessionId ||
-      !user.activeSessionExpiresAt ||
-      new Date(user.activeSessionExpiresAt) <= new Date()
-    ) {
-      return res
-        .status(401)
-        .json({
-          success: false,
-          error: { code: 'SESSION_EXPIRED', message: '登录已失效，请重新登录' },
-        });
+    const sessions = getActiveSessions(user);
+    if (!decoded.sessionId || sessions.length === 0) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'SESSION_EXPIRED', message: '登录已失效，请重新登录' },
+      });
     }
-    if (decoded.sessionId !== user.activeSessionId) {
-      return res
-        .status(401)
-        .json({
-          success: false,
-          error: { code: 'SESSION_REPLACED', message: '你的账号已在其他设备登录，请重新登录' },
-        });
+    if (!sessions.some(session => session.id === decoded.sessionId)) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'SESSION_REPLACED', message: '当前设备的登录已失效，请重新登录' },
+      });
     }
 
     if (user.status === 'locked') {
