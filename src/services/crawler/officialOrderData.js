@@ -322,7 +322,8 @@ function mergeOfficialOrder(order, data, observedAt = new Date()) {
     update.officialStatusDescription = data.officialStatusDescription;
   if (['value', 'invalid'].includes(data.officialFieldDiagnostics?.amount))
     update.officialOrderAmountParseError = data.officialOrderAmountParseError;
-  if (data.orderDate) update.orderDate = data.orderDate;
+  // orderDate 是邮件/人工录入的来源时间，官网日期不得覆盖其时分秒。
+  // 官网精确时间单独写入 officialOrderCreatedAt。
   if (data.officialPaymentMethod) update.paymentMethod = data.officialPaymentMethod;
   const addConflict = (field, sourceValue, officialValue, message) => {
     if (
@@ -341,7 +342,7 @@ function mergeOfficialOrder(order, data, observedAt = new Date()) {
         source: 'imported',
         sourceValue,
         officialValue,
-        resolution: 'official',
+        resolution: field === 'orderDate' ? 'manual_review' : 'official',
         message,
       });
     }
@@ -360,13 +361,14 @@ function mergeOfficialOrder(order, data, observedAt = new Date()) {
           : '取货门店与官网不一致，已采用官网值'
       );
   }
-  const officialDate = data.orderDate || (order.sourceSnapshot ? order.orderDate : null);
+  const previousDateIssue = order.validationIssues?.find(issue => issue.field === 'orderDate');
+  const officialDate = data.orderDate || previousDateIssue?.officialValue;
   if (officialDate && source.orderDate)
     addConflict(
       'orderDate',
       new Date(new Date(source.orderDate).getTime() + 8 * 3600000).toISOString().slice(0, 10),
       new Date(new Date(officialDate).getTime() + 8 * 3600000).toISOString().slice(0, 10),
-      '下单日期与官网不一致，已采用官网值'
+      '下单日期与官网不一致，保留来源时间，请核对'
     );
   const incomingProducts = data.products?.length ? data.products : order.officialProducts;
   if (incomingProducts?.length) {

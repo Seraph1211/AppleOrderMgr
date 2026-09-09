@@ -35,6 +35,22 @@ const sourceOrder = () => ({
 });
 
 describe('官网生命周期和来源合并', () => {
+  test('官网日期及后续精确官网时间都不覆盖来源时分秒', () => {
+    const original = { ...sourceOrder(), orderDate: new Date('2026-09-08T05:24:25Z') };
+    const dateOnly = parse('PAYMENT_DUE_STORED_ORDER');
+    const merged = mergeOfficialOrder(original, dateOnly);
+    expect(merged).not.toHaveProperty('orderDate');
+    expect(merged.sourceSnapshot.orderDate).toBe('2026-09-08T05:24:25.000Z');
+    const exact = new Date('2026-09-08T05:22:25Z');
+    const next = mergeOfficialOrder(
+      { ...original, ...merged },
+      { ...dateOnly, officialOrderCreatedAt: exact }
+    );
+    expect(next).not.toHaveProperty('orderDate');
+    expect(next.officialOrderCreatedAt).toEqual(exact);
+    expect(next.sourceSnapshot.orderDate).toBe('2026-09-08T05:24:25.000Z');
+  });
+
   test('下单日期节点消失后已有来源差异仍可查看', () => {
     const original = { ...sourceOrder(), orderDate: new Date('2026-09-07T01:00:00Z') };
     const order = {

@@ -1,3 +1,4 @@
+import { formatOrderTime } from '../utils/orderTime';
 import { getRefreshJob } from '../api/ordersApi';
 import Pagination from '../components/Pagination';
 import usePaymentRefresh from '../hooks/usePaymentRefresh';
@@ -405,6 +406,11 @@ export default function PaymentDispatch() {
                 {['用户', '权限完整', '当前负载', '上限', '自动接单', '操作'].map(title => (
                   <th
                     key={title}
+                    title={
+                      title === '下单时间'
+                        ? '北京时间，邮件或人工录入来源；缺失时采用官网精确时间'
+                        : undefined
+                    }
                     className={`px-4 py-3 text-sm font-medium text-gray-500 ${
                       title === '操作' ? 'text-right' : 'text-left'
                     }`}
@@ -666,6 +672,11 @@ export default function PaymentDispatch() {
                 ].map(title => (
                   <th
                     key={title}
+                    title={
+                      title === '下单时间'
+                        ? '北京时间，邮件或人工录入来源；缺失时采用官网精确时间'
+                        : undefined
+                    }
                     className={`px-4 py-3 text-sm font-medium text-gray-500 ${
                       title === '操作' ? 'text-right' : 'text-left'
                     }`}
@@ -702,9 +713,7 @@ export default function PaymentDispatch() {
                         </div>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                        {task.orderDate || task.officialOrderCreatedAt
-                          ? formatDateTime(task.orderDate || task.officialOrderCreatedAt)
-                          : '待核实'}
+                        {formatOrderTime(task.orderDate || task.officialOrderCreatedAt)}
                       </td>
                       <td className="px-4 py-3">
                         {OFFICIAL_STATUS_LABELS[task.officialOrderStatus] ||

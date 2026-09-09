@@ -1,3 +1,4 @@
+import { formatOrderTime } from '../utils/orderTime';
 import { ORDER_STATUS_LABELS } from '../constants/orderStatus';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -54,10 +55,7 @@ function statusLabel(status) {
 
 function toDateTimeLocal(value) {
   if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '';
-  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
-  return local.toISOString().slice(0, 16);
+  return formatOrderTime(value, '').replace(/\//g, '-').replace(' ', 'T');
 }
 
 function emptyDraft() {
@@ -613,7 +611,7 @@ export default function EmailProcessing() {
                     ['Apple 密码', 'applePassword', 'text'],
                     ['订单号', 'orderNumber', 'text'],
                     ['订单链接', 'orderUrl', 'url'],
-                    ['订单时间', 'orderDate', 'datetime-local'],
+                    ['订单时间（北京时间）', 'orderDate', 'datetime-local'],
                     ['付款方式', 'paymentMethod', 'text'],
                   ].map(([label, field, type, inputMode]) => (
                     <label key={field} className={field === 'orderUrl' ? 'md:col-span-2' : ''}>
@@ -621,6 +619,7 @@ export default function EmailProcessing() {
                       <input
                         className="input w-full"
                         type={type}
+                        step={field === 'orderDate' ? 1 : undefined}
                         inputMode={inputMode}
                         autoComplete={field === 'appleId' ? 'off' : undefined}
                         value={draft[field] || ''}

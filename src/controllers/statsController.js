@@ -1,3 +1,4 @@
+const { formatOrderTime, parseOrderTimeBoundary } = require('../utils/orderTime');
 /* eslint-disable camelcase */
 /**
  * 统计分析控制器
@@ -14,22 +15,18 @@ const ApiError = require('../utils/ApiError');
 const { ORDER_STATUSES } = require('../constants/business');
 
 const START_OF_TODAY = () => {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return parseOrderTimeBoundary(formatOrderTime(new Date()).slice(0, 10).replace(/\//g, '-'));
 };
 
 const START_OF_THIS_WEEK = () => {
   const d = START_OF_TODAY();
-  const day = d.getDay(); // 0 = Sun
-  const diff = (day + 6) % 7; // 让周一开始
-  d.setDate(d.getDate() - diff);
-  return d;
+  const day = new Date(d.getTime() + 8 * 3600000).getUTCDay();
+  return new Date(d.getTime() - ((day + 6) % 7) * 86400000);
 };
 
 const START_OF_THIS_MONTH = () => {
-  const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1);
+  const month = formatOrderTime(new Date()).slice(0, 7).replace(/\//g, '-');
+  return parseOrderTimeBoundary(`${month}-01`);
 };
 
 /**
@@ -38,14 +35,14 @@ const START_OF_THIS_MONTH = () => {
 function parseDateRange(query) {
   const range = {};
   if (query.date_from) {
-    const d = new Date(query.date_from);
+    const d = parseOrderTimeBoundary(query.date_from);
     if (Number.isNaN(d.getTime())) {
       throw ApiError.badRequest('date_from 不是合法日期', { received: query.date_from });
     }
     range.from = d;
   }
   if (query.date_to) {
-    const d = new Date(query.date_to);
+    const d = parseOrderTimeBoundary(query.date_to, true);
     if (Number.isNaN(d.getTime())) {
       throw ApiError.badRequest('date_to 不是合法日期', { received: query.date_to });
     }
@@ -207,8 +204,8 @@ const PRODUCT_STATS_SQL = `
     COUNT(DISTINCT o.id) AS order_count
   FROM "orders" o,
        jsonb_array_elements(o.products) AS elem
-  WHERE ($1::timestamp IS NULL OR o.order_date >= $1)
-    AND ($2::timestamp IS NULL OR o.order_date <= $2)
+  WHERE ($1::timestamptz IS NULL OR o.order_date >= $1)
+    AND ($2::timestamptz IS NULL OR o.order_date <= $2)
     AND elem ? 'name'
   GROUP BY elem->>'name'
   ORDER BY total_quantity DESC
@@ -264,8 +261,8 @@ async function getProductStats(req, res) {
       SELECT elem->>'name' AS name
       FROM "orders" o,
            jsonb_array_elements(o.products) AS elem
-      WHERE ($1::timestamp IS NULL OR o.order_date >= $1)
-        AND ($2::timestamp IS NULL OR o.order_date <= $2)
+      WHERE ($1::timestamptz IS NULL OR o.order_date >= $1)
+        AND ($2::timestamptz IS NULL OR o.order_date <= $2)
         AND elem ? 'name'
     `;
 

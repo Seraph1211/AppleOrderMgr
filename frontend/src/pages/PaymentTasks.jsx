@@ -1,3 +1,4 @@
+import { formatOrderTime } from '../utils/orderTime';
 import Pagination from '../components/Pagination';
 import usePaymentRefresh from '../hooks/usePaymentRefresh';
 import { getPaymentStageLabel } from '../utils/paymentStage';
@@ -354,7 +355,15 @@ export default function PaymentTasks() {
                     '最后更新时间',
                     '操作',
                   ].map(title => (
-                    <th key={title} className="text-left px-4 py-3 text-sm text-gray-500">
+                    <th
+                      key={title}
+                      title={
+                        title === '下单时间'
+                          ? '北京时间，邮件或人工录入来源；缺失时采用官网精确时间'
+                          : undefined
+                      }
+                      className="text-left px-4 py-3 text-sm text-gray-500"
+                    >
                       {title}
                     </th>
                   ))}
@@ -389,9 +398,7 @@ export default function PaymentTasks() {
                       </div>
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap">
-                      {task.orderDate || task.officialOrderCreatedAt
-                        ? formatDateTime(task.orderDate || task.officialOrderCreatedAt)
-                        : '待核实'}
+                      {formatOrderTime(task.orderDate || task.officialOrderCreatedAt)}
                     </td>
                     <td className="px-4 py-4 text-sm">
                       {task.officialPaymentConfirmed

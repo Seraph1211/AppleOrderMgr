@@ -87,6 +87,32 @@ const axios = require('axios');
     });
   });
 
+  test('真实持久化合并保留来源时间，历史恢复幂等且不改截止和任务状态', async () => {
+    const { mergeOfficialOrder } = require('../src/services/crawler/officialOrderData');
+    const { restoreOrderTimes } = require('../scripts/restoreOrderTimes');
+    const source = new Date('2026-09-08T05:24:25Z');
+    await order.update({ orderDate: source });
+    const data = crawler.parseOrderData(buildLifecycleJson('PAYMENT_DUE_STORED_ORDER'), '');
+    await order.update(mergeOfficialOrder(order, data));
+    await order.reload();
+    expect(order.orderDate).toEqual(source);
+    expect(order.officialOrderCreatedAt).toBeNull();
+    const deadline = order.officialPaymentExpiresAt;
+    await order.update({ orderDate: new Date('2026-09-08T00:00:00Z') });
+    const preview = await restoreOrderTimes(models, [order.orderNumber]);
+    expect(preview[0]).toMatchObject({ changed: true, executed: false });
+    await order.reload();
+    expect(order.orderDate.toISOString()).toBe('2026-09-08T00:00:00.000Z');
+    await restoreOrderTimes(models, [order.orderNumber], true);
+    await order.reload();
+    expect(order.orderDate).toEqual(source);
+    expect(order.officialPaymentExpiresAt).toEqual(deadline);
+    expect((await restoreOrderTimes(models, [order.orderNumber], true))[0].changed).toBe(false);
+    await order.update(mergeOfficialOrder(order, data));
+    await order.reload();
+    expect(order.orderDate).toEqual(source);
+  });
+
   test('切换失败后重启恢复代理，新单抓取截止后自动分配', async () => {
     const proxy = require('../src/utils/proxyManager');
     const worker = require('../src/services/crawler/refreshWorkerService');

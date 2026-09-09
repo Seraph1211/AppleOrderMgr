@@ -1,3 +1,4 @@
+const { formatOrderTime, parseOrderTimeBoundary } = require('../utils/orderTime');
 /* eslint-disable camelcase */
 /**
  * 订单控制器
@@ -278,14 +279,14 @@ function buildListFilters(query) {
   if (query.date_from || query.date_to) {
     where.orderDate = {};
     if (query.date_from) {
-      const from = new Date(query.date_from);
+      const from = parseOrderTimeBoundary(query.date_from);
       if (Number.isNaN(from.getTime())) {
         throw ApiError.badRequest('date_from 不是合法日期', { received: query.date_from });
       }
       where.orderDate[Op.gte] = from;
     }
     if (query.date_to) {
-      const to = new Date(query.date_to);
+      const to = parseOrderTimeBoundary(query.date_to, true);
       if (Number.isNaN(to.getTime())) {
         throw ApiError.badRequest('date_to 不是合法日期', { received: query.date_to });
       }
@@ -651,7 +652,7 @@ async function exportOrders(req, res) {
         币种: item.official_order_amount_currency || '',
         取货门店: escapeSpreadsheetFormula(item.pickup_store || ''),
         标签: escapeSpreadsheetFormula(item.tag || ''),
-        下单时间: item.order_date || '',
+        '下单时间（北京时间，来源记录）': formatOrderTime(item.order_date),
       };
     });
     const worksheet = XLSX.utils.json_to_sheet(data);

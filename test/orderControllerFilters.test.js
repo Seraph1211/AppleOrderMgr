@@ -102,3 +102,37 @@ describe('邮件快照展示回归', () => {
     expect(byKeyword[Op.or]).toContainEqual({ recipientName: { [Op.iLike]: '%测试%' } });
   });
 });
+
+describe('下单时间筛选日边界', () => {
+  test('日期首尾覆盖北京时间完整一天', () => {
+    const { where } = buildListFilters({ date_from: '2026-09-09', date_to: '2026-09-09' });
+    expect(where.orderDate[Op.gte].toISOString()).toBe('2026-09-08T16:00:00.000Z');
+    expect(where.orderDate[Op.lte].toISOString()).toBe('2026-09-09T15:59:59.999Z');
+  });
+});
+
+test('Excel 导出保留来源下单秒数并明确北京时间', async () => {
+  try {
+    const { Order } = require('../src/models');
+    const { exportOrders } = require('../src/controllers/orderController');
+    const XLSX = require('xlsx');
+    Order.findAll = jest
+      .fn()
+      .mockResolvedValue([
+        {
+          toJSON: () => ({
+            orderNumber: 'W1234567890',
+            orderDate: new Date('2026-09-09T05:24:25Z'),
+          }),
+        },
+      ]);
+    const res = { setHeader: jest.fn(), send: jest.fn() };
+    await exportOrders({ query: {}, user: { id: 1 } }, res);
+    const workbook = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets['订单']);
+    expect(rows[0]['下单时间（北京时间，来源记录）']).toBe('2026/09/09 13:24:25');
+  } catch (error) {
+    error.message = `导出回归失败：${error.message}`;
+    throw error;
+  }
+});

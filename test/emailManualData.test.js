@@ -24,6 +24,16 @@ function validDraft() {
 }
 
 describe('人工邮件草稿校验', () => {
+  test('日期不能冒充精确下单时间，无时区完整时间按北京时间解释', () => {
+    expect(() => validateManualOrderData({ ...validDraft(), orderDate: '2026-09-09' })).toThrow();
+    expect(
+      validateManualOrderData({
+        ...validDraft(),
+        orderDate: '2026-09-09T13:24:25',
+      }).orderDate.toISOString()
+    ).toBe('2026-09-09T05:24:25.000Z');
+  });
+
   test('允许管理员填写密码、完整身份证号和系统内部状态', () => {
     const result = validateManualOrderData(validDraft());
     expect(result.appleId).toBe('admin@example.com');

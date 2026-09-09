@@ -48,7 +48,9 @@ function serializeValidationIssues(issues) {
     ) {
       result.field = issue.field;
       result.source = 'imported';
-      result.resolution = issue.resolution === 'official' ? 'official' : null;
+      result.resolution = ['official', 'manual_review'].includes(issue.resolution)
+        ? issue.resolution
+        : null;
       for (const key of ['sourceValue', 'officialValue'])
         result[key] = typeof issue[key] === 'number' ? issue[key] : safeText(issue[key], 500);
     }

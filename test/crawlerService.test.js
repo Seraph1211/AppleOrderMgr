@@ -185,6 +185,9 @@ describe('crawlerService product validation and scheduler rules', () => {
     const crawlerService = loadCrawlerService();
 
     expect(crawlerService.parseOfficialOrderCreatedAt('2026年9月8日')).toBeNull();
+    expect(crawlerService.parseOfficialOrderCreatedAt('2026-09-08T14:05:30').toISOString()).toBe(
+      '2026-09-08T06:05:30.000Z'
+    );
     expect(crawlerService.parseOfficialOrderCreatedAt('2026年9月8日 下午2:05').toISOString()).toBe(
       '2026-09-08T06:05:00.000Z'
     );

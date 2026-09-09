@@ -1,3 +1,4 @@
+import { formatOrderTime } from '../utils/orderTime';
 import { ORDER_STATUS_BADGES, ORDER_STATUS_LABELS } from '../constants/orderStatus';
 import { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
@@ -175,7 +176,7 @@ export default function ChannelOrders() {
                     付款方式
                   </th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                    下单时间
+                    <span title="北京时间，邮件或人工录入来源">下单时间</span>
                   </th>
                 </tr>
               </thead>
@@ -242,7 +243,7 @@ export default function ChannelOrders() {
                     </td>
                     <td className="py-4 px-4">
                       <span className="text-gray-600 text-sm">
-                        {order.orderDate ? new Date(order.orderDate).toLocaleString('zh-CN') : '-'}
+                        {formatOrderTime(order.orderDate)}
                       </span>
                     </td>
                   </tr>

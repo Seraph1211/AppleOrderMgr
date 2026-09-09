@@ -1,3 +1,4 @@
+import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect, useRef } from 'react';
 import {
   Search,
@@ -489,6 +490,12 @@ export default function Orders() {
         );
 
       case 'orderDate':
+        return (
+          <span className="text-sm text-gray-600" title="北京时间，邮件或人工录入来源">
+            {formatOrderTime(value)}
+          </span>
+        );
+
       case 'lastCrawledAt':
       case 'createdAt':
       case 'updatedAt':

@@ -30,6 +30,7 @@
     "docs:check:schema": "node scripts/check-doc-consistency.js",
     "test:browser:payments": "node scripts/testPaymentPagesBrowser.js",
     "test:browser:orders": "node scripts/testOrdersBrowser.js",
+    "orders:restore-times": "node scripts/restoreOrderTimes.js",
     "orders:revalidate-conflicts": "node scripts/revalidateOrderConflicts.js"
   },
   "keywords": [

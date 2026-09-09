@@ -16,7 +16,7 @@ async function main() {
     context = await browser.newContext({
       serviceWorkers: 'block',
       viewport: { width: 1440, height: 1000 },
-      timezoneId: 'Asia/Shanghai',
+      timezoneId: process.env.PAYMENT_BROWSER_TIMEZONE || 'Asia/Shanghai',
     });
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
@@ -43,7 +43,7 @@ async function main() {
       payerName: '',
       version: 0,
       payerVersion: 0,
-      orderDate: id === 2 ? null : '2026-09-09T01:02:03Z',
+      orderDate: id === 2 ? null : id === 3 ? '2026-09-09' : '2026-09-09T01:02:03Z',
       officialOrderCreatedAt: id === 2 || id === 4 ? null : '2026-09-09T01:00:00Z',
       deadlineAt: null,
       remainingSeconds: null,
@@ -157,6 +157,7 @@ async function main() {
       assert.equal(await rows.count(), 20);
       assert.match(await rows.first().innerText(), /2026\/09\/09 09:02:03/);
       assert.match(await rows.nth(1).innerText(), /待核实/);
+      assert.equal(await rows.nth(2).getByText('2026/09/09', { exact: true }).count(), 1);
       assert.match(await rows.nth(3).innerText(), /2026\/09\/09 09:02:03/);
       assert.equal(
         await page.getByRole('button', { name: '批量刷新', exact: true }).isDisabled(),
@@ -222,7 +223,11 @@ async function main() {
       await rows.first().getByText('官网状态已更新', { exact: true }).waitFor();
       await rows.nth(2).getByText('合成官网超时，可重试', { exact: true }).waitFor();
       assert.deepEqual(submissions.slice(before).sort(), [1, 2, 3]);
-      await rows.first().getByText('2026/09/09 11:00:00', { exact: true }).waitFor();
+      const updatedHour = await page.evaluate(() => new Date('2026-09-09T03:00:00Z').getHours());
+      await rows
+        .first()
+        .getByText(`2026/09/09 ${String(updatedHour).padStart(2, '0')}:00:00`, { exact: true })
+        .waitFor();
       if (mode === 'payment-tasks')
         assert.equal(await rows.first().locator('textarea').inputValue(), '未保存的处理备注');
       assert.equal(await page.getByText(/订单 .* 已进入刷新队列/).count(), 0);

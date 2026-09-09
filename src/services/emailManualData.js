@@ -86,7 +86,7 @@ function parseOrderDate(value) {
     ? `${source}+08:00`
     : source;
   const date = new Date(normalized);
-  if (Number.isNaN(date.getTime())) {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(source) || Number.isNaN(date.getTime())) {
     throw new EmailProcessingError(EMAIL_ERROR_CODES.ORDER_DATE_INVALID, '订单时间格式无效');
   }
   return date;

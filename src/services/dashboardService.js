@@ -1,3 +1,4 @@
+const { parseOrderTimeBoundary } = require('../utils/orderTime');
 /* eslint-disable no-unused-vars, require-await, camelcase */
 const { Op, fn, col, literal } = require('sequelize');
 const { Order, AppleId, Recipient, sequelize } = require('../models');
@@ -15,11 +16,10 @@ const buildWhereClause = filters => {
   if (filters.startDate || filters.endDate) {
     where.orderDate = {};
     if (filters.startDate) {
-      where.orderDate[Op.gte] = new Date(filters.startDate);
+      where.orderDate[Op.gte] = parseOrderTimeBoundary(filters.startDate);
     }
     if (filters.endDate) {
-      const endDate = new Date(filters.endDate);
-      endDate.setHours(23, 59, 59, 999);
+      const endDate = parseOrderTimeBoundary(filters.endDate, true);
       where.orderDate[Op.lte] = endDate;
     }
   }
@@ -159,9 +159,9 @@ const buildPreviousPeriodWhere = filters => {
   const where = { ...buildWhereClause(filters) };
 
   if (filters.startDate && filters.endDate) {
-    const start = new Date(filters.startDate);
-    const end = new Date(filters.endDate);
-    const duration = end - start;
+    const start = parseOrderTimeBoundary(filters.startDate);
+    const end = parseOrderTimeBoundary(filters.endDate, true);
+    const duration = end - start + 1;
 
     const previousStart = new Date(start.getTime() - duration);
     const previousEnd = new Date(start.getTime() - 1);
@@ -201,12 +201,12 @@ const getDailyTrend = async filters => {
     const dailyData = await sequelize.query(
       `
       SELECT
-        DATE(order_date) AS date,
+        DATE(order_date AT TIME ZONE 'Asia/Shanghai') AS date,
         COUNT(*) AS count
       FROM orders
       WHERE ${buildSqlWhereClause(filters)}
-      GROUP BY DATE(order_date)
-      ORDER BY DATE(order_date) ASC
+      GROUP BY DATE(order_date AT TIME ZONE 'Asia/Shanghai')
+      ORDER BY DATE(order_date AT TIME ZONE 'Asia/Shanghai') ASC
       `,
       {
         type: sequelize.QueryTypes.SELECT,
@@ -252,7 +252,7 @@ const fillMissingDates = (data, startDate, endDate) => {
   while (current <= end) {
     const dateStr = current.toISOString().split('T')[0];
     result.push(dataMap.get(dateStr) || { date: dateStr, count: 0 });
-    current.setDate(current.getDate() + 1);
+    current.setUTCDate(current.getUTCDate() + 1);
   }
 
   return result;
@@ -265,10 +265,10 @@ const fillMissingDates = (data, startDate, endDate) => {
  */
 const formatDate = dateStr => {
   const date = new Date(dateStr);
-  const month = date.getMonth() + 1;
-  const day = date.getDate();
+  const month = date.getUTCMonth() + 1;
+  const day = date.getUTCDate();
   const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const weekday = weekdays[date.getDay()];
+  const weekday = weekdays[date.getUTCDay()];
   return `${month}月${day}日`;
 };
 
@@ -394,11 +394,10 @@ const getReplacements = filters => {
   const replacements = {};
 
   if (filters.startDate) {
-    replacements.startDate = filters.startDate;
+    replacements.startDate = parseOrderTimeBoundary(filters.startDate);
   }
   if (filters.endDate) {
-    const endDate = new Date(filters.endDate);
-    endDate.setHours(23, 59, 59, 999);
+    const endDate = parseOrderTimeBoundary(filters.endDate, true);
     replacements.endDate = endDate;
   }
   if (filters.status) {

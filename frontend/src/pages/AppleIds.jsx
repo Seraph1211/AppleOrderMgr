@@ -1,3 +1,4 @@
+import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect } from 'react';
 import { Search, Plus, Mail, Package, Edit, Trash2, Settings, Upload } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -65,7 +66,7 @@ export default function AppleIds() {
             status: item.status,
             orderCount: item.order_count || 0,
             lastOrderDate: item.last_order_date
-              ? new Date(item.last_order_date).toLocaleDateString('zh-CN')
+              ? formatOrderTime(item.last_order_date).slice(0, 10)
               : '-',
             createdAt: item.created_at,
             updatedAt: item.updated_at,

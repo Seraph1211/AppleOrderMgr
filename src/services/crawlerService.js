@@ -803,7 +803,8 @@ function parseOfficialOrderCreatedAt(value) {
 
   const hasExplicitTime = /(?:T|\s)\d{1,2}:\d{2}/.test(text);
   if (!hasExplicitTime) return null;
-  const parsed = new Date(text);
+  const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(text) ? text : `${text}+08:00`;
+  const parsed = new Date(normalized);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 

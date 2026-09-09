@@ -1,3 +1,4 @@
+import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect } from 'react';
 import { X, Upload, Save, ExternalLink, AlertTriangle, RefreshCw } from 'lucide-react';
 import { updateOrder, updateOrderPayer, refreshOrder } from '../api/ordersApi';
@@ -302,12 +303,8 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                   </p>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">下单时间</label>
-                  <p className="text-sm text-gray-900 mt-1">
-                    {order.orderDate !== '-'
-                      ? new Date(order.orderDate).toLocaleString('zh-CN')
-                      : '-'}
-                  </p>
+                  <label className="text-sm text-gray-600">下单时间（北京时间，来源记录）</label>
+                  <p className="text-sm text-gray-900 mt-1">{formatOrderTime(order.orderDate)}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">Apple ID</label>
