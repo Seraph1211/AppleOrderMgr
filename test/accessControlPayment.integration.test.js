@@ -691,11 +691,28 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       limit: 2,
       order: [['id', 'ASC']],
     });
+    const singleRefresh = await dispatchService.refreshTask(refreshTasks[0].id, admin.id);
+    expect(singleRefresh).toMatchObject({
+      jobId: expect.any(Number),
+      status: 'pending',
+      created: expect.any(Boolean),
+      merged: expect.any(Boolean),
+    });
+    expect(singleRefresh.merged).toBe(!singleRefresh.created);
     const refresh = await dispatchService.refreshTasks(
       refreshTasks.map(task => task.id),
       admin.id
     );
     expect(refresh.total).toBe(2);
+    expect(refresh.results).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          orderId: refreshTasks[0].orderId,
+          jobId: singleRefresh.jobId,
+          created: false,
+        }),
+      ])
+    );
     const task = refreshTasks[0];
     await task.update({ processingStatus: 'completed', version: task.version + 1 });
     const reopened = await dispatchService.reopenTask(
