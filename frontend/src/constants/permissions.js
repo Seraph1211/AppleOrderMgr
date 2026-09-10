@@ -1,4 +1,9 @@
 export const PERMISSIONS = Object.freeze({
+  INGESTION_READ: 'ingestion.read',
+  INGESTION_MANAGE: 'ingestion.manage',
+  INGESTION_DEVICES_MANAGE: 'ingestion.devices.manage',
+  INGESTION_RECORDS_PROCESS: 'ingestion.records.process',
+  INGESTION_CONTENT_READ: 'ingestion.content.read',
   IDENTITY_READ: 'identity.read',
   IDENTITY_VERIFY: 'identity.verify',
   IDENTITY_BATCH: 'identity.batch',

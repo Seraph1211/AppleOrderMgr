@@ -24,6 +24,13 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  IngestionSetting: require('./IngestionSetting')(sequelize),
+  AosDevice: require('./AosDevice')(sequelize),
+  AosRecord: require('./AosRecord')(sequelize),
+  IngestionOperation: require('./IngestionOperation')(sequelize),
+  OrderSource: require('./OrderSource')(sequelize),
+  PickupStore: require('./PickupStore')(sequelize),
+
   IdentityVerificationBatch: require('./IdentityVerificationBatch')(sequelize),
   IdentityVerificationItem: require('./IdentityVerificationItem')(sequelize),
   User: require('./User')(sequelize),

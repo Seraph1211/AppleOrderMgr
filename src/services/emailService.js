@@ -15,6 +15,7 @@ const emailProcessingService = require('./emailProcessingService');
 
 const { createEmailScanner } = require('./emailScanner');
 const emailScanProgress = require('./emailScanProgress');
+const emailIngestionBackfill = require('./emailIngestionBackfill');
 const RETRY_INTERVAL_MS = 60_000;
 const RETENTION_INTERVAL_MS = 24 * 60 * 60_000;
 const HEARTBEAT_INTERVAL_MS = 10_000;
@@ -147,7 +148,7 @@ async function processReceivedMessage(received, rawBuffer) {
     });
     if (result.record.status === 'succeeded' || result.record.status === 'superseded') {
       await emailProcessingService.updateWorkerState({ succeeded: true });
-    } else if (result.record.errorCode) {
+    } else if (result.record.errorCode && !result.record.ingestionPauseReason) {
       await emailProcessingService.updateWorkerState({ errorCode: result.record.errorCode });
     }
     if (emailProcessingService.TERMINAL_STATUSES.has(result.record.status)) {
@@ -167,7 +168,7 @@ async function processReceivedMessage(received, rawBuffer) {
   }
 }
 
-async function receiveMessage({ rawBuffer, emailUid }, identity) {
+async function receiveMessage({ rawBuffer, emailUid }, identity, options = {}) {
   try {
     const received = await emailProcessingService.receiveEmail({
       mailboxIdentity: mailboxIdentity(),
@@ -178,8 +179,14 @@ async function receiveMessage({ rawBuffer, emailUid }, identity) {
     if (received.created) {
       await emailProcessingService.updateWorkerState({ received: true }).catch(() => {});
     }
+    if (options?.backfillId)
+      await emailIngestionBackfill.recordBackfill(options.backfillId, received.record.id);
     // 接收进度只依赖原文可靠入库；订单处理和 IMAP 确认不占用网络扫描。
-    track(processReceivedMessage(received, rawBuffer));
+    const shouldResume =
+      options?.backfillId && !emailProcessingService.TERMINAL_STATUSES.has(received.record.status);
+    track(
+      processReceivedMessage(shouldResume ? { ...received, created: true } : received, rawBuffer)
+    );
     return { created: received.created };
   } catch (error) {
     logger.error('邮件原文持久化失败', { errorCode: EMAIL_ERROR_CODES.DATABASE_TEMPORARY });
@@ -249,6 +256,8 @@ function startEmailService() {
     loadCursor: emailScanProgress.loadCursor,
     advanceCursor: emailScanProgress.advanceCursor,
     receive: receiveMessage,
+    loadBackfill: emailIngestionBackfill.loadBackfill,
+    completeBackfill: emailIngestionBackfill.completeBackfill,
     onState: updates => emailProcessingService.updateWorkerState({ ...updates, workerId }),
   });
   startBackgroundTimers();

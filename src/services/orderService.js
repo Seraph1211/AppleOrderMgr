@@ -5,20 +5,14 @@
  * @date 2026-07-07
  */
 
-const {
-  sequelize,
-  Sequelize,
-  AppleId,
-  Recipient,
-  Order,
-  EmailLog,
-  OrderRefreshSchedule,
-  OrderRefreshJob,
-} = require('../models');
+const { sequelize, Sequelize, Order, EmailLog, AppleId, Recipient } = require('../models');
 const logger = require('../utils/logger');
 const { isValidOrderNumber, isValidEmail } = require('../utils/helpers');
 const { EMAIL_ERROR_CODES, EmailProcessingError } = require('./emailErrors');
-const paymentDispatchService = require('./paymentDispatchService');
+const { createOrderInTransaction } = require('./orderIngestionCore');
+const ingestionRepo = require('./ingestionRepository');
+const { OrderSource } = require('../models');
+const crypto = require('crypto');
 
 /**
  * 从邮件数据保存订单
@@ -34,6 +28,7 @@ async function saveOrderFromEmail(emailData, emailUid, options = {}) {
   const transaction = await sequelize.transaction();
 
   try {
+    const ingestionSettings = await ingestionRepo.lockSettings(transaction);
     let emailLog = null;
     if (options.emailLogId) {
       emailLog = await EmailLog.findByPk(options.emailLogId, {
@@ -72,6 +67,25 @@ async function saveOrderFromEmail(emailData, emailUid, options = {}) {
     // 2. 验证 Apple ID 格式
     if (!isValidEmail(emailData.appleId)) {
       throw new EmailProcessingError(EMAIL_ERROR_CODES.APPLE_ID_INVALID, 'Apple ID 格式无效');
+    }
+
+    if (emailLog && options.expectedVersion !== undefined) {
+      const originalDate = emailLog.manualDraft?.orderDate || emailLog.parsedData?.orderDate;
+      if (
+        !originalDate ||
+        ingestionRepo.businessDate(originalDate) !== ingestionRepo.businessDate(emailData.orderDate)
+      )
+        emailLog.ingestionEligibleAt = null;
+    }
+    ingestionRepo.requireAllowed(
+      ingestionRepo.eligibility(ingestionSettings, 'email', {
+        orderDate: emailData.orderDate,
+        ingestionEligibleAt: emailLog?.ingestionEligibleAt,
+      })
+    );
+    if (emailLog) {
+      emailLog.ingestionEligibleAt ||= new Date();
+      emailLog.ingestionPauseReason = null;
     }
 
     // 相同订单号的并发邮件在 PostgreSQL 事务内串行化，避免先查后建竞争。
@@ -117,144 +131,32 @@ async function saveOrderFromEmail(emailData, emailUid, options = {}) {
         emailLog.version += 1;
         await emailLog.save({ transaction });
       } else {
-        await createEmailLog(emailUid, emailData, true, existingOrder.id, transaction);
+        emailLog = await createEmailLog(emailUid, emailData, true, existingOrder.id, transaction);
+        await emailLog.update(
+          { status: 'superseded', resolutionType: 'existing_order', resolvedAt: new Date() },
+          { transaction }
+        );
       }
 
+      await OrderSource.findOrCreate({
+        where: { emailLogId: emailLog.id },
+        defaults: {
+          id: crypto.randomUUID(),
+          orderId: existingOrder.id,
+          source: 'email',
+          result: 'duplicate',
+          receivedAt: emailLog.receivedAt || new Date(),
+        },
+        transaction,
+      });
       await transaction.commit();
       return existingOrder;
     }
 
-    // 4. 自动匹配 recipients 表（根据姓名 + 身份证后4位）
-    let recipientData = {
-      recipientRef: null,
-      recipientName: emailData.recipient?.name || null,
-      recipientIdCard: null,
-      recipientEmail: null,
-      recipientPhone: null,
-      recipientAddress: null,
-    };
-
-    if (emailData.recipient?.name && emailData.recipient?.idLast4) {
-      const recipient = await Recipient.findOne({
-        where: {
-          // 姓名匹配：拆分姓和名
-          lastName: emailData.recipient.name.substring(0, 1),
-          firstName: emailData.recipient.name.substring(1),
-          idCardLast4: emailData.recipient.idLast4,
-        },
-        transaction,
-      });
-
-      if (recipient) {
-        recipientData.recipientRef = recipient.id;
-        recipientData.recipientIdCard = recipient.idCardNumber;
-        recipientData.recipientEmail = recipient.email;
-        recipientData.recipientPhone = recipient.phone;
-        recipientData.recipientAddress = [
-          recipient.province,
-          recipient.city,
-          recipient.district,
-          recipient.streetAddress,
-        ]
-          .filter(Boolean)
-          .join('');
-
-        logger.info('取机人信息自动匹配成功', {
-          emailRecordId: options.emailLogId || null,
-          recipientId: recipient.id,
-        });
-      } else {
-        logger.warn('未找到匹配的取机人', { emailRecordId: options.emailLogId || null });
-      }
-    }
-
-    recipientData = {
-      ...recipientData,
-      recipientIdCard: emailData.recipient?.idCard || recipientData.recipientIdCard,
-      recipientEmail: emailData.recipient?.email || recipientData.recipientEmail,
-      recipientPhone: emailData.recipient?.phone || recipientData.recipientPhone,
-      recipientAddress: emailData.recipient?.address || recipientData.recipientAddress,
-    };
-
-    // 5. 自动匹配 apple_ids 表
-    let appleData = {
-      appleIdRef: null,
-      appleId: emailData.appleId,
-      applePassword: emailData.applePassword || null,
-    };
-
-    const appleAccount = await AppleId.findOne({
-      where: { appleId: emailData.appleId },
-      transaction,
+    const order = await createOrderInTransaction(emailData, transaction, {
+      ...options,
+      source: 'email',
     });
-
-    if (appleAccount) {
-      appleData.appleIdRef = appleAccount.id;
-      appleData.applePassword = emailData.applePassword || appleAccount.password;
-
-      logger.info('Apple ID 自动匹配成功', {
-        appleIdId: appleAccount.id,
-      });
-    } else {
-      logger.warn('未找到匹配的 Apple ID', { emailRecordId: options.emailLogId || null });
-    }
-
-    // 6. 直接创建订单，保存快照数据
-    logger.info('准备创建订单', {
-      emailRecordId: options.emailLogId || null,
-      appleIdRef: appleData.appleIdRef,
-      recipientRef: recipientData.recipientRef,
-      productCount: emailData.products.length,
-      hasTag: Boolean(emailData.recipient?.tag),
-    });
-
-    const order = await Order.create(
-      {
-        orderNumber: emailData.orderNumber,
-        // Apple ID 信息
-        ...appleData,
-        // 收件人信息（快照）
-        ...recipientData,
-        // 订单信息
-        products: emailData.products, // JSONB 数组
-        status: emailData.orderStatus || 'pending',
-        orderUrl: emailData.orderUrl,
-        paymentMethod: emailData.paymentMethod || null,
-        orderDate: emailData.orderDate,
-        tag: emailData.recipient?.tag || null,
-      },
-      { transaction }
-    );
-
-    logger.info('订单创建成功', {
-      emailRecordId: options.emailLogId || null,
-      orderId: order.id,
-      productCount: order.products.length,
-    });
-
-    // 与订单创建同一事务写入首次刷新任务，避免提交后进程退出导致任务丢失。
-    const refreshScheduledAt = new Date();
-    await OrderRefreshSchedule.create(
-      {
-        orderId: order.id,
-        nextAutoRefreshAt: order.orderUrl ? refreshScheduledAt : null,
-        freshnessStatus: 'stale',
-      },
-      { transaction }
-    );
-    if (order.orderUrl) {
-      await OrderRefreshJob.create(
-        {
-          orderId: order.id,
-          trigger: 'auto',
-          status: 'pending',
-          priority: 250,
-          scheduledAt: refreshScheduledAt,
-        },
-        { transaction }
-      );
-    }
-    await paymentDispatchService.enrollOrderInTransaction(order, transaction);
 
     // 7. 更新邮件处理记录；兼容旧调用时才创建日志。
     if (emailLog) {
@@ -282,9 +184,20 @@ async function saveOrderFromEmail(emailData, emailUid, options = {}) {
       emailLog.version += 1;
       await emailLog.save({ transaction });
     } else {
-      await createEmailLog(emailUid, emailData, true, order.id, transaction);
+      emailLog = await createEmailLog(emailUid, emailData, true, order.id, transaction);
     }
 
+    await OrderSource.create(
+      {
+        id: crypto.randomUUID(),
+        orderId: order.id,
+        source: 'email',
+        emailLogId: emailLog.id,
+        result: 'created',
+        receivedAt: emailLog.receivedAt || new Date(),
+      },
+      { transaction }
+    );
     // 8. 提交事务
     await transaction.commit();
 
@@ -304,7 +217,7 @@ async function saveOrderFromEmail(emailData, emailUid, options = {}) {
     });
 
     // 记录失败的邮件日志
-    if (!options.emailLogId) {
+    if (!options.emailLogId && !['SOURCE_DISABLED', 'RECORD_OUT_OF_RANGE'].includes(error.code)) {
       try {
         await createEmailLog(emailUid, emailData, false, null, null, '邮件处理失败');
       } catch (logError) {
@@ -341,6 +254,7 @@ async function createEmailLog(
     parsedData = {
       appleId: emailData.appleId,
       orderNumber: emailData.orderNumber,
+      orderDate: emailData.orderDate,
       products: emailData.products,
       recipient: emailData.recipient,
       paymentMethod: emailData.paymentMethod,

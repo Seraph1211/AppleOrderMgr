@@ -17,6 +17,7 @@ const { classifyEmailError, EMAIL_ERROR_CODES, EmailProcessingError } = require(
 const { classifyOrderEmailSource } = require('./emailSourcePolicy');
 const { validateManualOrderData } = require('./emailManualData');
 const { saveOrderFromEmail } = require('./orderService');
+const ingestionRepo = require('./ingestionRepository');
 
 const RETENTION_DAYS = 180;
 const RETRY_DELAY_MS = 60 * 1000;
@@ -107,6 +108,7 @@ function findDuplicateEvent(record) {
     where: {
       id: { [Op.ne]: record.id },
       status: { [Op.in]: ['retry_wait', 'manual_review', 'succeeded', 'superseded'] },
+      ingestionPauseReason: null,
       [Op.or]: alternatives,
     },
     order: [['receivedAt', 'ASC']],
@@ -229,6 +231,19 @@ function markFailure(record, error, { isRetry = false } = {}) {
     if (TERMINAL_STATUSES.has(locked.status)) {
       return locked;
     }
+    if (['SOURCE_DISABLED', 'RECORD_OUT_OF_RANGE'].includes(error.code)) {
+      locked.status = 'received';
+      locked.ingestionPauseReason =
+        error.code === 'SOURCE_DISABLED' ? 'source_disabled' : 'out_of_range';
+      locked.processed = false;
+      locked.success = null;
+      locked.nextRetryAt = null;
+      locked.errorCode = error.code;
+      locked.errorMessage = '等待来源启用或范围核对';
+      locked.version += 1;
+      await locked.save({ transaction });
+      return locked;
+    }
     const retryCount = locked.retryCount + (isRetry ? 1 : 0);
     const shouldRetry = classification.retryable && retryCount < MAX_RETRY_COUNT;
 
@@ -298,6 +313,30 @@ async function processPersistedRecord(record, options = {}) {
     await record.save();
 
     const orderData = parseOrderEmailFromParsed(parsed, rawBuffer, record.id);
+    // 范围资格单独持久化，后续订单事务失败回滚也可跨天恢复。
+    await ingestionRepo.ingestionTransaction(async (transaction, settings) => {
+      try {
+        const locked = await EmailLog.findByPk(record.id, {
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+        const reason = ingestionRepo.eligibility(settings, 'email', {
+          orderDate: orderData.orderDate,
+          ingestionEligibleAt: locked.ingestionEligibleAt,
+        });
+        if (reason === 'allowed' && !locked.ingestionEligibleAt) {
+          locked.ingestionEligibleAt = new Date();
+          await locked.save({ transaction });
+          record.ingestionEligibleAt = locked.ingestionEligibleAt;
+        }
+      } catch (error) {
+        logger.warn('邮件范围资格保存失败', {
+          emailRecordId: record.id,
+          errorCode: 'DATABASE_TEMPORARY',
+        });
+        throw error;
+      }
+    });
     record.parsedData = orderData;
     record.status = 'processing';
     record.errorCode = null;
@@ -332,6 +371,7 @@ function claimDueRetries(limit = 10) {
     const records = await EmailLog.findAll({
       where: {
         status: 'retry_wait',
+        ingestionPauseReason: null,
         nextRetryAt: { [Op.lte]: new Date() },
       },
       order: [['nextRetryAt', 'ASC']],
@@ -369,6 +409,7 @@ function recoverInterruptedRecords() {
   return sequelize.transaction(async transaction => {
     const records = await EmailLog.findAll({
       where: {
+        ingestionPauseReason: null,
         [Op.or]: [
           {
             status: { [Op.in]: ['parsing', 'processing'] },
@@ -486,6 +527,12 @@ function saveManualDraft(record, draft, expectedVersion) {
     if (!['manual_review', 'retry_wait'].includes(locked.status)) {
       throw new EmailProcessingError(EMAIL_ERROR_CODES.INVALID_STATE, '当前状态不允许保存草稿');
     }
+    const originalDate = locked.manualDraft?.orderDate || locked.parsedData?.orderDate;
+    if (
+      !originalDate ||
+      ingestionRepo.businessDate(originalDate) !== ingestionRepo.businessDate(normalized.orderDate)
+    )
+      locked.ingestionEligibleAt = null;
     locked.manualDraft = normalized;
     locked.version += 1;
     await locked.save({ transaction });
@@ -531,6 +578,7 @@ function resolveRecord(record, input, userId) {
   }
 
   return sequelize.transaction(async transaction => {
+    const settings = await ingestionRepo.lockSettings(transaction);
     const locked = await EmailLog.findByPk(record.id, {
       transaction,
       lock: transaction.LOCK.UPDATE,
@@ -547,6 +595,12 @@ function resolveRecord(record, input, userId) {
 
     let order = null;
     if (input.resolutionType === 'existing_order') {
+      ingestionRepo.requireAllowed(
+        ingestionRepo.eligibility(settings, 'email', {
+          orderDate: locked.manualDraft?.orderDate || locked.parsedData?.orderDate,
+          ingestionEligibleAt: locked.ingestionEligibleAt,
+        })
+      );
       order = await Order.findOne({
         where: {
           orderNumber: String(input.orderNumber || '')
@@ -555,6 +609,9 @@ function resolveRecord(record, input, userId) {
         },
         transaction,
       });
+      if (order && locked.orderNumber && order.orderNumber !== locked.orderNumber) {
+        throw new EmailProcessingError(EMAIL_ERROR_CODES.ORDER_NUMBER_INVALID, '目标订单号不一致');
+      }
       if (!order) {
         throw new EmailProcessingError(EMAIL_ERROR_CODES.ORDER_NUMBER_INVALID, '指定订单不存在');
       }

@@ -1,3 +1,4 @@
+import OrderSources from './OrderSources';
 import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect } from 'react';
 import { X, Upload, Save, ExternalLink, AlertTriangle, RefreshCw } from 'lucide-react';
@@ -244,6 +245,14 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
           <div>
             <h2 className="text-2xl font-bold">订单详情</h2>
             <p className="text-gray-600 mt-1 font-mono">{order.orderNumber}</p>
+            <p className="mt-1 text-sm text-gray-500">
+              创建来源：
+              {order.ingestionSource === 'aos'
+                ? 'AOS 文件'
+                : order.ingestionSource === 'email'
+                  ? '邮件'
+                  : '未知'}
+            </p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
             <X className="w-6 h-6" />
@@ -253,6 +262,18 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
         {/* 弹窗内容 */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-6">
+            {order.ingestionSource === 'aos' && (
+              <div className="rounded border border-blue-100 bg-blue-50 p-3 text-sm">
+                来源 TAG：{order.sourceRecipientTag || '—'}
+                {order.recipientTagConflict && (
+                  <p className="text-amber-700">
+                    档案 TAG：{order.recipientProfileTag}（存在差异）
+                  </p>
+                )}
+                {!order.recipientLinked && <p className="text-amber-700">取机人待关联</p>}
+              </div>
+            )}
+            <OrderSources orderId={order.id} />
             {order.validationStatus === 'abnormal' && (
               <div className="border border-red-200 bg-red-50 rounded-lg p-4 flex gap-3">
                 <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />

@@ -50,6 +50,12 @@ const adminNavigation = [
     icon: CreditCard,
     permission: PERMISSIONS.PAYMENT_TASKS_READ_OWN,
   },
+  {
+    name: '订单数据源',
+    href: '/order-ingestion',
+    icon: Mail,
+    permission: PERMISSIONS.INGESTION_READ,
+  },
   { name: '邮件处理', href: '/email-processing', icon: Mail, permission: PERMISSIONS.EMAIL_READ },
   {
     name: '系统日志',

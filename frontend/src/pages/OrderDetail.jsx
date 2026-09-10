@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { getOrderDetail, refreshOrder, getRefreshJob } from '../api';
 import { useAuth } from '../contexts/AuthContext';
+import OrderSources from '../components/OrderSources';
 import OfficialOrderSummary from '../components/OfficialOrderSummary';
 import { ORDER_STATUS_BADGES as STATUS_BADGES } from '../constants/orderStatus';
 import { PERMISSIONS } from '../constants/permissions';
@@ -265,7 +266,9 @@ export default function OrderDetail() {
               <div className="flex items-start gap-3">
                 <MapPin className="mt-0.5 h-5 w-5 text-primary" />
                 <div>
-                  <p className="font-medium text-gray-900">{order.pickup_store || '-'}</p>
+                  <p className="font-medium text-gray-900">
+                    {order.pickup_store || order.pickup_store_code || '-'}
+                  </p>
                 </div>
               </div>
               <div className="flex items-start gap-3">
@@ -283,11 +286,36 @@ export default function OrderDetail() {
 
         <div className="space-y-6">
           <div className="card">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">订单信息</h2>
+            <OrderSources orderId={order.id} />
+            <h2 className="mb-4 mt-4 text-lg font-semibold text-gray-900">订单信息</h2>
             <dl className="space-y-3 text-sm">
               <div>
                 <dt className="text-gray-500">订单号</dt>
                 <dd className="mt-1 font-mono text-gray-900">{order.order_number}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">创建来源</dt>
+                <dd className="mt-1 text-gray-900">
+                  {order.ingestion_source === 'aos'
+                    ? 'AOS 文件'
+                    : order.ingestion_source === 'email'
+                      ? '邮件'
+                      : '未知'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">来源 TAG</dt>
+                <dd className="mt-1 text-gray-900">
+                  {order.source_recipient_tag || '—'}
+                  {order.recipient_tag_conflict && (
+                    <p className="text-amber-700">
+                      档案 TAG：{order.recipient_profile_tag}（存在差异）
+                    </p>
+                  )}
+                  {order.ingestion_source === 'aos' && !order.recipient_linked && (
+                    <p className="text-amber-700">取机人待关联</p>
+                  )}
+                </dd>
               </div>
               <div>
                 <dt className="text-gray-500">创建时间</dt>

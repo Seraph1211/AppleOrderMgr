@@ -174,7 +174,7 @@ const config = {
  * 检查运行时必需的配置项是否存在
  * @throws {Error} 当必需配置缺失时抛出异常
  */
-const validateConfig = () => {
+const validateConfig = ({ requireImap = true } = {}) => {
   const requiredVars = [];
 
   if (config.imap.allowedSenderDomains.some(domain => !EMAIL_DOMAIN_PATTERN.test(domain))) {
@@ -196,7 +196,7 @@ const validateConfig = () => {
   }
 
   // IMAP 配置必需
-  requiredVars.push('IMAP_HOST', 'IMAP_USER', 'IMAP_PASSWORD');
+  if (requireImap) requiredVars.push('IMAP_HOST', 'IMAP_USER', 'IMAP_PASSWORD');
 
   // 生产环境下，代理配置必需
   if (config.app.env === 'production' && config.proxy.enabled) {
