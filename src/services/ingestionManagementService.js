@@ -12,6 +12,7 @@ const {
   EmailWorkerState,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
+const { encrypt, decrypt } = require('../utils/fieldEncryption');
 const repo = require('./ingestionRepository');
 const aos = require('./aosIngestionService');
 const { Op } = repo;
@@ -60,6 +61,7 @@ function deviceDto(device, counts = {}) {
     version: device.version,
     credentialVersion: device.credentialVersion,
     credentialConfigured: Boolean(device.credentialHash),
+    credentialViewable: Boolean(device.credentialCiphertext),
     agentVersion: t.agentVersion || null,
     osVersion: t.osVersion || null,
     lastHeartbeatAt: device.heartbeatAt,
@@ -105,6 +107,7 @@ async function getSettings(transaction = null, currentSettings = null) {
       backfillPolicy: 'current_day',
       duplicatePolicy: 'keep_existing',
       duplicatePolicyStatus: 'confirmed',
+      collectorServerUrl: collectorServerUrl(),
       updatedBy: settings.updatedBy ? { id: settings.updatedBy } : null,
       readiness: {
         email: {
@@ -129,6 +132,26 @@ async function getSettings(transaction = null, currentSettings = null) {
   } catch (error) {
     logger.debug('来源操作未完成', { errorCode: error.code || 'DATABASE_TEMPORARY' });
     throw error;
+  }
+}
+
+/** 读取采集器应填写的公网 HTTPS 根地址。 @returns {string|null} 地址 */
+function collectorServerUrl() {
+  const configured = String(process.env.AOS_COLLECTOR_PUBLIC_URL || '').trim();
+  if (!configured) return null;
+  try {
+    const parsed = new URL(configured);
+    if (
+      parsed.protocol !== 'https:' ||
+      parsed.username ||
+      parsed.password ||
+      parsed.search ||
+      parsed.hash
+    )
+      return null;
+    return `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
+  } catch (_error) {
+    return null;
   }
 }
 
@@ -342,6 +365,7 @@ function manageDevice(action, req) {
             name: req.body.name,
             notes: req.body.notes || null,
             credentialHash: created.credentialHash,
+            credentialCiphertext: encrypt(credential),
           },
           { transaction }
         );
@@ -356,6 +380,7 @@ function manageDevice(action, req) {
           const created = repo.createCredential();
           credential = created.credential;
           device.credentialHash = created.credentialHash;
+          device.credentialCiphertext = encrypt(credential);
           device.credentialVersion += 1;
         } else {
           for (const field of ['name', 'notes', 'enabled'])
@@ -387,6 +412,33 @@ function manageDevice(action, req) {
       return {
         device: deviceDto(device),
         ...(credential ? { credential, credentialDisplayed: false } : {}),
+      };
+    } catch (error) {
+      logger.debug('来源操作未完成', { errorCode: error.code || 'DATABASE_TEMPORARY' });
+      throw error;
+    }
+  });
+}
+
+/** 受控读取设备接入凭证并记录审计。 @param {string} deviceId 设备 UUID @param {Object} actor 当前管理员 @returns {Promise<Object>} 凭证 */
+function getDeviceCredential(deviceId, actor) {
+  const id = repo.requireUuid(deviceId);
+  return sequelize.transaction(async transaction => {
+    try {
+      const device = await AosDevice.findByPk(id, { transaction });
+      if (!device) throw ApiError.notFound('采集设备不存在');
+      if (!device.credentialCiphertext) {
+        throw new ApiError(
+          409,
+          'DEVICE_CREDENTIAL_NOT_VIEWABLE',
+          '该设备登记于凭证可查看功能启用前，请先轮换凭证'
+        );
+      }
+      const credential = decrypt(device.credentialCiphertext);
+      await repo.audit(actor, '查看设备凭证', device.id, transaction, 'GET');
+      return {
+        device: { id: device.id, name: device.name, credentialVersion: device.credentialVersion },
+        credential,
       };
     } catch (error) {
       logger.debug('来源操作未完成', { errorCode: error.code || 'DATABASE_TEMPORARY' });
@@ -618,15 +670,16 @@ async function getBackfill(id) {
     const data = op.data;
     let rows;
     if (data.source === 'aos') {
-      const scanRefs = scans.length
-        ? await IngestionOperation.findAll({
+      let scanRefs = [];
+      if (scans.length) {
+        scanRefs = await IngestionOperation.findAll({
           where: {
             kind: 'scan_record',
             [Op.or]: scans.map(scan => ({ scope: { [Op.like]: `scan-record:${scan.id}:%` } })),
           },
           attributes: ['data'],
-        })
-        : [];
+        });
+      }
       rows = await AosRecord.findAll({
         where: {
           deviceId: { [Op.in]: data.deviceIds },
@@ -702,6 +755,7 @@ module.exports = {
   switchPreview,
   switchSource,
   manageDevice,
+  getDeviceCredential,
   context,
   heartbeat,
   getBackfill,

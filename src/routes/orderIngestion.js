@@ -47,6 +47,12 @@ router.post(
   '/devices/:id/rotate-credential',
   ...route('ingestion.devices.manage', req => management.manageDevice('rotate', req))
 );
+router.get(
+  '/devices/:id/credential',
+  ...route('ingestion.devices.manage', req =>
+    management.getDeviceCredential(req.params.id, req.user)
+  )
+);
 
 router.get(
   '/devices',

@@ -1,6 +1,9 @@
 /* eslint-disable no-control-regex -- 校验并拒绝来源字段中的控制字符。 */
-/** AOS 15 列解析、草稿及来源身份校验。 */
+/** AOS 固定前置列、已知尾部列解析、草稿及来源身份校验。 */
 const ApiError = require('../utils/ApiError');
+
+const AOS_BASE_COLUMN_COUNT = 15;
+const RECIPIENT_ID_LAST4_LENGTH = 4;
 
 const DRAFT_FIELDS = [
   'orderNumber',
@@ -9,6 +12,7 @@ const DRAFT_FIELDS = [
   'lastName',
   'firstName',
   'contactPhone',
+  'recipientIdLast4',
   'pickupStoreCode',
   'products',
   'paymentMethod',
@@ -57,6 +61,8 @@ function validateAosDraft(input) {
     stringField(field, 255, /^[^\s@/]+@[^\s@/]+\.[^\s@/]+$/);
   for (const field of ['lastName', 'firstName']) stringField(field, 50);
   stringField('contactPhone', 11, /^1[3-9]\d{9}$/);
+  stringField('recipientIdLast4', RECIPIENT_ID_LAST4_LENGTH, /^\d{3}[\dXx]$/, true);
+  if (data.recipientIdLast4) data.recipientIdLast4 = data.recipientIdLast4.toUpperCase();
   stringField('pickupStoreCode', 50, /^R\d+$/);
   stringField('recipientTag', 500, null, true);
   stringField('paymentMethod', 50);
@@ -155,11 +161,11 @@ function parseAosLine(rawLine) {
     };
   }
   const columns = rawLine.replace(/^\uFEFF/, '').split('\t');
-  if (columns.length !== 15) {
+  if (columns.length < AOS_BASE_COLUMN_COUNT) {
     return {
       data: {},
       password: null,
-      issues: [issue('rawLine', 'AOS_COLUMN_COUNT_INVALID', '应有 15 列，请核对文件格式')],
+      issues: [issue('rawLine', 'AOS_COLUMN_COUNT_INVALID', '至少应有 15 列，请核对文件格式')],
     };
   }
   // 当前样本仅证明单商品语法；多商品使用明确分隔的相同语法，未知语法进入人工处理。
@@ -179,6 +185,7 @@ function parseAosLine(rawLine) {
     firstName: columns[5],
     pickupStoreCode: columns[6],
     contactPhone: columns[9],
+    recipientIdLast4: columns[AOS_BASE_COLUMN_COUNT]?.trim() || null,
     products,
     paymentMethod: columns[11],
     recipientTag: columns[12],

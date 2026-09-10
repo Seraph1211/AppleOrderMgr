@@ -17,12 +17,16 @@ async function createOrderInTransaction(emailData, transaction, options = {}) {
     };
 
     if (options.source === 'aos') {
+      const recipientWhere = {
+        lastName: emailData.sourceLastName,
+        firstName: emailData.sourceFirstName,
+        phone: emailData.recipient.phone,
+      };
+      if (emailData.recipient.idLast4) {
+        recipientWhere.idCardLast4 = emailData.recipient.idLast4;
+      }
       const candidates = await Recipient.findAll({
-        where: {
-          lastName: emailData.sourceLastName,
-          firstName: emailData.sourceFirstName,
-          phone: emailData.recipient.phone,
-        },
+        where: recipientWhere,
         limit: 2,
         transaction,
       });

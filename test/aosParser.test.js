@@ -10,13 +10,29 @@ describe('AOS 严格解析', () => {
       { model: 'MG054CH/A', name: 'iPhone 17 Pro Max 深蓝色 256G', quantity: 2 },
     ]);
     expect(result.data.lastName).toBe('测试');
+    expect(result.data.recipientIdLast4).toBe('1234');
     expect(result.data.recipientTag).toBe('测试 TAG');
     expect(result.data).not.toHaveProperty('password');
     expect(JSON.stringify(result.data)).not.toContain('synthetic-software-account');
   });
   test('兼容 UTF-8 BOM', () => expect(parseAosLine('\uFEFF' + buildAosLine()).issues).toEqual([]));
+  test('兼容历史 15 列和未来新增尾部列', () => {
+    const current = buildAosLine().split('\t');
+    const historical = parseAosLine(current.slice(0, 15).join('\t'));
+    const extended = parseAosLine([...current, '未来字段一', '未来字段二'].join('\t'));
+    const withLowercaseX = parseAosLine(buildAosLine({ 15: '123x' }));
+    expect(historical.issues).toEqual([]);
+    expect(historical.data.recipientIdLast4).toBeNull();
+    expect(extended.issues).toEqual([]);
+    expect(extended.data.recipientIdLast4).toBe('1234');
+    expect(extended.data).not.toHaveProperty('extraColumns');
+    expect(withLowercaseX.issues).toEqual([]);
+    expect(withLowercaseX.data.recipientIdLast4).toBe('123X');
+  });
   test.each([
     ['列缺失', buildAosLine().split('\t').slice(0, 14).join('\t'), 'AOS_COLUMN_COUNT_INVALID'],
+    ['身份证后四位无效', buildAosLine({ 15: '12' }), 'AOS_FIELD_INVALID'],
+    ['身份证后四位字符无效', buildAosLine({ 15: '12A4' }), 'AOS_FIELD_INVALID'],
     ['行终止符', buildAosLine() + '\r\n', 'AOS_COLUMN_COUNT_INVALID'],
     ['商品数量零', buildAosLine({ 10: 'MG054CH/A-商品 x 0' }), 'AOS_PRODUCT_INVALID'],
     ['未知商品语法', buildAosLine({ 10: '商品数量2' }), 'AOS_PRODUCT_INVALID'],

@@ -197,10 +197,10 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - 外部付款人姓名在四种状态、到期、官网已付／退款／取消后仍可维护。`PUT /api/payment-tasks/:id/payer` 使用 `{ payerName: string | null, expectedVersion, reason? }`；系统不提供付款人候选接口，不创建付款人账号或主数据。
 - 复制订单链接接口只保留 `payment_tasks.link.read_own` 和当前任务归属校验，直接返回该任务关联订单的 `orders.orderUrl`；不再按核实、截止时间、人工处理状态或官网支付／订单状态限制复制。链接为空时返回资源不存在；响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
 - 本人任务刷新提交返回 HTTP `202`、`jobId`、是否新建或合并；`GET /api/payment-tasks/:id/refresh/:jobId` 仅允许当前负责人查询同一关联订单的刷新任务，返回 pending、running、succeeded、failed、skipped、错误摘要和订单最新抓取时间。入队不表示官网已更新；前端应展示提交中、排队／运行、成功／失败，终态后重新加载当前列表，Worker 未运行时明确保持“等待后台处理”。
-- 本人任务列表和详情返回关联订单已有的 `paymentMethod`；该字段只用于展示订单付款方式，不作为任务处理结果或可编辑选项。`updatedAt` 取付款任务与关联订单更新时间中的较新值，前端“最后更新时间”按用户本地时区显示为 `YYYY/MM/DD HH:mm:ss`。
+- 本人任务列表和详情返回关联订单已有的 `paymentMethod`；该字段只用于展示订单付款方式，不作为任务处理结果或可编辑选项。本人任务和管理员调度列表均按关联订单 `orderDate DESC` 稳定分页，时间相同时按任务 ID 倒序；`updatedAt` 取付款任务与关联订单更新时间中的较新值，前端“最后更新时间”按用户本地时区显示为 `YYYY/MM/DD HH:mm:ss`。
 - 付款倒计时优先使用 `officialPaymentExpiresAt`，回退 `officialOrderCreatedAt + 30 分钟`。官网创建时间必须包含时分，仅有日期时保持未知；服务端返回 `serverTime`、`deadlineAt` 和 `remainingSeconds`，客户端不得用本机时间决定是否超时。管理员人工截止时间核实接口已取消。
 - `GET /api/payment-dispatch/tasks` 新增 `page`（默认 1，1–100000）和 `pagination: { page, limit, total, totalPages }`；`limit` 保持默认 100、上限 200，页面使用 10/20/50/100。两个付款列表新增返回 `orderDate`（关联订单已有的下单时间，与订单管理一致），`officialOrderCreatedAt` 继续供官网时间和截止规则使用；下单时间展示优先 `orderDate`、缺失时回退已确认的 `officialOrderCreatedAt`，都缺失保持未知。支持 `orderNumber`、`productKeyword`、`assignee`、`officialOrderStatus` 和 `processingStatus` 组合筛选；商品匹配在数据库分页前执行。每项返回关联订单已有的 `paymentMethod`、`officialOrderStatus`、`lastCrawledAt` 和派生的 `deadlineAt`，其中页面“最后更新时间”只使用最后一次成功官网抓取时间 `lastCrawledAt`。
-- 批量分配 body 为 `{ tasks: [{ id, expectedVersion }], assigneeUserId, handoffConfirmed?, reason? }`，一次最多 100 项，在同一事务内校验版本、状态、付款窗口、目标权限和容量后全部提交或全部回滚。批量刷新 body 为 `{ taskIds }`，仅把选中任务对应订单提交持久化刷新队列，HTTP 202 不代表官网已更新。
+- 批量分配 body 为 `{ tasks: [{ id, expectedVersion }], assigneeUserId, handoffConfirmed?, reason? }`，一次最多 100 项，在同一事务内校验版本、状态、付款窗口、目标权限和容量后全部提交或全部回滚。单项刷新返回 `{ jobId, status, created, merged }`；批量刷新 body 为 `{ taskIds }`，返回批量汇总。两者仅把订单提交到持久化刷新队列，HTTP 202 不代表官网已更新。
 - payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、上限有余量、合法付款链接以及官网付款窗口仍有效。官网已付款、退款、终态、身份异常和待核对状态禁止新分配；active_count 为 pending＋processing＋exception，completed 释放容量，官网收款不自动修改人工四态。
 
 ### 生命周期与来源冲突响应
@@ -327,10 +327,11 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 | `GET /api/order-ingestion/devices` | read | page、limit、enabled、online、keyword | `DeviceDto` 分页列表 |
 | `POST /api/order-ingestion/devices` | devices.manage | `{ name, notes? }`，name 1–100、notes 最多 500 字；幂等键 | 201 `{ device, credential, credentialDisplayed: false }`；新增设备默认 enabled |
 | `GET /api/order-ingestion/devices/:id` | read | 路径 ID | `DeviceDto` |
+| `GET /api/order-ingestion/devices/:id/credential` | devices.manage | 路径 ID | `{ device, credential }`；凭证使用 AES-256-GCM 密文保存，每次查看记录审计；历史设备无密文时返回 `DEVICE_CREDENTIAL_NOT_VIEWABLE`，须先轮换 |
 | `PATCH /api/order-ingestion/devices/:id` | devices.manage | `{ expectedVersion, name?, notes?, enabled? }`，幂等键 | 修改后的 `DeviceDto`，至少一个变更字段 |
 | `POST /api/order-ingestion/devices/:id/rotate-credential` | devices.manage | `{ expectedVersion }`，幂等键 | `{ device, credential, credentialDisplayed: false }`；旧凭证立即失效，更新本机前停止上传但保留队列 |
 
-`DeviceDto`：`id`、`name`、`notes`、`enabled`、`version`、`credentialVersion`、`credentialConfigured`、`agentVersion`、`osVersion`、`lastHeartbeatAt`、`lastSuccessfulScanAt`、`lastNewOrderAt`、`online`、`scanHealthy`、`directories[]`、`localCounts`、`serverCounts`、`lastErrorCode`、`createdAt`、`updatedAt`。
+`DeviceDto`：`id`、`name`、`notes`、`enabled`、`version`、`credentialVersion`、`credentialConfigured`、`credentialViewable`、`agentVersion`、`osVersion`、`lastHeartbeatAt`、`lastSuccessfulScanAt`、`lastNewOrderAt`、`online`、`scanHealthy`、`directories[]`、`localCounts`、`serverCounts`、`lastErrorCode`、`createdAt`、`updatedAt`。`SettingsDto.collectorServerUrl` 返回服务端配置的 `AOS_COLLECTOR_PUBLIC_URL`；未配置或不是合法 HTTPS 根地址时返回 `null`。
 
 `directories[]` 只含 `directoryId`、`label`、`state`（ready/waiting_file/unreadable/missing）、`currentFileNames`（最多 20 个）、`lastSuccessfulScanAt`、`errorCode`，不含完整磁盘路径。`localCounts` 为 pendingUpload/uploadError/todayDiscovered；`serverCounts` 为 todayReceived/created/duplicate/manualReview/paused，全部非负整数，另带 `countsBusinessDate`，今日新增与存量积压分别统计。
 
@@ -377,6 +378,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 | contactEmail、appleId | string，必填，最多 255 字符，邮箱格式校验 |
 | lastName、firstName | string，分别必填、最多 50 字符，保留文件显式拆分 |
 | contactPhone | string，必填，11 位中国大陆手机号；原样字符串存储 |
+| recipientIdLast4 | string 或 null，前三位数字、末位数字或 `X`，统一大写；16 列文件取值，历史 15 列为空，只在敏感内容接口返回 |
 | pickupStoreCode | string，必填，`R` 加数字、最多 50 字符；未知字典值可用 |
 | products | 1–50 项，每项 `{ model, name, quantity }`，model 最多 50、name 最多 300 字符，quantity 为 1–999 整数 |
 | paymentMethod | string，必填、最多 50 字符，按统一支付方式校验；未识别值进入人工核对 |
@@ -415,7 +417,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
       "lineNumber": 1,
       "observedAt": "2026-09-10T02:00:00.000Z",
       "scanRequestId": null,
-      "rawLine": "<完整原始行，15 列以制表符分隔；此占位值不可直接提交>"
+      "rawLine": "<完整原始行，至少 15 列以制表符分隔；此占位值不可直接提交>"
     }
   ]
 }
@@ -423,7 +425,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 `records` 1–100 项、整个 JSON UTF-8 请求最多 1 MiB；`rawLine` 必填、UTF-8 最多 16 KiB，不含行终止 CR/LF，也不剥离字段中的制表符。`fileName` 只允许文件基名、最多 255 字符，拒绝路径分隔和目录穿越；`lineNumber` 为大于 0 的安全整数，仅用于追溯；`observedAt` 为设备观察时间，不作下单时间和数据权威顺序。
 
-客户端转换编码、识别稳定行，服务端独立解析 rawLine 并校验列数、商品、字段和 Apple 链接。不要同时传可互相矛盾的客户端结构化订单作为事实来源。稳定但格式错误的行也可可靠接收后进入 manual_review；不完整尾行继续留在本机等待。
+客户端转换编码、识别稳定行，服务端独立解析 rawLine 并校验最低 15 列、商品、字段和 Apple 链接。第 16 列按身份证后四位校验；第 17 列及之后作为未知尾部扩展保留在加密原文中，不阻断已知字段，也不自动映射。不要同时传可互相矛盾的客户端结构化订单作为事实来源。稳定但格式错误的行也可可靠接收后进入 manual_review；不完整尾行继续留在本机等待。
 
 事件首次进入本地队列时生成并持久化 eventId，此后重试保持 eventId 和载荷不变。服务器以 `(deviceId, eventId)` 唯一并重算载荷摘要；同键同载荷回放，同键异载荷拒绝。文件重新创建使用新 fileInstanceId；同单同内容跨文件重现仍由内容识别及订单唯一约束防重。凭证轮换不改变设备 ID 和既有事件 ID。
 

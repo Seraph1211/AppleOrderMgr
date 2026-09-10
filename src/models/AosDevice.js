@@ -16,6 +16,11 @@ module.exports = sequelize =>
         field: 'credential_version',
       },
       credentialHash: { type: DataTypes.STRING(64), allowNull: false, field: 'credential_hash' },
+      credentialCiphertext: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'credential_ciphertext',
+      },
       heartbeatId: { type: DataTypes.UUID, allowNull: true, field: 'heartbeat_id' },
       heartbeatAt: { type: DataTypes.DATE, allowNull: true, field: 'heartbeat_at' },
       telemetry: { type: DataTypes.JSONB, allowNull: false, defaultValue: {}, field: 'telemetry' },

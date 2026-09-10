@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Database, RefreshCw, Plus, X, Eye, Save, KeyRound } from 'lucide-react';
+import { Database, RefreshCw, Plus, X, Eye, Save, KeyRound, Copy } from 'lucide-react';
 import { readIngestion, writeIngestion } from '../api/orderIngestionApi';
 import { formatOrderTime } from '../utils/orderTime';
 
@@ -43,6 +43,7 @@ const FIELD_LABELS = {
   lastName: '姓',
   firstName: '名',
   contactPhone: '手机号',
+  recipientIdLast4: '身份证后四位',
   pickupStoreCode: '门店代码',
   paymentMethod: '支付方式',
   recipientTag: '来源 TAG',
@@ -331,6 +332,51 @@ export default function OrderIngestion() {
       setBusy('');
     }
   }
+  async function readDeviceCredential(device) {
+    setBusy('读取设备凭证');
+    setError('');
+    try {
+      const result = await readIngestion(`/devices/${device.id}/credential`);
+      return result.data;
+    } catch (failure) {
+      setError(failure.message);
+      return null;
+    } finally {
+      setBusy('');
+    }
+  }
+  async function showDeviceCredential(device) {
+    const result = await readDeviceCredential(device);
+    if (result) setCredential(result);
+  }
+  async function copyDeviceCredential(device) {
+    const result = await readDeviceCredential(device);
+    if (!result) return;
+    try {
+      await navigator.clipboard.writeText(result.credential);
+      setNotice(`${device.name} 的接入凭证已复制`);
+    } catch (_failure) {
+      setCredential(result);
+      setError('浏览器未允许自动复制，请在弹窗中手动复制');
+    }
+  }
+  async function copyCollectorServerUrl() {
+    if (!settings?.collectorServerUrl) return;
+    try {
+      await navigator.clipboard.writeText(settings.collectorServerUrl);
+      setNotice('采集器服务器 HTTPS 地址已复制');
+    } catch (_failure) {
+      setError('浏览器未允许自动复制，请手动选中地址复制');
+    }
+  }
+  async function copyVisibleCredential() {
+    try {
+      await navigator.clipboard.writeText(credential.credential);
+      setNotice(`${credential.device.name} 的接入凭证已复制`);
+    } catch (_failure) {
+      setError('浏览器未允许自动复制，请手动选中凭证复制');
+    }
+  }
   const closeDetail = useCallback(() => {
     setDetail(null);
     setContent(null);
@@ -581,6 +627,37 @@ export default function OrderIngestion() {
       )}
       {tab === 'devices' && (
         <>
+          <section className="rounded-xl border border-blue-200 bg-primary-50 p-4">
+            <p className="text-sm font-medium text-gray-900">采集器服务器 HTTPS 地址</p>
+            {settings?.collectorServerUrl ? (
+              <div className="mt-2 flex flex-wrap items-center gap-3">
+                <input
+                  aria-label="采集器服务器 HTTPS 地址"
+                  className="input min-w-0 flex-1 font-mono"
+                  readOnly
+                  value={settings.collectorServerUrl}
+                  onFocus={event => event.target.select()}
+                />
+                <button
+                  className="btn btn-secondary flex items-center gap-2"
+                  onClick={copyCollectorServerUrl}
+                >
+                  <Copy className="h-4 w-4" />
+                  复制地址
+                </button>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm text-amber-700">
+                服务器尚未配置公网地址。请由部署人员从 HTTPS 域名或 Cloudflare Tunnel
+                获取根地址，并设置 AOS_COLLECTOR_PUBLIC_URL。
+              </p>
+            )}
+            {settings?.collectorServerUrl?.includes('.trycloudflare.com') && (
+              <p className="mt-2 text-xs text-amber-700">
+                当前为临时 Quick Tunnel 地址；隧道重启后地址可能变化，需同步更新服务器配置和采集器。
+              </p>
+            )}
+          </section>
           <div className="flex justify-end">
             <button
               className="btn btn-primary flex items-center gap-2"
@@ -657,6 +734,20 @@ export default function OrderIngestion() {
                             }
                           >
                             {d.enabled ? '禁用' : '启用'}
+                          </button>
+                          <button
+                            className="text-primary"
+                            disabled={!!busy}
+                            onClick={() => showDeviceCredential(d)}
+                          >
+                            查看凭证
+                          </button>
+                          <button
+                            className="text-primary"
+                            disabled={!!busy}
+                            onClick={() => copyDeviceCredential(d)}
+                          >
+                            复制凭证
                           </button>
                           <button
                             className="text-primary"
@@ -838,16 +929,25 @@ export default function OrderIngestion() {
           ) : (
             <>
               <p className="mb-4 text-sm text-gray-600">
-                凭证只在本次显示。请复制到指定设备的采集器配置窗口。
+                凭证在数据库中加密保存，每次查看都会记录操作审计。请复制到指定设备的采集器配置窗口。
               </p>
               {credential.credential ? (
-                <input
-                  aria-label="设备接入凭证"
-                  className="input w-full font-mono"
-                  readOnly
-                  value={credential.credential}
-                  onFocus={e => e.target.select()}
-                />
+                <div className="flex flex-wrap gap-3">
+                  <input
+                    aria-label="设备接入凭证"
+                    className="input min-w-0 flex-1 font-mono"
+                    readOnly
+                    value={credential.credential}
+                    onFocus={e => e.target.select()}
+                  />
+                  <button
+                    className="btn btn-secondary flex items-center gap-2"
+                    onClick={copyVisibleCredential}
+                  >
+                    <Copy className="h-4 w-4" />
+                    复制
+                  </button>
+                </div>
               ) : (
                 <p className="text-amber-700">
                   此次返回为幂等回执，凭证不再显示。请在设备列表明确轮换凭证后重新配置。

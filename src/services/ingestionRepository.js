@@ -135,15 +135,15 @@ function requireAllowed(reason) {
     });
 }
 
-/** 同事务追加无敏感值的操作审计。 @param {Object} actor 操作者 @param {string} action 动作 @param {string} target 目标 @param {Object} transaction 事务 @returns {Promise<Object>} 日志 */
-function audit(actor, action, target, transaction) {
+/** 同事务追加无敏感值的操作审计。 @param {Object} actor 操作者 @param {string} action 动作 @param {string} target 目标 @param {Object} transaction 事务 @param {string} [method='POST'] 请求方法 @returns {Promise<Object>} 日志 */
+function audit(actor, action, target, transaction, method = 'POST') {
   return OperationLog.create(
     {
       actorUserId: actor?.id || null,
       username: actor?.username || null,
       action: `订单数据源：${action}`,
       target,
-      method: 'POST',
+      method,
       statusCode: 200,
       result: 'success',
       requestId: crypto.randomUUID(),

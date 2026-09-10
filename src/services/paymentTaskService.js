@@ -186,9 +186,9 @@ async function listOwnTasks(userId, query = {}) {
     include,
     distinct: true,
     order: [
-      [Sequelize.literal('CASE WHEN "deadline_at" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
-      ['deadlineAt', 'ASC'],
-      ['id', 'ASC'],
+      [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
+      [Sequelize.literal('"order"."order_date"'), 'DESC'],
+      ['id', 'DESC'],
     ],
     limit,
     offset: (page - 1) * limit,

@@ -315,6 +315,7 @@ async function ingestInTransaction(row, settings, transaction) {
             name: `${data.lastName}${data.firstName}`,
             email: data.contactEmail,
             phone: data.contactPhone,
+            idLast4: data.recipientIdLast4,
             tag: data.recipientTag,
           },
           sourceLastName: data.lastName,

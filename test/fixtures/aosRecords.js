@@ -16,6 +16,7 @@ function buildAosLine(overrides = {}) {
     '测试 TAG',
     'https://www.apple.com.cn/xc/cn/vieworder/W9900000001/contact%40example.com',
     '2026-09-10 10:00:00.123',
+    '1234',
   ];
   for (const [index, value] of Object.entries(overrides)) columns[Number(index)] = value;
   return columns.join('\t');

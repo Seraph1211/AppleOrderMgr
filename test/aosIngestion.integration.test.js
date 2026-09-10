@@ -1,6 +1,8 @@
 const crypto = require('crypto');
+const { encrypt } = require('../src/utils/fieldEncryption');
 const enabled = process.env.RUN_AOS_DB_INTEGRATION === 'true';
 const describeDatabase = enabled ? describe : describe.skip;
+const EXPECTED_PICKUP_STORE_COUNT = 49;
 
 describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
   const models = require('../src/models');
@@ -17,6 +19,8 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     OrderSource,
     OrderRefreshJob,
     PaymentTask,
+    PickupStore,
+    Recipient,
     IngestionOperation,
     User,
   } = models;
@@ -77,6 +81,7 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
       id: crypto.randomUUID(),
       name: '合成测试设备',
       credentialHash: credential.credentialHash,
+      credentialCiphertext: encrypt(credential.credential),
     });
     await IngestionSetting.update({ activeSource: 'aos' }, { where: { id: 1 } });
   });
@@ -111,6 +116,48 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     expect(order.recipientRef).toBeNull();
     expect(await OrderRefreshJob.count({ where: { orderId: order.id } })).toBe(1);
     expect(await PaymentTask.count({ where: { orderId: order.id } })).toBe(1);
+  });
+  test('第 16 列身份证后四位参与取机人匹配，R502 补全成都万象城', async () => {
+    expect(await PickupStore.count()).toBe(EXPECTED_PICKUP_STORE_COUNT);
+    const stores = await Promise.all(
+      ['R388', 'R793', 'R639', 'R645', 'R502'].map(code => PickupStore.findByPk(code))
+    );
+    expect(stores.map(store => store.name)).toEqual([
+      'Apple 西单大悦城',
+      'Apple 前海壹方城',
+      'Apple 珠江新城',
+      'Apple 朝阳大悦城',
+      'Apple 成都万象城',
+    ]);
+    const recipient = await Recipient.create({
+      lastName: '门店',
+      firstName: '匹配',
+      idCardNumber: '110101199001015678',
+      phone: '13900000000',
+      email: 'store-match@example.com',
+    });
+    const matched = event();
+    const orderNumber = matched.rawLine.split('\t')[0];
+    matched.rawLine = buildAosLine({
+      0: orderNumber,
+      1: 'store-match@example.com',
+      4: '门店',
+      5: '匹配',
+      6: 'R502',
+      9: '13900000000',
+      13: `https://www.apple.com.cn/xc/cn/vieworder/${orderNumber}/` + 'store-match%40example.com',
+      14: `${repo.businessDate()} 10:00:00.123`,
+      15: '5678',
+    });
+    const mismatched = event();
+    mismatched.rawLine = mismatched.rawLine.replace(/\t1234$/, '\t9999');
+    await aos.receiveBatch(auth, { schemaVersion: 1, records: [matched, mismatched] });
+    await aos.processQueue();
+    const matchedRow = await AosRecord.findOne({ where: { eventId: matched.eventId } });
+    const mismatchedRow = await AosRecord.findOne({ where: { eventId: mismatched.eventId } });
+    expect((await Order.findByPk(matchedRow.orderId)).recipientRef).toBe(recipient.id);
+    expect((await Order.findByPk(matchedRow.orderId)).pickupStore).toBe('Apple 成都万象城');
+    expect((await Order.findByPk(mismatchedRow.orderId)).recipientRef).toBeNull();
   });
   test('同订单不同事件只留来源，不覆盖商品、密码或 TAG', async () => {
     const input = event();
@@ -215,6 +262,13 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     const first = await management.manageDevice('create', req);
     const repeat = await management.manageDevice('create', req);
     expect(first.credential).toMatch(/^aos_/);
+    const stored = await AosDevice.findByPk(first.device.id);
+    expect(stored.credentialCiphertext).toMatch(/^enc:/);
+    expect(stored.credentialCiphertext).not.toContain(first.credential);
+    expect(await management.getDeviceCredential(first.device.id, actor)).toMatchObject({
+      device: { id: first.device.id, credentialVersion: 1 },
+      credential: first.credential,
+    });
     expect(repeat.credential).toBeNull();
     expect(repeat.credentialDisplayed).toBe(true);
     const rotate = request(
@@ -223,7 +277,10 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
       'POST'
     );
     rotate.params.id = first.device.id;
-    await management.manageDevice('rotate', rotate);
+    const rotated = await management.manageDevice('rotate', rotate);
+    expect((await management.getDeviceCredential(first.device.id, actor)).credential).toBe(
+      rotated.credential
+    );
     await expect(repo.authenticateDevice(`Bearer ${first.credential}`)).rejects.toMatchObject({
       code: 'DEVICE_UNAUTHORIZED',
     });
@@ -265,6 +322,16 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
       const ordinary = await login(staff.username, 'synthetic-staff-password');
       expect((await call('/management/settings', `Bearer ${admin.token}`)).status).toBe(200);
       expect((await call('/management/settings', `Bearer ${ordinary.token}`)).status).toBe(403);
+      const credentialResponse = await call(
+        `/management/devices/${device.id}/credential`,
+        `Bearer ${admin.token}`
+      );
+      expect(credentialResponse.status).toBe(200);
+      expect((await credentialResponse.json()).data.credential).toBe(auth.slice('Bearer '.length));
+      expect(
+        (await call(`/management/devices/${device.id}/credential`, `Bearer ${ordinary.token}`))
+          .status
+      ).toBe(403);
       expect((await call('/management/settings', auth)).status).toBe(401);
       expect((await call('/collector/context', `Bearer ${admin.token}`)).status).toBe(401);
       const credential = repo.createCredential();
@@ -478,6 +545,15 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
       email: 'contact@example.com',
       idCardNumber: '110101199001011235',
       tag: '第二档案',
+    });
+    expect((await ingest()).recipientRef).toBe(first.id);
+    await models.Recipient.create({
+      lastName: '测试',
+      firstName: '用户',
+      phone: '13800000000',
+      email: 'contact@example.com',
+      idCardNumber: '110101199002021234',
+      tag: '同尾四位档案',
     });
     expect((await ingest()).recipientRef).toBeNull();
   });

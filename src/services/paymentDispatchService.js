@@ -723,8 +723,9 @@ async function listDispatchTasks(query = {}) {
         { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
       ],
       order: [
-        ['deadlineAt', 'ASC'],
-        ['id', 'ASC'],
+        [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
+        [Sequelize.literal('"order"."order_date"'), 'DESC'],
+        ['id', 'DESC'],
       ],
       distinct: true,
       limit,
@@ -758,7 +759,7 @@ function normalizeTaskIds(taskIds) {
  * 为管理员选中的付款任务提交官网刷新队列。
  * @param {number[]} taskIds - 付款任务 ID
  * @param {number} actorUserId - 管理员 ID
- * @returns {Promise<Object>} 入队汇总
+ * @returns {Promise<Object>} 批量入队汇总
  */
 async function refreshTasks(taskIds, actorUserId) {
   const normalizedIds = normalizeTaskIds(taskIds);
@@ -778,10 +779,20 @@ async function refreshTasks(taskIds, actorUserId) {
  * 为单个付款任务提交官网刷新队列。
  * @param {number} taskId - 付款任务 ID
  * @param {number} actorUserId - 管理员 ID
- * @returns {Promise<Object>} 入队汇总
+ * @returns {Promise<Object>} 单项入队结果
  */
 async function refreshTask(taskId, actorUserId) {
-  return await refreshTasks([taskId], actorUserId);
+  const summary = await refreshTasks([taskId], actorUserId);
+  const result = summary.results[0];
+  if (!result?.jobId) throw ApiError.notFound('关联订单不存在');
+  const job = await refreshJobService.getJob(result.jobId);
+  if (!job) throw ApiError.notFound('刷新任务不存在');
+  return {
+    jobId: job.id,
+    status: job.status,
+    created: result.created,
+    merged: !result.created,
+  };
 }
 
 /**
