@@ -83,8 +83,8 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         status: 'pending',
         paymentStatus: 'unpaid',
         orderUrl: `https://www.apple.com.cn/xc/cn/vieworder/W${String(index + 1).padStart(10, '0')}/synthetic-${index}`,
-        orderDate: new Date(now),
-        officialOrderCreatedAt: new Date(now),
+        orderDate: new Date(now + index * 1000),
+        officialOrderCreatedAt: new Date(now + index * 1000),
         createdAt: new Date(now),
         updatedAt: new Date(now),
       })),
@@ -116,14 +116,17 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
 
   test('付款队列分页覆盖全部 150 单，组合筛选先于分页且保留下单时间', async () => {
     const pages = [];
+    const orderTimes = [];
     for (let page = 1; page <= 8; page += 1) {
       const result = await dispatchService.listDispatchTasks({ page, limit: 20 });
       expect(result.pagination).toEqual({ page, limit: 20, total: 150, totalPages: 8 });
       expect(result.items).toHaveLength(page === 8 ? 10 : 20);
       expect(result.items.every(item => item.officialOrderCreatedAt && item.orderDate)).toBe(true);
       pages.push(...result.items.map(item => item.id));
+      orderTimes.push(...result.items.map(item => new Date(item.orderDate).getTime()));
     }
     expect(new Set(pages).size).toBe(150);
+    expect(orderTimes).toEqual([...orderTimes].sort((left, right) => right - left));
     const filter = { productKeyword: 'MODEL-1', processingStatus: 'pending' };
     const first = await dispatchService.listDispatchTasks({ ...filter, page: 1, limit: 20 });
     const second = await dispatchService.listDispatchTasks({ ...filter, page: 2, limit: 20 });
@@ -170,6 +173,8 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         item => item.assignee.id === staffOne.id && item.officialOrderCreatedAt && item.orderDate
       )
     ).toBe(true);
+    const ownTimes = own.items.map(item => new Date(item.orderDate).getTime());
+    expect(ownTimes).toEqual([...ownTimes].sort((left, right) => right - left));
   });
 
   test('批量分配在同一事务校验并更新全部选中任务', async () => {

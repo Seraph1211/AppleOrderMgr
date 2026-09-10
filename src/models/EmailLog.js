@@ -18,6 +18,8 @@ module.exports = sequelize => {
   const EmailLog = sequelize.define(
     'EmailLog',
     {
+      ingestionEligibleAt: { type: DataTypes.DATE, field: 'ingestion_eligible_at' },
+      ingestionPauseReason: { type: DataTypes.STRING(30), field: 'ingestion_pause_reason' },
       id: {
         type: DataTypes.INTEGER,
         primaryKey: true,

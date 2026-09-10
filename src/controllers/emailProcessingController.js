@@ -32,6 +32,7 @@ function serializeRecord(record, includeDetails = false) {
   const result = {
     id: plain.id,
     status: plain.status,
+    ingestion_pause_reason: plain.ingestionPauseReason || null,
     received_at: plain.receivedAt,
     email_subject: plain.emailSubject,
     email_from: plain.emailFrom,

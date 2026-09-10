@@ -8,12 +8,24 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
   const emailProcessingService = require('../src/services/emailProcessingService');
   const { EMAIL_ERROR_CODES } = require('../src/services/emailErrors');
   const { saveOrderFromEmail } = require('../src/services/orderService');
-  const { buildHtmlBody, buildMime } = require('./fixtures/emailMessages');
+  const { buildHtmlBody: buildHistoricalHtmlBody, buildMime } = require('./fixtures/emailMessages');
+  const repo = require('../src/services/ingestionRepository');
+  const buildHtmlBody = options =>
+    buildHistoricalHtmlBody(options).replace('2025/10/8', repo.businessDate().replace(/-/g, '/'));
   const { sequelize, EmailLog, EmailWorkerState, Order, OrderRefreshSchedule, OrderRefreshJob } =
     models;
   const orderNumbers = ['W9700000001', 'W9700000002', 'W9700000003', 'W9700000004'];
 
   async function cleanSyntheticRows() {
+    if (!/(^test_|_test_|_integration$)/.test(sequelize.config.database))
+      throw new Error('必须使用专用测试库');
+    const orders = await Order.findAll({
+      where: { orderNumber: { [Op.in]: orderNumbers } },
+      attributes: ['id'],
+    });
+    await models.OrderSource.destroy({
+      where: { orderId: { [Op.in]: orders.map(order => order.id) } },
+    });
     await EmailLog.destroy({ where: { emailUid: { [Op.like]: 'it-email-%' } }, force: true });
     await Order.destroy({ where: { orderNumber: { [Op.in]: orderNumbers } }, force: true });
     await EmailWorkerState.destroy({ where: { id: 1 }, force: true });
@@ -25,7 +37,7 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
       applePassword: 'integration-only-password',
       orderNumber,
       orderUrl: `https://www.apple.com.cn/xc/cn/vieworder/${orderNumber}/integration`,
-      orderDate: new Date('2026-09-07T02:00:00.000Z'),
+      orderDate: new Date(`${repo.businessDate()}T02:00:00.000Z`),
       products: [{ model: 'TEST/CH', name: '集成测试商品', quantity: 1, image: null }],
       recipient: {
         name: '测试员',
@@ -50,6 +62,7 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
       status: 'manual_review',
       rawContent: Buffer.from('integration mime').toString('base64'),
       orderNumber,
+      parsedData: orderNumber ? validOrderData(orderNumber) : null,
       receivedAt: new Date(),
       retentionExpiresAt: new Date(Date.now() + 180 * 24 * 60 * 60 * 1000),
       imapAckStatus: 'pending',
@@ -59,6 +72,8 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
   beforeAll(async () => {
     await sequelize.authenticate();
     await cleanSyntheticRows();
+    await models.IngestionSetting.update({ activeSource: 'email' }, { where: { id: 1 } });
+    await models.PaymentDispatchSetting.update({ enabled: false }, { where: { id: 1 } });
   });
 
   afterAll(async () => {
@@ -221,6 +236,7 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
   test('人工草稿支持完整敏感字段、乐观锁、入库和操作审计', async () => {
     const record = await createProcessableLog('it-email-manual-1', orderNumbers[2]);
     const draft = validOrderData(orderNumbers[2]);
+    draft.orderDate = draft.orderDate.toISOString();
     const saved = await emailProcessingService.saveManualDraft(record, draft, record.version);
     expect(saved.manualDraft.applePassword).toBe('integration-only-password');
     expect(saved.manualDraft.recipient.idCard).toBe('110101199001011234');

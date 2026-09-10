@@ -723,8 +723,9 @@ async function listDispatchTasks(query = {}) {
         { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
       ],
       order: [
-        ['deadlineAt', 'ASC'],
-        ['id', 'ASC'],
+        [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
+        [Sequelize.literal('"order"."order_date"'), 'DESC'],
+        ['id', 'DESC'],
       ],
       distinct: true,
       limit,

@@ -69,11 +69,24 @@ function serializeOrderListItem(
   return {
     id: plain.id,
     order_number: plain.orderNumber,
+    ingestion_source: plain.ingestionSource || 'unknown',
+    source_recipient_tag: plain.sourceRecipientTag || null,
+    recipient_profile_tag: plain.recipient?.tag || null,
+    recipient_linked: Boolean(plain.recipientRef),
+    recipient_tag_conflict: Boolean(
+      plain.ingestionSource === 'aos' &&
+      plain.recipient?.tag &&
+      plain.sourceRecipientTag &&
+      plain.recipient.tag !== plain.sourceRecipientTag
+    ),
     apple_id: plain.appleAccount?.appleId || plain.appleId || null,
     recipient_name: plain.recipient
       ? `${plain.recipient.lastName || ''}${plain.recipient.firstName || ''}` || plain.recipientName
       : plain.recipientName || null,
-    recipient_tag: plain.recipient?.tag || plain.tag || null,
+    recipient_tag:
+      plain.ingestionSource === 'aos'
+        ? plain.sourceRecipientTag || plain.recipient?.tag || plain.tag || null
+        : plain.recipient?.tag || plain.tag || null,
     products: serializePublicProducts(plain.products),
     ...serializeOfficialFields(plain),
     status: plain.status,
@@ -161,9 +174,22 @@ function serializeOrderDetail(
   return {
     id: plain.id,
     order_number: plain.orderNumber,
+    ingestion_source: plain.ingestionSource || 'unknown',
+    source_recipient_tag: plain.sourceRecipientTag || null,
+    recipient_profile_tag: plain.recipient?.tag || null,
+    recipient_linked: Boolean(plain.recipientRef),
+    recipient_tag_conflict: Boolean(
+      plain.ingestionSource === 'aos' &&
+      plain.recipient?.tag &&
+      plain.sourceRecipientTag &&
+      plain.recipient.tag !== plain.sourceRecipientTag
+    ),
     apple_id: appleId,
     recipient,
-    recipient_tag: plain.recipient?.tag || plain.tag || null,
+    recipient_tag:
+      plain.ingestionSource === 'aos'
+        ? plain.sourceRecipientTag || plain.recipient?.tag || plain.tag || null
+        : plain.recipient?.tag || plain.tag || null,
     products: serializePublicProducts(plain.products),
     ...serializeOfficialFields(plain),
     status: plain.status,
@@ -185,6 +211,7 @@ function serializeOrderDetail(
     payer_version: plain.payerVersion,
     payment_screenshot: plain.paymentScreenshot,
     pickup_store: plain.pickupStore,
+    pickup_store_code: plain.pickupStoreCode,
     pickup_code: plain.pickupCode,
     order_date: plain.orderDate,
     order_placed_date: plain.orderPlacedDate,

@@ -16,6 +16,7 @@ import OperationLogs from './pages/OperationLogs';
 import ChangePassword from './pages/ChangePassword';
 import SystemLogs from './pages/SystemLogs';
 import EmailProcessing from './pages/EmailProcessing';
+import OrderIngestion from './pages/OrderIngestion';
 import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
 import IdentityVerifications from './pages/IdentityVerifications';
@@ -39,7 +40,14 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Routes>
-                  <Route path="/identity-verifications" element={permissionRoute(PERMISSIONS.IDENTITY_READ, <IdentityVerifications />)} />
+                  <Route
+                    path="/identity-verifications"
+                    element={permissionRoute(PERMISSIONS.IDENTITY_READ, <IdentityVerifications />)}
+                  />
+                  <Route
+                    path="/order-ingestion"
+                    element={permissionRoute(PERMISSIONS.INGESTION_READ, <OrderIngestion />)}
+                  />
                   <Route path="/profile" element={<Profile />} />
                   <Route
                     path="/operation-logs"

@@ -17,6 +17,16 @@ module.exports = sequelize => {
   const Order = sequelize.define(
     'Order',
     {
+      ingestionSource: {
+        type: DataTypes.STRING(10),
+        allowNull: false,
+        defaultValue: 'unknown',
+        field: 'ingestion_source',
+      },
+      sourceRecipientTag: { type: DataTypes.STRING(500), field: 'source_recipient_tag' },
+      sourceContactEmail: { type: DataTypes.STRING(255), field: 'source_contact_email' },
+      sourceLastName: { type: DataTypes.STRING(50), field: 'source_last_name' },
+      sourceFirstName: { type: DataTypes.STRING(50), field: 'source_first_name' },
       id: {
         type: DataTypes.INTEGER,
         primaryKey: true,

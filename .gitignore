@@ -62,3 +62,11 @@ uploads/import/*
 *.key
 *.p12
 *.pfx
+
+# Windows AOS 采集器构建输出与本机队列
+collector/**/bin/
+collector/**/obj/
+collector/artifacts/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

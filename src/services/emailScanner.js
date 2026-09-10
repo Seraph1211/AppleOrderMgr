@@ -191,9 +191,14 @@ function createEmailScanner(options) {
       await promiseOperation(session, 'scan_state', () =>
         updateState({ lastScanStartedAt: startedAt })
       );
-      const lowerBound = session.cursor.lastUid === null ? 1 : session.cursor.lastUid + 1;
-      const criteria =
-        session.cursor.lastUid === null
+      const backfill = options.loadBackfill
+        ? await promiseOperation(session, 'backfill_state', () => options.loadBackfill())
+        : null;
+      const lowerBound =
+        backfill || session.cursor.lastUid === null ? 1 : session.cursor.lastUid + 1;
+      const criteria = backfill
+        ? [['SINCE', new Date(Date.parse(backfill.from) - 86400000)]]
+        : session.cursor.lastUid === null
           ? [['SINCE', new Date(session.cursor.bootstrapSince)]]
           : [['UID', `${Math.min(lowerBound, MAX_UID)}:*`]];
       const matches = await operation(session, 'search', done =>
@@ -215,15 +220,25 @@ function createEmailScanner(options) {
         const messages = await fetchBatch(session, batch);
         for (const message of messages) {
           const received = await promiseOperation(session, 'persist', () =>
-            options.receive(message, session.identity)
+            options.receive(
+              message,
+              session.identity,
+              backfill ? { backfillId: backfill.id } : undefined
+            )
           );
           if (received?.created) receivedCount += 1;
         }
-        await promiseOperation(session, 'checkpoint', () =>
-          options.advanceCursor(session.identity, batch[batch.length - 1])
-        );
-        session.cursor.lastUid = batch[batch.length - 1];
+        if (!backfill) {
+          await promiseOperation(session, 'checkpoint', () =>
+            options.advanceCursor(session.identity, batch[batch.length - 1])
+          );
+          session.cursor.lastUid = batch[batch.length - 1];
+        }
       }
+      if (backfill)
+        await promiseOperation(session, 'backfill_complete', () =>
+          options.completeBackfill(backfill.id)
+        );
       await promiseOperation(session, 'scan_state', () =>
         updateState({
           lastScanSucceededAt: new Date(),

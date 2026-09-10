@@ -247,6 +247,11 @@ export default function Orders() {
         const mappedOrders = res.data.orders.map(order => ({
           id: order.id,
           orderNumber: order.order_number,
+          ingestionSource: order.ingestion_source,
+          sourceRecipientTag: order.source_recipient_tag,
+          recipientProfileTag: order.recipient_profile_tag,
+          recipientTagConflict: order.recipient_tag_conflict,
+          recipientLinked: order.recipient_linked,
           status: order.status,
           officialRawStatus: order.official_raw_status,
           officialStatusObservedAt: order.official_status_observed_at,
@@ -438,7 +443,32 @@ export default function Orders() {
       case 'pickupStatus':
         return <span className="text-sm">{PICKUP_STATUS_LABELS[value] || '-'}</span>;
       case 'orderNumber':
-        return <span className="font-mono text-sm text-primary">{value}</span>;
+        return (
+          <div>
+            <span className="font-mono text-sm text-primary">{value}</span>
+            <p className="mt-1 text-xs text-gray-500">
+              {order.ingestionSource === 'aos'
+                ? 'AOS 文件'
+                : order.ingestionSource === 'email'
+                  ? '邮件'
+                  : '来源未知'}
+            </p>
+          </div>
+        );
+      case 'recipientTag':
+        return (
+          <div className="text-sm">
+            <span>{value}</span>
+            {order.recipientTagConflict && (
+              <p className="mt-1 text-xs text-amber-700">
+                与档案 TAG 不同：{order.recipientProfileTag}
+              </p>
+            )}
+            {order.ingestionSource === 'aos' && !order.recipientLinked && (
+              <p className="mt-1 text-xs text-amber-700">取机人待关联</p>
+            )}
+          </div>
+        );
 
       case 'status': {
         const badge = getStatusBadge(value);

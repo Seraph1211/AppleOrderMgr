@@ -25,3 +25,8 @@ ecosystem.config.js
 nginx-*.conf
 Dockerfile.dev*
 docker-compose*.yml
+
+# Windows 采集器构建产物不进入后端镜像
+collector/artifacts/
+collector/**/bin/
+collector/**/obj/

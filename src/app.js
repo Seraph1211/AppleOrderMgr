@@ -38,6 +38,7 @@ const emailService = require('./services/emailService');
 const refreshWorkerService = require('./services/crawler/refreshWorkerService');
 const paymentDispatchScheduler = require('./services/paymentDispatchScheduler');
 const identityVerificationRunner = require('./services/identityVerificationRunner');
+const ingestionScheduler = require('./services/ingestionScheduler');
 
 const DEFAULT_PORT = parseInt(process.env.PORT, 10) || 3000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3001';
@@ -62,6 +63,7 @@ validateEncryptionConfiguration();
 
 // ---------- 基础中间件 ----------
 app.disable('x-powered-by');
+app.use('/api/aos-collector/v1', requestLogger(), require('./routes/aosCollector'));
 
 // 允许较大的请求体（支持上传 base64 图片，最多 10MB）
 app.use(express.json({ limit: '10mb' }));
@@ -114,6 +116,7 @@ app.use('/api/recipients', recipientsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/order-refresh', orderRefreshRouter);
 app.use('/api/email-processing', emailProcessingRouter);
+app.use('/api/order-ingestion', require('./routes/orderIngestion'));
 app.use('/api/stats', statsRouter);
 app.use('/api/import', importRouter);
 app.use('/api/dashboard', dashboardRouter);
@@ -148,6 +151,7 @@ const server = app.listen(DEFAULT_PORT, () => {
 
   paymentDispatchScheduler.start();
   identityVerificationRunner.start();
+  ingestionScheduler.start();
 
   if (process.env.RUN_WORKERS_IN_API === 'true') {
     try {
@@ -170,6 +174,7 @@ function shutdown(signal) {
   const crawlerStopped = refreshWorkerService.stop();
   paymentDispatchScheduler.stop();
   const identityStopped = identityVerificationRunner.stop();
+  const ingestionStopped = ingestionScheduler.stop();
 
   server.close(async err => {
     if (err) {
@@ -180,6 +185,7 @@ function shutdown(signal) {
     try {
       await crawlerStopped;
       await identityStopped;
+      await ingestionStopped;
       await emailService.stopEmailService();
       await sequelize.close();
       logger.info('数据库连接已关闭');

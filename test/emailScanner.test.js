@@ -319,7 +319,10 @@ describe('邮件 UID 扫描与连接恢复', () => {
       Promise.resolve().then(() => fetch.emit('error', new Error('synthetic fetch failure')));
       return fetch;
     };
-    scanner.start(); await flush(); await flush(); await flush();
+    scanner.start();
+    await flush();
+    await flush();
+    await flush();
     expect(connections[0].fetch.mock.calls.map(call => call[0].length)).toEqual([20, 1]);
     expect(options.advanceCursor).toHaveBeenCalledTimes(1);
     expect(options.advanceCursor).toHaveBeenCalledWith(expect.any(Object), 20);
@@ -331,33 +334,47 @@ describe('邮件 UID 扫描与连接恢复', () => {
     fetchAction = () => {
       const fetch = new EventEmitter();
       Promise.resolve().then(() => {
-        const msg = new EventEmitter(); const stream = new EventEmitter();
-        fetch.emit('message', msg, 1); msg.emit('body', stream);
+        const msg = new EventEmitter();
+        const stream = new EventEmitter();
+        fetch.emit('message', msg, 1);
+        msg.emit('body', stream);
         stream.emit('error', new Error('synthetic body failure'));
       });
       return fetch;
     };
-    scanner.start(); await flush();
+    scanner.start();
+    await flush();
     expect(options.receive).not.toHaveBeenCalled();
     expect(scanner.getStatus().isConnected).toBe(false);
   });
 
   test('UIDVALIDITY 缺失时关闭连接，不能使用 unknown 游标', async () => {
-    validity = 0; scanner.start(); await flush();
+    validity = 0;
+    scanner.start();
+    await flush();
     expect(options.loadCursor).not.toHaveBeenCalled();
     expect(scanner.getStatus().isConnected).toBe(false);
   });
 
   test('打开的邮箱代际变化时立即断线，旧已读确认失效', async () => {
-    scanner.start(); await flush();
-    connections[0].emit('uidvalidity', 2); await flush();
+    scanner.start();
+    await flush();
+    connections[0].emit('uidvalidity', 2);
+    await flush();
     expect(scanner.getStatus().isConnected).toBe(false);
-    await expect(scanner.addSeenFlag({ emailUid: 1, uidValidity: '1', mailboxIdentityHash: options.mailboxIdentityHash })).rejects.toThrow();
+    await expect(
+      scanner.addSeenFlag({
+        emailUid: 1,
+        uidValidity: '1',
+        mailboxIdentityHash: options.mailboxIdentityHash,
+      })
+    ).rejects.toThrow();
   });
 
   test('异常 UID 搜索响应不用于抓取或推进', async () => {
     searchAction = (_criteria, done) => done(null, ['not-a-uid']);
-    scanner.start(); await flush();
+    scanner.start();
+    await flush();
     expect(connections[0].fetch).not.toHaveBeenCalled();
     expect(scanner.getStatus().isConnected).toBe(false);
   });
@@ -374,5 +391,39 @@ describe('邮件 UID 扫描与连接恢复', () => {
       expect.objectContaining({ reason: 'server_autologout' })
     );
     expect(JSON.stringify(logger.warn.mock.calls)).not.toMatch(/secret-fixture|private@example/);
+  });
+  test('来源切回回查已读旧 UID，正常增量游标不倒退', async () => {
+    mail.push({ uid: 10, seen: true });
+    scanner.start();
+    await flush();
+    expect(options.advanceCursor).toHaveBeenCalled();
+    const before = options.advanceCursor.mock.calls.length;
+    options.loadBackfill = jest
+      .fn()
+      .mockResolvedValue({ id: 'synthetic-backfill', from: '2026-09-09T16:00:00.000Z' });
+    options.completeBackfill = jest.fn().mockResolvedValue(undefined);
+    connections[0].emit('mail', 1);
+    await flush();
+    expect(options.receive).toHaveBeenLastCalledWith(
+      expect.objectContaining({ emailUid: 10 }),
+      expect.any(Object),
+      { backfillId: 'synthetic-backfill' }
+    );
+    expect(options.advanceCursor.mock.calls.length).toBe(before);
+    expect(options.completeBackfill).toHaveBeenCalledWith('synthetic-backfill');
+    expect(connections[0].search.mock.calls.at(-1)[0][0][0]).toBe('SINCE');
+  });
+
+  test('补录接收失败不确认扫描完成，重连仍可恢复任务', async () => {
+    options.loadBackfill = jest
+      .fn()
+      .mockResolvedValue({ id: 'synthetic-backfill', from: '2026-09-09T16:00:00.000Z' });
+    options.completeBackfill = jest.fn().mockResolvedValue(undefined);
+    options.receive.mockRejectedValueOnce(new Error('synthetic-database-failure'));
+    mail.push({ uid: 3, seen: true });
+    scanner.start();
+    await flush();
+    expect(options.completeBackfill).not.toHaveBeenCalled();
+    expect(persisted.has('1:3')).toBe(false);
   });
 });
