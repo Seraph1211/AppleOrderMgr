@@ -1,3 +1,4 @@
+import PaymentTagRulesModal from '../components/PaymentTagRulesModal';
 import { formatOrderTime } from '../utils/orderTime';
 import { getRefreshJob } from '../api/ordersApi';
 import Pagination from '../components/Pagination';
@@ -130,6 +131,7 @@ export default function PaymentDispatch() {
   const [staffDrafts, setStaffDrafts] = useState({});
   const [staffRows, setStaffRows] = useState([]);
   const [staffModalOpen, setStaffModalOpen] = useState(false);
+  const [tagRulesOpen, setTagRulesOpen] = useState(false);
   const [staffError, setStaffError] = useState('');
   const [filterDrafts, setFilterDrafts] = useState(INITIAL_FILTERS);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
@@ -463,6 +465,15 @@ export default function PaymentDispatch() {
                 {busyAction === 'save-settings' ? '保存中...' : '保存设置'}
               </button>
             )}
+            {can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE) && (
+              <button
+                className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
+                disabled={Boolean(busyAction)}
+                onClick={() => setTagRulesOpen(true)}
+              >
+                TAG 分配规则
+              </button>
+            )}
             {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
               <button
                 className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
@@ -735,7 +746,21 @@ export default function PaymentDispatch() {
                           {STATUS_LABELS[task.processingStatus] || task.processingStatus || '未知'}
                         </span>
                       </td>
-                      <td className="px-4 py-3">{task.assignee?.username || '未分配'}</td>
+                      <td className="px-4 py-3">
+                        {task.assignee?.username || '未分配'}
+                        {task.autoAssignment && (
+                          <div className="text-xs mt-1 max-w-52 space-y-1">
+                            {task.autoAssignment.ruleName && (
+                              <p className="text-primary break-words">
+                                规则：{task.autoAssignment.ruleName}
+                              </p>
+                            )}
+                            <p className="text-gray-500 break-words">
+                              {task.autoAssignment.reason}
+                            </p>
+                          </div>
+                        )}
+                      </td>
                       <td className={`px-4 py-3 ${countdown.className}`}>{countdown.text}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {formatDateTime(task.lastCrawledAt)}
@@ -839,6 +864,10 @@ export default function PaymentDispatch() {
           }}
           pageSizeOptions={[10, 20, 50, 100]}
         />
+      )}
+
+      {tagRulesOpen && (
+        <PaymentTagRulesModal onClose={() => setTagRulesOpen(false)} onSaved={() => load(true)} />
       )}
 
       {staffModalOpen && (

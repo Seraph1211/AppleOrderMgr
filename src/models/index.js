@@ -53,6 +53,7 @@ const models = {
   OrderPayerEvent: require('./OrderPayerEvent')(sequelize),
   PaymentDispatchSetting: require('./PaymentDispatchSetting')(sequelize),
   PaymentStaffSetting: require('./PaymentStaffSetting')(sequelize),
+  PaymentTagRule: require('./PaymentTagRule')(sequelize),
   PaymentDispatchEvent: require('./PaymentDispatchEvent')(sequelize),
 };
 

@@ -8,10 +8,13 @@ const {
   PaymentTaskEvent,
   PaymentDispatchSetting,
   PaymentStaffSetting,
+  PaymentTagRule,
   PaymentDispatchEvent,
   Order,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
+const { buildRuleIndex, matchRule } = require('./paymentTagRuleService');
+const { describeAutoAssignment, selectCandidate } = require('./paymentAssignmentPolicy');
 const { getOfficialDeadline, isPaymentBlocked } = require('./crawler/officialOrderData');
 const { ORDER_STATUSES } = require('../constants/business');
 const { PAYMENT_EXECUTION_PERMISSIONS } = require('../constants/permissionCatalog');
@@ -708,7 +711,7 @@ async function listDispatchTasks(query = {}) {
     if (!Number.isInteger(limit) || limit <= 0 || limit > 200) {
       throw ApiError.badRequest('limit 必须是 1-200 之间的整数');
     }
-    const [{ count, rows }, recipientTagOptions] = await Promise.all([
+    const [{ count, rows }, recipientTagOptions, rules, overview] = await Promise.all([
       PaymentTask.findAndCountAll({
         where,
         include: [
@@ -752,10 +755,21 @@ async function listDispatchTasks(query = {}) {
         offset: (page - 1) * limit,
       }),
       listRecipientTagOptions(where, optionOrderWhere),
+      PaymentTagRule.findAll({ where: { enabled: true } }),
+      getDispatchOverview(),
     ]);
     const serverTime = new Date();
+    const ruleIndex = buildRuleIndex(rules);
     return {
-      items: rows.map(task => serializeTask(task, serverTime)),
+      items: rows.map(task => ({
+        ...serializeTask(task, serverTime),
+        autoAssignment: describeAutoAssignment(
+          task,
+          matchRule(task.order, ruleIndex),
+          overview,
+          serverTime
+        ),
+      })),
       recipientTagOptions,
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
       serverTime,
@@ -824,62 +838,26 @@ async function refreshTask(taskId, actorUserId) {
  * @returns {Promise<Object>} 扫描结果
  */
 async function runDispatchScan(limit = 500) {
-  return await sequelize.transaction(async transaction => {
-    await lockDispatch(transaction);
-    const settings = await getOrCreateSettings(transaction);
-    await settings.reload({ transaction, lock: transaction.LOCK.UPDATE });
-    if (!settings.enabled) return { enrolled: 0, assigned: 0, skipped: 'disabled' };
-    const orders = await Order.findAll({
-      where: {
-        createdAt: { [Op.gte]: settings.scopeStartedAt },
-        '$paymentTask.id$': null,
-      },
-      attributes: [
-        'id',
-        'createdAt',
-        'status',
-        'paymentStatus',
-        'orderUrl',
-        'orderDate',
-        'officialOrderCreatedAt',
-        'officialPaymentExpiresAt',
-        'officialStatusNeedsReview',
-        'officialAllItemsTerminal',
-        'validationIssues',
-      ],
-      include: [{ model: PaymentTask, as: 'paymentTask', required: false, attributes: ['id'] }],
-      order: [['id', 'ASC']],
-      limit,
-      subQuery: false,
-      transaction,
-    });
-    let enrolled = 0;
-    for (const order of orders) {
-      if (!order.paymentTask && !isOrderExcluded(order)) {
-        await enrollOrderInTransaction(order, transaction);
-        enrolled += 1;
-      }
-    }
-    if (settings.mode !== 'auto') {
-      settings.lastScanAt = new Date();
-      await settings.save({ transaction });
-      return { enrolled, assigned: 0, skipped: 'manual_mode' };
-    }
-
-    const tasks = await PaymentTask.findAll({
-      where: {
-        assigneeUserId: null,
-        processingStatus: 'pending',
-        deadlineAt: { [Op.gt]: new Date() },
-        paymentLinkSource: 'order_url',
-      },
-      include: [
-        {
-          model: Order,
-          as: 'order',
+  try {
+    if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
+      throw ApiError.badRequest('扫描批次大小必须是 1–1000 的整数');
+    return await sequelize.transaction(async transaction => {
+      try {
+        await lockDispatch(transaction);
+        const settings = await getOrCreateSettings(transaction);
+        await settings.reload({ transaction, lock: transaction.LOCK.UPDATE });
+        if (!settings.enabled) return { enrolled: 0, assigned: 0, skipped: 'disabled' };
+        const orders = await Order.findAll({
+          where: {
+            createdAt: { [Op.gte]: settings.scopeStartedAt },
+            '$paymentTask.id$': null,
+          },
           attributes: [
+            'id',
+            'createdAt',
             'status',
             'paymentStatus',
+            'orderUrl',
             'orderDate',
             'officialOrderCreatedAt',
             'officialPaymentExpiresAt',
@@ -887,102 +865,179 @@ async function runDispatchScan(limit = 500) {
             'officialAllItemsTerminal',
             'validationIssues',
           ],
-          where: {
-            [Op.or]: [
-              { officialPaymentExpiresAt: { [Op.ne]: null } },
-              { officialOrderCreatedAt: { [Op.ne]: null } },
-            ],
-          },
-        },
-      ],
-      order: [
-        ['deadlineAt', 'ASC'],
-        ['id', 'ASC'],
-      ],
-      limit,
-      transaction,
-      lock: { level: transaction.LOCK.UPDATE, of: PaymentTask },
-      skipLocked: true,
-    });
-    const staff = await PaymentStaffSetting.findAll({
-      where: { autoAssignEnabled: true, maxActiveTasks: { [Op.gt]: 0 } },
-      include: [
-        {
-          model: User,
-          as: 'user',
-          required: true,
-          where: { status: 'active' },
+          include: [{ model: PaymentTask, as: 'paymentTask', required: false, attributes: ['id'] }],
+          order: [['id', 'ASC']],
+          limit,
+          subQuery: false,
+          transaction,
+        });
+        let enrolled = 0;
+        for (const order of orders) {
+          if (!order.paymentTask && !isOrderExcluded(order)) {
+            await enrollOrderInTransaction(order, transaction);
+            enrolled += 1;
+          }
+        }
+        if (settings.mode !== 'auto') {
+          settings.lastScanAt = new Date();
+          await settings.save({ transaction });
+          return { enrolled, assigned: 0, skipped: 'manual_mode' };
+        }
+
+        const staff = await PaymentStaffSetting.findAll({
+          where: { autoAssignEnabled: true, maxActiveTasks: { [Op.gt]: 0 } },
           include: [
-            { model: UserPermission, as: 'permissionGrants', attributes: ['permissionCode'] },
+            {
+              model: User,
+              as: 'user',
+              required: true,
+              where: { status: 'active' },
+              include: [
+                { model: UserPermission, as: 'permissionGrants', attributes: ['permissionCode'] },
+              ],
+            },
           ],
-        },
-      ],
-      transaction,
-      lock: { level: transaction.LOCK.UPDATE, of: PaymentStaffSetting },
-    });
-    const activeCounts = await PaymentTask.findAll({
-      where: {
-        assigneeUserId: { [Op.in]: staff.map(row => row.userId) },
-        processingStatus: { [Op.in]: ACTIVE_PAYMENT_TASK_STATUSES },
-      },
-      attributes: ['assigneeUserId', [fn('COUNT', col('id')), 'activeCount']],
-      group: ['assigneeUserId'],
-      raw: true,
-      transaction,
-    });
-    const counts = new Map(
-      activeCounts.map(row => [Number(row.assigneeUserId), Number(row.activeCount)])
-    );
-    const candidates = staff
-      .filter(
-        row =>
-          row.user.role === 'admin' ||
-          PAYMENT_EXECUTION_PERMISSIONS.every(code =>
-            row.user.permissionGrants.some(grant => grant.permissionCode === code)
+          transaction,
+          lock: { level: transaction.LOCK.UPDATE, of: PaymentStaffSetting },
+        });
+        const activeCounts = await PaymentTask.findAll({
+          where: {
+            assigneeUserId: { [Op.in]: staff.map(row => row.userId) },
+            processingStatus: { [Op.in]: ACTIVE_PAYMENT_TASK_STATUSES },
+          },
+          attributes: ['assigneeUserId', [fn('COUNT', col('id')), 'activeCount']],
+          group: ['assigneeUserId'],
+          raw: true,
+          transaction,
+        });
+        const counts = new Map(
+          activeCounts.map(row => [Number(row.assigneeUserId), Number(row.activeCount)])
+        );
+        const candidates = staff
+          .filter(
+            row =>
+              row.user.role === 'admin' ||
+              PAYMENT_EXECUTION_PERMISSIONS.every(code =>
+                row.user.permissionGrants.some(grant => grant.permissionCode === code)
+              )
           )
-      )
-      .map(row => ({ setting: row, activeCount: counts.get(row.userId) || 0 }));
-    let assigned = 0;
-    for (const task of tasks) {
-      const currentDeadline = getOfficialDeadline(task.order);
-      if (isOrderExcluded(task.order) || !currentDeadline || currentDeadline <= new Date())
-        continue;
-      candidates.sort((a, b) => {
-        const ratioDifference =
-          a.activeCount / a.setting.maxActiveTasks - b.activeCount / b.setting.maxActiveTasks;
-        if (ratioDifference) return ratioDifference;
-        const aTime = a.setting.lastAssignedAt ? new Date(a.setting.lastAssignedAt).getTime() : 0;
-        const bTime = b.setting.lastAssignedAt ? new Date(b.setting.lastAssignedAt).getTime() : 0;
-        return aTime - bTime || a.setting.userId - b.setting.userId;
-      });
-      const candidate = candidates.find(row => row.activeCount < row.setting.maxActiveTasks);
-      if (!candidate) break;
-      const now = new Date();
-      task.assigneeUserId = candidate.setting.userId;
-      task.assignedAt = now;
-      task.version += 1;
-      await task.save({ transaction });
-      candidate.activeCount += 1;
-      candidate.setting.lastAssignedAt = now;
-      await candidate.setting.save({ transaction });
-      await PaymentTaskEvent.create(
-        {
-          paymentTaskId: task.id,
-          eventType: 'auto_assigned',
-          toUserId: candidate.setting.userId,
-          beforeStatus: 'pending',
-          afterStatus: 'pending',
-          details: { loadAfterAssignment: candidate.activeCount },
-        },
-        { transaction }
-      );
-      assigned += 1;
-    }
-    settings.lastScanAt = new Date();
-    settings.lastErrorCode = null;
-    await settings.save({ transaction });
-    return { enrolled, assigned, scannedTasks: tasks.length };
-  });
+          .map(row => ({ setting: row, activeCount: counts.get(row.userId) || 0 }));
+        const ruleIndex = buildRuleIndex(
+          await PaymentTagRule.findAll({ where: { enabled: true }, transaction })
+        );
+        let assigned = 0;
+        let scannedTasks = 0;
+        let cursor = null;
+        // 规则内无人可用时继续跨批次查找，避免队首等待任务阻塞其他 TAG。
+        while (candidates.some(row => row.activeCount < row.setting.maxActiveTasks)) {
+          const tasks = await PaymentTask.findAll({
+            where: {
+              assigneeUserId: null,
+              processingStatus: 'pending',
+              deadlineAt: { [Op.gt]: new Date() },
+              paymentLinkSource: 'order_url',
+              ...(cursor
+                ? {
+                  [Op.or]: [
+                    { deadlineAt: { [Op.gt]: cursor.deadlineAt } },
+                    { deadlineAt: cursor.deadlineAt, id: { [Op.gt]: cursor.id } },
+                  ],
+                }
+                : {}),
+            },
+            include: [
+              {
+                model: Order,
+                as: 'order',
+                attributes: [
+                  'ingestionSource',
+                  'sourceRecipientTag',
+                  'tag',
+                  'status',
+                  'paymentStatus',
+                  'orderDate',
+                  'officialOrderCreatedAt',
+                  'officialPaymentExpiresAt',
+                  'officialStatusNeedsReview',
+                  'officialAllItemsTerminal',
+                  'validationIssues',
+                ],
+                where: {
+                  [Op.or]: [
+                    { officialPaymentExpiresAt: { [Op.ne]: null } },
+                    { officialOrderCreatedAt: { [Op.ne]: null } },
+                  ],
+                },
+              },
+            ],
+            order: [
+              ['deadlineAt', 'ASC'],
+              ['id', 'ASC'],
+            ],
+            limit,
+            transaction,
+            lock: { level: transaction.LOCK.UPDATE, of: PaymentTask },
+            skipLocked: true,
+          });
+          if (!tasks.length) break;
+          for (const task of tasks) {
+            scannedTasks += 1;
+            const currentDeadline = getOfficialDeadline(task.order);
+            if (isOrderExcluded(task.order) || !currentDeadline || currentDeadline <= new Date())
+              continue;
+            const rule = matchRule(task.order, ruleIndex);
+            const candidate = selectCandidate(candidates, rule);
+            if (!candidate) continue;
+            const now = new Date();
+            task.assigneeUserId = candidate.setting.userId;
+            task.assignedAt = now;
+            task.version += 1;
+            await task.save({ transaction });
+            candidate.activeCount += 1;
+            candidate.setting.lastAssignedAt = now;
+            await candidate.setting.save({ transaction });
+            await PaymentTaskEvent.create(
+              {
+                paymentTaskId: task.id,
+                eventType: 'auto_assigned',
+                toUserId: candidate.setting.userId,
+                beforeStatus: 'pending',
+                afterStatus: 'pending',
+                details: {
+                  loadAfterAssignment: candidate.activeCount,
+                  tagRule: rule
+                    ? {
+                      id: rule.id,
+                      name: rule.name,
+                      version: rule.version,
+                      recipientTags: rule.recipientTags,
+                      assigneeUserIds: rule.assigneeUserIds,
+                    }
+                    : null,
+                },
+              },
+              { transaction }
+            );
+            assigned += 1;
+          }
+          const lastTask = tasks[tasks.length - 1];
+          cursor = { deadlineAt: lastTask.deadlineAt, id: lastTask.id };
+          if (tasks.length < limit) break;
+        }
+        settings.lastScanAt = new Date();
+        settings.lastErrorCode = null;
+        await settings.save({ transaction });
+        return { enrolled, assigned, scannedTasks };
+      } catch (error) {
+        logger.error('TAG 分配操作失败', { errorCode: error.code || 'TAG_RULE_FAILED' });
+        throw error;
+      }
+    });
+  } catch (error) {
+    if (!(error instanceof ApiError))
+      logger.error('自动分配付款任务失败', { errorCode: error.code || 'DISPATCH_SCAN_FAILED' });
+    throw error;
+  }
 }
 
 module.exports = {

@@ -4,7 +4,13 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 /**
  * 可搜索的 TAG 下拉多选框。
  */
-export default function TagMultiSelect({ options = [], value = [], onChange }) {
+export default function TagMultiSelect({
+  options = [],
+  value = [],
+  onChange,
+  ariaLabel = 'TAG 筛选',
+  placeholder = '全部 TAG',
+}) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
   const containerRef = useRef(null);
@@ -49,7 +55,7 @@ export default function TagMultiSelect({ options = [], value = [], onChange }) {
       <button
         type="button"
         className="input flex w-full items-center justify-between gap-2 text-left"
-        aria-label="TAG 筛选"
+        aria-label={ariaLabel}
         aria-haspopup="listbox"
         aria-expanded={open}
         onClick={() => {
@@ -59,7 +65,7 @@ export default function TagMultiSelect({ options = [], value = [], onChange }) {
       >
         <span className={value.length > 0 ? 'truncate text-gray-900' : 'text-gray-400'}>
           {value.length === 0
-            ? '全部 TAG'
+            ? placeholder
             : value.length === 1
               ? value[0]
               : `已选择 ${value.length} 个 TAG`}
@@ -81,7 +87,10 @@ export default function TagMultiSelect({ options = [], value = [], onChange }) {
                 value={keyword}
                 onChange={event => setKeyword(event.target.value)}
                 onKeyDown={event => {
-                  if (event.key === 'Escape') closeDropdown();
+                  if (event.key === 'Escape') {
+                    event.stopPropagation();
+                    closeDropdown();
+                  }
                   if (event.key === 'Enter') event.preventDefault();
                 }}
               />

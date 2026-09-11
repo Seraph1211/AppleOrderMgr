@@ -3,10 +3,31 @@ const asyncHandler = require('../utils/asyncHandler');
 const { requireRole, requirePermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
 const controller = require('../controllers/paymentDispatchController');
+const tagRules = require('../controllers/paymentTagRuleController');
 
 const router = express.Router();
 
 router.use(requireRole(['admin']));
+router.get(
+  '/tag-rules',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE),
+  asyncHandler(tagRules.list)
+);
+router.post(
+  '/tag-rules',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE),
+  asyncHandler(tagRules.create)
+);
+router.put(
+  '/tag-rules/:id',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE),
+  asyncHandler(tagRules.update)
+);
+router.delete(
+  '/tag-rules/:id',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE),
+  asyncHandler(tagRules.remove)
+);
 router.get(
   '/overview',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_READ),

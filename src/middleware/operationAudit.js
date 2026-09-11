@@ -53,6 +53,7 @@ const ACTION_LABELS = {
   notes: '备注',
   settings: '设置',
   staff: '接单人员',
+  'tag-rules': 'TAG 分配规则',
   assign: '分配任务',
   reassign: '转派任务',
   'auto-assign': '自动分配任务',

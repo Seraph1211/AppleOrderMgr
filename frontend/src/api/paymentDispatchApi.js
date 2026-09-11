@@ -26,3 +26,14 @@ export const runPaymentDispatchScan = () => client.post('/payment-dispatch/scan'
 
 export const updatePaymentStaffSettingsBatch = staff =>
   client.put('/payment-dispatch/staff', { staff });
+
+/** 查询 TAG 分配规则与 AOS TAG 候选。 */
+export const getPaymentTagRules = () => client.get('/payment-dispatch/tag-rules');
+/** 保存完整 TAG 分配规则。 */
+export const savePaymentTagRule = (id, payload) =>
+  id
+    ? client.put(`/payment-dispatch/tag-rules/${id}`, payload)
+    : client.post('/payment-dispatch/tag-rules', payload);
+/** 按版本删除 TAG 分配规则。 */
+export const deletePaymentTagRule = (id, expectedVersion) =>
+  client.delete(`/payment-dispatch/tag-rules/${id}`, { data: { expectedVersion } });

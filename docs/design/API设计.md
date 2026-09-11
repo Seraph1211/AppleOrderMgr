@@ -261,6 +261,18 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `PUT /api/payment-dispatch/staff`：管理员具备 payment_dispatch.configure，提交 `{ staff: [{ userId, maxActiveTasks, autoAssignEnabled, expectedVersion }] }`，仅提交修改行，1–1000 人且 ID 不重复。整批在同一事务及调度锁下校验版本、权限和有效账号；任一失败全部回滚。保留单人兼容入口。
 - `DELETE /api/users/:id` 改为软删除。禁止删除自己和最后一个有效管理员；有未交接任务返回 409 及任务数量，历史审计记录不再阻止删除。删除后隐藏账号、拒绝登录及旧 Token、关闭接单，保留历史引用和用户名占用。
 
+## TAG 自动分配规则（2026-09-12）
+
+以下端点均要求管理员及 `payment_dispatch.configure`，普通付款人员不能读取规则和目标账号集合。
+
+- `GET /api/payment-dispatch/tag-rules`：返回 `data: { items, tagOptions }`。规则字段为 `id, name, enabled, recipientTags, assigneeUserIds, version, updatedBy, createdAt, updatedAt`；TAG 候选取全部 AOS 来源订单的来源 TAG（缺失回退订单 tag），不限任务当前页。可手工输入尚未入库的 TAG。
+- `POST /api/payment-dispatch/tag-rules`：提交 `{ name, enabled, recipientTags, assigneeUserIds }`，返回 201 与新规则。名称去首尾空格后 1–100 字符；TAG 数组 1–100 项、每项 1–500 字符、去首尾空格及去重；账号数组 1–100 个互不重复的正整数。新增账号必须正常且具备完整付款执行权限，允许暂未开启接单／没有容量。
+- `PUT /api/payment-dispatch/tag-rules/:id`：提交完整规则字段及 `expectedVersion`（非负整数）；启停也使用此端点。允许保留该规则原有失效账号；新增账号仍按上述资格校验。
+- `DELETE /api/payment-dispatch/tag-rules/:id`：请求体 `{ expectedVersion }`，删除规则，返回 `data: { id }`。
+- 不存在返回 404；参数非法返回 400；同 TAG 在启用规则中重复返回 409 `TAG_RULE_CONFLICT`；过期版本返回 409 `CONCURRENT_MODIFICATION`。增改删与分配共用事务调度锁并原子记录审计。停用规则允许 TAG 重叠，重新启用必须检查。
+- `GET /api/payment-dispatch/tasks` 的任务增加 `autoAssignment: { ruleId, ruleName, reasonCode, reason }`（已分配为 null）；只显示当前规则名称和待分配原因，不向本人任务端点暴露账号规则。原因区分全局关闭、手动模式、非待处理、订单不可付款、时间未知／过期、入口缺失、规则内无人可接单、规则内容量已满和等待调度。展示按查询时状态派生，不把旧原因持久化到任务。
+- 自动分配只对 AOS TAG 完整匹配（区分大小写）；命中后只在规则账号内按现有负载算法分配，无合格账号时等待。非 AOS／空 TAG／未命中沿用默认算法。保存后下次调度生效；未分配存量参与，已分配保持负责人，人工转派不受 TAG 限制。停用／删除会让未分配订单重新走其他启用规则或默认分配。
+
 ## AOS 文件入库与数据源切换契约（2026-09-10）
 
 ### AOS 1 通用约定与认证
