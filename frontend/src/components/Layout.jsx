@@ -136,7 +136,9 @@ export default function Layout({ children }) {
     <div className="min-h-screen bg-gray-50">
       {/* 移动端侧边栏遮罩 */}
       {sidebarOpen && (
-        <div
+        <button
+          type="button"
+          aria-label="关闭导航遮罩"
           className="fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
@@ -145,34 +147,39 @@ export default function Layout({ children }) {
       {/* 侧边栏 */}
       <aside
         className={`
-        fixed inset-y-0 left-0 z-20 w-64 bg-white border-r border-gray-200
+        fixed inset-y-0 left-0 z-50 lg:z-20 w-64 bg-white border-r border-gray-200
         transform transition-transform duration-200 ease-in-out lg:translate-x-0
-        ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
+        ${sidebarOpen ? 'visible translate-x-0' : 'invisible lg:visible -translate-x-full'}
       `}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex items-center justify-between h-16 px-6">
+          <div className="flex shrink-0 items-center justify-between h-16 px-6">
             <div className="flex items-center space-x-2">
               <Apple className="w-8 h-8 text-primary" />
               <span className="text-lg font-semibold text-gray-900">Apple Orders Mgr</span>
             </div>
             <button
               onClick={() => setSidebarOpen(false)}
-              className="lg:hidden text-gray-400 hover:text-gray-600"
+              aria-label="关闭导航"
+              className="lg:hidden min-h-11 min-w-11 flex items-center justify-center text-gray-400 hover:text-gray-600"
             >
               <X className="w-6 h-6" />
             </button>
           </div>
 
           {/* 导航 */}
-          <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
+          <nav
+            aria-label="主导航"
+            className="min-h-0 flex-1 px-4 py-6 space-y-1 overflow-y-auto overscroll-contain"
+          >
             {navigation.map(item => {
               const isActive = location.pathname === item.href;
               return (
                 <Link
                   key={item.name}
                   to={item.href}
+                  onClick={() => setSidebarOpen(false)}
                   className={`
                     flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200
                     ${
@@ -190,7 +197,7 @@ export default function Layout({ children }) {
           </nav>
 
           {/* 底部信息 */}
-          <div className="p-4 border-t border-gray-200">
+          <div className="shrink-0 p-4 border-t border-gray-200">
             <div className="text-xs text-gray-500">
               <p>Apple 订单管理系统</p>
               <p className="mt-1">v1.0.0</p>
@@ -206,7 +213,8 @@ export default function Layout({ children }) {
           <div className="flex items-center justify-between h-full px-6">
             <button
               onClick={() => setSidebarOpen(true)}
-              className="lg:hidden text-gray-400 hover:text-gray-600"
+              aria-label="打开导航"
+              className="lg:hidden min-h-11 min-w-11 flex items-center justify-center text-gray-400 hover:text-gray-600"
             >
               <Menu className="w-6 h-6" />
             </button>
@@ -260,7 +268,8 @@ export default function Layout({ children }) {
                 <div className="relative" ref={menuRef}>
                   <button
                     onClick={() => setMenuOpen(prev => !prev)}
-                    className="text-gray-400 hover:text-gray-600 transition-colors"
+                    aria-label="账号菜单"
+                    className="min-h-11 min-w-11 flex items-center justify-center text-gray-400 hover:text-gray-600 transition-colors"
                   >
                     <Menu className="w-5 h-5" />
                   </button>
@@ -300,7 +309,7 @@ export default function Layout({ children }) {
         </header>
 
         {/* 页面内容 */}
-        <main className="p-6">{children}</main>
+        <main className="min-w-0 p-3 sm:p-6">{children}</main>
         {logoutError && (
           <AlertModal title="退出失败" message={logoutError} onClose={() => setLogoutError('')} />
         )}
