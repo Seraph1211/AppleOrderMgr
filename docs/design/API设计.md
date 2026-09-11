@@ -40,11 +40,11 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | GET    | /api/health/ready                        | 公开；数据库检查，失败 503                                                             |
 | GET    | /api/health                              | 公开；307 到 ready                                                                     |
 | POST   | /api/auth/login                          | 公开；登录限流                                                                         |
-| POST   | /api/auth/logout                         | 有效登录会话；所有角色可用                                                                 |
-| POST   | /api/auth/change-password                | 有效登录会话；所有角色可用                                                                 |
-| GET    | /api/auth/me                             | 有效登录会话；所有角色可用                                                                 |
-| PATCH  | /api/auth/profile                       | 已登录本人，无业务权限要求                                                             |
-| POST   | /api/users/:id/reset-password             | admin 且 users.manage                                                                 |
+| POST   | /api/auth/logout                         | 有效登录会话；所有角色可用                                                             |
+| POST   | /api/auth/change-password                | 有效登录会话；所有角色可用                                                             |
+| GET    | /api/auth/me                             | 有效登录会话；所有角色可用                                                             |
+| PATCH  | /api/auth/profile                        | 已登录本人，无业务权限要求                                                             |
+| POST   | /api/users/:id/reset-password            | admin 且 users.manage                                                                  |
 | GET    | /api/system/operation-logs               | admin 且 system.logs.read                                                              |
 | GET    | /api/users/permission-catalog            | users.permissions.manage（admin 保留）                                                 |
 | GET    | /api/users                               | users.read（admin 保留）                                                               |
@@ -127,17 +127,17 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 
 独立入口 `/api/identity-verifications`，继承 JWT 与账号会话检查。`identity.read` 控制读取，`identity.verify` 控制单人核验，`identity.batch` 控制批量预览／执行，`identity.export` 控制原始结果导出；后三项依赖 read，管理员默认拥有，普通用户显式授予。普通用户只能访问本人批次，管理员可查全部。按用户确认，返回及导出完整原始姓名、身份证号；其他模块脱敏规则不变。响应 `Cache-Control: no-store`，日志不含输入和供应商原始响应。
 
-| 方法及路径（相对此入口） | 契约 |
-| --- | --- |
-| GET /status | read；配置状态、批量上限和速率，不返回凭据或推测余额 |
-| GET /template | batch；xlsx，工作表「身份核验」，列「姓名」「身份证号」为文本 |
-| POST /single | verify；`{name,idCardNumber}`，`Idempotency-Key` UUID 必填；返回202及batchId；同一用户同键同内容返回原批次，内容冲突409 |
-| POST /preview | batch；multipart file，仅xlsx，10MB、1000非空行；只预览不扣次，返回draft批次、原始行和有效／错误／重复计数，15分钟有效 |
-| POST /batches/:id/start | batch；开始draft或恢复paused中的pending行；queued/running重复调用幂等；不重发unknown/error/已完成行 |
-| POST /batches/:id/stop | 根据single/excel来源要求verify/batch；停止未开始行，在途行等待结果，停止后不可恢复 |
-| GET /batches | read；page、limit（最多50）、source（single/excel）、from/to日期；分页返回批次和进度 |
-| GET /batches/:id | read；返回批次和最多1000原始行；duplicateOf指同批首个相同组合行号，结果解析到该行 |
-| GET /batches/:id/export | export；xlsx，保留行号、原始姓名／身份证、结果、说明、重复来源、时间及地区／性别／生日／流水号 |
+| 方法及路径（相对此入口） | 契约                                                                                                                    |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| GET /status              | read；配置状态、批量上限和速率，不返回凭据或推测余额                                                                    |
+| GET /template            | batch；xlsx，工作表「身份核验」，列「姓名」「身份证号」为文本                                                           |
+| POST /single             | verify；`{name,idCardNumber}`，`Idempotency-Key` UUID 必填；返回202及batchId；同一用户同键同内容返回原批次，内容冲突409 |
+| POST /preview            | batch；multipart file，仅xlsx，10MB、1000非空行；只预览不扣次，返回draft批次、原始行和有效／错误／重复计数，15分钟有效  |
+| POST /batches/:id/start  | batch；开始draft或恢复paused中的pending行；queued/running重复调用幂等；不重发unknown/error/已完成行                     |
+| POST /batches/:id/stop   | 根据single/excel来源要求verify/batch；停止未开始行，在途行等待结果，停止后不可恢复                                      |
+| GET /batches             | read；page、limit（最多50）、source（single/excel）、from/to日期；分页返回批次和进度                                    |
+| GET /batches/:id         | read；返回批次和最多1000原始行；duplicateOf指同批首个相同组合行号，结果解析到该行                                       |
+| GET /batches/:id/export  | export；xlsx，保留行号、原始姓名／身份证、结果、说明、重复来源、时间及地区／性别／生日／流水号                          |
 
 批次：draft/queued/running/paused/completed/cancelled；行：pending/processing/matched/mismatched/error/unknown/invalid/duplicate/cancelled。只有 `error_code=0` 且布尔 `result.isok` 确定一致与否；超时、未知返回、进程中断标unknown，不自动重试。凭据或额度错误暂停队列。每次开始和领取锁用户复查权限、账号状态；全局PostgreSQL会话锁保证单请求在途、请求起点至少相隔500ms（上限2RPS），与Apple爬虫独立。见[身份核验接入方案](../planning/身份核验接入方案.md)。
 
@@ -192,14 +192,14 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 ## 付款任务与付款人姓名
 
 - 新增付款接口沿用项目现有 JavaScript API 的 camelCase 请求／响应，不对既有 snake_case 订单 DTO 做隐式全局转换。普通用户的列表、详情、状态、付款人、链接和刷新入口均同时校验权限和最新 assigneeUserId；转派后原负责人立即失去访问。
-- 本人任务列表支持 page、limit、orderNumber、productModel、productKeyword、processingStatus；筛选在分页前完成，商品型号与关键词必须命中同一 products 元素。
+- 本人任务列表支持 page、limit、orderNumber、productModel、productKeyword、recipientTags、processingStatus；筛选在分页前完成，商品型号与关键词必须命中同一 products 元素。`recipientTags` 是 JSON 数组，最多 100 项，每项去除首尾空格后按完整值精确匹配且最长 500 字符；多个 TAG 之间为 OR，与其他维度之间为 AND。兼容单值 `recipientTag`。AOS 订单使用来源 TAG，其他订单使用订单入库时保存的 `tag`。
 - `PUT /api/payment-tasks/:id` 是行级原子保存接口，body 可包含 `{ processingStatus?, processingNotes?, expectedVersion?, payerName?, expectedPayerVersion? }`，幂等键通过请求头传入。接口只更新实际提交且发生变化的字段；任务字段要求 `payment_tasks.handle_own`，付款人字段要求 `payment_tasks.payer.edit_own`，同时修改时在同一事务提交或全部回滚。四态为 pending、processing、completed、exception；官网状态、复制链接、登记付款人、到期和转派不自动改变处理状态。异常、异常恢复和人工完成但官网未付时备注必填。兼容的独立付款人接口仍保留。
 - 外部付款人姓名在四种状态、到期、官网已付／退款／取消后仍可维护。`PUT /api/payment-tasks/:id/payer` 使用 `{ payerName: string | null, expectedVersion, reason? }`；系统不提供付款人候选接口，不创建付款人账号或主数据。
-- 复制订单链接接口只保留 `payment_tasks.link.read_own` 和当前任务归属校验，直接返回该任务关联订单的 `orders.orderUrl`；不再按核实、截止时间、人工处理状态或官网支付／订单状态限制复制。链接为空时返回资源不存在；响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
+- 单项和当前页勾选批量复制订单信息均通过既有链接接口逐单校验 `payment_tasks.link.read_own` 和当前任务归属，接口直接返回该任务关联订单的 `orders.orderUrl`；前端结合本人任务 DTO 生成 `orders.id || 商品信息 || 支付方式 || 订单链接`，批量结果按当前列表顺序每单一行。商品名称优先、型号兜底，每项按 `名称 x 数量` 展示，多商品使用 `、` 连接；`WECHAT`／`WECHAT PAY`／`微信支付` 显示为 `微信`，`ALIPAY` 显示为 `支付宝`，其他非空值保留原文，商品或支付方式缺失时使用 `-`，链接保持普通 URL。接口不按核实、截止时间、人工处理状态或官网支付／订单状态限制复制；链接为空时返回资源不存在，响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
 - 本人任务刷新提交返回 HTTP `202`、`jobId`、是否新建或合并；`GET /api/payment-tasks/:id/refresh/:jobId` 仅允许当前负责人查询同一关联订单的刷新任务，返回 pending、running、succeeded、failed、skipped、错误摘要和订单最新抓取时间。入队不表示官网已更新；前端应展示提交中、排队／运行、成功／失败，终态后重新加载当前列表，Worker 未运行时明确保持“等待后台处理”。
-- 本人任务列表和详情返回关联订单已有的 `paymentMethod`；该字段只用于展示订单付款方式，不作为任务处理结果或可编辑选项。本人任务和管理员调度列表均按关联订单 `orderDate DESC` 稳定分页，时间相同时按任务 ID 倒序；`updatedAt` 取付款任务与关联订单更新时间中的较新值，前端“最后更新时间”按用户本地时区显示为 `YYYY/MM/DD HH:mm:ss`。
+- 本人任务列表和详情返回关联订单已有的 `paymentMethod` 和派生的 `recipientTag`；列表额外返回当前权限及其他筛选条件范围内、不受已选 TAG 限制的 `recipientTagOptions`，供下拉多选使用，不能只从当前页计算。这些字段只用于展示和筛选，不作为任务处理结果或可编辑选项。本人任务和管理员调度列表均按关联订单 `orderDate DESC` 稳定分页，时间相同时按任务 ID 倒序；`updatedAt` 仍取付款任务与关联订单更新时间中的较新值，但两张付款页面的“最后爬数时间”只展示 `lastCrawledAt`。
 - 付款倒计时优先使用 `officialPaymentExpiresAt`，回退 `officialOrderCreatedAt + 30 分钟`。官网创建时间必须包含时分，仅有日期时保持未知；服务端返回 `serverTime`、`deadlineAt` 和 `remainingSeconds`，客户端不得用本机时间决定是否超时。管理员人工截止时间核实接口已取消。
-- `GET /api/payment-dispatch/tasks` 新增 `page`（默认 1，1–100000）和 `pagination: { page, limit, total, totalPages }`；`limit` 保持默认 100、上限 200，页面使用 10/20/50/100。两个付款列表新增返回 `orderDate`（关联订单已有的下单时间，与订单管理一致），`officialOrderCreatedAt` 继续供官网时间和截止规则使用；下单时间展示优先 `orderDate`、缺失时回退已确认的 `officialOrderCreatedAt`，都缺失保持未知。支持 `orderNumber`、`productKeyword`、`assignee`、`officialOrderStatus` 和 `processingStatus` 组合筛选；商品匹配在数据库分页前执行。每项返回关联订单已有的 `paymentMethod`、`officialOrderStatus`、`lastCrawledAt` 和派生的 `deadlineAt`，其中页面“最后更新时间”只使用最后一次成功官网抓取时间 `lastCrawledAt`。
+- `GET /api/payment-dispatch/tasks` 新增 `page`（默认 1，1–100000）和 `pagination: { page, limit, total, totalPages }`；`limit` 保持默认 100、上限 200，页面使用 10/20/50/100。两个付款列表新增返回 `orderDate`（关联订单已有的下单时间，与订单管理一致），`officialOrderCreatedAt` 继续供官网时间和截止规则使用；下单时间展示优先 `orderDate`、缺失时回退已确认的 `officialOrderCreatedAt`，都缺失保持未知。支持 `orderNumber`、`productKeyword`、`recipientTags`、`assignee`、`officialOrderStatus` 和 `processingStatus` 组合筛选；多个 TAG 之间为 OR，商品和 TAG 匹配都在数据库分页前执行，并兼容单值 `recipientTag`。每项返回关联订单已有的 `paymentMethod`、派生的 `recipientTag`、`officialOrderStatus`、`lastCrawledAt` 和派生的 `deadlineAt`，列表级返回 `recipientTagOptions`，其中页面“最后爬数时间”只使用最后一次成功官网抓取时间 `lastCrawledAt`。
 - 批量分配 body 为 `{ tasks: [{ id, expectedVersion }], assigneeUserId, handoffConfirmed?, reason? }`，一次最多 100 项，在同一事务内校验版本、状态、付款窗口、目标权限和容量后全部提交或全部回滚。管理员单项刷新返回 HTTP `202` 和 `{ jobId, status, created, merged }`；批量刷新 body 为 `{ taskIds }`，返回 `{ total, created, merged, missing, results }` 汇总。两者都只把对应订单提交持久化刷新队列，HTTP `202` 不代表官网已更新。
 - payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、上限有余量、合法付款链接以及官网付款窗口仍有效。官网已付款、退款、终态、身份异常和待核对状态禁止新分配；active_count 为 pending＋processing＋exception，completed 释放容量，官网收款不自动修改人工四态。
 
@@ -232,7 +232,6 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - 列表新增 `recipient_tag`：取机人档案标签优先，否则使用邮件入库的订单 `tag`。姓名和关键词搜索覆盖订单快照。
 - 订单页“最后更新时间”读取 `last_crawled_at`，仅官网抓取及数据更新成功才改变；未成功过显示“尚未更新”。不使用本地 `updated_at` 或最近失败时间。
 - 每行刷新复用 `POST /api/orders/:id/refresh` 和任务查询接口，要求 `orders.refresh` 权限；显示排队、执行、完成或失败，失败可重试。移除订单列表联系电话列，保留后端字段及原有脱敏门禁。
-
 
 ### 下单时间精度与时区（2026-09-09 修复）
 
@@ -281,13 +280,13 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ### AOS 2 全局来源设置、切换预览与补录结果
 
-| 方法与路径 | 权限 | 请求 | 返回及用途 |
-| --- | --- | --- | --- |
-| `GET /api/order-ingestion/settings` | read | 无 | `SettingsDto`，包括当前来源、版本、生效时间、补录规则、重复策略和就绪摘要 |
-| `POST /api/order-ingestion/switch-preview` | manage | `{ targetSource, expectedVersion }` | `SwitchPreviewDto`；仅计算预览，不触发扫描或入库，不要求幂等键 |
-| `PUT /api/order-ingestion/settings` | manage | `{ activeSource, expectedVersion, previewId }`，幂等键 | 事务切换后返回 `{ settings, backfillId, warnings }`；来源立即生效，补录异步执行 |
-| `GET /api/order-ingestion/backfills/:id` | read | 路径 ID | `BackfillDto`，查询本次当天补录进度 |
-| `GET /api/order-ingestion/audits` | read | page、limit、dateFrom、dateTo | 切换／设备／人工处理审计列表，不含敏感载荷 |
+| 方法与路径                                 | 权限   | 请求                                                   | 返回及用途                                                                      |
+| ------------------------------------------ | ------ | ------------------------------------------------------ | ------------------------------------------------------------------------------- |
+| `GET /api/order-ingestion/settings`        | read   | 无                                                     | `SettingsDto`，包括当前来源、版本、生效时间、补录规则、重复策略和就绪摘要       |
+| `POST /api/order-ingestion/switch-preview` | manage | `{ targetSource, expectedVersion }`                    | `SwitchPreviewDto`；仅计算预览，不触发扫描或入库，不要求幂等键                  |
+| `PUT /api/order-ingestion/settings`        | manage | `{ activeSource, expectedVersion, previewId }`，幂等键 | 事务切换后返回 `{ settings, backfillId, warnings }`；来源立即生效，补录异步执行 |
+| `GET /api/order-ingestion/backfills/:id`   | read   | 路径 ID                                                | `BackfillDto`，查询本次当天补录进度                                             |
+| `GET /api/order-ingestion/audits`          | read   | page、limit、dateFrom、dateTo                          | 切换／设备／人工处理审计列表，不含敏感载荷                                      |
 
 `SettingsDto`：
 
@@ -302,8 +301,17 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
   "duplicatePolicyStatus": "confirmed",
   "updatedBy": { "id": 1, "displayName": "管理员" },
   "readiness": {
-    "email": { "ready": true, "lastSuccessfulScanAt": "2026-09-10T02:01:00.000Z", "errorCode": null },
-    "aos": { "ready": false, "enabledDeviceCount": 3, "onlineDeviceCount": 2, "healthyDirectoryDeviceCount": 1 }
+    "email": {
+      "ready": true,
+      "lastSuccessfulScanAt": "2026-09-10T02:01:00.000Z",
+      "errorCode": null
+    },
+    "aos": {
+      "ready": false,
+      "enabledDeviceCount": 3,
+      "onlineDeviceCount": 2,
+      "healthyDirectoryDeviceCount": 1
+    }
   }
 }
 ```
@@ -322,14 +330,14 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ### AOS 3 设备管理与凭证
 
-| 方法与路径 | 权限 | 请求 | 返回 |
-| --- | --- | --- | --- |
-| `GET /api/order-ingestion/devices` | read | page、limit、enabled、online、keyword | `DeviceDto` 分页列表 |
-| `POST /api/order-ingestion/devices` | devices.manage | `{ name, notes? }`，name 1–100、notes 最多 500 字；幂等键 | 201 `{ device, credential, credentialDisplayed: false }`；新增设备默认 enabled |
-| `GET /api/order-ingestion/devices/:id` | read | 路径 ID | `DeviceDto` |
-| `GET /api/order-ingestion/devices/:id/credential` | devices.manage | 路径 ID | `{ device, credential }`；凭证使用 AES-256-GCM 密文保存，每次查看记录审计；历史设备无密文时返回 `DEVICE_CREDENTIAL_NOT_VIEWABLE`，须先轮换 |
-| `PATCH /api/order-ingestion/devices/:id` | devices.manage | `{ expectedVersion, name?, notes?, enabled? }`，幂等键 | 修改后的 `DeviceDto`，至少一个变更字段 |
-| `POST /api/order-ingestion/devices/:id/rotate-credential` | devices.manage | `{ expectedVersion }`，幂等键 | `{ device, credential, credentialDisplayed: false }`；旧凭证立即失效，更新本机前停止上传但保留队列 |
+| 方法与路径                                                | 权限           | 请求                                                      | 返回                                                                                                                                       |
+| --------------------------------------------------------- | -------------- | --------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/order-ingestion/devices`                        | read           | page、limit、enabled、online、keyword                     | `DeviceDto` 分页列表                                                                                                                       |
+| `POST /api/order-ingestion/devices`                       | devices.manage | `{ name, notes? }`，name 1–100、notes 最多 500 字；幂等键 | 201 `{ device, credential, credentialDisplayed: false }`；新增设备默认 enabled                                                             |
+| `GET /api/order-ingestion/devices/:id`                    | read           | 路径 ID                                                   | `DeviceDto`                                                                                                                                |
+| `GET /api/order-ingestion/devices/:id/credential`         | devices.manage | 路径 ID                                                   | `{ device, credential }`；凭证使用 AES-256-GCM 密文保存，每次查看记录审计；历史设备无密文时返回 `DEVICE_CREDENTIAL_NOT_VIEWABLE`，须先轮换 |
+| `PATCH /api/order-ingestion/devices/:id`                  | devices.manage | `{ expectedVersion, name?, notes?, enabled? }`，幂等键    | 修改后的 `DeviceDto`，至少一个变更字段                                                                                                     |
+| `POST /api/order-ingestion/devices/:id/rotate-credential` | devices.manage | `{ expectedVersion }`，幂等键                             | `{ device, credential, credentialDisplayed: false }`；旧凭证立即失效，更新本机前停止上传但保留队列                                         |
 
 `DeviceDto`：`id`、`name`、`notes`、`enabled`、`version`、`credentialVersion`、`credentialConfigured`、`credentialViewable`、`agentVersion`、`osVersion`、`lastHeartbeatAt`、`lastSuccessfulScanAt`、`lastNewOrderAt`、`online`、`scanHealthy`、`directories[]`、`localCounts`、`serverCounts`、`lastErrorCode`、`createdAt`、`updatedAt`。`SettingsDto.collectorServerUrl` 返回服务端配置的 `AOS_COLLECTOR_PUBLIC_URL`；未配置或不是合法 HTTPS 根地址时返回 `null`。
 
@@ -343,28 +351,28 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 以下路径前缀统一为 `/api/order-ingestion/aos-records`。
 
-| 方法与相对路径 | 权限 | 请求 | 返回 |
-| --- | --- | --- | --- |
-| `GET /` | read | page、limit、deviceId、orderNumber、status、eligibility、dateFrom、dateTo | `AosRecordDto` 列表；日期按下单日，另有 receivedFrom/receivedTo 按接收日筛选 |
-| `GET /:id` | read | 路径 ID | 普通 `AosRecordDto`，来源元数据、脱敏字段、问题列表及处理历史摘要 |
-| `GET /:id/content` | content.read | 路径 ID | 原始行与解密后的字段、脱敏前草稿；写查看审计，no-store |
-| `POST /:id/reparse` | records.process | `{ expectedVersion }`，幂等键 | `{ record, preview, issues }`；重解析原始行并保存新预览，不写订单；敏感字段仅返回掩码和 hasPassword |
-| `PUT /:id/draft` | records.process | `{ expectedVersion, data, passwordAction, password? }`，幂等键 | `{ record, preview, issues }`；保存草稿，不入库；密码保留／替换明确区分 |
-| `POST /:id/ingest` | records.process | `{ expectedVersion }`，幂等键 | `{ record, orderId, outcome }`，outcome 为 created/duplicate；提交前重新校验当前来源、范围、身份和版本 |
-| `POST /:id/retry` | records.process | `{ expectedVersion }`，幂等键 | 202 `{ record }`，只重新排队 retry_wait，不绕过永久错误校验 |
-| `POST /:id/resolve` | records.process | `{ expectedVersion, action, reason, orderId? }`，幂等键 | `{ record }`；action 为 close/link_existing，reason 1–500 字 |
+| 方法与相对路径      | 权限            | 请求                                                                      | 返回                                                                                                   |
+| ------------------- | --------------- | ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `GET /`             | read            | page、limit、deviceId、orderNumber、status、eligibility、dateFrom、dateTo | `AosRecordDto` 列表；日期按下单日，另有 receivedFrom/receivedTo 按接收日筛选                           |
+| `GET /:id`          | read            | 路径 ID                                                                   | 普通 `AosRecordDto`，来源元数据、脱敏字段、问题列表及处理历史摘要                                      |
+| `GET /:id/content`  | content.read    | 路径 ID                                                                   | 原始行与解密后的字段、脱敏前草稿；写查看审计，no-store                                                 |
+| `POST /:id/reparse` | records.process | `{ expectedVersion }`，幂等键                                             | `{ record, preview, issues }`；重解析原始行并保存新预览，不写订单；敏感字段仅返回掩码和 hasPassword    |
+| `PUT /:id/draft`    | records.process | `{ expectedVersion, data, passwordAction, password? }`，幂等键            | `{ record, preview, issues }`；保存草稿，不入库；密码保留／替换明确区分                                |
+| `POST /:id/ingest`  | records.process | `{ expectedVersion }`，幂等键                                             | `{ record, orderId, outcome }`，outcome 为 created/duplicate；提交前重新校验当前来源、范围、身份和版本 |
+| `POST /:id/retry`   | records.process | `{ expectedVersion }`，幂等键                                             | 202 `{ record }`，只重新排队 retry_wait，不绕过永久错误校验                                            |
+| `POST /:id/resolve` | records.process | `{ expectedVersion, action, reason, orderId? }`，幂等键                   | `{ record }`；action 为 close/link_existing，reason 1–500 字                                           |
 
 `AosRecordDto`：`id`、`deviceId`、`eventId`、`fileName`、`lineNumber`、`orderNumber`、`orderDate`、`receivedAt`、`status`、`eligibility`、`outcome`、`orderId`、`version`、`attemptCount`、`nextRetryAt`、`errorCode`、`issues[]`、`hasDraft`、`hasPassword`、`safePreview`、`createdAt`、`updatedAt`。`safePreview` 包含商品、姓名、门店代码和 TAG，手机／邮箱掩码展示，不含原始行、密码或完整订单链接。每项 issue 为 `{ field, code, message }`，冲突敏感值只在 content 端点提供。
 
 `status` 与暂停原因分开，避免把业务暂停误当入库成功：
 
-| 字段值 | 含义与状态变化 |
-| --- | --- |
-| received → parsing → ready → processing → succeeded | 正常创建并提交订单 |
-| processing → duplicate | 同单已存在且已按确认策略处理，关联已有订单 |
-| retry_wait | 临时错误，按退避调度；上限 3 次后进入 manual_review |
-| manual_review | 永久格式错误、字段冲突或重试用尽；修正／重解析后可返回 ready |
-| closed | 管理员有理由关闭，仅关闭来源记录，不删除订单 |
+| 字段值                                              | 含义与状态变化                                               |
+| --------------------------------------------------- | ------------------------------------------------------------ |
+| received → parsing → ready → processing → succeeded | 正常创建并提交订单                                           |
+| processing → duplicate                              | 同单已存在且已按确认策略处理，关联已有订单                   |
+| retry_wait                                          | 临时错误，按退避调度；上限 3 次后进入 manual_review          |
+| manual_review                                       | 永久格式错误、字段冲突或重试用尽；修正／重解析后可返回 ready |
+| closed                                              | 管理员有理由关闭，仅关闭来源记录，不删除订单                 |
 
 `eligibility` 取 allowed/source_disabled/device_disabled/out_of_range/merge_policy_pending；来源／设备停用不把 status 改成终态、不增加失败次数。入库端点遇到暂停返回对应 409，数据继续保留。已确定的来源范围资格持久化，跨午夜按 [AOS 方案](../planning/AOS文件入库与数据源切换方案.md)中定义的恢复规则处理。`succeeded`、`duplicate`、`closed` 为终态，重复幂等请求可读回结果，新操作不得隐式重开。
 
@@ -372,30 +380,30 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 `data` 为完整替换草稿，字段如下；原文件第 8、9 列不进入业务草稿。`passwordAction` 为 keep/replace，默认 keep；replace 时 password 必填且最多 1024 字符，仅更新加密来源草稿，接口不回显密码。首版不提供清空密码动作。
 
-| 草稿字段 | 类型与校验 |
-| --- | --- |
-| orderNumber | string，`W` 加 10 位数字 |
-| contactEmail、appleId | string，必填，最多 255 字符，邮箱格式校验 |
-| lastName、firstName | string，分别必填、最多 50 字符，保留文件显式拆分 |
-| contactPhone | string，必填，11 位中国大陆手机号；原样字符串存储 |
-| recipientIdLast4 | string 或 null，前三位数字、末位数字或 `X`，统一大写；16 列文件取值，历史 15 列为空，只在敏感内容接口返回 |
-| pickupStoreCode | string，必填，`R` 加数字、最多 50 字符；未知字典值可用 |
-| products | 1–50 项，每项 `{ model, name, quantity }`，model 最多 50、name 最多 300 字符，quantity 为 1–999 整数 |
-| paymentMethod | string，必填、最多 50 字符，按统一支付方式校验；未识别值进入人工核对 |
-| recipientTag | string 或 null，最多 500 字符，完整保存 |
-| orderUrl | string，最多 2048 字符，必须为 HTTPS Apple 中国 vieworder 路径，订单号和联系邮箱一致，拒绝凭证、非标准端口、额外查询与片段 |
-| orderDate | string，ISO 8601 含时区，保留毫秒，不接受仅日期 |
+| 草稿字段              | 类型与校验                                                                                                                 |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| orderNumber           | string，`W` 加 10 位数字                                                                                                   |
+| contactEmail、appleId | string，必填，最多 255 字符，邮箱格式校验                                                                                  |
+| lastName、firstName   | string，分别必填、最多 50 字符，保留文件显式拆分                                                                           |
+| contactPhone          | string，必填，11 位中国大陆手机号；原样字符串存储                                                                          |
+| recipientIdLast4      | string 或 null，前三位数字、末位数字或 `X`，统一大写；16 列文件取值，历史 15 列为空，只在敏感内容接口返回                  |
+| pickupStoreCode       | string，必填，`R` 加数字、最多 50 字符；未知字典值可用                                                                     |
+| products              | 1–50 项，每项 `{ model, name, quantity }`，model 最多 50、name 最多 300 字符，quantity 为 1–999 整数                       |
+| paymentMethod         | string，必填、最多 50 字符，按统一支付方式校验；未识别值进入人工核对                                                       |
+| recipientTag          | string 或 null，最多 500 字符，完整保存                                                                                    |
+| orderUrl              | string，最多 2048 字符，必须为 HTTPS Apple 中国 vieworder 路径，订单号和联系邮箱一致，拒绝凭证、非标准端口、额外查询与片段 |
+| orderDate             | string，ISO 8601 含时区，保留毫秒，不接受仅日期                                                                            |
 
 已存在订单的字段策略仍待确认。本草案不启用自动覆盖；如果最终批准补空或 AOS 优先，须明确字段白名单、人工锁定和对应 outcome（例如 enriched），再更新此契约。不能在实现时自行把 duplicate 当成覆盖成功。
 
 ### AOS 5 采集器连接、心跳与批量接收
 
-| 方法与路径 | 请求 | 返回及用途 |
-| --- | --- | --- |
-| `GET /api/aos-collector/v1/context` | 设备凭证；不接受任意 deviceId | 当前设备、协议版本、服务器时间、全局来源只读值、业务日期、待执行当天扫描指令及容量限制；配置窗口测试连接复用 |
-| `POST /api/aos-collector/v1/heartbeat` | `HeartbeatRequest` | `{ serverTime, settingsVersion, activeSource, pendingScanRequests }`；仅更新设备状态和扫描完成回执 |
-| `POST /api/aos-collector/v1/records` | `RecordBatchRequest` | 200 `{ results[] }`，逐条可靠接收回执；不以 HTTP 200 代表全部行成功或订单已创建 |
-| `POST /api/aos-collector/v1/records/status` | `{ eventIds: [...] }`，1–100 个 UUID | 本设备对应记录的最小处理状态；未知 ID 返回 not_found，不泄露其他设备记录 |
+| 方法与路径                                  | 请求                                 | 返回及用途                                                                                                   |
+| ------------------------------------------- | ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| `GET /api/aos-collector/v1/context`         | 设备凭证；不接受任意 deviceId        | 当前设备、协议版本、服务器时间、全局来源只读值、业务日期、待执行当天扫描指令及容量限制；配置窗口测试连接复用 |
+| `POST /api/aos-collector/v1/heartbeat`      | `HeartbeatRequest`                   | `{ serverTime, settingsVersion, activeSource, pendingScanRequests }`；仅更新设备状态和扫描完成回执           |
+| `POST /api/aos-collector/v1/records`        | `RecordBatchRequest`                 | 200 `{ results[] }`，逐条可靠接收回执；不以 HTTP 200 代表全部行成功或订单已创建                              |
+| `POST /api/aos-collector/v1/records/status` | `{ eventIds: [...] }`，1–100 个 UUID | 本设备对应记录的最小处理状态；未知 ID 返回 not_found，不泄露其他设备记录                                     |
 
 `context` 返回：`device: { id, name, enabled, credentialVersion }`、`protocolVersion: 1`、`serverTime`、`settingsVersion`、`activeSource`、`businessDate`、`backfillPolicy: current_day`、`limits: { maxBatchRecords: 100, maxRequestBytes: 1048576, maxRawLineBytes: 16384, heartbeatIntervalSeconds: 15 }`、`pendingScanRequests[]`。设备身份仅由凭证解析，客户端不能通过请求体替换。
 
@@ -468,18 +476,18 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ### AOS 7 稳定错误码与恢复行为
 
-| HTTP／逐条结果 | error.code / errorCode | 客户端处理 |
-| --- | --- | --- |
-| 400 | VALIDATION_ERROR、UNSUPPORTED_SCHEMA_VERSION | 展示字段错误；结构版本不支持时暂停相关上传并提示升级 |
-| 401 | DEVICE_UNAUTHORIZED | 停止网络重试，提示重新配置凭证；保留队列 |
-| 403 | FORBIDDEN、DEVICE_DISABLED | 不自动重试业务写入；保留队列；设备恢复后允许人工测试连接恢复 |
-| 404 | NOT_FOUND | 刷新列表；跨设备 ID 查询也不泄露对象存在性 |
-| 409 | VERSION_CONFLICT、PREVIEW_EXPIRED | 重新获取配置／记录或预览，由用户确认重提；不自动覆盖 |
-| 409 | IDEMPOTENCY_CONFLICT、EVENT_PAYLOAD_CONFLICT | 不复用旧键发送新内容；事件冲突转本机异常处理 |
-| 409 | SOURCE_DISABLED、RECORD_OUT_OF_RANGE、DUPLICATE_POLICY_PENDING、RECORD_STATE_INVALID | 展示业务暂停原因；修正／切换后重新检查，不能无限重试 |
-| 413 | PAYLOAD_TOO_LARGE | 批量过大则拆批，单行过大留本机异常队列 |
-| 429 | RATE_LIMITED | 按 Retry-After 等待，加抖动重试；不能丢弃事件 |
-| 503／网络超时 | TEMPORARILY_UNAVAILABLE | 指数退避，建议 1 秒起、最大 60 秒；保持原幂等键／事件 ID |
+| HTTP／逐条结果        | error.code / errorCode                                                                                                 | 客户端处理                                                         |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 400                   | VALIDATION_ERROR、UNSUPPORTED_SCHEMA_VERSION                                                                           | 展示字段错误；结构版本不支持时暂停相关上传并提示升级               |
+| 401                   | DEVICE_UNAUTHORIZED                                                                                                    | 停止网络重试，提示重新配置凭证；保留队列                           |
+| 403                   | FORBIDDEN、DEVICE_DISABLED                                                                                             | 不自动重试业务写入；保留队列；设备恢复后允许人工测试连接恢复       |
+| 404                   | NOT_FOUND                                                                                                              | 刷新列表；跨设备 ID 查询也不泄露对象存在性                         |
+| 409                   | VERSION_CONFLICT、PREVIEW_EXPIRED                                                                                      | 重新获取配置／记录或预览，由用户确认重提；不自动覆盖               |
+| 409                   | IDEMPOTENCY_CONFLICT、EVENT_PAYLOAD_CONFLICT                                                                           | 不复用旧键发送新内容；事件冲突转本机异常处理                       |
+| 409                   | SOURCE_DISABLED、RECORD_OUT_OF_RANGE、DUPLICATE_POLICY_PENDING、RECORD_STATE_INVALID                                   | 展示业务暂停原因；修正／切换后重新检查，不能无限重试               |
+| 413                   | PAYLOAD_TOO_LARGE                                                                                                      | 批量过大则拆批，单行过大留本机异常队列                             |
+| 429                   | RATE_LIMITED                                                                                                           | 按 Retry-After 等待，加抖动重试；不能丢弃事件                      |
+| 503／网络超时         | TEMPORARILY_UNAVAILABLE                                                                                                | 指数退避，建议 1 秒起、最大 60 秒；保持原幂等键／事件 ID           |
 | accepted 后的处理错误 | AOS_COLUMN_COUNT_INVALID、AOS_PRODUCT_INVALID、AOS_ORDER_DATE_INVALID、AOS_ORDER_IDENTITY_MISMATCH、AOS_FIELD_CONFLICT | 服务器持久化 manual_review，由管理后台处理，Windows 不重复上传同条 |
 
 限流初始建议每设备每分钟 120 次请求、其中 records 每分钟 60 次；独立于 Apple 官网爬虫限流。具体参数可按实测调节，但 429 和 Retry-After 契约保持一致。
@@ -489,7 +497,6 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 接口实施前固定合成请求／响应样例与字段 Schema；至少覆盖：管理员／普通员工／设备三类凭证隔离、设备跨设备查询、凭证轮换响应丢失、乐观锁与幂等重放、批内部分持久化后断连、混合有效坏行、来源停用仍可接收但不能入库、跨午夜预览失效、设备离线补录不显示完成、人工草稿不回显密码和错误不泄露原始行。
 
 前后端按上述 DTO 和状态语义联调，Windows 文件写入与可靠传输另外在真实目标系统验收。管理与设备路由已经挂载；权限隔离、批量回执和事务规则已在隔离数据库验证。真实 Windows 与真实抢购软件验收另记。
-
 
 ### AOS 实现补充
 
@@ -501,3 +508,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - 每个 API 实例按设备限流 120 请求/分钟，records 另限 60 次/分钟，429 提供 Retry-After；多副本部署时各实例限额独立。
 
 实施与客户端操作见 [AOS 文件采集与入库](AOS文件采集与入库.md)。
+
+### H5 批量处理调用说明（2026-09-11）
+
+本人付款任务的批量修改处理状态复用现有单项更新接口，由前端逐单提交 `processingStatus`、`expectedVersion` 与独立 `idempotencyKey`；填写统一备注时另传 `processingNotes`，为空时省略以保留原备注。权限、归属、状态流转、备注、版本和审计沿用单项契约。各单独立事务，前端汇总部分成功和逐项失败；不新增批量端点，不修改官网付款状态，不自动重试不确定结果。

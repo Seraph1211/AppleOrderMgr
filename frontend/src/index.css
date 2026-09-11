@@ -58,3 +58,172 @@
     @apply bg-blue-100 text-blue-700 border border-blue-200;
   }
 }
+
+/* 付款任务手机列表：同一份表格数据与编辑草稿，纵向呈现主字段。 */
+@media (max-width: 767px) {
+  .payment-tasks .input,
+  .login-page .input {
+    font-size: 16px;
+  }
+  .payment-tasks .btn,
+  .payment-tasks select,
+  .payment-tasks input:not([type='checkbox']) {
+    min-height: 44px;
+  }
+  .payment-tasks .btn {
+    min-width: 44px;
+  }
+  .payment-task-table,
+  .payment-task-table tbody {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .payment-task-table thead {
+    display: none;
+  }
+  .payment-task-table tr {
+    display: block;
+    padding: 12px 0;
+  }
+  .payment-task-table td {
+    display: block;
+    padding: 6px 16px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+  .payment-task-table td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    color: #6b7280;
+    font-size: 12px;
+  }
+  .payment-task-table .mobile-order::before {
+    display: none;
+  }
+  .payment-task-table .mobile-order .truncate {
+    white-space: normal;
+    overflow: visible;
+    max-width: none;
+  }
+  .payment-task-table .input {
+    min-width: 0;
+    width: 100%;
+  }
+  .payment-task-table td[data-secondary='true'] {
+    display: none;
+  }
+
+  .payment-task-table .mobile-selection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+  }
+  .payment-task-table .mobile-selection::before {
+    margin: 0;
+  }
+  .payment-task-table input[type='checkbox'] {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+@media (max-width: 767px) {
+  .payment-tasks [data-has-selection='false'] .mobile-batch-action {
+    display: none;
+  }
+  .payment-task-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .payment-task-table td {
+    grid-column: span 2;
+  }
+  .payment-task-table td[data-label='金额'],
+  .payment-task-table td[data-label='官网付款状态'] {
+    grid-column: span 1;
+  }
+}
+
+/* 手机付款列表精简：勾选位于订单右侧，主信息和操作紧凑排列。 */
+@media (max-width: 767px) {
+  .payment-task-table tr {
+    position: relative;
+    padding: 18px 16px;
+    gap: 14px 12px;
+    background: white;
+  }
+  .payment-task-table tr.mobile-selected {
+    background: #eff6ff;
+    box-shadow: inset 3px 0 #1e3a8a;
+  }
+  .payment-task-table td {
+    padding: 0;
+  }
+  .payment-task-table .mobile-selection {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    min-height: 44px;
+    width: 44px;
+    padding: 10px;
+  }
+  .payment-task-table .mobile-selection::before {
+    display: none;
+  }
+  .payment-task-table .mobile-order {
+    padding-right: 40px;
+  }
+  .payment-task-table .order-system-id {
+    color: #6b7280;
+    font-size: 12px;
+    font-weight: 500;
+    margin-bottom: 4px;
+  }
+  .payment-task-table .mobile-order .font-mono {
+    font-size: 16px;
+    font-weight: 600;
+  }
+  .payment-task-table .mobile-order .truncate {
+    font-size: 13px;
+    line-height: 1.6;
+    color: #4b5563;
+    margin-top: 6px;
+  }
+  .payment-task-table td[data-label='金额'] {
+    font-size: 18px;
+    font-weight: 600;
+    align-self: center;
+  }
+  .payment-task-table td[data-label='操作']::before {
+    display: none;
+  }
+  .payment-task-table td[data-label='操作'] > div {
+    display: flex;
+    gap: 8px;
+  }
+  .payment-task-table td[data-label='操作'] .btn {
+    flex: 1;
+    font-size: 14px;
+  }
+  .payment-task-table td[data-label='操作'] p {
+    max-width: none;
+  }
+  .payment-task-table td[data-label='人工处理状态'] {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #f3f4f6;
+  }
+  .payment-task-table td[data-label='人工处理状态']::before {
+    flex-shrink: 0;
+    margin: 0;
+  }
+  .payment-task-table td[data-label='人工处理状态'] select {
+    flex: 1;
+    width: 0;
+  }
+}

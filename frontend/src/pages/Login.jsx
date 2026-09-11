@@ -164,7 +164,7 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+    <div className="login-page min-h-screen min-h-[100dvh] bg-gray-50 flex items-center justify-center px-4 py-8">
       <div className="max-w-md w-full">
         {/* Logo 和标题 */}
         <div className="text-center mb-8">
@@ -194,9 +194,12 @@ export default function Login() {
                   name="username"
                   type="text"
                   autoComplete="username"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  spellCheck={false}
                   value={formData.username}
                   onChange={handleChange}
-                  className="input pl-10"
+                  className="input pl-10 min-h-12 text-base"
                   placeholder="请输入登录账号"
                   disabled={loading}
                 />
@@ -219,7 +222,7 @@ export default function Login() {
                   autoComplete="current-password"
                   value={formData.password}
                   onChange={handleChange}
-                  className="input pl-10"
+                  className="input pl-10 min-h-12 text-base"
                   placeholder="请输入密码"
                   minLength={MIN_PASSWORD_LENGTH}
                   disabled={loading}
@@ -228,7 +231,7 @@ export default function Login() {
             </div>
 
             {/* 记住我 */}
-            <div className="flex items-center">
+            <div className="flex min-h-11 items-center">
               <input
                 id="rememberMe"
                 name="rememberMe"
@@ -244,7 +247,7 @@ export default function Login() {
             </div>
 
             {/* 登录按钮 */}
-            <button type="submit" className="btn btn-primary w-full" disabled={loading}>
+            <button type="submit" className="btn btn-primary w-full min-h-12" disabled={loading}>
               {loading ? '登录中...' : '登录'}
             </button>
           </form>
@@ -280,7 +283,7 @@ export default function Login() {
 
       {/* 锁定信息提示 */}
       {lockInfo && (
-        <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 bg-red-50 border border-red-200 rounded-lg px-6 py-3 shadow-lg">
+        <div className="fixed bottom-4 left-4 right-4 sm:left-1/2 sm:right-auto sm:transform sm:-translate-x-1/2 bg-red-50 border border-red-200 rounded-lg px-6 py-3 shadow-lg">
           <p className="text-sm text-red-600">{lockInfo}</p>
         </div>
       )}

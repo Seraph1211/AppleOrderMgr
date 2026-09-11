@@ -17,7 +17,12 @@ const { ORDER_STATUSES } = require('../constants/business');
 const { PAYMENT_EXECUTION_PERMISSIONS } = require('../constants/permissionCatalog');
 const { PAYMENT_ASSIGNMENT_LOCK_ID, getEffectivePermissions } = require('./permissionService');
 const refreshJobService = require('./crawler/refreshJobService');
-const { ACTIVE_PAYMENT_TASK_STATUSES, serializeTask } = require('./paymentTaskService');
+const {
+  ACTIVE_PAYMENT_TASK_STATUSES,
+  buildRecipientTagCondition,
+  listRecipientTagOptions,
+  serializeTask,
+} = require('./paymentTaskService');
 
 function validateExpectedVersion(value) {
   const version = Number(value);
@@ -551,6 +556,9 @@ async function assignTasks(input, actorUserId) {
         attributes: [
           'id',
           'orderNumber',
+          'ingestionSource',
+          'sourceRecipientTag',
+          'tag',
           'products',
           'status',
           'paymentStatus',
@@ -684,6 +692,14 @@ async function listDispatchTasks(query = {}) {
       }
       orderWhere.status = query.officialOrderStatus;
     }
+    const optionOrderWhere = { ...orderWhere };
+    if (orderWhere[Op.and]) optionOrderWhere[Op.and] = [...orderWhere[Op.and]];
+    const recipientTagCondition = buildRecipientTagCondition(
+      query.recipientTags ?? query.recipientTag
+    );
+    if (recipientTagCondition) {
+      orderWhere[Op.and] = [...(orderWhere[Op.and] || []), recipientTagCondition];
+    }
     const page = query.page === undefined ? 1 : Number(query.page);
     if (!Number.isInteger(page) || page <= 0 || page > 100000) {
       throw ApiError.badRequest('page 必须是 1-100000 之间的整数');
@@ -692,48 +708,55 @@ async function listDispatchTasks(query = {}) {
     if (!Number.isInteger(limit) || limit <= 0 || limit > 200) {
       throw ApiError.badRequest('limit 必须是 1-200 之间的整数');
     }
-    const { count, rows } = await PaymentTask.findAndCountAll({
-      where,
-      include: [
-        {
-          model: Order,
-          as: 'order',
-          attributes: [
-            'id',
-            'orderNumber',
-            'products',
-            'status',
-            'paymentStatus',
-            'paymentMethod',
-            'officialOrderAmount',
-            'officialOrderAmountCurrency',
-            'payerName',
-            'payerVersion',
-            'orderDate',
-            'officialOrderCreatedAt',
-            'officialPaymentExpiresAt',
-            'officialStatusNeedsReview',
-            'officialAllItemsTerminal',
-            'validationIssues',
-            'lastCrawledAt',
-            'updatedAt',
-          ],
-          where: orderWhere,
-        },
-        { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
-      ],
-      order: [
-        [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
-        [Sequelize.literal('"order"."order_date"'), 'DESC'],
-        ['id', 'DESC'],
-      ],
-      distinct: true,
-      limit,
-      offset: (page - 1) * limit,
-    });
+    const [{ count, rows }, recipientTagOptions] = await Promise.all([
+      PaymentTask.findAndCountAll({
+        where,
+        include: [
+          {
+            model: Order,
+            as: 'order',
+            attributes: [
+              'id',
+              'orderNumber',
+              'ingestionSource',
+              'sourceRecipientTag',
+              'tag',
+              'products',
+              'status',
+              'paymentStatus',
+              'paymentMethod',
+              'officialOrderAmount',
+              'officialOrderAmountCurrency',
+              'payerName',
+              'payerVersion',
+              'orderDate',
+              'officialOrderCreatedAt',
+              'officialPaymentExpiresAt',
+              'officialStatusNeedsReview',
+              'officialAllItemsTerminal',
+              'validationIssues',
+              'lastCrawledAt',
+              'updatedAt',
+            ],
+            where: orderWhere,
+          },
+          { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
+        ],
+        order: [
+          [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
+          [Sequelize.literal('"order"."order_date"'), 'DESC'],
+          ['id', 'DESC'],
+        ],
+        distinct: true,
+        limit,
+        offset: (page - 1) * limit,
+      }),
+      listRecipientTagOptions(where, optionOrderWhere),
+    ]);
     const serverTime = new Date();
     return {
       items: rows.map(task => serializeTask(task, serverTime)),
+      recipientTagOptions,
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
       serverTime,
     };
