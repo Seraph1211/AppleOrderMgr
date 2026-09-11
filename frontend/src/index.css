@@ -8,13 +8,13 @@
   }
 
   body {
-    @apply bg-gray-50 text-gray-900 antialiased;
+    @apply bg-gray-50 text-sm text-gray-900 antialiased;
   }
 }
 
 @layer components {
   .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 cursor-pointer;
+    @apply min-h-[34px] px-3 py-1.5 text-sm rounded-lg font-medium transition-all duration-200 cursor-pointer;
     @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2;
   }
 
@@ -27,12 +27,12 @@
   }
 
   .card {
-    @apply bg-white rounded-xl p-6 border border-gray-200 shadow-sm;
+    @apply bg-white rounded-xl p-4 border border-gray-200 shadow-sm;
     @apply transition-all duration-200 hover:shadow-md;
   }
 
   .input {
-    @apply w-full px-4 py-2 bg-white border border-gray-300 rounded-lg;
+    @apply w-full min-w-0 min-h-[34px] px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg;
     @apply text-gray-900 placeholder-gray-400;
     @apply focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
     @apply transition-all duration-200;
@@ -59,6 +59,151 @@
   }
 }
 
+/* 页面标题遵循全局紧凑规范，局部强调文字不受影响。 */
+.app-content h1 {
+  font-size: 24px;
+  line-height: 32px;
+}
+.payment-task-table {
+  table-layout: fixed;
+}
+.payment-task-table .input {
+  min-width: 0;
+  max-width: 100%;
+}
+.payment-task-table textarea {
+  resize: vertical;
+}
+.payment-task-table .badge {
+  max-width: 100%;
+}
+.payment-task-time > span {
+  display: block;
+}
+.payment-task-more,
+.payment-task-details {
+  display: none;
+}
+@media (min-width: 768px) {
+  .payment-task-table th,
+  .payment-task-table td {
+    padding: 10px 8px;
+    overflow-wrap: anywhere;
+  }
+  .payment-task-table th {
+    font-size: 12px;
+  }
+  .payment-task-table th[data-column='选择'] {
+    width: 3%;
+  }
+  .payment-task-table th[data-column='订单 / 商品'] {
+    width: 14%;
+  }
+  .payment-task-table th[data-column='金额'],
+  .payment-task-table th[data-column='TAG'],
+  .payment-task-table th[data-column='下单时间'],
+  .payment-task-table th[data-column='最后爬数时间'] {
+    width: 7%;
+  }
+  .payment-task-table th[data-column='官网付款状态'],
+  .payment-task-table th[data-column='处理状态'],
+  .payment-task-table th[data-column='付款人'] {
+    width: 8%;
+  }
+  .payment-task-table th[data-column='付款方式'],
+  .payment-task-table th[data-column='倒计时'] {
+    width: 6%;
+  }
+  .payment-task-table th[data-column='处理备注'] {
+    width: 10%;
+  }
+  .payment-task-table th[data-column='操作'] {
+    width: 9%;
+  }
+  .payment-task-table .input {
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .payment-task-table td[data-label='操作'] .btn {
+    padding: 6px;
+  }
+}
+@media (min-width: 768px) and (max-width: 1599px) {
+  .payment-task-table th[data-column='处理备注'],
+  .payment-task-table th[data-column='付款人'],
+  .payment-task-table th[data-column='最后爬数时间'],
+  .payment-task-table td[data-label='处理备注'],
+  .payment-task-table td[data-label='付款人'],
+  .payment-task-table td[data-label='最后爬数时间'] {
+    display: none;
+  }
+  .payment-task-table th[data-column='选择'] {
+    width: 4%;
+  }
+  .payment-task-table th[data-column='订单 / 商品'] {
+    width: 18%;
+  }
+  .payment-task-table th[data-column='金额'],
+  .payment-task-table th[data-column='TAG'] {
+    width: 9%;
+  }
+  .payment-task-table th[data-column='下单时间'],
+  .payment-task-table th[data-column='官网付款状态'] {
+    width: 10%;
+  }
+  .payment-task-table th[data-column='付款方式'] {
+    width: 7%;
+  }
+  .payment-task-table th[data-column='倒计时'] {
+    width: 8%;
+  }
+  .payment-task-table th[data-column='处理状态'] {
+    width: 11%;
+  }
+  .payment-task-table th[data-column='操作'] {
+    width: 14%;
+  }
+}
+@media (min-width: 768px) and (max-width: 1599px) {
+  .payment-task-more {
+    display: inline-flex;
+  }
+  .payment-task-details {
+    display: table-row;
+  }
+  .payment-task-details > td {
+    background: #eff6ff;
+  }
+}
+@media (min-width: 768px) and (max-width: 1199px) {
+  .payment-task-table th[data-column='TAG'],
+  .payment-task-table th[data-column='下单时间'],
+  .payment-task-table td[data-label='TAG'],
+  .payment-task-table td[data-label='下单时间'] {
+    display: none;
+  }
+  .payment-task-table th[data-column='订单 / 商品'] {
+    width: 20%;
+  }
+  .payment-task-table th[data-column='金额'] {
+    width: 12%;
+  }
+  .payment-task-table th[data-column='官网付款状态'] {
+    width: 13%;
+  }
+  .payment-task-table th[data-column='付款方式'] {
+    width: 8%;
+  }
+  .payment-task-table th[data-column='倒计时'] {
+    width: 10%;
+  }
+  .payment-task-table th[data-column='处理状态'] {
+    width: 15%;
+  }
+  .payment-task-table th[data-column='操作'] {
+    width: 18%;
+  }
+}
 /* 付款任务手机列表：同一份表格数据与编辑草稿，纵向呈现主字段。 */
 @media (max-width: 767px) {
   .payment-tasks .input,
@@ -225,5 +370,11 @@
   .payment-task-table td[data-label='人工处理状态'] select {
     flex: 1;
     width: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .payment-task-table .payment-task-details {
+    display: none;
   }
 }

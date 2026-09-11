@@ -1,4 +1,4 @@
-/* eslint-env node */
+/* eslint-env node, browser */
 // 合成 API 验收：所有 /api 请求均拦截，不访问真实业务或官网。
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -38,7 +38,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       officialPaymentStatus: 'unpaid',
       officialOrderStatus: 'payment_due',
       recipientTag: '测试 TAG',
-      lastCrawledAt: null,
+      lastCrawledAt: '2026-09-12T00:20:19Z',
+      orderDate: '2026-09-12T00:10:19Z',
+      paymentMethod: 'WECHAT',
+      deadlineAt: new Date(Date.now() + 20 * 60_000).toISOString(),
     }));
     const user = () => ({
       id: 999,
@@ -48,7 +51,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       permissions,
       availableHome: '/payment-tasks',
     });
-    await page.route('**/api/**', async route => {
+    await page.route('**/api/**', route => {
       const request = route.request();
       const path = new URL(request.url()).pathname;
       if (!path.startsWith('/api/')) return route.continue();
@@ -174,13 +177,37 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     permissions = originalPermissions;
     await page.reload();
     await page.getByText('订单 ID：9001').waitFor();
-    for (const width of [320, 375, 390, 430, 768, 1440]) {
+    for (const width of [320, 375, 390, 430, 768, 1024, 1366, 1440, 1600, 1920]) {
       await page.setViewportSize({ width, height: 900 });
       assert(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
         `页面溢出 ${width}`
       );
       assert(await page.getByText('订单 ID：9001').isVisible());
+      assert(
+        await page
+          .locator('.payment-task-table')
+          .evaluate(element => element.scrollWidth <= element.clientWidth + 1),
+        `表格溢出 ${width}`
+      );
+      const actions = page.getByRole('button', { name: '保存本行修改', exact: true }).first();
+      assert(await actions.isVisible());
+      assert(
+        await actions.evaluate(element => element.getBoundingClientRect().right <= innerWidth),
+        `操作溢出 ${width}`
+      );
+      if (width >= 768 && width < 1600) {
+        await page.getByRole('button', { name: '更多', exact: true }).first().click();
+        assert(await page.locator('#task-details-1 textarea').isVisible());
+        assert(
+          await page
+            .locator('.payment-task-table')
+            .evaluate(element => element.scrollWidth <= element.clientWidth + 1),
+          `展开后表格溢出 ${width}`
+        );
+        await page.getByRole('button', { name: '收起', exact: true }).first().click();
+      }
+
       await page.screenshot({ path: `${output}/付款任务-${width}.png`, fullPage: true });
     }
     await page.setViewportSize({ width: 375, height: 812 });
@@ -193,7 +220,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(await page.getByRole('button', { name: '详情与备注' }).count(), 0);
     assert.equal(await page.getByLabel('订单 9001 处理备注').isVisible(), false);
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.getByLabel('订单 9001 处理备注').fill('未保存的备注');
+    await page.getByRole('button', { name: '更多', exact: true }).first().click();
+    await page.locator('#task-details-1 textarea').fill('未保存的备注');
+    await page.getByRole('button', { name: '收起', exact: true }).first().click();
+    await page.getByRole('button', { name: '更多', exact: true }).first().click();
+    assert.equal(await page.locator('#task-details-1 textarea').inputValue(), '未保存的备注');
+    await page.setViewportSize({ width: 1920, height: 900 });
+    assert.equal(
+      await page.locator('td[data-label="处理备注"] textarea').first().inputValue(),
+      '未保存的备注'
+    );
+    await page.setViewportSize({ width: 1440, height: 900 });
+    assert.equal(await page.locator('#task-details-1 textarea').inputValue(), '未保存的备注');
+
     await page.setViewportSize({ width: 375, height: 812 });
     await page.getByRole('button', { name: '复制订单信息', exact: true }).first().click();
     await page.getByText('订单信息已复制', { exact: true }).waitFor();
@@ -212,7 +251,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     assert.equal(writes.length, 2);
     assert.equal(writes[0].payload.processingNotes, undefined);
     assert.equal(writes[0].payload.expectedVersion, 3);
-    assert.equal(await page.getByLabel('订单 9001 处理备注').inputValue(), '未保存的备注');
+    assert.equal(await page.getByLabel('订单 9001 处理备注').first().inputValue(), '未保存的备注');
     assert.equal(await page.getByLabel('选择订单 W1234567891').isChecked(), false);
     assert.equal(await page.getByLabel('选择订单 W1234567892').isChecked(), true);
     await page.screenshot({ path: `${output}/批量部分失败.png`, fullPage: true });
@@ -233,9 +272,36 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       0
     );
     assert(await page.getByLabel('订单 9001 人工处理状态').isDisabled());
+    await page.getByRole('button', { name: '更多', exact: true }).first().click();
+    assert(await page.locator('#task-details-1 textarea').isDisabled());
+    assert(await page.locator('#task-details-1 input').isDisabled());
+    assert(
+      await page
+        .locator('.payment-task-table')
+        .evaluate(element => element.scrollWidth <= element.clientWidth + 1)
+    );
+    permissions = [
+      'payment_tasks.read_own',
+      'payment_tasks.handle_own',
+      'payment_tasks.payer.edit_own',
+    ];
+    await page.reload();
+    await page.getByText('订单 ID：9001').waitFor();
+    await page.getByRole('button', { name: '更多', exact: true }).first().click();
+    await page.locator('#task-details-1 textarea').fill('详情内保存的合成备注');
+    await page.locator('#task-details-1 input').fill('合成付款人');
+    await page.screenshot({ path: `${output}/桌面行详情-1440.png`, fullPage: true });
+    await page.getByRole('button', { name: '保存本行修改', exact: true }).first().click();
+    await page.getByText('保存成功', { exact: true }).waitFor();
+    assert.equal(writes.at(-1).payload.processingNotes, '详情内保存的合成备注');
+    assert.equal(writes.at(-1).payload.payerName, '合成付款人');
+    await page.locator('aside').getByRole('link', { name: '个人设置', exact: true }).click();
+    await page.waitForURL('**/profile');
+    assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+    await page.screenshot({ path: `${output}/个人设置-1440.png`, fullPage: true });
     assert.deepEqual(errors, []);
     process.stdout.write(
-      `H5 合成验收通过：六种宽度、登录、单项/批量复制、部分失败、草稿保留、电脑批量状态与权限。截图：${output}\n`
+      `H5 合成验收通过：十种宽度、桌面表格无横向溢出、行详情跨断点草稿、登录、单项/批量复制、部分失败、草稿保留、电脑批量状态与权限。截图：${output}\n`
     );
   } finally {
     await browser.close();

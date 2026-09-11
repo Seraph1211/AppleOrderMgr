@@ -147,17 +147,17 @@ export default function Layout({ children }) {
       {/* 侧边栏 */}
       <aside
         className={`
-        fixed inset-y-0 left-0 z-50 lg:z-20 w-64 bg-white border-r border-gray-200
+        fixed inset-y-0 left-0 z-50 lg:z-20 w-64 lg:w-52 bg-white border-r border-gray-200
         transform transition-transform duration-200 ease-in-out lg:translate-x-0
         ${sidebarOpen ? 'visible translate-x-0' : 'invisible lg:visible -translate-x-full'}
       `}
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex shrink-0 items-center justify-between h-16 px-6">
+          <div className="flex shrink-0 items-center justify-between h-[52px] px-4">
             <div className="flex items-center space-x-2">
-              <Apple className="w-8 h-8 text-primary" />
-              <span className="text-lg font-semibold text-gray-900">Apple Orders Mgr</span>
+              <Apple className="w-7 h-7 shrink-0 text-primary" />
+              <span className="text-sm font-semibold text-gray-900">Apple Orders Mgr</span>
             </div>
             <button
               onClick={() => setSidebarOpen(false)}
@@ -171,7 +171,7 @@ export default function Layout({ children }) {
           {/* 导航 */}
           <nav
             aria-label="主导航"
-            className="min-h-0 flex-1 px-4 py-6 space-y-1 overflow-y-auto overscroll-contain"
+            className="min-h-0 flex-1 px-3 py-4 space-y-1 overflow-y-auto overscroll-contain"
           >
             {navigation.map(item => {
               const isActive = location.pathname === item.href;
@@ -181,7 +181,7 @@ export default function Layout({ children }) {
                   to={item.href}
                   onClick={() => setSidebarOpen(false)}
                   className={`
-                    flex items-center space-x-3 px-4 py-3 rounded-lg transition-all duration-200
+                    flex items-center space-x-2 px-3 py-2.5 rounded-lg transition-all duration-200
                     ${
                       isActive
                         ? 'bg-primary text-white shadow-sm'
@@ -207,10 +207,10 @@ export default function Layout({ children }) {
       </aside>
 
       {/* 主内容区 */}
-      <div className="lg:pl-64">
+      <div className="lg:pl-52">
         {/* 顶部栏 */}
-        <header className="sticky top-0 z-10 h-16 bg-white">
-          <div className="flex items-center justify-between h-full px-6">
+        <header className="sticky top-0 z-10 h-[52px] bg-white">
+          <div className="flex items-center justify-between h-full px-4">
             <button
               onClick={() => setSidebarOpen(true)}
               aria-label="打开导航"
@@ -309,7 +309,7 @@ export default function Layout({ children }) {
         </header>
 
         {/* 页面内容 */}
-        <main className="min-w-0 p-3 sm:p-6">{children}</main>
+        <main className="app-content min-w-0 p-3 sm:p-4">{children}</main>
         {logoutError && (
           <AlertModal title="退出失败" message={logoutError} onClose={() => setLogoutError('')} />
         )}

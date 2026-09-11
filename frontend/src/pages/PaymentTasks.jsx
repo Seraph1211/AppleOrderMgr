@@ -6,8 +6,8 @@ import TagMultiSelect from '../components/TagMultiSelect';
 import usePaymentRefresh from '../hooks/usePaymentRefresh';
 import { getPaymentStageLabel } from '../utils/paymentStage';
 import { ORDER_STATUS_LABELS } from '../constants/orderStatus';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, CreditCard, RefreshCw, RotateCcw, Save, Search } from 'lucide-react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ChevronDown, Copy, CreditCard, RefreshCw, RotateCcw, Save, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
@@ -114,6 +114,16 @@ export default function PaymentTasks() {
   const [rowActions, setRowActions] = useState({});
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
   const [batchCopyAction, setBatchCopyAction] = useState(null);
+  const [wideDetails, setWideDetails] = useState(
+    () => window.matchMedia('(min-width: 1200px)').matches
+  );
+  useEffect(() => {
+    const query = window.matchMedia('(min-width: 1200px)');
+    const update = () => setWideDetails(query.matches);
+    query.addEventListener('change', update);
+    return () => query.removeEventListener('change', update);
+  }, []);
+  const [expandedTasks, setExpandedTasks] = useState([]);
   const [showFilters, setShowFilters] = useState(false);
   const [batchEditorOpen, setBatchEditorOpen] = useState(false);
   const [batchStatus, setBatchStatus] = useState('processing');
@@ -386,11 +396,42 @@ export default function PaymentTasks() {
     setFilters(next);
   };
 
+  const renderNotes = task => (
+    <textarea
+      aria-label={`订单 ${task.orderId} 处理备注`}
+      className="input min-w-0"
+      rows="2"
+      maxLength="2000"
+      disabled={!can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN)}
+      value={drafts[task.id]?.notes || ''}
+      onChange={event => updateDraft(task.id, 'notes', event.target.value)}
+    />
+  );
+  const renderPayer = task => (
+    <input
+      aria-label={`订单 ${task.orderId} 付款人`}
+      className="input min-w-0"
+      type="text"
+      maxLength="100"
+      placeholder="实际付款人"
+      disabled={!can(PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN)}
+      value={drafts[task.id]?.payerName || ''}
+      onChange={event => updateDraft(task.id, 'payerName', event.target.value)}
+    />
+  );
+  const renderTime = value => (
+    <span className="payment-task-time">
+      {value.split(' ').map((part, index) => (
+        <span key={index}>{part}</span>
+      ))}
+    </span>
+  );
+
   return (
-    <fieldset disabled={batchSaving} className="payment-tasks min-w-0 space-y-4 sm:space-y-6">
+    <fieldset disabled={batchSaving} className="payment-tasks min-w-0 space-y-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <CreditCard className="w-6 h-6 text-primary" />
             付款任务
           </h1>
@@ -498,7 +539,7 @@ export default function PaymentTasks() {
       )}
       <div className="card p-0 overflow-hidden" data-has-selection={selectedTasks.length > 0}>
         {canSelectTasks && (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
             <div>
               <h2 className="font-semibold text-gray-900">任务列表</h2>
               <p className="mt-1 text-sm text-gray-500">
@@ -520,7 +561,7 @@ export default function PaymentTasks() {
               )}
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              <label className="flex min-h-11 items-center gap-2 text-sm">
+              <label className="flex min-h-[34px] items-center gap-2 text-sm">
                 <input
                   type="checkbox"
                   className="h-5 w-5 accent-primary"
@@ -654,11 +695,11 @@ export default function PaymentTasks() {
           <p className="text-center text-gray-500 py-12">暂无匹配的付款任务</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="payment-task-table w-full min-w-[1880px]">
+            <table className="payment-task-table w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   {canSelectTasks && (
-                    <th className="px-4 py-3">
+                    <th data-column="选择" className="px-4 py-3">
                       <input
                         type="checkbox"
                         className="h-4 w-4 cursor-pointer accent-primary"
@@ -692,6 +733,7 @@ export default function PaymentTasks() {
                   ].map(title => (
                     <th
                       key={title}
+                      data-column={title}
                       title={
                         title === '下单时间'
                           ? '北京时间，邮件或人工录入来源；缺失时采用官网精确时间'
@@ -706,214 +748,252 @@ export default function PaymentTasks() {
               </thead>
               <tbody>
                 {tasks.map(task => (
-                  <tr
-                    key={task.id}
-                    className={`border-b border-gray-100 align-top hover:bg-gray-50 ${selectedTaskIds.includes(task.id) ? 'mobile-selected' : ''}`}
-                  >
-                    {canSelectTasks && (
-                      <td data-label="选择" className="px-4 py-4 mobile-selection">
-                        <input
-                          type="checkbox"
-                          className="h-4 w-4 cursor-pointer accent-primary"
-                          aria-label={`选择订单 ${task.orderNumber}`}
-                          disabled={batchCopyAction?.copying}
-                          checked={selectedTaskIds.includes(task.id)}
-                          onChange={() =>
-                            setSelectedTaskIds(previous =>
+                  <Fragment key={task.id}>
+                    <tr
+                      className={`border-b border-gray-100 align-top hover:bg-gray-50 ${selectedTaskIds.includes(task.id) ? 'mobile-selected' : ''}`}
+                    >
+                      {canSelectTasks && (
+                        <td data-label="选择" className="px-4 py-4 mobile-selection">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 cursor-pointer accent-primary"
+                            aria-label={`选择订单 ${task.orderNumber}`}
+                            disabled={batchCopyAction?.copying}
+                            checked={selectedTaskIds.includes(task.id)}
+                            onChange={() =>
+                              setSelectedTaskIds(previous =>
+                                previous.includes(task.id)
+                                  ? previous.filter(id => id !== task.id)
+                                  : [...previous, task.id]
+                              )
+                            }
+                          />
+                        </td>
+                      )}
+                      <td data-label="订单 / 商品" className="px-4 py-4 mobile-order">
+                        <div className="order-system-id mb-1 text-sm font-semibold text-gray-900">
+                          订单 ID：{task.orderId ?? '-'}
+                        </div>
+                        <div className="font-mono text-sm font-medium text-primary">
+                          {task.orderNumber}
+                        </div>
+                        <div className="mt-1 max-w-72 truncate text-xs text-gray-500">
+                          {task.products
+                            .map(product => `${product.name} ×${product.quantity}`)
+                            .join('、')}
+                        </div>
+                      </td>
+                      <td data-label="金额" className="px-4 py-4 text-sm font-medium">
+                        {task.officialOrderAmount === null || task.officialOrderAmount === undefined
+                          ? '尚未获取'
+                          : `${task.officialOrderAmountCurrency === 'CNY' ? '¥' : task.officialOrderAmountCurrency || ''} ${Number.isFinite(Number(task.officialOrderAmount)) ? Number(task.officialOrderAmount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : task.officialOrderAmount}`}
+                      </td>
+                      <td data-label="TAG" data-secondary="true" className="px-4 py-4">
+                        {task.recipientTag ? (
+                          <span
+                            className="badge badge-info max-w-48 truncate"
+                            title={task.recipientTag}
+                          >
+                            {task.recipientTag}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td
+                        data-label="下单时间"
+                        data-secondary="true"
+                        className="px-4 py-4 text-sm text-gray-600"
+                      >
+                        {renderTime(formatOrderTime(task.orderDate || task.officialOrderCreatedAt))}
+                      </td>
+                      <td data-label="官网付款状态" className="px-4 py-4 text-sm">
+                        <span
+                          className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-medium ${task.officialPaymentStatus === 'paid' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-primary'}`}
+                        >
+                          {task.officialPaymentConfirmed
+                            ? '官网已确认付款'
+                            : {
+                                unpaid: '未付款',
+                                paid: '已付款',
+                                refunded: '已退款',
+                                partially_refunded: '部分退款',
+                                unknown: '待核对',
+                              }[task.officialPaymentStatus] ||
+                              task.officialPaymentStatus ||
+                              '未知'}
+                        </span>
+                        {task.officialPaymentDiscrepancy && (
+                          <p className="text-xs text-amber-700">人工任务尚未完成</p>
+                        )}
+                        <div className="hidden md:block text-xs text-gray-400">
+                          {ORDER_STATUS_LABELS[task.officialOrderStatus] ||
+                            task.officialOrderStatus}
+                        </div>
+                      </td>
+                      <td
+                        data-label="付款方式"
+                        data-secondary="true"
+                        className="px-4 py-4 text-sm text-gray-700"
+                      >
+                        {task.paymentMethod || '-'}
+                      </td>
+                      <td
+                        data-label="倒计时"
+                        data-secondary="true"
+                        className={`px-4 py-4 text-sm ${task.remainingSeconds !== null && task.remainingSeconds <= 300 ? 'text-red-600 font-medium' : 'text-gray-700'}`}
+                      >
+                        {formatCountdown(task.deadlineAt, now, task)}
+                      </td>
+                      <td data-label="人工处理状态" className="px-4 py-4">
+                        <select
+                          aria-label={`订单 ${task.orderId} 人工处理状态`}
+                          className={`input min-w-0 font-medium ${STATUS_STYLES[drafts[task.id]?.status || task.processingStatus]}`}
+                          disabled={!can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN)}
+                          value={drafts[task.id]?.status || task.processingStatus}
+                          onChange={event => updateDraft(task.id, 'status', event.target.value)}
+                        >
+                          {Object.entries(STATUS_LABELS).map(([value, label]) => (
+                            <option key={value} value={value}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      <td data-label="处理备注" data-secondary="true" className="px-4 py-4">
+                        {renderNotes(task)}
+                      </td>
+                      <td data-label="付款人" data-secondary="true" className="px-4 py-4">
+                        {renderPayer(task)}
+                      </td>
+                      <td
+                        data-label="最后爬数时间"
+                        data-secondary="true"
+                        className="px-4 py-4 text-sm text-gray-600"
+                      >
+                        {renderTime(formatDateTime(task.lastCrawledAt))}
+                      </td>
+                      <td data-label="操作" className="px-4 py-4">
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {(can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN) ||
+                            can(PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN)) && (
+                            <button
+                              className="btn btn-primary px-2 inline-flex items-center justify-center gap-2"
+                              onClick={() => saveTask(task)}
+                              disabled={rowActions[task.id]?.saving}
+                              title="保存本行修改"
+                              aria-label="保存本行修改"
+                            >
+                              <Save
+                                className={`w-4 h-4 ${rowActions[task.id]?.saving ? 'animate-pulse' : ''}`}
+                              />
+                              <span className="md:hidden">保存</span>
+                            </button>
+                          )}
+                          {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) && (
+                            <button
+                              className="btn btn-secondary px-2 inline-flex items-center justify-center gap-2"
+                              onClick={() => copyPaymentLink(task)}
+                              disabled={rowActions[task.id]?.copying}
+                              title="复制订单信息"
+                              aria-label="复制订单信息"
+                            >
+                              <Copy className="w-4 h-4" />
+                              <span className="md:hidden">复制</span>
+                            </button>
+                          )}
+                          {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
+                            <button
+                              className="btn btn-secondary px-2 inline-flex items-center justify-center gap-2"
+                              onClick={() => refreshTask(task)}
+                              disabled={progress[task.id]?.refreshing}
+                              title="刷新官网状态"
+                              aria-label="刷新官网状态"
+                            >
+                              <RefreshCw
+                                className={`w-4 h-4 ${progress[task.id]?.refreshing ? 'animate-spin' : ''}`}
+                              />
+                              <span className="md:hidden">刷新</span>
+                            </button>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          className="payment-task-more btn btn-secondary mt-2 items-center gap-1"
+                          aria-expanded={expandedTasks.includes(task.id)}
+                          aria-controls={`task-details-${task.id}`}
+                          onClick={() =>
+                            setExpandedTasks(previous =>
                               previous.includes(task.id)
                                 ? previous.filter(id => id !== task.id)
                                 : [...previous, task.id]
                             )
                           }
-                        />
+                        >
+                          {expandedTasks.includes(task.id) ? '收起' : '更多'}
+                          <ChevronDown
+                            className={`h-4 w-4 ${expandedTasks.includes(task.id) ? 'rotate-180' : ''}`}
+                          />
+                        </button>
+                        {progress[task.id]?.message && (
+                          <p
+                            role="status"
+                            className={`mt-2 text-xs max-w-44 ${progress[task.id].type === 'error' ? 'text-red-600' : progress[task.id].type === 'success' ? 'text-green-700' : 'text-gray-500'}`}
+                          >
+                            {progress[task.id].message}
+                          </p>
+                        )}
+                        {rowActions[task.id]?.message && (
+                          <p
+                            className={`mt-2 text-xs max-w-44 ${
+                              rowActions[task.id].type === 'error'
+                                ? 'text-red-600'
+                                : rowActions[task.id].type === 'success'
+                                  ? 'text-green-700'
+                                  : 'text-gray-500'
+                            }`}
+                          >
+                            {rowActions[task.id].message}
+                          </p>
+                        )}
                       </td>
+                    </tr>
+                    {expandedTasks.includes(task.id) && (
+                      <tr className="payment-task-details" id={`task-details-${task.id}`}>
+                        <td colSpan={(wideDetails ? 9 : 7) + (canSelectTasks ? 1 : 0)}>
+                          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-3">
+                            <label className="min-w-0 space-y-1">
+                              <span className="text-gray-600">处理备注</span>
+                              {renderNotes(task)}
+                            </label>
+                            <label className="min-w-0 space-y-1">
+                              <span className="text-gray-600">付款人</span>
+                              {renderPayer(task)}
+                            </label>
+                            <div>
+                              <p className="mb-1 text-gray-600">最后爬数时间</p>
+                              {renderTime(formatDateTime(task.lastCrawledAt))}
+                            </div>
+                            <div className="min-[1200px]:hidden break-words">
+                              <p className="mb-1 text-gray-600">TAG</p>
+                              {task.recipientTag || '-'}
+                            </div>
+                            <div className="min-[1200px]:hidden">
+                              <p className="mb-1 text-gray-600">下单时间</p>
+                              {renderTime(
+                                formatOrderTime(task.orderDate || task.officialOrderCreatedAt)
+                              )}
+                            </div>
+                            <div className="md:hidden">
+                              <p className="mb-1 text-gray-600">付款方式 / 倒计时</p>
+                              {task.paymentMethod || '-'} ·{' '}
+                              {formatCountdown(task.deadlineAt, now, task)}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
                     )}
-                    <td data-label="订单 / 商品" className="px-4 py-4 mobile-order">
-                      <div className="order-system-id mb-1 text-sm font-semibold text-gray-900">
-                        订单 ID：{task.orderId ?? '-'}
-                      </div>
-                      <div className="font-mono text-sm font-medium text-primary">
-                        {task.orderNumber}
-                      </div>
-                      <div className="mt-1 max-w-72 truncate text-xs text-gray-500">
-                        {task.products
-                          .map(product => `${product.name} ×${product.quantity}`)
-                          .join('、')}
-                      </div>
-                    </td>
-                    <td data-label="金额" className="px-4 py-4 text-sm font-medium">
-                      {task.officialOrderAmount === null || task.officialOrderAmount === undefined
-                        ? '尚未获取'
-                        : `${task.officialOrderAmountCurrency === 'CNY' ? '¥' : task.officialOrderAmountCurrency || ''} ${Number.isFinite(Number(task.officialOrderAmount)) ? Number(task.officialOrderAmount).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : task.officialOrderAmount}`}
-                    </td>
-                    <td data-label="TAG" data-secondary="true" className="px-4 py-4">
-                      {task.recipientTag ? (
-                        <span
-                          className="badge badge-info max-w-48 truncate"
-                          title={task.recipientTag}
-                        >
-                          {task.recipientTag}
-                        </span>
-                      ) : (
-                        <span className="text-sm text-gray-400">-</span>
-                      )}
-                    </td>
-                    <td
-                      data-label="下单时间"
-                      data-secondary="true"
-                      className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap"
-                    >
-                      {formatOrderTime(task.orderDate || task.officialOrderCreatedAt)}
-                    </td>
-                    <td data-label="官网付款状态" className="px-4 py-4 text-sm">
-                      <span
-                        className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-medium ${task.officialPaymentStatus === 'paid' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-primary'}`}
-                      >
-                        {task.officialPaymentConfirmed
-                          ? '官网已确认付款'
-                          : {
-                              unpaid: '未付款',
-                              paid: '已付款',
-                              refunded: '已退款',
-                              partially_refunded: '部分退款',
-                              unknown: '待核对',
-                            }[task.officialPaymentStatus] ||
-                            task.officialPaymentStatus ||
-                            '未知'}
-                      </span>
-                      {task.officialPaymentDiscrepancy && (
-                        <p className="text-xs text-amber-700">人工任务尚未完成</p>
-                      )}
-                      <div className="hidden md:block text-xs text-gray-400">
-                        {ORDER_STATUS_LABELS[task.officialOrderStatus] || task.officialOrderStatus}
-                      </div>
-                    </td>
-                    <td
-                      data-label="付款方式"
-                      data-secondary="true"
-                      className="px-4 py-4 text-sm text-gray-700"
-                    >
-                      {task.paymentMethod || '-'}
-                    </td>
-                    <td
-                      data-label="倒计时"
-                      data-secondary="true"
-                      className={`px-4 py-4 text-sm ${task.remainingSeconds !== null && task.remainingSeconds <= 300 ? 'text-red-600 font-medium' : 'text-gray-700'}`}
-                    >
-                      {formatCountdown(task.deadlineAt, now, task)}
-                    </td>
-                    <td data-label="人工处理状态" className="px-4 py-4">
-                      <select
-                        aria-label={`订单 ${task.orderId} 人工处理状态`}
-                        className={`input min-w-28 font-medium ${STATUS_STYLES[drafts[task.id]?.status || task.processingStatus]}`}
-                        disabled={!can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN)}
-                        value={drafts[task.id]?.status || task.processingStatus}
-                        onChange={event => updateDraft(task.id, 'status', event.target.value)}
-                      >
-                        {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                          <option key={value} value={value}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
-                    </td>
-                    <td data-label="处理备注" data-secondary="true" className="px-4 py-4">
-                      <textarea
-                        aria-label={`订单 ${task.orderId} 处理备注`}
-                        className="input min-w-56"
-                        rows="2"
-                        maxLength="2000"
-                        disabled={!can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN)}
-                        value={drafts[task.id]?.notes || ''}
-                        onChange={event => updateDraft(task.id, 'notes', event.target.value)}
-                      />
-                    </td>
-                    <td data-label="付款人" data-secondary="true" className="px-4 py-4">
-                      <input
-                        aria-label={`订单 ${task.orderId} 付款人`}
-                        className="input min-w-48"
-                        type="text"
-                        maxLength="100"
-                        placeholder="输入实际付款人姓名"
-                        disabled={!can(PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN)}
-                        value={drafts[task.id]?.payerName || ''}
-                        onChange={event => updateDraft(task.id, 'payerName', event.target.value)}
-                      />
-                    </td>
-                    <td
-                      data-label="最后爬数时间"
-                      data-secondary="true"
-                      className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap"
-                    >
-                      {formatDateTime(task.lastCrawledAt)}
-                    </td>
-                    <td data-label="操作" className="px-4 py-4">
-                      <div className="flex flex-wrap gap-2 items-center">
-                        {(can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN) ||
-                          can(PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN)) && (
-                          <button
-                            className="btn btn-primary px-2 inline-flex items-center justify-center gap-2"
-                            onClick={() => saveTask(task)}
-                            disabled={rowActions[task.id]?.saving}
-                            title="保存本行修改"
-                            aria-label="保存本行修改"
-                          >
-                            <Save
-                              className={`w-4 h-4 ${rowActions[task.id]?.saving ? 'animate-pulse' : ''}`}
-                            />
-                            <span className="md:hidden">保存</span>
-                          </button>
-                        )}
-                        {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) && (
-                          <button
-                            className="btn btn-secondary px-2 inline-flex items-center justify-center gap-2"
-                            onClick={() => copyPaymentLink(task)}
-                            disabled={rowActions[task.id]?.copying}
-                            title="复制订单信息"
-                            aria-label="复制订单信息"
-                          >
-                            <Copy className="w-4 h-4" />
-                            <span className="md:hidden">复制</span>
-                          </button>
-                        )}
-                        {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
-                          <button
-                            className="btn btn-secondary px-2 inline-flex items-center justify-center gap-2"
-                            onClick={() => refreshTask(task)}
-                            disabled={progress[task.id]?.refreshing}
-                            title="刷新官网状态"
-                            aria-label="刷新官网状态"
-                          >
-                            <RefreshCw
-                              className={`w-4 h-4 ${progress[task.id]?.refreshing ? 'animate-spin' : ''}`}
-                            />
-                            <span className="md:hidden">刷新</span>
-                          </button>
-                        )}
-                      </div>
-                      {progress[task.id]?.message && (
-                        <p
-                          role="status"
-                          className={`mt-2 text-xs max-w-44 ${progress[task.id].type === 'error' ? 'text-red-600' : progress[task.id].type === 'success' ? 'text-green-700' : 'text-gray-500'}`}
-                        >
-                          {progress[task.id].message}
-                        </p>
-                      )}
-                      {rowActions[task.id]?.message && (
-                        <p
-                          className={`mt-2 text-xs max-w-44 ${
-                            rowActions[task.id].type === 'error'
-                              ? 'text-red-600'
-                              : rowActions[task.id].type === 'success'
-                                ? 'text-green-700'
-                                : 'text-gray-500'
-                          }`}
-                        >
-                          {rowActions[task.id].message}
-                        </p>
-                      )}
-                    </td>
-                  </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
