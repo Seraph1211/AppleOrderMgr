@@ -1,14 +1,15 @@
-/* global localStorage, document, window */
+/* global localStorage, document, navigator, window */
 const assert = require('node:assert/strict');
 const logger = require('../src/utils/logger');
 
-function getSyntheticPermissions(mode, permitted) {
+function getSyntheticPermissions(mode, permitted, copyPermitted) {
   if (mode === 'payment-dispatch') {
     return ['payment_dispatch.read', 'payment_dispatch.assign', 'orders.refresh'];
   }
   return [
     'payment_tasks.read_own',
     'payment_tasks.handle_own',
+    ...(copyPermitted ? ['payment_tasks.link.read_own'] : []),
     ...(permitted ? ['payment_tasks.refresh_own'] : []),
   ];
 }
@@ -33,23 +34,40 @@ async function main() {
     page.setDefaultTimeout(15000);
     const errors = [];
     const submissions = [];
+    const paymentLinkRequests = [];
     const queries = [];
     const jobs = {};
     let total = 45;
     let mode = 'payment-tasks';
     let permitted = true;
+    let copyPermitted = true;
     let hold = false;
     let rejectSecond = false;
     const updated = new Set();
+    const productsForTask = id => {
+      if (id === 1) {
+        return [
+          { name: '合成手机 白色 256G', model: 'MODEL-A', quantity: 1 },
+          { name: '   ', model: 'MODEL-B', quantity: 2 },
+        ];
+      }
+      if (id === 2) return [];
+      return [{ name: '合成手机', model: 'MODEL', quantity: 1 }];
+    };
+    const paymentMethodForTask = id => {
+      if (id === 1) return 'WECHAT';
+      if (id === 2) return null;
+      return '支付宝';
+    };
     const task = id => ({
       id,
       orderId: id,
       orderNumber: `W${String(id).padStart(10, '0')}`,
       recipientTag: `TAG-${id % 3}`,
-      products: [{ name: '合成手机', model: 'MODEL', quantity: 1 }],
+      products: productsForTask(id),
       officialOrderStatus: 'payment_due',
       officialPaymentStatus: 'unpaid',
-      paymentMethod: '支付宝',
+      paymentMethod: paymentMethodForTask(id),
       processingStatus: 'pending',
       processingNotes: '',
       payerName: '',
@@ -63,7 +81,19 @@ async function main() {
       lastCrawledAt: updated.has(id) ? '2026-09-09T03:00:00Z' : '2026-09-09T02:00:00Z',
     });
     page.on('pageerror', error => errors.push(error.message));
-    await context.addInitScript(() => localStorage.setItem('token', 'synthetic-token'));
+    await context.addInitScript(() => {
+      localStorage.setItem('token', 'synthetic-token');
+      window.__copiedPaymentText = '';
+      Object.defineProperty(navigator, 'clipboard', {
+        configurable: true,
+        value: {
+          writeText: value => {
+            window.__copiedPaymentText = value;
+            return Promise.resolve();
+          },
+        },
+      });
+    });
     await page.route('**/*', async route => {
       try {
         const url = new URL(route.request().url());
@@ -78,7 +108,7 @@ async function main() {
             id: 1,
             username: 'synthetic',
             role: mode === 'payment-dispatch' ? 'admin' : 'readOnly',
-            permissions: getSyntheticPermissions(mode, permitted),
+            permissions: getSyntheticPermissions(mode, permitted, copyPermitted),
             availableHome: `/${mode}`,
           };
         else if (url.pathname === '/api/payment-dispatch/overview')
@@ -106,6 +136,12 @@ async function main() {
             },
             recipientTagOptions: ['TAG-0', 'TAG-1', 'TAG-2'],
             serverTime: new Date().toISOString(),
+          };
+        } else if (/^\/api\/payment-tasks\/\d+\/payment-link$/.test(url.pathname)) {
+          const id = Number(url.pathname.split('/').at(-2));
+          paymentLinkRequests.push(id);
+          data = {
+            paymentUrl: `https://www.apple.com.cn/xc/cn/vieworder/${task(id).orderNumber}/synthetic-${id}`,
           };
         } else if (
           /^\/api\/payment-tasks\/\d+$/.test(url.pathname) &&
@@ -169,6 +205,31 @@ async function main() {
       assert.match(await rows.nth(1).innerText(), /待核实/);
       assert.equal(await rows.nth(2).getByText('2026/09/09', { exact: true }).count(), 1);
       assert.match(await rows.nth(3).innerText(), /2026\/09\/09 09:02:03/);
+      if (mode === 'payment-tasks') {
+        await rows.first().getByRole('button', { name: '复制订单信息', exact: true }).click();
+        await rows.first().getByText('订单信息已复制', { exact: true }).waitFor();
+        assert.equal(
+          await page.evaluate(() => window.__copiedPaymentText),
+          '1 || 合成手机 白色 256G x 1、MODEL-B x 2 || 微信 || https://www.apple.com.cn/xc/cn/vieworder/W0000000001/synthetic-1'
+        );
+        await rows.nth(1).getByRole('button', { name: '复制订单信息', exact: true }).click();
+        await rows.nth(1).getByText('订单信息已复制', { exact: true }).waitFor();
+        assert.equal(
+          await page.evaluate(() => window.__copiedPaymentText),
+          '2 || - || - || https://www.apple.com.cn/xc/cn/vieworder/W0000000002/synthetic-2'
+        );
+        await page.getByRole('checkbox', { name: '选择订单 W0000000001', exact: true }).check();
+        await page.getByRole('checkbox', { name: '选择订单 W0000000002', exact: true }).check();
+        await page.getByRole('button', { name: '批量复制订单信息', exact: true }).click();
+        await page.getByText('已复制 2 条订单信息', { exact: true }).waitFor();
+        assert.equal(
+          await page.evaluate(() => window.__copiedPaymentText),
+          '1 || 合成手机 白色 256G x 1、MODEL-B x 2 || 微信 || https://www.apple.com.cn/xc/cn/vieworder/W0000000001/synthetic-1\n2 || - || - || https://www.apple.com.cn/xc/cn/vieworder/W0000000002/synthetic-2'
+        );
+        assert.deepEqual(paymentLinkRequests.slice(-2), [1, 2]);
+        await page.getByRole('checkbox', { name: '选择订单 W0000000001', exact: true }).uncheck();
+        await page.getByRole('checkbox', { name: '选择订单 W0000000002', exact: true }).uncheck();
+      }
       assert.equal(
         await page.getByRole('button', { name: '批量刷新', exact: true }).isDisabled(),
         true
@@ -305,6 +366,17 @@ async function main() {
     permitted = false;
     await page.goto('http://127.0.0.1:5173/payment-tasks', { waitUntil: 'networkidle' });
     assert.equal(await page.getByRole('button', { name: '批量刷新', exact: true }).count(), 0);
+    assert.equal(
+      await page.getByRole('button', { name: '批量复制订单信息', exact: true }).count(),
+      1
+    );
+    assert.ok((await page.getByRole('checkbox').count()) > 0);
+    copyPermitted = false;
+    await page.reload({ waitUntil: 'networkidle' });
+    assert.equal(
+      await page.getByRole('button', { name: '批量复制订单信息', exact: true }).count(),
+      0
+    );
     assert.equal(await page.getByRole('checkbox').count(), 0);
     assert.deepEqual(errors, []);
     logger.info('付款页面浏览器验收通过', {
@@ -313,6 +385,8 @@ async function main() {
         '分页及末页',
         '筛选及空结果',
         'TAG 展示及下拉多选精确筛选',
+        '订单信息复制格式及缺失值兜底',
+        '当前页勾选批量复制及独立权限展示',
         '下单时间',
         '勾选清空',
         '批量部分失败',

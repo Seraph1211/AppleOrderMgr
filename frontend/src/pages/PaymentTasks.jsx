@@ -44,6 +44,8 @@ const INITIAL_FILTERS = {
   recipientTags: [],
 };
 
+const COPY_LINK_CONCURRENCY = 5;
+
 function formatCountdown(deadlineAt, now, task) {
   const stage = getPaymentStageLabel(task);
   if (stage) return stage;
@@ -62,8 +64,37 @@ function formatDateTime(value) {
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+function buildPaymentCopyText(task, paymentUrl) {
+  const productInfo = (Array.isArray(task.products) ? task.products : [])
+    .map(product => {
+      const productName = String(product?.name || '').trim();
+      const model = String(product?.model || '').trim();
+      const name = productName || model;
+      if (!name) return null;
+      const parsedQuantity = Number(product?.quantity);
+      const quantity = Number.isInteger(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
+      return `${name} x ${quantity}`;
+    })
+    .filter(Boolean)
+    .join('、');
+  const rawPaymentMethod = String(task.paymentMethod || '').trim();
+  const normalizedPaymentMethod = rawPaymentMethod.toLowerCase();
+  const paymentMethod =
+    {
+      wechat: '微信',
+      'wechat pay': '微信',
+      微信支付: '微信',
+      alipay: '支付宝',
+    }[normalizedPaymentMethod] || rawPaymentMethod;
+
+  return `${task.orderId ?? '-'} || ${productInfo || '-'} || ${paymentMethod || '-'} || ${paymentUrl}`;
+}
+
 export default function PaymentTasks() {
   const { can } = useAuth();
+  const canRefreshTasks = can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN);
+  const canCopyTaskInfo = can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN);
+  const canSelectTasks = canRefreshTasks || canCopyTaskInfo;
   const [tasks, setTasks] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -79,6 +110,11 @@ export default function PaymentTasks() {
   const [serverClockOffset, setServerClockOffset] = useState(0);
   const [rowActions, setRowActions] = useState({});
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [batchCopyAction, setBatchCopyAction] = useState(null);
+
+  useEffect(() => {
+    setBatchCopyAction(null);
+  }, [selectedTaskIds]);
 
   const loadTasks = useCallback(
     async (preserveDrafts = false) => {
@@ -156,6 +192,10 @@ export default function PaymentTasks() {
       ),
     [tasks]
   );
+  const selectedTasks = useMemo(
+    () => tasks.filter(task => selectedTaskIds.includes(task.id)),
+    [selectedTaskIds, tasks]
+  );
 
   const updateDraft = (taskId, field, value) => {
     setDrafts(previous => ({
@@ -229,17 +269,48 @@ export default function PaymentTasks() {
     try {
       setError('');
       const response = await getPaymentTaskLink(task.id);
-      await navigator.clipboard.writeText(response.data.paymentUrl);
+      await navigator.clipboard.writeText(buildPaymentCopyText(task, response.data.paymentUrl));
       updateRowAction(task.id, {
         copying: false,
         type: 'success',
-        message: '订单链接已复制',
+        message: '订单信息已复制',
       });
     } catch (actionError) {
       updateRowAction(task.id, {
         copying: false,
         type: 'error',
         message: actionError.message,
+      });
+    }
+  };
+
+  const copySelectedTasks = async () => {
+    if (selectedTasks.length === 0) return;
+    setBatchCopyAction({ copying: true, type: 'info', message: '正在获取订单信息...' });
+    try {
+      setError('');
+      const lines = [];
+      for (let index = 0; index < selectedTasks.length; index += COPY_LINK_CONCURRENCY) {
+        const chunk = selectedTasks.slice(index, index + COPY_LINK_CONCURRENCY);
+        const chunkLines = await Promise.all(
+          chunk.map(async task => {
+            const response = await getPaymentTaskLink(task.id);
+            return buildPaymentCopyText(task, response.data.paymentUrl);
+          })
+        );
+        lines.push(...chunkLines);
+      }
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setBatchCopyAction({
+        copying: false,
+        type: 'success',
+        message: `已复制 ${lines.length} 条订单信息`,
+      });
+    } catch (actionError) {
+      setBatchCopyAction({
+        copying: false,
+        type: 'error',
+        message: `批量复制失败：${actionError.message}`,
       });
     }
   };
@@ -358,30 +429,54 @@ export default function PaymentTasks() {
         </div>
       )}
       <div className="card p-0 overflow-hidden">
-        {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
+        {canSelectTasks && (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
             <div>
               <h2 className="font-semibold text-gray-900">任务列表</h2>
               <p className="mt-1 text-sm text-gray-500">
                 已选择 {selectedTaskIds.length} 项（当前页）
               </p>
+              {batchCopyAction?.message && (
+                <p
+                  role="status"
+                  className={`mt-1 text-sm ${
+                    batchCopyAction.type === 'error'
+                      ? 'text-red-600'
+                      : batchCopyAction.type === 'success'
+                        ? 'text-green-700'
+                        : 'text-gray-500'
+                  }`}
+                >
+                  {batchCopyAction.message}
+                </p>
+              )}
             </div>
-            <button
-              className="btn btn-secondary inline-flex items-center gap-2"
-              disabled={
-                loading ||
-                submittingBatch ||
-                !tasks.some(
-                  task => selectedTaskIds.includes(task.id) && !progress[task.id]?.refreshing
-                )
-              }
-              onClick={() =>
-                refreshSelected(tasks.filter(task => selectedTaskIds.includes(task.id)))
-              }
-            >
-              <RefreshCw className={`w-4 h-4 ${submittingBatch ? 'animate-spin' : ''}`} />
-              {submittingBatch ? '提交中...' : '批量刷新'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {canCopyTaskInfo && (
+                <button
+                  className="btn btn-secondary inline-flex items-center gap-2"
+                  disabled={loading || batchCopyAction?.copying || selectedTasks.length === 0}
+                  onClick={copySelectedTasks}
+                >
+                  <Copy className={`w-4 h-4 ${batchCopyAction?.copying ? 'animate-pulse' : ''}`} />
+                  {batchCopyAction?.copying ? '复制中...' : '批量复制订单信息'}
+                </button>
+              )}
+              {canRefreshTasks && (
+                <button
+                  className="btn btn-secondary inline-flex items-center gap-2"
+                  disabled={
+                    loading ||
+                    submittingBatch ||
+                    !selectedTasks.some(task => !progress[task.id]?.refreshing)
+                  }
+                  onClick={() => refreshSelected(selectedTasks)}
+                >
+                  <RefreshCw className={`w-4 h-4 ${submittingBatch ? 'animate-spin' : ''}`} />
+                  {submittingBatch ? '提交中...' : '批量刷新'}
+                </button>
+              )}
+            </div>
           </div>
         )}
         {loading ? (
@@ -393,12 +488,13 @@ export default function PaymentTasks() {
             <table className="w-full min-w-[1880px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
+                  {canSelectTasks && (
                     <th className="px-4 py-3">
                       <input
                         type="checkbox"
                         className="h-4 w-4 cursor-pointer accent-primary"
                         aria-label="选择当前页全部任务"
+                        disabled={batchCopyAction?.copying}
                         checked={tasks.length > 0 && selectedTaskIds.length === tasks.length}
                         ref={element => {
                           if (element)
@@ -441,12 +537,13 @@ export default function PaymentTasks() {
               <tbody>
                 {tasks.map(task => (
                   <tr key={task.id} className="border-b border-gray-100 align-top hover:bg-gray-50">
-                    {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
+                    {canSelectTasks && (
                       <td className="px-4 py-4">
                         <input
                           type="checkbox"
                           className="h-4 w-4 cursor-pointer accent-primary"
                           aria-label={`选择订单 ${task.orderNumber}`}
+                          disabled={batchCopyAction?.copying}
                           checked={selectedTaskIds.includes(task.id)}
                           onChange={() =>
                             setSelectedTaskIds(previous =>
@@ -559,8 +656,8 @@ export default function PaymentTasks() {
                             className="btn btn-secondary px-2"
                             onClick={() => copyPaymentLink(task)}
                             disabled={rowActions[task.id]?.copying}
-                            title="复制订单链接"
-                            aria-label="复制订单链接"
+                            title="复制订单信息"
+                            aria-label="复制订单信息"
                           >
                             <Copy className="w-4 h-4" />
                           </button>
