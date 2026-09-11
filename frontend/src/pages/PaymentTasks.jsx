@@ -356,7 +356,7 @@ export default function PaymentTasks() {
           );
           lines.push(...chunkLines);
         }
-        return lines.join('\n');
+        return lines.join('\n\n');
       });
       setBatchCopyAction({
         copying: false,
