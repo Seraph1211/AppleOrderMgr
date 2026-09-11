@@ -1,10 +1,11 @@
 import { formatOrderTime } from '../utils/orderTime';
 import Pagination from '../components/Pagination';
+import TagMultiSelect from '../components/TagMultiSelect';
 import usePaymentRefresh from '../hooks/usePaymentRefresh';
 import { getPaymentStageLabel } from '../utils/paymentStage';
 import { ORDER_STATUS_LABELS } from '../constants/orderStatus';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, CreditCard, RefreshCw, Save } from 'lucide-react';
+import { Copy, CreditCard, RefreshCw, RotateCcw, Save, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
@@ -36,6 +37,13 @@ const STATUS_BADGES = {
   exception: 'badge badge-error',
 };
 
+const INITIAL_FILTERS = {
+  processingStatus: '',
+  orderNumber: '',
+  productKeyword: '',
+  recipientTags: [],
+};
+
 function formatCountdown(deadlineAt, now, task) {
   const stage = getPaymentStageLabel(task);
   if (stage) return stage;
@@ -47,9 +55,9 @@ function formatCountdown(deadlineAt, now, task) {
 }
 
 function formatDateTime(value) {
-  if (!value) return '-';
+  if (!value) return '尚未获取';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '-';
+  if (Number.isNaN(date.getTime())) return '尚未获取';
   const pad = number => String(number).padStart(2, '0');
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
@@ -60,12 +68,10 @@ export default function PaymentTasks() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
+  const [recipientTagOptions, setRecipientTagOptions] = useState([]);
   const loadRequest = useRef(0);
-  const [filters, setFilters] = useState({
-    processingStatus: '',
-    orderNumber: '',
-    productKeyword: '',
-  });
+  const [filterDrafts, setFilterDrafts] = useState(INITIAL_FILTERS);
+  const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -80,10 +86,20 @@ export default function PaymentTasks() {
       if (!preserveDrafts) setLoading(true);
       setError('');
       try {
-        const params = Object.fromEntries(Object.entries(filters).filter(([, value]) => value));
-        const response = await getPaymentTasks({ ...params, page, limit: pageSize });
+        const params = Object.fromEntries(
+          Object.entries(filters).filter(([, value]) =>
+            Array.isArray(value) ? value.length > 0 : Boolean(value)
+          )
+        );
+        if (params.recipientTags) params.recipientTags = JSON.stringify(params.recipientTags);
+        const response = await getPaymentTasks({
+          ...params,
+          page,
+          limit: pageSize,
+        });
         if (request !== loadRequest.current) return;
         setPagination(response.data.pagination);
+        setRecipientTagOptions(response.data.recipientTagOptions || []);
         const lastPage = Math.max(1, response.data.pagination.totalPages);
         if (page > lastPage) {
           setSelectedTaskIds([]);
@@ -244,7 +260,7 @@ export default function PaymentTasks() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
             <CreditCard className="w-6 h-6 text-primary" />
             付款任务
           </h1>
@@ -260,31 +276,78 @@ export default function PaymentTasks() {
         </div>
       </div>
 
-      <div className="card grid grid-cols-1 md:grid-cols-3 gap-3">
-        <input
-          className="input"
-          placeholder="订单号"
-          value={filters.orderNumber}
-          onChange={event => changeFilters({ ...filters, orderNumber: event.target.value })}
-        />
-        <input
-          className="input"
-          placeholder="商品名称或型号"
-          value={filters.productKeyword}
-          onChange={event => changeFilters({ ...filters, productKeyword: event.target.value })}
-        />
-        <select
-          className="input"
-          value={filters.processingStatus}
-          onChange={event => changeFilters({ ...filters, processingStatus: event.target.value })}
-        >
-          <option value="">未完成任务</option>
-          <option value="pending">待处理</option>
-          <option value="processing">处理中</option>
-          <option value="completed">已完成</option>
-          <option value="exception">异常</option>
-        </select>
-      </div>
+      <form
+        className="card p-4"
+        onSubmit={event => {
+          event.preventDefault();
+          changeFilters({ ...filterDrafts });
+        }}
+      >
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <input
+            className="input"
+            placeholder="订单号"
+            value={filterDrafts.orderNumber}
+            onChange={event =>
+              setFilterDrafts(previous => ({
+                ...previous,
+                orderNumber: event.target.value,
+              }))
+            }
+          />
+          <input
+            className="input"
+            placeholder="商品名称或型号"
+            value={filterDrafts.productKeyword}
+            onChange={event =>
+              setFilterDrafts(previous => ({
+                ...previous,
+                productKeyword: event.target.value,
+              }))
+            }
+          />
+          <TagMultiSelect
+            options={recipientTagOptions}
+            value={filterDrafts.recipientTags}
+            onChange={recipientTags =>
+              setFilterDrafts(previous => ({ ...previous, recipientTags }))
+            }
+          />
+          <select
+            className="input"
+            value={filterDrafts.processingStatus}
+            onChange={event =>
+              setFilterDrafts(previous => ({
+                ...previous,
+                processingStatus: event.target.value,
+              }))
+            }
+          >
+            <option value="">未完成任务</option>
+            <option value="pending">待处理</option>
+            <option value="processing">处理中</option>
+            <option value="completed">已完成</option>
+            <option value="exception">异常</option>
+          </select>
+        </div>
+        <div className="mt-3 flex flex-wrap justify-end gap-2">
+          <button className="btn btn-primary inline-flex items-center gap-2" type="submit">
+            <Search className="w-4 h-4" />
+            筛选
+          </button>
+          <button
+            className="btn btn-secondary inline-flex items-center gap-2"
+            type="button"
+            onClick={() => {
+              setFilterDrafts(INITIAL_FILTERS);
+              changeFilters(INITIAL_FILTERS);
+            }}
+          >
+            <RotateCcw className="w-4 h-4" />
+            重置
+          </button>
+        </div>
+      </form>
 
       {error && (
         <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3 flex items-center justify-between gap-3">
@@ -294,35 +357,40 @@ export default function PaymentTasks() {
           </button>
         </div>
       )}
-      {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className="text-sm text-gray-500">
-            已选择 {selectedTaskIds.length} 项（当前页）
-          </span>
-          <button
-            className="btn btn-secondary inline-flex items-center gap-2"
-            disabled={
-              loading ||
-              submittingBatch ||
-              !tasks.some(
-                task => selectedTaskIds.includes(task.id) && !progress[task.id]?.refreshing
-              )
-            }
-            onClick={() => refreshSelected(tasks.filter(task => selectedTaskIds.includes(task.id)))}
-          >
-            <RefreshCw className={`w-4 h-4 ${submittingBatch ? 'animate-spin' : ''}`} />
-            {submittingBatch ? '提交中...' : '批量刷新'}
-          </button>
-        </div>
-      )}
       <div className="card p-0 overflow-hidden">
+        {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-5 py-4">
+            <div>
+              <h2 className="font-semibold text-gray-900">任务列表</h2>
+              <p className="mt-1 text-sm text-gray-500">
+                已选择 {selectedTaskIds.length} 项（当前页）
+              </p>
+            </div>
+            <button
+              className="btn btn-secondary inline-flex items-center gap-2"
+              disabled={
+                loading ||
+                submittingBatch ||
+                !tasks.some(
+                  task => selectedTaskIds.includes(task.id) && !progress[task.id]?.refreshing
+                )
+              }
+              onClick={() =>
+                refreshSelected(tasks.filter(task => selectedTaskIds.includes(task.id)))
+              }
+            >
+              <RefreshCw className={`w-4 h-4 ${submittingBatch ? 'animate-spin' : ''}`} />
+              {submittingBatch ? '提交中...' : '批量刷新'}
+            </button>
+          </div>
+        )}
         {loading ? (
           <p className="text-center text-gray-500 py-12">加载中...</p>
         ) : tasks.length === 0 ? (
           <p className="text-center text-gray-500 py-12">暂无匹配的付款任务</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1740px]">
+            <table className="w-full min-w-[1880px]">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   {can(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN) && (
@@ -345,6 +413,7 @@ export default function PaymentTasks() {
                   )}
                   {[
                     '订单 / 商品',
+                    'TAG',
                     '下单时间',
                     '官网状态',
                     '付款方式',
@@ -352,7 +421,7 @@ export default function PaymentTasks() {
                     '处理状态',
                     '处理备注',
                     '付款人',
-                    '最后更新时间',
+                    '最后爬数时间',
                     '操作',
                   ].map(title => (
                     <th
@@ -362,7 +431,7 @@ export default function PaymentTasks() {
                           ? '北京时间，邮件或人工录入来源；缺失时采用官网精确时间'
                           : undefined
                       }
-                      className="text-left px-4 py-3 text-sm text-gray-500"
+                      className="text-left px-4 py-3 text-sm font-medium text-gray-500"
                     >
                       {title}
                     </th>
@@ -390,12 +459,26 @@ export default function PaymentTasks() {
                       </td>
                     )}
                     <td className="px-4 py-4">
-                      <div className="font-medium">{task.orderNumber}</div>
-                      <div className="text-xs text-gray-500 mt-1">
+                      <div className="font-mono text-sm font-medium text-primary">
+                        {task.orderNumber}
+                      </div>
+                      <div className="mt-1 max-w-72 truncate text-xs text-gray-500">
                         {task.products
                           .map(product => `${product.name} ×${product.quantity}`)
                           .join('、')}
                       </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      {task.recipientTag ? (
+                        <span
+                          className="badge badge-info max-w-48 truncate"
+                          title={task.recipientTag}
+                        >
+                          {task.recipientTag}
+                        </span>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap">
                       {formatOrderTime(task.orderDate || task.officialOrderCreatedAt)}
@@ -453,7 +536,7 @@ export default function PaymentTasks() {
                       />
                     </td>
                     <td className="px-4 py-4 text-sm text-gray-600 whitespace-nowrap">
-                      {formatDateTime(task.updatedAt)}
+                      {formatDateTime(task.lastCrawledAt)}
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex gap-2 items-center">

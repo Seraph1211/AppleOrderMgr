@@ -1,6 +1,7 @@
 import { formatOrderTime } from '../utils/orderTime';
 import { getRefreshJob } from '../api/ordersApi';
 import Pagination from '../components/Pagination';
+import TagMultiSelect from '../components/TagMultiSelect';
 import usePaymentRefresh from '../hooks/usePaymentRefresh';
 import { getPaymentStageLabel } from '../utils/paymentStage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -30,6 +31,7 @@ const STATUS_LABELS = {
 const INITIAL_FILTERS = {
   orderNumber: '',
   productKeyword: '',
+  recipientTags: [],
   assignee: '',
   officialOrderStatus: '',
   processingStatus: '',
@@ -123,6 +125,7 @@ export default function PaymentDispatch() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
+  const [recipientTagOptions, setRecipientTagOptions] = useState([]);
   const loadRequest = useRef(0);
   const [staffDrafts, setStaffDrafts] = useState({});
   const [staffRows, setStaffRows] = useState([]);
@@ -151,14 +154,18 @@ export default function PaymentDispatch() {
       setError('');
       try {
         const query = Object.fromEntries(
-          Object.entries(filters).filter(([, value]) => value !== '')
+          Object.entries(filters).filter(([, value]) =>
+            Array.isArray(value) ? value.length > 0 : value !== ''
+          )
         );
+        if (query.recipientTags) query.recipientTags = JSON.stringify(query.recipientTags);
         const [overviewResponse, tasksResponse] = await Promise.all([
           getPaymentDispatchOverview(),
           getPaymentDispatchTasks({ ...query, page, limit: pageSize }),
         ]);
         if (request !== loadRequest.current) return;
         setPagination(tasksResponse.data.pagination);
+        setRecipientTagOptions(tasksResponse.data.recipientTagOptions || []);
         const lastPage = Math.max(1, tasksResponse.data.pagination.totalPages);
         if (page > lastPage) {
           setSelectedTaskIds([]);
@@ -509,7 +516,7 @@ export default function PaymentDispatch() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
             <input
               className="input"
               placeholder="订单号"
@@ -530,6 +537,13 @@ export default function PaymentDispatch() {
                   ...previous,
                   productKeyword: event.target.value,
                 }))
+              }
+            />
+            <TagMultiSelect
+              options={recipientTagOptions}
+              value={filterDrafts.recipientTags}
+              onChange={recipientTags =>
+                setFilterDrafts(previous => ({ ...previous, recipientTags }))
               }
             />
             <select
@@ -607,7 +621,7 @@ export default function PaymentDispatch() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1660px]">
+          <table className="w-full min-w-[1780px]">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left">
@@ -629,13 +643,14 @@ export default function PaymentDispatch() {
                 </th>
                 {[
                   '订单 / 商品',
+                  'TAG',
                   '下单时间',
                   '官网状态',
                   '付款方式',
                   '处理状态',
                   '负责人',
                   '付款倒计时',
-                  '最后更新时间',
+                  '最后爬数时间',
                   '操作',
                 ].map(title => (
                   <th
@@ -673,12 +688,26 @@ export default function PaymentDispatch() {
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <div className="font-medium">{task.orderNumber}</div>
+                        <div className="font-mono text-sm font-medium text-primary">
+                          {task.orderNumber}
+                        </div>
                         <div className="text-xs text-gray-500 max-w-72 truncate">
                           {task.products
                             .map(product => `${product.name || ''} ${product.model || ''}`.trim())
                             .join('、') || '无商品信息'}
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {task.recipientTag ? (
+                          <span
+                            className="badge badge-info max-w-48 truncate"
+                            title={task.recipientTag}
+                          >
+                            {task.recipientTag}
+                          </span>
+                        ) : (
+                          <span className="text-sm text-gray-400">-</span>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
                         {formatOrderTime(task.orderDate || task.officialOrderCreatedAt)}
@@ -776,14 +805,14 @@ export default function PaymentDispatch() {
                 })}
               {loading && (
                 <tr>
-                  <td colSpan="10" className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan="11" className="px-4 py-12 text-center text-gray-500">
                     加载中...
                   </td>
                 </tr>
               )}
               {!loading && tasks.length === 0 && (
                 <tr>
-                  <td colSpan="10" className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan="11" className="px-4 py-12 text-center text-gray-500">
                     没有符合条件的付款任务
                   </td>
                 </tr>
@@ -1023,8 +1052,8 @@ export default function PaymentDispatch() {
                     .filter(person => person.hasExecutionPermissions)
                     .map(person => (
                       <option key={person.id} value={person.id}>
-                        {person.nickname || person.username}（{person.username}）（剩余容量{' '}
-                        {person.remainingCapacity}）
+                        {person.nickname || person.username}（{person.username}
+                        ）（剩余容量 {person.remainingCapacity}）
                       </option>
                     ))}
                 </select>

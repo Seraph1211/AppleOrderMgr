@@ -2,6 +2,17 @@
 const assert = require('node:assert/strict');
 const logger = require('../src/utils/logger');
 
+function getSyntheticPermissions(mode, permitted) {
+  if (mode === 'payment-dispatch') {
+    return ['payment_dispatch.read', 'payment_dispatch.assign', 'orders.refresh'];
+  }
+  return [
+    'payment_tasks.read_own',
+    'payment_tasks.handle_own',
+    ...(permitted ? ['payment_tasks.refresh_own'] : []),
+  ];
+}
+
 /** 使用专用浏览器和合成 API 验证付款分页及刷新交互，不访问业务 API。 */
 async function main() {
   let browser;
@@ -34,6 +45,7 @@ async function main() {
       id,
       orderId: id,
       orderNumber: `W${String(id).padStart(10, '0')}`,
+      recipientTag: `TAG-${id % 3}`,
       products: [{ name: '合成手机', model: 'MODEL', quantity: 1 }],
       officialOrderStatus: 'payment_due',
       officialPaymentStatus: 'unpaid',
@@ -66,14 +78,7 @@ async function main() {
             id: 1,
             username: 'synthetic',
             role: mode === 'payment-dispatch' ? 'admin' : 'readOnly',
-            permissions:
-              mode === 'payment-dispatch'
-                ? ['payment_dispatch.read', 'payment_dispatch.assign', 'orders.refresh']
-                : [
-                  'payment_tasks.read_own',
-                  'payment_tasks.handle_own',
-                  ...(permitted ? ['payment_tasks.refresh_own'] : []),
-                ],
+            permissions: getSyntheticPermissions(mode, permitted),
             availableHome: `/${mode}`,
           };
         else if (url.pathname === '/api/payment-dispatch/overview')
@@ -85,8 +90,9 @@ async function main() {
           const currentPage = Number(url.searchParams.get('page'));
           const limit = Number(url.searchParams.get('limit'));
           const keyword = url.searchParams.get('orderNumber');
-          queries.push({ currentPage, limit, keyword });
-          const count = keyword === 'none' ? 0 : keyword ? 1 : total;
+          const recipientTags = JSON.parse(url.searchParams.get('recipientTags') || '[]');
+          queries.push({ currentPage, limit, keyword, recipientTags });
+          const count = keyword === 'none' ? 0 : keyword || recipientTags.length > 0 ? 1 : total;
           data = {
             items: Array.from(
               { length: Math.max(0, Math.min(limit, count - (currentPage - 1) * limit)) },
@@ -98,6 +104,7 @@ async function main() {
               total: count,
               totalPages: Math.ceil(count / limit),
             },
+            recipientTagOptions: ['TAG-0', 'TAG-1', 'TAG-2'],
             serverTime: new Date().toISOString(),
           };
         } else if (
@@ -154,8 +161,11 @@ async function main() {
       const table = page.locator('table').last();
       const rows = table.locator('tbody tr');
       await page.getByRole('columnheader', { name: '下单时间', exact: true }).waitFor();
+      await page.getByRole('columnheader', { name: 'TAG', exact: true }).waitFor();
+      await page.getByRole('columnheader', { name: '最后爬数时间', exact: true }).waitFor();
       assert.equal(await rows.count(), 20);
       assert.match(await rows.first().innerText(), /2026\/09\/09 09:02:03/);
+      assert.match(await rows.first().innerText(), /TAG-1/);
       assert.match(await rows.nth(1).innerText(), /待核实/);
       assert.equal(await rows.nth(2).getByText('2026/09/09', { exact: true }).count(), 1);
       assert.match(await rows.nth(3).innerText(), /2026\/09\/09 09:02:03/);
@@ -191,24 +201,31 @@ async function main() {
       await rows.first().getByText('W0000000011', { exact: true }).waitFor();
       const orderFilter = page.getByPlaceholder('订单号', { exact: true });
       await orderFilter.fill('W0000000001');
-      if (mode === 'payment-dispatch')
-        await page.getByRole('button', { name: '筛选', exact: true }).click();
+      await page.getByRole('button', { name: '筛选', exact: true }).click();
       await page.waitForFunction(
         () => document.querySelectorAll('table:last-of-type tbody tr').length > 0
       );
       await rows.first().getByText('W0000000001', { exact: true }).waitFor();
       assert.equal(queries.at(-1).currentPage, 1);
       await orderFilter.fill('none');
-      if (mode === 'payment-dispatch')
-        await page.getByRole('button', { name: '筛选', exact: true }).click();
+      await page.getByRole('button', { name: '筛选', exact: true }).click();
       await page
         .getByText(mode === 'payment-tasks' ? '暂无匹配的付款任务' : '没有符合条件的付款任务', {
           exact: true,
         })
         .waitFor();
       await orderFilter.fill('');
-      if (mode === 'payment-dispatch')
-        await page.getByRole('button', { name: '筛选', exact: true }).click();
+      await page.getByRole('button', { name: 'TAG 筛选', exact: true }).click();
+      await page.getByPlaceholder('搜索 TAG', { exact: true }).fill('TAG-');
+      await page.getByRole('option', { name: 'TAG-1', exact: true }).click();
+      await page.getByRole('option', { name: 'TAG-2', exact: true }).click();
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: '筛选', exact: true }).click();
+      await rows.first().getByText('W0000000001', { exact: true }).waitFor();
+      assert.deepEqual(queries.at(-1).recipientTags, ['TAG-1', 'TAG-2']);
+      await page.getByRole('button', { name: 'TAG 筛选', exact: true }).click();
+      await page.getByRole('button', { name: '清空选择', exact: true }).click();
+      await page.getByRole('button', { name: '筛选', exact: true }).click();
       await rows.first().getByText('W0000000001', { exact: true }).waitFor();
       const before = submissions.length;
       rejectSecond = true;
@@ -295,6 +312,7 @@ async function main() {
       checks: [
         '分页及末页',
         '筛选及空结果',
+        'TAG 展示及下拉多选精确筛选',
         '下单时间',
         '勾选清空',
         '批量部分失败',

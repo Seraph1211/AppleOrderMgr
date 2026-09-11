@@ -16,6 +16,11 @@ const { normalizePayerName, updateLockedOrderPayer } = require('./payerService')
 
 const PAYMENT_TASK_STATUSES = Object.freeze(['pending', 'processing', 'completed', 'exception']);
 const ACTIVE_PAYMENT_TASK_STATUSES = Object.freeze(['pending', 'processing', 'exception']);
+const RECIPIENT_TAG_EXPRESSION = `CASE
+  WHEN "order"."ingestion_source" = 'aos'
+    THEN COALESCE(NULLIF("order"."source_recipient_tag", ''), "order"."tag")
+  ELSE "order"."tag"
+END`;
 const STATUS_TRANSITIONS = Object.freeze({
   pending: ['processing', 'completed', 'exception'],
   processing: ['completed', 'exception'],
@@ -66,6 +71,9 @@ function includeTaskRelations() {
       attributes: [
         'id',
         'orderNumber',
+        'ingestionSource',
+        'sourceRecipientTag',
+        'tag',
         'products',
         'status',
         'paymentStatus',
@@ -85,6 +93,59 @@ function includeTaskRelations() {
   ];
 }
 
+function getOrderRecipientTag(order) {
+  if (!order) return null;
+  if (order.ingestionSource === 'aos') {
+    return order.sourceRecipientTag || order.tag || null;
+  }
+  return order.tag || null;
+}
+
+/**
+ * 构造订单入库 TAG 的精确筛选条件。
+ * @param {*} value - 查询参数中的单个 TAG 或 TAG 数组 JSON
+ * @returns {Object|null} Sequelize where 条件
+ */
+function buildRecipientTagCondition(value) {
+  if (value === null || value === undefined || value === '') return null;
+  let values = value;
+  if (typeof value === 'string' && value.trim().startsWith('[')) {
+    try {
+      values = JSON.parse(value);
+    } catch (_error) {
+      throw ApiError.badRequest('recipientTags 必须是合法数组');
+    }
+  }
+  if (!Array.isArray(values)) values = [values];
+  if (values.length > 100) throw ApiError.badRequest('recipientTags 最多选择 100 项');
+  const recipientTags = [...new Set(values.map(item => String(item).trim()).filter(Boolean))];
+  if (recipientTags.some(item => item.length > 500)) {
+    throw ApiError.badRequest('recipientTags 每项不能超过 500 字符');
+  }
+  if (recipientTags.length === 0) return null;
+  return Sequelize.where(Sequelize.literal(RECIPIENT_TAG_EXPRESSION), {
+    [Op.in]: recipientTags,
+  });
+}
+
+/**
+ * 查询当前筛选范围内可用的订单 TAG，不受已选 TAG 限制。
+ * @param {Object} taskWhere - 付款任务条件
+ * @param {Object} orderWhere - 订单条件
+ * @returns {Promise<string[]>} 去重排序后的 TAG
+ */
+async function listRecipientTagOptions(taskWhere, orderWhere) {
+  const rows = await PaymentTask.findAll({
+    where: taskWhere,
+    attributes: [[Sequelize.literal(RECIPIENT_TAG_EXPRESSION), 'recipientTag']],
+    include: [{ model: Order, as: 'order', attributes: [], where: orderWhere, required: true }],
+    group: [Sequelize.literal(RECIPIENT_TAG_EXPRESSION)],
+    order: [[Sequelize.literal(RECIPIENT_TAG_EXPRESSION), 'ASC']],
+    raw: true,
+  });
+  return rows.map(row => row.recipientTag).filter(Boolean);
+}
+
 function serializeTask(task, serverTime = new Date()) {
   const plain = task.toJSON();
   const deadline = getOfficialDeadline(plain.order);
@@ -99,6 +160,7 @@ function serializeTask(task, serverTime = new Date()) {
     id: plain.id,
     orderId: plain.orderId,
     orderNumber: plain.order?.orderNumber,
+    recipientTag: getOrderRecipientTag(plain.order),
     products: serializePublicProducts(plain.order?.products),
     officialOrderStatus: plain.order?.status || null,
     officialPaymentStatus: plain.order?.paymentStatus || null,
@@ -175,26 +237,38 @@ async function listOwnTasks(userId, query = {}) {
     orderWhere.orderNumber = { [Op.iLike]: `%${orderNumber}%` };
   }
   const productCondition = buildProductCondition(query);
-  if (productCondition) orderWhere[Op.and] = [productCondition];
+  const optionOrderWhere = {};
+  if (orderWhere.orderNumber) optionOrderWhere.orderNumber = orderWhere.orderNumber;
+  const baseOrderConditions = [productCondition].filter(Boolean);
+  if (baseOrderConditions.length > 0) optionOrderWhere[Op.and] = baseOrderConditions;
+  const recipientTagCondition = buildRecipientTagCondition(
+    query.recipientTags ?? query.recipientTag
+  );
+  const orderConditions = [productCondition, recipientTagCondition].filter(Boolean);
+  if (orderConditions.length > 0) orderWhere[Op.and] = orderConditions;
 
   const serverTime = new Date();
   const include = includeTaskRelations();
   include[0].where = orderWhere;
-  const { count, rows } = await PaymentTask.findAndCountAll({
-    where,
-    attributes: taskAttributes(),
-    include,
-    distinct: true,
-    order: [
-      [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
-      [Sequelize.literal('"order"."order_date"'), 'DESC'],
-      ['id', 'DESC'],
-    ],
-    limit,
-    offset: (page - 1) * limit,
-  });
+  const [{ count, rows }, recipientTagOptions] = await Promise.all([
+    PaymentTask.findAndCountAll({
+      where,
+      attributes: taskAttributes(),
+      include,
+      distinct: true,
+      order: [
+        [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
+        [Sequelize.literal('"order"."order_date"'), 'DESC'],
+        ['id', 'DESC'],
+      ],
+      limit,
+      offset: (page - 1) * limit,
+    }),
+    listRecipientTagOptions(where, optionOrderWhere),
+  ]);
   return {
     items: rows.map(row => serializeTask(row, serverTime)),
+    recipientTagOptions,
     pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
     serverTime,
   };
@@ -466,6 +540,8 @@ async function getOwnRefreshJob(taskId, jobId, userId) {
 module.exports = {
   PAYMENT_TASK_STATUSES,
   ACTIVE_PAYMENT_TASK_STATUSES,
+  buildRecipientTagCondition,
+  listRecipientTagOptions,
   serializeTask,
   listOwnTasks,
   getOwnTask,
