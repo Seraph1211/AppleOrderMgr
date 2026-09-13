@@ -22,7 +22,7 @@ Core 包括严格编码与行识别、SQLite WAL/FULL 加密队列、稳定事�
 
 依赖许可：.NET 与 WinForms 见各自 [dotnet/runtime](https://github.com/dotnet/runtime/blob/main/LICENSE.TXT)、[dotnet/winforms](https://github.com/dotnet/winforms/blob/main/LICENSE.TXT)；SQLitePCLRaw 见 [项目许可](https://github.com/ericsink/SQLitePCL.raw/blob/master/LICENSE.TXT)，SQLite 核心为公有领域。分发包须附运行时与依赖的许可及第三方声明。
 
-## 1.1.0 付款码与统一更新（本地候选版）
+## 1.1.0 付款码与统一更新（采集器候选版）
 
 同时读取 `AOS订单记录-*.txt` 和 `AOS成功记录-*.txt`。先按订单号和来源字段核对，微信 PNG 独立进入加密补码队列；缺少订单时保存成功记录等待，不阻断正常订单入库。支付宝日志只有 Apple 订单链接，不作为付款码上传。平台两页点击“查看付款码”时仅提示“支付宝暂无法获取付款码”。
 
