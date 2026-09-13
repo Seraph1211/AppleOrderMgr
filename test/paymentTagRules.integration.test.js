@@ -125,6 +125,198 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     if (m) await m.sequelize.close();
   });
 
+  test('TAG 专属账号不接普通订单，释放容量后仅补匹配单', async () => {
+    await createRule(['A'], [people[0].id]);
+    await m.PaymentStaffSetting.update({ maxActiveTasks: 1 }, { where: { userId: people[0].id } });
+    const normal = await makeTask('OTHER');
+    const first = await makeTask('A');
+    const second = await makeTask('A');
+    expect((await dispatch.runDispatchScan()).assigned).toBe(2);
+    expect((await normal.reload()).assigneeUserId).not.toBe(people[0].id);
+    expect((await first.reload()).assigneeUserId).toBe(people[0].id);
+    expect((await second.reload()).assigneeUserId).toBeNull();
+    await first.update({ processingStatus: 'completed' });
+    expect((await dispatch.runDispatchScan()).assigned).toBe(1);
+    expect((await second.reload()).assigneeUserId).toBe(people[0].id);
+  });
+  test('多条启用绑定全部解除才恢复普通分配，既有非 TAG 负责人保留', async () => {
+    const old = await makeTask('OTHER');
+    await old.update({ assigneeUserId: people[0].id });
+    const a = await createRule(['A'], [people[0].id]);
+    const b = await createRule(['B'], [people[0].id]);
+    await m.PaymentStaffSetting.update(
+      { autoAssignEnabled: false },
+      {
+        where: { userId: [people[1].id, people[2].id] },
+      }
+    );
+    const normal = await makeTask('OTHER');
+    expect((await dispatch.runDispatchScan()).assigned).toBe(0);
+    expect(
+      (await dispatch.listDispatchTasks({ assignee: 'unassigned' })).items[0].autoAssignment
+        .reasonCode
+    ).toBe('NO_ELIGIBLE_STAFF');
+    await service.saveRule(a.id, { ...a.toJSON(), enabled: false, expectedVersion: 0 }, admin.id);
+    expect((await dispatch.runDispatchScan()).assigned).toBe(0);
+    expect(
+      (await dispatch.getDispatchOverview()).staff.find(p => p.id === people[0].id)
+    ).toMatchObject({ assignmentMode: 'tag_only', tagRules: [{ id: b.id, name: b.name }] });
+    await service.saveRule(b.id, { expectedVersion: 0 }, admin.id, true);
+    expect((await dispatch.runDispatchScan()).assigned).toBe(1);
+    expect((await normal.reload()).assigneeUserId).toBe(people[0].id);
+    expect((await old.reload()).assigneeUserId).toBe(people[0].id);
+  });
+  test('管理员复制任意任务，普通账号拒绝，访问审计不保存链接', async () => {
+    const task = await makeTask('A');
+    await task.update({ processingStatus: 'completed', assigneeUserId: people[0].id });
+    const result = await request('GET', `/rules/tasks/${task.id}/payment-link`);
+    expect(result.status).toBe(200);
+    expect(result.body.data.paymentUrl).toContain('/synthetic');
+    expect(
+      (await request('GET', `/rules/tasks/${task.id}/payment-link`, null, 'staff')).status
+    ).toBe(403);
+    expect((await request('GET', '/rules/tasks/abc/payment-link')).status).toBe(400);
+    expect((await request('GET', '/rules/tasks/999999/payment-link')).status).toBe(404);
+    const event = await m.PaymentTaskEvent.findOne({
+      where: { eventType: 'payment_link_accessed' },
+    });
+    expect(event.actorUserId).toBe(admin.id);
+    expect(JSON.stringify(event.details)).not.toContain('/synthetic');
+    expect((await task.reload()).processingStatus).toBe('completed');
+    await m.Order.update({ orderUrl: null }, { where: { id: task.orderId } });
+    expect((await request('GET', `/rules/tasks/${task.id}/payment-link`)).status).toBe(404);
+  });
+  test('首次刷新 Migration down/up 保留首次队列，后续自动队列不改成首次', async () => {
+    const migration = require('../migrations/20260913000001-add-initial-refresh-trigger');
+    const task = await makeTask('A');
+    const another = await makeTask('B');
+    const initial = await m.OrderRefreshJob.create({
+      orderId: task.orderId,
+      trigger: 'initial',
+      scheduledAt: new Date(),
+    });
+    await m.OrderRefreshJob.create({
+      orderId: another.orderId,
+      trigger: 'auto',
+      status: 'failed',
+      scheduledAt: new Date(),
+    });
+    const repeated = await m.OrderRefreshJob.create({
+      orderId: another.orderId,
+      trigger: 'auto',
+      scheduledAt: new Date(),
+    });
+    await migration.down(m.sequelize.getQueryInterface());
+    expect((await initial.reload()).trigger).toBe('auto');
+    await migration.up(m.sequelize.getQueryInterface());
+    expect((await initial.reload()).trigger).toBe('initial');
+    expect((await repeated.reload()).trigger).toBe('auto');
+    await expect(
+      m.OrderRefreshJob.create({
+        orderId: task.orderId,
+        trigger: 'bogus',
+        scheduledAt: new Date(),
+      })
+    ).rejects.toThrow();
+  });
+
+  test('两页官网状态多选在分页前过滤，与 TAG 条件交集且本人范围隔离', async () => {
+    const tasks = [];
+    for (let i = 0; i < 9; i++) {
+      const task = await makeTask(i < 6 ? 'FILTER-A' : 'FILTER-B', {
+        status: ['payment_due', 'processing', 'cancelled'][i % 3],
+      });
+      await task.update({ assigneeUserId: i % 2 ? people[1].id : people[0].id });
+      tasks.push(task);
+    }
+    const query = { officialOrderStatuses: '["payment_due","processing"]', limit: 2 };
+    const first = await dispatch.listDispatchTasks(query);
+    const second = await dispatch.listDispatchTasks({ ...query, page: 2 });
+    expect(first.pagination.total).toBe(6);
+    expect(second.pagination.total).toBe(6);
+    expect(new Set([...first.items, ...second.items].map(t => t.id)).size).toBe(4);
+    expect(
+      [...first.items, ...second.items].every(t =>
+        ['payment_due', 'processing'].includes(t.officialOrderStatus)
+      )
+    ).toBe(true);
+    expect(
+      (await dispatch.listDispatchTasks({ ...query, recipientTags: '["FILTER-A"]' })).pagination
+        .total
+    ).toBe(4);
+    const own = await require('../src/services/paymentTaskService').listOwnTasks(
+      people[0].id,
+      query
+    );
+    expect(own.pagination.total).toBe(3);
+    expect(own.items.every(t => t.assignee.id === people[0].id)).toBe(true);
+    expect(
+      (await dispatch.listDispatchTasks({ officialOrderStatus: 'cancelled' })).pagination.total
+    ).toBe(3);
+    expect(
+      (await dispatch.listDispatchTasks({ officialOrderStatuses: '[]' })).pagination.total
+    ).toBe(9);
+    expect(
+      (await dispatch.listDispatchTasks({ officialOrderStatuses: '["shipped"]' })).pagination.total
+    ).toBe(0);
+    const invalid = await request('GET', '/rules/tasks?officialOrderStatuses=bad');
+    expect(invalid.status).toBe(400);
+    await expect(
+      require('../src/services/paymentTaskService').listOwnTasks(people[0].id, {
+        officialOrderStatuses: '["bad"]',
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  test('四个列表按下单日期过滤，午夜边界和本人范围一致，渠道统计同步', async () => {
+    const dates = [
+      '2026-09-12T15:59:59.999Z',
+      '2026-09-12T16:00:00.000Z',
+      '2026-09-13T15:59:59.999Z',
+      '2026-09-13T16:00:00.000Z',
+      null,
+    ];
+    for (let i = 0; i < dates.length; i++) {
+      const task = await makeTask('DATE', { orderDate: dates[i], tag: 'DATE' });
+      await task.update({ assigneeUserId: i === 2 ? people[1].id : people[0].id });
+    }
+    const query = { dateFrom: '2026-09-13', dateTo: '2026-09-13', limit: 1 };
+    const dispatchPage = await dispatch.listDispatchTasks(query);
+    expect(dispatchPage.pagination.total).toBe(2);
+    expect(dispatchPage.items).toHaveLength(1);
+    expect((await dispatch.listDispatchTasks({ ...query, page: 2 })).items[0].id).not.toBe(
+      dispatchPage.items[0].id
+    );
+    const own = await require('../src/services/paymentTaskService').listOwnTasks(
+      people[0].id,
+      query
+    );
+    expect(own.pagination.total).toBe(1);
+    const controller = require('../src/controllers/orderController');
+    const { where } = controller.buildListFilters(query);
+    expect(await m.Order.count({ where })).toBe(2);
+    expect(
+      await m.Order.count({
+        where: controller.buildListFilters({
+          'date_from': '2026-09-13',
+          'date_to': '2026-09-13',
+        }).where,
+      })
+    ).toBe(2);
+    const channel = require('../src/controllers/channelController');
+    const next = jest.fn();
+    const res = { json: jest.fn() };
+    await channel.getChannelOrders({ params: { tag: 'DATE' }, query }, res, next);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.json.mock.calls[0][0].data.total).toBe(2);
+    res.json.mockClear();
+    await channel.getChannelStats({ params: { tag: 'DATE' }, query }, res, next);
+    expect(res.json.mock.calls[0][0].data.totalOrders).toBe(2);
+    expect(
+      (await dispatch.listDispatchTasks({ ...query, dateFrom: '2026-09-20', dateTo: '' }))
+        .pagination.total
+    ).toBe(0);
+  });
   test('多 TAG 多账号仅在指定集合内按比例分配并记录规则快照', async () => {
     const rule = await createRule(
       ['A', 'B'],

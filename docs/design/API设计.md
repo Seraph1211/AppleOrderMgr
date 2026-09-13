@@ -271,7 +271,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `DELETE /api/payment-dispatch/tag-rules/:id`：请求体 `{ expectedVersion }`，删除规则，返回 `data: { id }`。
 - 不存在返回 404；参数非法返回 400；同 TAG 在启用规则中重复返回 409 `TAG_RULE_CONFLICT`；过期版本返回 409 `CONCURRENT_MODIFICATION`。增改删与分配共用事务调度锁并原子记录审计。停用规则允许 TAG 重叠，重新启用必须检查。
 - `GET /api/payment-dispatch/tasks` 的任务增加 `autoAssignment: { ruleId, ruleName, reasonCode, reason }`（已分配为 null）；只显示当前规则名称和待分配原因，不向本人任务端点暴露账号规则。原因区分全局关闭、手动模式、非待处理、订单不可付款、时间未知／过期、入口缺失、规则内无人可接单、规则内容量已满和等待调度。展示按查询时状态派生，不把旧原因持久化到任务。
-- 自动分配只对 AOS TAG 完整匹配（区分大小写）；命中后只在规则账号内按现有负载算法分配，无合格账号时等待。非 AOS／空 TAG／未命中沿用默认算法。保存后下次调度生效；未分配存量参与，已分配保持负责人，人工转派不受 TAG 限制。停用／删除会让未分配订单重新走其他启用规则或默认分配。
+- 自动分配只对 AOS TAG 完整匹配（区分大小写）；命中后只在规则账号内按现有负载算法分配，无合格账号时等待。非 AOS／空 TAG／未命中仅在未绑定启用 TAG 规则的普通账号中沿用默认算法。保存后下次调度生效；未分配存量参与，已分配保持负责人，人工转派不受 TAG 限制。停用／删除会让未分配订单重新走其他启用规则或默认分配。
 
 ## AOS 文件入库与数据源切换契约（2026-09-10）
 
@@ -524,3 +524,21 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 ### H5 批量处理调用说明（2026-09-11）
 
 本人付款任务的批量修改处理状态复用现有单项更新接口，由前端逐单提交 `processingStatus`、`expectedVersion` 与独立 `idempotencyKey`；填写统一备注时另传 `processingNotes`，为空时省略以保留原备注。权限、归属、状态流转、备注、版本和审计沿用单项契约。各单独立事务，前端汇总部分成功和逐项失败；不新增批量端点，不修改官网付款状态，不自动重试不确定结果。
+
+### 全局待付款概览（2026-09-12）
+
+`GET /api/payment-dispatch/pending-overview`：管理员及 `payment_dispatch.read` 权限，返回 `data: { total, unassignedCount, assignedCount, staff: [{ userId, username, nickname, count }], generatedAt }`。仅统计订单官网状态 `payment_due`，显式排除 `paymentStatus=paid/refunded`。不受列表筛选、分页、调度启用时间和人工处理状态影响；没有付款任务或任务无负责人均计未分配。按账号 ID 聚合，包含零单账号及仍有任务的停用／已删除账号；昵称缺失回退登录账号。只读数据库快照，不触发官网刷新。
+
+## 调度复制与 TAG 专属分配（2026-09-13）
+
+- `GET /api/payment-dispatch/tasks/:id/payment-link`：管理员及 `payment_dispatch.read`；id 必须为正整数。读取任意现有付款任务的订单 orderUrl，不限制处理状态、负责人和付款时限；不存在任务或链接返回 404。返回 `{ success: true, data: { paymentUrl, serverTime, deadlineAt } }`，记录 payment_link_accessed 事件但不记录链接正文，不访问官网。普通账号仍只能用本人任务链接接口。
+- `GET /api/payment-dispatch/overview` 的 staff 增加 `assignmentMode: tag_only | general` 和 `tagRules: [{ id, name }]`，由启用规则实时派生。tag_only 账号从未命中规则订单的自动候选集合排除；等待原因与实际分配使用同一范围。已有负责人及手动分配不变。
+- 刷新 job 的 trigger 新增 initial（首次入库），保留历史 auto/page_open；新周期任务停止，历史周期任务执行前跳过。首次及人工刷新后无下一次自动刷新。API 的手动刷新提交和进度查询契约保持不变。
+
+## 付款页面官网状态多选（2026-09-13）
+
+`GET /api/payment-dispatch/tasks` 与 `GET /api/payment-tasks` 支持 `officialOrderStatuses`，值为官网订单状态代码的 JSON 数组（也接受查询数组）；不传或空数组不限制官网状态。仅允许现有 ORDER_STATUSES 枚举，最多 13 项，去重后使用 OR 匹配 orders.status，非法格式／值返回 400。兼容旧单值 officialOrderStatus；同时传入时以 officialOrderStatuses 为准。同组 OR，与 TAG、商品、负责人和人工状态条件 AND，在数据库分页和统计前应用；TAG 候选同时受官网状态限制。本人任务始终只查询本人归属，默认未完成任务范围保持不变。
+
+## 订单与付款下单日期范围（2026-09-13）
+
+订单列表／导出、渠道订单列表／订单统计、付款调度和本人付款任务统一支持 dateFrom/dateTo（兼容 date_from/date_to）。日期 YYYY-MM-DD 按北京时间完整日边界，起日 00:00:00.000 至止日 23:59:59.999；兼容已有精确 ISO 时间参数。允许仅起日或止日，不传不限制；非法日期、起日晚于止日返回 400。以来源下单时间 orders.order_date 为依据，缺失时间的订单在指定日期范围时不命中，不用入库时间补造。与其他筛选条件 AND，分页、总数及付款 TAG 候选均在过滤后计算；订单导出带相同条件。渠道订单统计受日期范围影响，取机人总数仍为渠道关联数量；本人权限范围保持。

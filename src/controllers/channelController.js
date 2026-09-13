@@ -4,6 +4,7 @@
  * @description 基于 recipients.tag 和 orders.tag 实现渠道管理功能
  */
 
+const { buildOrderDateCondition } = require('../utils/orderDateFilter');
 const { Op, fn, col, literal } = require('sequelize');
 const { Order, Recipient, AppleId, sequelize } = require('../models');
 const logger = require('../utils/logger');
@@ -126,6 +127,9 @@ exports.getChannelStats = async (req, res, next) => {
 
     logger.info('获取渠道详细统计', { tag });
 
+    const orderDateCondition = buildOrderDateCondition(req.query);
+    const orderWhere = { tag, ...(orderDateCondition ? { orderDate: orderDateCondition } : {}) };
+
     // 查询渠道订单统计
     const stats = await Order.findOne({
       attributes: [
@@ -149,7 +153,7 @@ exports.getChannelStats = async (req, res, next) => {
           'cancelledOrders',
         ],
       ],
-      where: { tag },
+      where: orderWhere,
       raw: true,
     });
 
@@ -176,6 +180,7 @@ exports.getChannelStats = async (req, res, next) => {
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) return next(error);
     logger.error('获取渠道统计失败', {
       tag: req.params.tag,
       error: error.message,
@@ -222,7 +227,8 @@ exports.getChannelOrders = async (req, res, next) => {
     logger.info('获取渠道订单列表', { tag, page: pageNum, pageSize: pageSizeNum, status, search });
 
     // 构建查询条件
-    const whereClause = { tag };
+    const orderDateCondition = buildOrderDateCondition(req.query);
+    const whereClause = { tag, ...(orderDateCondition ? { orderDate: orderDateCondition } : {}) };
 
     // 状态筛选
     if (status) {
@@ -284,6 +290,7 @@ exports.getChannelOrders = async (req, res, next) => {
 
     res.json(paginatedResponse(formattedOrders, count, pageNum, pageSizeNum));
   } catch (error) {
+    if (error instanceof ApiError) return next(error);
     logger.error('获取渠道订单列表失败', {
       tag: req.params.tag,
       error: error.message,

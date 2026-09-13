@@ -195,6 +195,14 @@ async function reconcileProxyProvider(state) {
 async function processJob(job) {
   let outcome;
   try {
+    if (['auto', 'page_open'].includes(job.trigger)) {
+      await repository.finishJob(job, {
+        success: true,
+        skipped: true,
+        nextAutoRefreshAt: null,
+      });
+      return;
+    }
     const crawlerService = require('../crawlerService');
     const result = await crawlerService.crawlAndUpdateOrder(job.orderId, {
       source:

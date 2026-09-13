@@ -3,12 +3,7 @@ const { Op } = require('sequelize');
 const { Order, OrderRefreshJob, OrderRefreshBatch } = require('../../models');
 const logger = require('../../utils/logger');
 const repository = require('./refreshJobRepository');
-const {
-  AUTO_REFRESH_INTERVAL_MS,
-  getNextAutoRefreshAt,
-  getRefreshPriority,
-  isAutoRefreshEligible,
-} = require('./refreshPolicy');
+const { getNextAutoRefreshAt, getRefreshPriority } = require('./refreshPolicy');
 
 /**
  * 提交或合并一个订单刷新任务。
@@ -19,6 +14,9 @@ const {
 async function enqueueOrderRefresh(orderId, options = {}) {
   try {
     const trigger = options.trigger || 'manual_single';
+    if (['auto', 'page_open'].includes(trigger)) {
+      return { job: null, created: false, reason: 'automatic_refresh_disabled' };
+    }
     const scheduledAt = options.scheduledAt || new Date();
     const overdue = trigger === 'auto' && scheduledAt <= new Date();
     return await repository.enqueueJob(orderId, {
@@ -35,7 +33,7 @@ async function enqueueOrderRefresh(orderId, options = {}) {
 }
 
 /**
- * 邮件创建订单后提交首次刷新任务和自动调度。
+ * 订单创建后提交首次刷新，不建立周期调度。
  * @param {Object} order - 新订单
  * @returns {Promise<Object|null>} 入队结果
  */
@@ -43,10 +41,10 @@ async function enqueueInitialRefresh(order) {
   try {
     if (!order?.id || !order.orderUrl) return null;
     await repository.upsertSchedule(order.id, {
-      nextAutoRefreshAt: new Date(),
+      nextAutoRefreshAt: null,
       freshnessStatus: 'stale',
     });
-    return enqueueOrderRefresh(order.id, { trigger: 'auto' });
+    return enqueueOrderRefresh(order.id, { trigger: 'initial' });
   } catch (error) {
     logger.error('提交订单首次刷新任务失败', { orderId: order?.id, error: error.message });
     throw error;
@@ -126,26 +124,17 @@ function enqueuePageOpenRefresh(_orderIds, _requestedBy) {
 }
 
 /**
- * 把到期调度转换为去重任务并推进下一调度时间。
+ * 清空历史到期调度，不再生成周期任务。
  * @param {number} limit - 单次扫描上限
  * @returns {Promise<Object>} 扫描结果
  */
 async function enqueueDueAutoJobs(limit = 500) {
   try {
     const schedules = await repository.listDueSchedules(limit);
-    let eligible = 0;
     for (const schedule of schedules) {
-      if (!isAutoRefreshEligible(schedule.order)) {
-        await schedule.update({ nextAutoRefreshAt: null });
-        continue;
-      }
-      eligible++;
-      await enqueueOrderRefresh(schedule.orderId, { trigger: 'auto' });
-      await schedule.update({
-        nextAutoRefreshAt: new Date(Date.now() + AUTO_REFRESH_INTERVAL_MS),
-      });
+      await schedule.update({ nextAutoRefreshAt: null });
     }
-    return { scanned: schedules.length, eligible };
+    return { scanned: schedules.length, eligible: 0 };
   } catch (error) {
     logger.error('创建到期自动刷新任务失败', { error: error.message });
     throw error;

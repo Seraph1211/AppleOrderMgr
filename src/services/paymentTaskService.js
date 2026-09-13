@@ -1,3 +1,6 @@
+const { buildOrderDateCondition } = require('../utils/orderDateFilter');
+const logger = require('../utils/logger');
+const { buildOfficialStatusCondition } = require('./paymentStatusFilter');
 const { Op, Sequelize } = require('sequelize');
 const {
   sequelize,
@@ -219,59 +222,68 @@ function buildProductCondition(query) {
  * @returns {Promise<Object>} 分页任务
  */
 async function listOwnTasks(userId, query = {}) {
-  const page = parsePositiveInteger(query.page, 'page', 1);
-  const limit = parsePositiveInteger(query.limit, 'limit', 20, 100);
-  const where = { assigneeUserId: userId };
-  if (query.processingStatus) {
-    if (!PAYMENT_TASK_STATUSES.includes(query.processingStatus)) {
-      throw ApiError.badRequest('processingStatus 非法');
+  try {
+    const page = parsePositiveInteger(query.page, 'page', 1);
+    const limit = parsePositiveInteger(query.limit, 'limit', 20, 100);
+    const where = { assigneeUserId: userId };
+    if (query.processingStatus) {
+      if (!PAYMENT_TASK_STATUSES.includes(query.processingStatus)) {
+        throw ApiError.badRequest('processingStatus 非法');
+      }
+      where.processingStatus = query.processingStatus;
+    } else {
+      where.processingStatus = { [Op.in]: ACTIVE_PAYMENT_TASK_STATUSES };
     }
-    where.processingStatus = query.processingStatus;
-  } else {
-    where.processingStatus = { [Op.in]: ACTIVE_PAYMENT_TASK_STATUSES };
-  }
-  const orderWhere = {};
-  const orderNumber = String(query.orderNumber || '').trim();
-  if (orderNumber) {
-    if (orderNumber.length > 20) throw ApiError.badRequest('orderNumber 过长');
-    orderWhere.orderNumber = { [Op.iLike]: `%${orderNumber}%` };
-  }
-  const productCondition = buildProductCondition(query);
-  const optionOrderWhere = {};
-  if (orderWhere.orderNumber) optionOrderWhere.orderNumber = orderWhere.orderNumber;
-  const baseOrderConditions = [productCondition].filter(Boolean);
-  if (baseOrderConditions.length > 0) optionOrderWhere[Op.and] = baseOrderConditions;
-  const recipientTagCondition = buildRecipientTagCondition(
-    query.recipientTags ?? query.recipientTag
-  );
-  const orderConditions = [productCondition, recipientTagCondition].filter(Boolean);
-  if (orderConditions.length > 0) orderWhere[Op.and] = orderConditions;
+    const orderWhere = {};
+    const orderNumber = String(query.orderNumber || '').trim();
+    if (orderNumber) {
+      if (orderNumber.length > 20) throw ApiError.badRequest('orderNumber 过长');
+      orderWhere.orderNumber = { [Op.iLike]: `%${orderNumber}%` };
+    }
+    const productCondition = buildProductCondition(query);
+    const officialStatusCondition = buildOfficialStatusCondition(query);
+    if (officialStatusCondition) orderWhere.status = officialStatusCondition;
+    const orderDateCondition = buildOrderDateCondition(query);
+    if (orderDateCondition) orderWhere.orderDate = orderDateCondition;
+    const optionOrderWhere = { ...orderWhere };
+    if (orderWhere.orderNumber) optionOrderWhere.orderNumber = orderWhere.orderNumber;
+    const baseOrderConditions = [productCondition].filter(Boolean);
+    if (baseOrderConditions.length > 0) optionOrderWhere[Op.and] = baseOrderConditions;
+    const recipientTagCondition = buildRecipientTagCondition(
+      query.recipientTags ?? query.recipientTag
+    );
+    const orderConditions = [productCondition, recipientTagCondition].filter(Boolean);
+    if (orderConditions.length > 0) orderWhere[Op.and] = orderConditions;
 
-  const serverTime = new Date();
-  const include = includeTaskRelations();
-  include[0].where = orderWhere;
-  const [{ count, rows }, recipientTagOptions] = await Promise.all([
-    PaymentTask.findAndCountAll({
-      where,
-      attributes: taskAttributes(),
-      include,
-      distinct: true,
-      order: [
-        [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
-        [Sequelize.literal('"order"."order_date"'), 'DESC'],
-        ['id', 'DESC'],
-      ],
-      limit,
-      offset: (page - 1) * limit,
-    }),
-    listRecipientTagOptions(where, optionOrderWhere),
-  ]);
-  return {
-    items: rows.map(row => serializeTask(row, serverTime)),
-    recipientTagOptions,
-    pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
-    serverTime,
-  };
+    const serverTime = new Date();
+    const include = includeTaskRelations();
+    include[0].where = orderWhere;
+    const [{ count, rows }, recipientTagOptions] = await Promise.all([
+      PaymentTask.findAndCountAll({
+        where,
+        attributes: taskAttributes(),
+        include,
+        distinct: true,
+        order: [
+          [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
+          [Sequelize.literal('"order"."order_date"'), 'DESC'],
+          ['id', 'DESC'],
+        ],
+        limit,
+        offset: (page - 1) * limit,
+      }),
+      listRecipientTagOptions(where, optionOrderWhere),
+    ]);
+    return {
+      items: rows.map(row => serializeTask(row, serverTime)),
+      recipientTagOptions,
+      pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
+      serverTime,
+    };
+  } catch (error) {
+    logger.error('查询本人付款任务失败', { userId, error: error.message });
+    throw error;
+  }
 }
 
 /**

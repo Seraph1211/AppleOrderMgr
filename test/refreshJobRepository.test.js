@@ -186,4 +186,30 @@ describe('订单刷新任务仓储', () => {
     );
     expect(result).toBe(state);
   });
+  test('人工批量请求能把较高优先级的旧自动任务转成人工任务', async () => {
+    mockOrderFindByPk.mockResolvedValue({ id: 9 });
+    mockScheduleFindOrCreate.mockResolvedValue([{ isNewRecord: false }]);
+    const active = {
+      status: 'pending',
+      trigger: 'auto',
+      priority: 300,
+      scheduledAt: new Date(),
+      update: jest.fn(),
+    };
+    mockJobFindOne.mockResolvedValue(active);
+    await repository.enqueueJob(9, {
+      trigger: 'manual_all',
+      priority: 100,
+      scheduledAt: new Date(),
+      requestedBy: 2,
+    });
+    expect(active.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trigger: 'manual_all',
+        priority: 300,
+        requestedBy: 2,
+      }),
+      expect.anything()
+    );
+  });
 });

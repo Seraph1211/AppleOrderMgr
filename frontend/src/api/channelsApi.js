@@ -1,14 +1,14 @@
 /**
  * 渠道管理 API
  */
-import client from './client'
+import client from './client';
 
 /**
  * 获取渠道列表
  * @returns {Promise} 渠道列表
  */
 export async function getChannels() {
-  return client.get('/channels')
+  return client.get('/channels');
 }
 
 /**
@@ -16,8 +16,8 @@ export async function getChannels() {
  * @param {string} tag - 渠道标签
  * @returns {Promise} 渠道统计数据
  */
-export async function getChannelStats(tag) {
-  return client.get(`/channels/${encodeURIComponent(tag)}/stats`)
+export async function getChannelStats(tag, params = {}) {
+  return client.get(`/channels/${encodeURIComponent(tag)}/stats`, { params });
 }
 
 /**
@@ -27,7 +27,7 @@ export async function getChannelStats(tag) {
  * @returns {Promise} 渠道订单列表
  */
 export async function getChannelOrders(tag, params = {}) {
-  return client.get(`/channels/${encodeURIComponent(tag)}/orders`, { params })
+  return client.get(`/channels/${encodeURIComponent(tag)}/orders`, { params });
 }
 
 /**
@@ -37,5 +37,5 @@ export async function getChannelOrders(tag, params = {}) {
  * @returns {Promise} 更新结果
  */
 export async function updateChannelName(oldTag, newTag) {
-  return client.put(`/channels/${encodeURIComponent(oldTag)}`, { newTag })
+  return client.put(`/channels/${encodeURIComponent(oldTag)}`, { newTag });
 }

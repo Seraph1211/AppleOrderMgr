@@ -251,8 +251,7 @@ describe('队列触发类型与爬虫日志来源兼容', () => {
   test.each([
     ['manual_single', 'manual', true],
     ['manual_all', 'manual', true],
-    ['auto', 'scheduled', false],
-    ['page_open', 'page_open', false],
+    ['initial', 'initial', false],
   ])('%s 使用日志来源 %s', async (trigger, source, manual) => {
     jest.doMock('../src/services/crawlerService', () => ({
       crawlAndUpdateOrder: jest

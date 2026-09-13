@@ -15,7 +15,7 @@ const {
   summarizeLifecycle,
   safeText,
 } = require('../src/services/crawler/officialOrderData');
-const { isAutoRefreshEligible } = require('../src/services/crawler/refreshPolicy');
+const { isInitialRefreshEligible } = require('../src/services/crawler/refreshPolicy');
 const { serializeTask } = require('../src/services/paymentTaskService');
 const {
   serializeOfficialFields,
@@ -88,7 +88,7 @@ describe('官网生命周期和来源合并', () => {
     ['READY_FOR_PICKUP', 'ready_for_pickup', 'paid', 'ready_for_pickup', false],
     ['PICKED_UP', 'picked_up', 'paid', 'picked_up', false],
     ['PAYMENT_EXPIRED_STORED_ORDER', 'payment_expired', 'unpaid', 'not_applicable', false],
-  ])('%s 确定映射并按最新付款规则刷新', (raw, status, paymentStatus, pickupStatus, auto) => {
+  ])('%s 确定映射并按首次付款刷新资格', (raw, status, paymentStatus, pickupStatus, auto) => {
     const data = parse(raw);
     const merged = { ...sourceOrder(), ...mergeOfficialOrder(sourceOrder(), data) };
     expect(data).toMatchObject({
@@ -98,7 +98,7 @@ describe('官网生命周期和来源合并', () => {
       officialRawStatus: raw,
     });
     expect(data.officialOrderCreatedAt).toBeNull();
-    expect(isAutoRefreshEligible(merged)).toBe(auto);
+    expect(isInitialRefreshEligible(merged)).toBe(auto);
     if (paymentStatus === 'paid' || !auto) expect(isPaymentBlocked(merged)).toBe(true);
     expect(data).not.toHaveProperty('rawJson');
     expect(data.products[0]).not.toHaveProperty('deliveryDate');
@@ -176,13 +176,13 @@ describe('官网生命周期和来源合并', () => {
     const order = { ...sourceOrder(), ...mergeOfficialOrder(sourceOrder(), data) };
     expect(isPaymentBlocked(order)).toBe(true);
     expect(
-      isAutoRefreshEligible(order, new Date(order.officialPaymentExpiresAt.getTime() - 60_000))
+      isInitialRefreshEligible(order, new Date(order.officialPaymentExpiresAt.getTime() - 60_000))
     ).toBe(true);
-    expect(isAutoRefreshEligible(order, order.officialPaymentExpiresAt)).toBe(false);
+    expect(isInitialRefreshEligible(order, order.officialPaymentExpiresAt)).toBe(false);
     second.orderItemStatusTracker.d.currentStatus = 'PAYMENT_EXPIRED_STORED_ORDER';
     const terminal = parseOrderData(json, '');
     expect(terminal.officialAllItemsTerminal).toBe(true);
-    expect(isAutoRefreshEligible({ ...order, ...mergeOfficialOrder(order, terminal) })).toBe(false);
+    expect(isInitialRefreshEligible({ ...order, ...mergeOfficialOrder(order, terminal) })).toBe(false);
   });
 
   test('不同已付款阶段全部明确已付时停止刷新', () => {

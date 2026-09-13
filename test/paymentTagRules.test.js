@@ -144,3 +144,22 @@ test('已分配不显示待分配原因，无规则时给出默认原因', () =>
     ).reasonCode
   ).toBe('CAPACITY_FULL');
 });
+
+test('TAG 专属账号即使最空闲也不接普通订单，规则内仍可接单', () => {
+  const candidates = [candidate(1), candidate(2, 8), candidate(3, 10)];
+  const exclusive = new Set([1]);
+  expect(selectCandidate(candidates, null, exclusive).setting.userId).toBe(2);
+  expect(selectCandidate(candidates, { assigneeUserIds: [1] }, exclusive).setting.userId).toBe(1);
+  expect(selectCandidate([candidate(1)], null, exclusive)).toBeNull();
+  expect(selectCandidate([candidate(1)], null, new Set()).setting.userId).toBe(1);
+});
+
+test('等待原因同样排除专属账号空余容量', () => {
+  const staff = [{ ...overview.staff[0], assignmentMode: 'tag_only' }];
+  expect(describeAutoAssignment(task, null, { ...overview, staff }, now).reasonCode).toBe(
+    'NO_ELIGIBLE_STAFF'
+  );
+  expect(describeAutoAssignment(task, input, { ...overview, staff }, now).reasonCode).toBe(
+    'WAITING_SCAN'
+  );
+});

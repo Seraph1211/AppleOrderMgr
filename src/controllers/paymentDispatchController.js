@@ -1,6 +1,28 @@
 const paymentDispatchService = require('../services/paymentDispatchService');
 const logger = require('../utils/logger');
 
+/** 查询全局待付款订单数量。 */
+async function getPendingOverview(_req, res) {
+  try {
+    return res.json({ success: true, data: await paymentDispatchService.getPendingOverview() });
+  } catch (error) {
+    logger.error('查询待付款概览失败', { error: error.message });
+    throw error;
+  }
+}
+
+/** 按权限读取调度任务付款链接。 */
+async function getPaymentLink(req, res) {
+  try {
+    const data = await paymentDispatchService.getPaymentLink(Number(req.params.id), req.user.id);
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, data });
+  } catch (error) {
+    logger.error('读取调度订单信息失败', { actorUserId: req.user.id, error: error.message });
+    throw error;
+  }
+}
+
 /** 查询调度概览。 */
 async function getOverview(_req, res) {
   return res.json({ success: true, data: await paymentDispatchService.getDispatchOverview() });
@@ -89,6 +111,8 @@ async function runScan(req, res) {
 }
 
 module.exports = {
+  getPaymentLink,
+  getPendingOverview,
   getOverview,
   listTasks,
   updateSettings,

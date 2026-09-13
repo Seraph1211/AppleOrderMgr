@@ -17,17 +17,18 @@ const REFRESH_PRIORITIES = new Map([
   ['manual_single', 400],
   ['overdue_auto', 300],
   ['auto', 250],
+  ['initial', 250],
   ['page_open', 200],
   ['manual_all', 100],
 ]);
 
 /**
- * 判断订单是否应进入未付款自动刷新。
+ * 判断首次入库刷新是否满足既有订单资格。
  * @param {Object} orderLike - 订单实例或普通对象
  * @param {Date} now - 判断时刻
  * @returns {boolean} 是否需要自动刷新
  */
-function isAutoRefreshEligible(orderLike, now = new Date()) {
+function isInitialRefreshEligible(orderLike, now = new Date()) {
   const order = typeof orderLike?.toJSON === 'function' ? orderLike.toJSON() : orderLike || {};
   if (!order.orderUrl || order.autoRefreshEnabled === false) return false;
   if ((order.validationIssues || []).some(issue => issue.type === 'order_identity')) return false;
@@ -49,16 +50,14 @@ function isAutoRefreshEligible(orderLike, now = new Date()) {
   return Number.isFinite(age) && age >= 0 && age < PAYMENT_WINDOW_MS;
 }
 
-/**
- * 计算下一次自动刷新时间。
- * @param {Object} orderLike - 订单数据
- * @param {Date} from - 基准时间
- * @returns {Date|null} 下一次时间；不符合资格时为 null
- */
-function getNextAutoRefreshAt(orderLike, from = new Date()) {
-  return isAutoRefreshEligible(orderLike, from)
-    ? new Date(new Date(from).getTime() + AUTO_REFRESH_INTERVAL_MS)
-    : null;
+/** 周期自动刷新已取消，兼容旧调度入口。 @returns {boolean} false */
+function isAutoRefreshEligible() {
+  return false;
+}
+
+/** 首次及人工刷新后均不再安排周期任务。 @returns {null} 无下一次自动时间 */
+function getNextAutoRefreshAt() {
+  return null;
 }
 
 /**
@@ -85,7 +84,7 @@ function getDisplayedFreshness(scheduleLike, orderLike, now = new Date()) {
   if (schedule.freshnessStatus === 'failed') return 'failed';
   if (!schedule.lastSuccessAt) return 'stale';
   if (
-    isAutoRefreshEligible(orderLike, now) &&
+    isInitialRefreshEligible(orderLike, now) &&
     new Date(now).getTime() - new Date(schedule.lastSuccessAt).getTime() > STALE_AFTER_MS
   ) {
     return 'stale';
@@ -98,6 +97,7 @@ module.exports = {
   STALE_AFTER_MS,
   REFRESH_PRIORITIES,
   isAutoRefreshEligible,
+  isInitialRefreshEligible,
   getNextAutoRefreshAt,
   getRefreshPriority,
   getDisplayedFreshness,

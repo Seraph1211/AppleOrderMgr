@@ -67,8 +67,12 @@ function enqueueJob(orderId, payload) {
     if (activeJob) {
       const updates = {};
       if (activeJob.status === 'pending') {
-        if (payload.priority > activeJob.priority) {
-          updates.priority = payload.priority;
+        if (
+          payload.priority > activeJob.priority ||
+          (['auto', 'page_open', 'initial'].includes(activeJob.trigger) &&
+            ['initial', 'manual_single', 'manual_all'].includes(payload.trigger))
+        ) {
+          updates.priority = Math.max(payload.priority, activeJob.priority);
           updates.trigger = payload.trigger;
           updates.requestedBy = payload.requestedBy || activeJob.requestedBy;
         }

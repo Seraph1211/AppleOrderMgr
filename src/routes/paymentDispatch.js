@@ -29,6 +29,11 @@ router.delete(
   asyncHandler(tagRules.remove)
 );
 router.get(
+  '/pending-overview',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_READ),
+  asyncHandler(controller.getPendingOverview)
+);
+router.get(
   '/overview',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_READ),
   asyncHandler(controller.getOverview)
@@ -82,6 +87,12 @@ router.post(
   '/scan',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),
   asyncHandler(controller.runScan)
+);
+
+router.get(
+  '/tasks/:id/payment-link',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_READ),
+  asyncHandler(controller.getPaymentLink)
 );
 
 module.exports = router;

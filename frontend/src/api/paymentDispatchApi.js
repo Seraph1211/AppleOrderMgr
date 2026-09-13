@@ -36,4 +36,13 @@ export const savePaymentTagRule = (id, payload) =>
     : client.post('/payment-dispatch/tag-rules', payload);
 /** 按版本删除 TAG 分配规则。 */
 export const deletePaymentTagRule = (id, expectedVersion) =>
-  client.delete(`/payment-dispatch/tag-rules/${id}`, { data: { expectedVersion } });
+  client.delete(`/payment-dispatch/tag-rules/${id}`, {
+    data: { expectedVersion },
+  });
+
+/** 查询不受列表筛选影响的全局待付款订单数量。 */
+export const getPendingPaymentOverview = () => client.get('/payment-dispatch/pending-overview');
+
+/** 读取调度任务的付款链接。 */
+export const getPaymentDispatchLink = taskId =>
+  client.get(`/payment-dispatch/tasks/${taskId}/payment-link`);

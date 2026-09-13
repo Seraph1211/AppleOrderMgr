@@ -1,3 +1,9 @@
+import OrderDateFilter from '../components/OrderDateFilter';
+import OfficialStatusFilter from '../components/OfficialStatusFilter';
+import { getOfficialStatusTagClass } from '../utils/officialStatusStyle';
+import { copyDeferredText } from '../utils/copyDeferredText';
+import { buildPaymentCopyText } from '../utils/paymentCopy';
+import PendingPaymentOverviewModal from '../components/PendingPaymentOverviewModal';
 import PaymentTagRulesModal from '../components/PaymentTagRulesModal';
 import { formatOrderTime } from '../utils/orderTime';
 import { getRefreshJob } from '../api/ordersApi';
@@ -6,10 +12,21 @@ import TagMultiSelect from '../components/TagMultiSelect';
 import usePaymentRefresh from '../hooks/usePaymentRefresh';
 import { getPaymentStageLabel } from '../utils/paymentStage';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ListChecks, RefreshCw, RotateCcw, Save, ScanSearch, Search, Users, X } from 'lucide-react';
+import {
+  Copy,
+  ListChecks,
+  RefreshCw,
+  RotateCcw,
+  Save,
+  ScanSearch,
+  Search,
+  Users,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
+  getPaymentDispatchLink,
   assignPaymentTasks,
   getPaymentDispatchOverview,
   getPaymentDispatchTasks,
@@ -34,7 +51,9 @@ const INITIAL_FILTERS = {
   productKeyword: '',
   recipientTags: [],
   assignee: '',
-  officialOrderStatus: '',
+  officialOrderStatuses: [],
+  dateFrom: '',
+  dateTo: '',
   processingStatus: '',
 };
 
@@ -121,6 +140,7 @@ function formatCountdown(deadlineAt, now, task) {
 
 export default function PaymentDispatch() {
   const { can } = useAuth();
+  const [pendingOverviewOpen, setPendingOverviewOpen] = useState(false);
   const [overview, setOverview] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [page, setPage] = useState(1);
@@ -142,6 +162,8 @@ export default function PaymentDispatch() {
     reason: '',
   });
   const [assignModalOpen, setAssignModalOpen] = useState(false);
+  const [copyingIds, setCopyingIds] = useState([]);
+  const copyLock = useRef(false);
   const [busyAction, setBusyAction] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -161,6 +183,8 @@ export default function PaymentDispatch() {
           )
         );
         if (query.recipientTags) query.recipientTags = JSON.stringify(query.recipientTags);
+        if (query.officialOrderStatuses)
+          query.officialOrderStatuses = JSON.stringify(query.officialOrderStatuses);
         const [overviewResponse, tasksResponse] = await Promise.all([
           getPaymentDispatchOverview(),
           getPaymentDispatchTasks({ ...query, page, limit: pageSize }),
@@ -226,6 +250,46 @@ export default function PaymentDispatch() {
     if (!assigneeUserId) return false;
     return selectedTasks.some(task => task.assignee && Number(task.assignee.id) !== assigneeUserId);
   }, [assignmentDraft.assigneeUserId, selectedTasks]);
+  const copyTasks = async items => {
+    if (!items.length || copyLock.current) return;
+    copyLock.current = true;
+    setCopyingIds(items.map(item => item.id));
+    setError('');
+    setNotice('');
+    try {
+      await copyDeferredText(async () => {
+        try {
+          const lines = [];
+          for (let index = 0; index < items.length; index += 5) {
+            const chunk = await Promise.all(
+              items.slice(index, index + 5).map(async task => {
+                try {
+                  const response = await getPaymentDispatchLink(task.id);
+                  if (!response.success || !response.data?.paymentUrl) {
+                    throw new Error('订单链接不存在');
+                  }
+                  return buildPaymentCopyText(task, response.data.paymentUrl);
+                } catch (copyError) {
+                  throw new Error(`${task.orderNumber}：${copyError.message}`);
+                }
+              })
+            );
+            lines.push(...chunk);
+          }
+          return lines.join('\n\n');
+        } catch (copyError) {
+          throw new Error(`订单信息读取失败：${copyError.message}`);
+        }
+      });
+      setNotice(`已复制 ${items.length} 条订单信息`);
+    } catch (copyError) {
+      setError(`复制失败：${copyError.message}`);
+    } finally {
+      copyLock.current = false;
+      setCopyingIds([]);
+    }
+  };
+
   const expiredAssignmentCount = selectedTasks.filter(
     task =>
       task.officialOrderStatus === 'payment_expired' ||
@@ -385,14 +449,26 @@ export default function PaymentDispatch() {
           </h1>
           <p className="text-sm text-gray-500 mt-1">配置任务范围、人员容量并完成批量分配</p>
         </div>
-        <button
-          className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
-          disabled={loading || Boolean(busyAction)}
-          onClick={openStaffSettings}
-        >
-          <Users className="w-4 h-4" />
-          人员与容量
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
+            onClick={() => setPendingOverviewOpen(true)}
+          >
+            <ListChecks className="w-4 h-4" />
+            全局待付款概览
+          </button>
+          <button
+            className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
+            disabled={loading || Boolean(busyAction)}
+            onClick={openStaffSettings}
+          >
+            <Users className="w-4 h-4" />
+            人员与容量
+          </button>
+        </div>
+        {pendingOverviewOpen && (
+          <PendingPaymentOverviewModal onClose={() => setPendingOverviewOpen(false)} />
+        )}
       </div>
       {error && (
         <div className="rounded-lg bg-red-50 text-red-700 px-4 py-3 flex items-center justify-between gap-3">
@@ -488,7 +564,7 @@ export default function PaymentDispatch() {
         </div>
       </div>
 
-      <div className="card p-0 overflow-hidden hover:shadow-sm">
+      <div className="card p-0 overflow-visible hover:shadow-sm">
         <div className="px-5 py-4 border-b border-gray-200 space-y-4">
           <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
             <div>
@@ -497,34 +573,46 @@ export default function PaymentDispatch() {
                 已选择 {selectedTaskIds.length} 项（当前页）
               </p>
             </div>
-            {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
-              <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
+              {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
                 <button
                   className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
-                  disabled={
-                    loading ||
-                    submittingBatch ||
-                    Boolean(busyAction) ||
-                    !selectedTasks.some(task => !progress[task.id]?.refreshing)
-                  }
-                  onClick={() => {
-                    setNotice('');
-                    refreshSelected(selectedTasks);
-                  }}
+                  disabled={loading || copyingIds.length > 0 || selectedTasks.length === 0}
+                  onClick={() => copyTasks(selectedTasks)}
                 >
-                  <RefreshCw className={`w-4 h-4 ${submittingBatch ? 'animate-spin' : ''}`} />
-                  {submittingBatch ? '提交中...' : '批量刷新'}
+                  <Copy className="w-4 h-4" />
+                  {copyingIds.length > 1 ? '复制中...' : '批量复制订单信息'}
                 </button>
-                <button
-                  className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
-                  disabled={loading || selectedTaskIds.length === 0 || Boolean(busyAction)}
-                  onClick={openAssignmentModal}
-                >
-                  <Users className="w-4 h-4" />
-                  分配所选订单
-                </button>
-              </div>
-            )}
+              )}
+              {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
+                    disabled={
+                      loading ||
+                      submittingBatch ||
+                      Boolean(busyAction) ||
+                      !selectedTasks.some(task => !progress[task.id]?.refreshing)
+                    }
+                    onClick={() => {
+                      setNotice('');
+                      refreshSelected(selectedTasks);
+                    }}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${submittingBatch ? 'animate-spin' : ''}`} />
+                    {submittingBatch ? '提交中...' : '批量刷新'}
+                  </button>
+                  <button
+                    className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
+                    disabled={loading || selectedTaskIds.length === 0 || Boolean(busyAction)}
+                    onClick={openAssignmentModal}
+                  >
+                    <Users className="w-4 h-4" />
+                    分配所选订单
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
@@ -575,23 +663,13 @@ export default function PaymentDispatch() {
                 </option>
               ))}
             </select>
-            <select
-              className="input"
-              value={filterDrafts.officialOrderStatus}
-              onChange={event =>
-                setFilterDrafts(previous => ({
-                  ...previous,
-                  officialOrderStatus: event.target.value,
-                }))
+
+            <OfficialStatusFilter
+              value={filterDrafts.officialOrderStatuses}
+              onChange={officialOrderStatuses =>
+                setFilterDrafts(previous => ({ ...previous, officialOrderStatuses }))
               }
-            >
-              <option value="">全部官网状态</option>
-              {Object.entries(OFFICIAL_STATUS_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            />
             <select
               className="input"
               value={filterDrafts.processingStatus}
@@ -609,6 +687,11 @@ export default function PaymentDispatch() {
                 </option>
               ))}
             </select>
+            <OrderDateFilter
+              dateFrom={filterDrafts.dateFrom}
+              dateTo={filterDrafts.dateTo}
+              onChange={range => setFilterDrafts(previous => ({ ...previous, ...range }))}
+            />
             <div className="col-span-full flex justify-end gap-2">
               <button
                 className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
@@ -724,9 +807,11 @@ export default function PaymentDispatch() {
                         {formatOrderTime(task.orderDate || task.officialOrderCreatedAt)}
                       </td>
                       <td className="px-4 py-3">
-                        {OFFICIAL_STATUS_LABELS[task.officialOrderStatus] ||
-                          task.officialOrderStatus ||
-                          '未知'}
+                        <span className={getOfficialStatusTagClass(task.officialPaymentStatus)}>
+                          {OFFICIAL_STATUS_LABELS[task.officialOrderStatus] ||
+                            task.officialOrderStatus ||
+                            '未知'}
+                        </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {task.paymentMethod || '-'}
@@ -767,6 +852,17 @@ export default function PaymentDispatch() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex flex-wrap justify-end gap-2">
+                          {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
+                            <button
+                              className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
+                              disabled={copyingIds.length > 0}
+                              aria-label={`复制订单信息 ${task.orderNumber}`}
+                              onClick={() => copyTasks([task])}
+                            >
+                              <Copy className="w-4 h-4" />
+                              {copyingIds.includes(task.id) ? '复制中...' : '复制'}
+                            </button>
+                          )}
                           {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
                             <button
                               className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
@@ -936,6 +1032,16 @@ export default function PaymentDispatch() {
                     >
                       <td className="px-4 py-3 font-medium">
                         {person.nickname || person.username}（{person.username}）
+                        <div className="mt-1 text-xs text-gray-500">
+                          <span
+                            className={`badge ${person.assignmentMode === 'tag_only' ? 'badge-info' : 'bg-gray-100 text-gray-600'}`}
+                          >
+                            {person.assignmentMode === 'tag_only' ? 'TAG 专属' : '普通分配'}
+                          </span>
+                          <span className="ml-2">
+                            {(person.tagRules || []).map(rule => rule.name).join('、')}
+                          </span>
+                        </div>
                       </td>
                       <td className="px-4 py-3">
                         <span

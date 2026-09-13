@@ -1,3 +1,7 @@
+import OrderDateFilter from '../components/OrderDateFilter';
+import OfficialStatusFilter from '../components/OfficialStatusFilter';
+import { getOfficialStatusTagClass } from '../utils/officialStatusStyle';
+import { buildPaymentCopyText } from '../utils/paymentCopy';
 import { copyDeferredText } from '../utils/copyDeferredText';
 import { updateSelectedTaskStatuses } from '../utils/paymentTaskBatch';
 import { formatOrderTime } from '../utils/orderTime';
@@ -44,6 +48,9 @@ const INITIAL_FILTERS = {
   orderNumber: '',
   productKeyword: '',
   recipientTags: [],
+  officialOrderStatuses: [],
+  dateFrom: '',
+  dateTo: '',
 };
 
 const COPY_LINK_CONCURRENCY = 5;
@@ -64,32 +71,6 @@ function formatDateTime(value) {
   if (Number.isNaN(date.getTime())) return '尚未获取';
   const pad = number => String(number).padStart(2, '0');
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-
-function buildPaymentCopyText(task, paymentUrl) {
-  const productInfo = (Array.isArray(task.products) ? task.products : [])
-    .map(product => {
-      const productName = String(product?.name || '').trim();
-      const model = String(product?.model || '').trim();
-      const name = productName || model;
-      if (!name) return null;
-      const parsedQuantity = Number(product?.quantity);
-      const quantity = Number.isInteger(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
-      return `${name} x ${quantity}`;
-    })
-    .filter(Boolean)
-    .join('、');
-  const rawPaymentMethod = String(task.paymentMethod || '').trim();
-  const normalizedPaymentMethod = rawPaymentMethod.toLowerCase();
-  const paymentMethod =
-    {
-      wechat: '微信',
-      'wechat pay': '微信',
-      微信支付: '微信',
-      alipay: '支付宝',
-    }[normalizedPaymentMethod] || rawPaymentMethod;
-
-  return `${task.orderId ?? '-'} || ${productInfo || '-'} || ${paymentMethod || '-'} || ${paymentUrl}`;
 }
 
 export default function PaymentTasks() {
@@ -148,6 +129,8 @@ export default function PaymentTasks() {
           )
         );
         if (params.recipientTags) params.recipientTags = JSON.stringify(params.recipientTags);
+        if (params.officialOrderStatuses)
+          params.officialOrderStatuses = JSON.stringify(params.officialOrderStatuses);
         const response = await getPaymentTasks({
           ...params,
           page,
@@ -351,7 +334,11 @@ export default function PaymentTasks() {
 
   const copySelectedTasks = async () => {
     if (selectedTasks.length === 0) return;
-    setBatchCopyAction({ copying: true, type: 'info', message: '正在获取订单信息...' });
+    setBatchCopyAction({
+      copying: true,
+      type: 'info',
+      message: '正在获取订单信息...',
+    });
     try {
       setError('');
       await copyDeferredText(async () => {
@@ -493,6 +480,13 @@ export default function PaymentTasks() {
               setFilterDrafts(previous => ({ ...previous, recipientTags }))
             }
           />
+
+          <OfficialStatusFilter
+            value={filterDrafts.officialOrderStatuses}
+            onChange={officialOrderStatuses =>
+              setFilterDrafts(previous => ({ ...previous, officialOrderStatuses }))
+            }
+          />
           <select
             className="input"
             value={filterDrafts.processingStatus}
@@ -509,6 +503,11 @@ export default function PaymentTasks() {
             <option value="completed">已完成</option>
             <option value="exception">异常</option>
           </select>
+          <OrderDateFilter
+            dateFrom={filterDrafts.dateFrom}
+            dateTo={filterDrafts.dateTo}
+            onChange={range => setFilterDrafts(previous => ({ ...previous, ...range }))}
+          />
         </div>
         <div className="mt-3 flex flex-wrap justify-end gap-2">
           <button className="btn btn-primary inline-flex items-center gap-2" type="submit">
@@ -808,9 +807,7 @@ export default function PaymentTasks() {
                         {renderTime(formatOrderTime(task.orderDate || task.officialOrderCreatedAt))}
                       </td>
                       <td data-label="官网付款状态" className="px-4 py-4 text-sm">
-                        <span
-                          className={`inline-flex items-center rounded-md px-2 py-1 text-sm font-medium ${task.officialPaymentStatus === 'paid' ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-primary'}`}
-                        >
+                        <span className={getOfficialStatusTagClass(task.officialPaymentStatus)}>
                           {task.officialPaymentConfirmed
                             ? '官网已确认付款'
                             : {

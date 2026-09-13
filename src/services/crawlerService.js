@@ -35,7 +35,7 @@ const { sendTelegramAlert } = require('../utils/telegramNotifier');
 const crawlerRateLimiter = require('./crawler/crawlerRateLimiter');
 const refreshJobRepository = require('./crawler/refreshJobRepository');
 const { classifyRefreshError, sanitizeRefreshError } = require('./crawler/refreshErrors');
-const { isAutoRefreshEligible } = require('./crawler/refreshPolicy');
+const { isAutoRefreshEligible, isInitialRefreshEligible } = require('./crawler/refreshPolicy');
 const { PAYMENT_ASSIGNMENT_LOCK_ID } = require('./permissionService');
 
 const MAX_CRAWL_ATTEMPTS = 3;
@@ -1201,7 +1201,8 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     validateOrderUrl(orderUrl, order.orderNumber);
     if (
       source === 'page_open' ||
-      (!options.manual && !isAutoRefreshEligible({ ...order.toJSON(), orderUrl }))
+      (!options.manual &&
+        (source !== 'initial' || !isInitialRefreshEligible({ ...order.toJSON(), orderUrl })))
     ) {
       return { success: true, skipped: true, reason: 'automatic_refresh_not_eligible' };
     }

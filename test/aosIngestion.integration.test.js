@@ -115,6 +115,8 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     expect(order.sourceContactEmail).toBe('contact@example.com');
     expect(order.recipientRef).toBeNull();
     expect(await OrderRefreshJob.count({ where: { orderId: order.id } })).toBe(1);
+    expect((await OrderRefreshJob.findOne({ where: { orderId: order.id } })).trigger).toBe('initial');
+    expect((await models.OrderRefreshSchedule.findByPk(order.id)).nextAutoRefreshAt).toBeNull();
     expect(await PaymentTask.count({ where: { orderId: order.id } })).toBe(1);
   });
   test('第 16 列身份证后四位参与取机人匹配，R502 补全成都万象城', async () => {

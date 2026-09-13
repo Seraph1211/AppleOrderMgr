@@ -13,7 +13,9 @@ function describeAutoAssignment(task, rule, overview, now = new Date()) {
   let reasonCode = 'WAITING_SCAN';
   let reason = '等待自动分配';
   const deadline = getOfficialDeadline(task.order);
-  const staff = overview.staff.filter(person => !rule || rule.assigneeUserIds.includes(person.id));
+  const staff = overview.staff.filter(person =>
+    rule ? rule.assigneeUserIds.includes(person.id) : person.assignmentMode !== 'tag_only'
+  );
   const eligible = staff.filter(
     person =>
       person.status === 'active' && person.hasExecutionPermissions && person.autoAssignEnabled
@@ -53,14 +55,17 @@ function describeAutoAssignment(task, rule, overview, now = new Date()) {
  * 在指定账号集合内按负载及公平顺序选择。
  * @param {Object[]} candidates 账号负载
  * @param {Object|null} rule 规则
+ * @param {Set<number>} exclusiveUserIds 启用规则绑定的专属账号
  * @returns {Object|null} 目标账号
  */
-function selectCandidate(candidates, rule) {
+function selectCandidate(candidates, rule, exclusiveUserIds = new Set()) {
   return (
     candidates
       .filter(
         row =>
-          (!rule || rule.assigneeUserIds.includes(row.setting.userId)) &&
+          (rule
+            ? rule.assigneeUserIds.includes(row.setting.userId)
+            : !exclusiveUserIds.has(row.setting.userId)) &&
           row.activeCount < row.setting.maxActiveTasks
       )
       .sort((a, b) => {

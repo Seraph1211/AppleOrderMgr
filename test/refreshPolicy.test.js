@@ -1,9 +1,9 @@
 const {
-  AUTO_REFRESH_INTERVAL_MS,
   getDisplayedFreshness,
   getNextAutoRefreshAt,
   getRefreshPriority,
   isAutoRefreshEligible,
+  isInitialRefreshEligible,
 } = require('../src/services/crawler/refreshPolicy');
 
 const BASE_ORDER = {
@@ -16,15 +16,14 @@ const BASE_ORDER = {
 
 describe('订单刷新策略', () => {
   test.each(['unknown', 'unpaid', null])(
-    '明确待付款阶段支付字段 %s 每分钟参与自动刷新',
+    '明确待付款阶段支付字段 %s 仅允许首次刷新',
     paymentStatus => {
       const from = new Date('2026-09-07T00:00:00Z');
       const order = { ...BASE_ORDER, paymentStatus };
 
-      expect(isAutoRefreshEligible(order)).toBe(true);
-      expect(getNextAutoRefreshAt(order, from).getTime() - from.getTime()).toBe(
-        AUTO_REFRESH_INTERVAL_MS
-      );
+      expect(isAutoRefreshEligible(order)).toBe(false);
+      expect(isInitialRefreshEligible(order)).toBe(true);
+      expect(getNextAutoRefreshAt(order, from)).toBeNull();
     }
   );
 
@@ -56,7 +55,7 @@ describe('订单刷新策略', () => {
   );
 
   test.each([null, '', 'unknown'])(
-    '新单支付 %s 仅在来源下单时间的 30 分钟内自动核实',
+    '新单支付 %s 仅在来源下单时间的 30 分钟内首次核实',
     paymentStatus => {
       const order = {
         ...BASE_ORDER,
@@ -64,11 +63,11 @@ describe('订单刷新策略', () => {
         paymentStatus,
         orderDate: '2026-09-09T00:00:00Z',
       };
-      expect(isAutoRefreshEligible(order, new Date('2026-09-09T00:29:59Z'))).toBe(true);
-      expect(isAutoRefreshEligible(order, new Date('2026-09-09T00:30:00Z'))).toBe(false);
+      expect(isInitialRefreshEligible(order, new Date('2026-09-09T00:29:59Z'))).toBe(true);
+      expect(isInitialRefreshEligible(order, new Date('2026-09-09T00:30:00Z'))).toBe(false);
       expect(getNextAutoRefreshAt(order, new Date('2026-09-09T01:00:00Z'))).toBeNull();
       expect(
-        isAutoRefreshEligible(
+        isInitialRefreshEligible(
           { ...order, createdAt: '2026-09-09T01:00:00Z' },
           new Date('2026-09-09T01:00:00Z')
         )
@@ -77,10 +76,10 @@ describe('订单刷新策略', () => {
   );
 
   test.each([undefined, null, 'invalid', '2020-01-01T00:00:00Z', '2030-01-01T00:00:00Z'])(
-    '未知支付的时间 %s 无法证明当前付款窗口时不自动刷新',
+    '未知支付的时间 %s 无法证明当前付款窗口时不执行首次刷新',
     orderDate => {
       expect(
-        isAutoRefreshEligible(
+        isInitialRefreshEligible(
           { ...BASE_ORDER, status: 'unknown', paymentStatus: null, orderDate },
           new Date('2026-09-09T00:00:00Z')
         )
@@ -91,10 +90,10 @@ describe('订单刷新策略', () => {
   test('未知支付优先官网截止，缺少来源时间时兼容新建时间', () => {
     const now = new Date('2026-09-09T00:00:00Z');
     const order = { ...BASE_ORDER, status: 'pending', paymentStatus: null, createdAt: now };
-    expect(isAutoRefreshEligible(order, now)).toBe(true);
-    expect(isAutoRefreshEligible({ ...order, officialPaymentExpiresAt: now }, now)).toBe(false);
+    expect(isInitialRefreshEligible(order, now)).toBe(true);
+    expect(isInitialRefreshEligible({ ...order, officialPaymentExpiresAt: now }, now)).toBe(false);
     expect(
-      isAutoRefreshEligible(
+      isInitialRefreshEligible(
         { ...order, orderDate: '2020-01-01', officialPaymentExpiresAt: '2026-09-09T00:01:00Z' },
         now
       )
@@ -117,4 +116,10 @@ describe('订单刷新策略', () => {
 
     expect(getDisplayedFreshness(schedule, BASE_ORDER, now)).toBe('stale');
   });
+});
+
+test.each(['payment_due', 'pending', 'unknown'])('阶段 %s 后续周期刷新全部关闭', status => {
+  const order = { ...BASE_ORDER, status, createdAt: new Date() };
+  expect(isAutoRefreshEligible(order)).toBe(false);
+  expect(getNextAutoRefreshAt(order)).toBeNull();
 });

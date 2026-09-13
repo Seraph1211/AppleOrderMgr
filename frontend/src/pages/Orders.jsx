@@ -1,3 +1,4 @@
+import OrderDateFilter from '../components/OrderDateFilter';
 import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect, useRef } from 'react';
 import {
@@ -64,6 +65,8 @@ export default function Orders() {
     pickupStore: '',
     payerName: '',
     payment_status: '',
+    dateFrom: '',
+    dateTo: '',
   });
 
   const [showColumnConfig, setShowColumnConfig] = useState(false);
@@ -101,6 +104,8 @@ export default function Orders() {
     filters.pickupStore,
     filters.payerName,
     filters.payment_status,
+    filters.dateFrom,
+    filters.dateTo,
   ]);
 
   useEffect(() => {
@@ -410,6 +415,8 @@ export default function Orders() {
       pickupStore: '',
       payerName: '',
       payment_status: '',
+      dateFrom: '',
+      dateTo: '',
     });
     setSearchTerm('');
     setPagination(prev => ({ ...prev, currentPage: 1 }));
@@ -727,6 +734,14 @@ export default function Orders() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+          <OrderDateFilter
+            dateFrom={filters.dateFrom}
+            dateTo={filters.dateTo}
+            onChange={range => {
+              setFilters(previous => ({ ...previous, ...range }));
+              setPagination(previous => ({ ...previous, currentPage: 1 }));
+            }}
+          />
           {/* 订单状态 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">订单状态</label>

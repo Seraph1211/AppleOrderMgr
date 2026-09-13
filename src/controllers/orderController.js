@@ -1,4 +1,5 @@
-const { formatOrderTime, parseOrderTimeBoundary } = require('../utils/orderTime');
+const { buildOrderDateCondition } = require('../utils/orderDateFilter');
+const { formatOrderTime } = require('../utils/orderTime');
 /* eslint-disable camelcase */
 /**
  * 订单控制器
@@ -303,23 +304,8 @@ function buildListFilters(query) {
     });
   }
 
-  if (query.date_from || query.date_to) {
-    where.orderDate = {};
-    if (query.date_from) {
-      const from = parseOrderTimeBoundary(query.date_from);
-      if (Number.isNaN(from.getTime())) {
-        throw ApiError.badRequest('date_from 不是合法日期', { received: query.date_from });
-      }
-      where.orderDate[Op.gte] = from;
-    }
-    if (query.date_to) {
-      const to = parseOrderTimeBoundary(query.date_to, true);
-      if (Number.isNaN(to.getTime())) {
-        throw ApiError.badRequest('date_to 不是合法日期', { received: query.date_to });
-      }
-      where.orderDate[Op.lte] = to;
-    }
-  }
+  const orderDateCondition = buildOrderDateCondition(query);
+  if (orderDateCondition) where.orderDate = orderDateCondition;
 
   if (query.keyword) {
     const kw = String(query.keyword).trim();

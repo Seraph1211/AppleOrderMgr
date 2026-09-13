@@ -1,6 +1,7 @@
+import OrderDateFilter from '../components/OrderDateFilter';
 import { formatOrderTime } from '../utils/orderTime';
 import { ORDER_STATUS_BADGES, ORDER_STATUS_LABELS } from '../constants/orderStatus';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { ArrowLeft, Search, Filter, ExternalLink } from 'lucide-react';
 import { getChannelOrders, getChannelStats } from '../api';
@@ -12,6 +13,9 @@ export default function ChannelOrders() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [dateRange, setDateRange] = useState({ dateFrom: '', dateTo: '' });
+  const [error, setError] = useState('');
+  const loadRequest = useRef(0);
   const [pagination, setPagination] = useState({
     page: 1,
     pageSize: 20,
@@ -20,25 +24,30 @@ export default function ChannelOrders() {
 
   useEffect(() => {
     loadChannelData();
-  }, [tag, pagination.page, statusFilter]);
+  }, [tag, pagination.page, statusFilter, dateRange.dateFrom, dateRange.dateTo]);
 
-  const loadChannelData = async () => {
+  const loadChannelData = async (page = pagination.page) => {
+    const request = ++loadRequest.current;
+    setError('');
     setLoading(true);
     try {
       // 加载统计数据
-      const statsRes = await getChannelStats(tag);
+      const statsRes = await getChannelStats(tag, dateRange);
+      if (request !== loadRequest.current) return;
       if (statsRes.success) {
         setStats(statsRes.data);
       }
 
       // 加载订单列表
       const ordersRes = await getChannelOrders(tag, {
-        page: pagination.page,
+        page,
+        ...dateRange,
         pageSize: pagination.pageSize,
         status: statusFilter || undefined,
         search: searchTerm || undefined,
       });
 
+      if (request !== loadRequest.current) return;
       if (ordersRes.success) {
         setOrders(ordersRes.data.items || []);
         setPagination(prev => ({
@@ -47,15 +56,19 @@ export default function ChannelOrders() {
         }));
       }
     } catch (error) {
-      console.error('加载渠道数据失败:', error);
+      if (request === loadRequest.current) {
+        setError(error.message || '加载渠道订单失败');
+        setOrders([]);
+        setStats(null);
+      }
     } finally {
-      setLoading(false);
+      if (request === loadRequest.current) setLoading(false);
     }
   };
 
   const handleSearch = () => {
     setPagination(prev => ({ ...prev, page: 1 }));
-    loadChannelData();
+    loadChannelData(1);
   };
 
   const handleStatusFilterChange = status => {
@@ -140,6 +153,20 @@ export default function ChannelOrders() {
         </div>
       </div>
 
+      <div className="card">
+        <OrderDateFilter
+          {...dateRange}
+          onChange={range => {
+            setDateRange(range);
+            setPagination(previous => ({ ...previous, page: 1 }));
+          }}
+        />
+      </div>
+      {error && (
+        <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">
+          {error}
+        </p>
+      )}
       {/* 订单列表 */}
       <div className="card">
         {loading ? (

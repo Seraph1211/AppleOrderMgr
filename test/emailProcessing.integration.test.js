@@ -358,6 +358,8 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
     expect(await Order.count({ where: { orderNumber: orderNumbers[0] } })).toBe(1);
     expect(await OrderRefreshSchedule.count({ where: { orderId: firstOrder.id } })).toBe(1);
     expect(await OrderRefreshJob.count({ where: { orderId: firstOrder.id } })).toBe(1);
+    expect((await OrderRefreshJob.findOne({ where: { orderId: firstOrder.id } })).trigger).toBe('initial');
+    expect((await OrderRefreshSchedule.findByPk(firstOrder.id)).nextAutoRefreshAt).toBeNull();
     const statuses = await EmailLog.findAll({
       where: { id: [firstLog.id, secondLog.id] },
       attributes: ['status'],

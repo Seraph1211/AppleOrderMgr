@@ -1,3 +1,4 @@
+const { buildOrderDateCondition } = require('../utils/orderDateFilter');
 const logger = require('../utils/logger');
 const { Op, fn, col, Sequelize } = require('sequelize');
 const {
@@ -16,7 +17,7 @@ const ApiError = require('../utils/ApiError');
 const { buildRuleIndex, matchRule } = require('./paymentTagRuleService');
 const { describeAutoAssignment, selectCandidate } = require('./paymentAssignmentPolicy');
 const { getOfficialDeadline, isPaymentBlocked } = require('./crawler/officialOrderData');
-const { ORDER_STATUSES } = require('../constants/business');
+const { buildOfficialStatusCondition } = require('./paymentStatusFilter');
 const { PAYMENT_EXECUTION_PERMISSIONS } = require('../constants/permissionCatalog');
 const { PAYMENT_ASSIGNMENT_LOCK_ID, getEffectivePermissions } = require('./permissionService');
 const refreshJobService = require('./crawler/refreshJobService');
@@ -150,58 +151,115 @@ async function enrollOrderInTransaction(order, transaction) {
 }
 
 /**
+ * 汇总全部待付款订单，包含尚未登记付款任务的订单。
+ * @returns {Promise<Object>} 全局待付款数量和逐账号分配数量
+ */
+async function getPendingOverview() {
+  try {
+    const [counts, users] = await Promise.all([
+      sequelize.query(
+        `SELECT t.assignee_user_id AS "userId", COUNT(*)::int AS count
+         FROM orders o LEFT JOIN payment_tasks t ON t.order_id = o.id
+         WHERE o.status = 'payment_due'
+           AND (o.payment_status IS NULL OR o.payment_status NOT IN ('paid', 'refunded'))
+         GROUP BY t.assignee_user_id`,
+        { type: Sequelize.QueryTypes.SELECT }
+      ),
+      User.findAll({
+        attributes: ['id', 'username', 'nickname', 'deletedAt'],
+        paranoid: false,
+        order: [['id', 'ASC']],
+        raw: true,
+      }),
+    ]);
+    const countByUser = new Map(counts.map(row => [row.userId, Number(row.count)]));
+    const total = counts.reduce((sum, row) => sum + Number(row.count), 0);
+    const unassignedCount = countByUser.get(null) || 0;
+    return {
+      total,
+      unassignedCount,
+      assignedCount: total - unassignedCount,
+      staff: users
+        .filter(user => !user.deletedAt || countByUser.has(user.id))
+        .map(user => ({
+          userId: user.id,
+          username: user.username,
+          nickname: user.nickname || user.username,
+          count: countByUser.get(user.id) || 0,
+        })),
+      generatedAt: new Date().toISOString(),
+    };
+  } catch (error) {
+    logger.error('查询全局待付款概览失败', { error: error.message });
+    throw error;
+  }
+}
+
+/**
  * 查询调度配置和人员容量概览。
  * @returns {Promise<Object>} 调度概览
  */
 async function getDispatchOverview() {
-  const settings = await getOrCreateSettings();
-  const users = await User.findAll({
-    attributes: ['id', 'username', 'role', 'status', 'nickname'],
-    include: [
-      { model: UserPermission, as: 'permissionGrants', attributes: ['permissionCode'] },
-      { model: PaymentStaffSetting, as: 'paymentStaffSetting', required: false },
-    ],
-    order: [['id', 'ASC']],
-  });
-  const counts = await PaymentTask.findAll({
-    where: {
-      assigneeUserId: { [Op.ne]: null },
-      processingStatus: { [Op.in]: ACTIVE_PAYMENT_TASK_STATUSES },
-    },
-    attributes: ['assigneeUserId', [fn('COUNT', col('id')), 'activeCount']],
-    group: ['assigneeUserId'],
-    raw: true,
-  });
-  const countByUser = new Map(
-    counts.map(row => [Number(row.assigneeUserId), Number(row.activeCount)])
-  );
-  return {
-    settings,
-    staff: users.map(user => {
-      const plain = user.toJSON();
-      const permissions =
-        user.role === 'admin'
-          ? PAYMENT_EXECUTION_PERMISSIONS
-          : plain.permissionGrants.map(row => row.permissionCode);
-      const config = plain.paymentStaffSetting;
-      const activeCount = countByUser.get(user.id) || 0;
-      return {
-        id: user.id,
-        username: user.username,
-        status: user.status,
-        nickname: user.nickname || user.username,
-        hasExecutionPermissions: PAYMENT_EXECUTION_PERMISSIONS.every(code =>
-          permissions.includes(code)
-        ),
-        autoAssignEnabled: config?.autoAssignEnabled || false,
-        maxActiveTasks: config?.maxActiveTasks || 0,
-        activeCount,
-        remainingCapacity: Math.max(0, (config?.maxActiveTasks || 0) - activeCount),
-        lastAssignedAt: config?.lastAssignedAt || null,
-        version: config?.version || 0,
-      };
-    }),
-  };
+  try {
+    const settings = await getOrCreateSettings();
+    const users = await User.findAll({
+      attributes: ['id', 'username', 'role', 'status', 'nickname'],
+      include: [
+        { model: UserPermission, as: 'permissionGrants', attributes: ['permissionCode'] },
+        { model: PaymentStaffSetting, as: 'paymentStaffSetting', required: false },
+      ],
+      order: [['id', 'ASC']],
+    });
+    const counts = await PaymentTask.findAll({
+      where: {
+        assigneeUserId: { [Op.ne]: null },
+        processingStatus: { [Op.in]: ACTIVE_PAYMENT_TASK_STATUSES },
+      },
+      attributes: ['assigneeUserId', [fn('COUNT', col('id')), 'activeCount']],
+      group: ['assigneeUserId'],
+      raw: true,
+    });
+    const countByUser = new Map(
+      counts.map(row => [Number(row.assigneeUserId), Number(row.activeCount)])
+    );
+    const rules = await PaymentTagRule.findAll({ where: { enabled: true } });
+    return {
+      settings,
+      staff: users.map(user => {
+        const plain = user.toJSON();
+        const permissions =
+          user.role === 'admin'
+            ? PAYMENT_EXECUTION_PERMISSIONS
+            : plain.permissionGrants.map(row => row.permissionCode);
+        const config = plain.paymentStaffSetting;
+        const activeCount = countByUser.get(user.id) || 0;
+        return {
+          assignmentMode: rules.some(rule => rule.assigneeUserIds.includes(user.id))
+            ? 'tag_only'
+            : 'general',
+          tagRules: rules
+            .filter(rule => rule.assigneeUserIds.includes(user.id))
+            .map(rule => ({ id: rule.id, name: rule.name })),
+          id: user.id,
+          username: user.username,
+          status: user.status,
+          nickname: user.nickname || user.username,
+          hasExecutionPermissions: PAYMENT_EXECUTION_PERMISSIONS.every(code =>
+            permissions.includes(code)
+          ),
+          autoAssignEnabled: config?.autoAssignEnabled || false,
+          maxActiveTasks: config?.maxActiveTasks || 0,
+          activeCount,
+          remainingCapacity: Math.max(0, (config?.maxActiveTasks || 0) - activeCount),
+          lastAssignedAt: config?.lastAssignedAt || null,
+          version: config?.version || 0,
+        };
+      }),
+    };
+  } catch (error) {
+    logger.error('查询调度人员概览失败', { error: error.message });
+    throw error;
+  }
 }
 
 /**
@@ -689,12 +747,10 @@ async function listDispatchTasks(query = {}) {
         ),
       ];
     }
-    if (query.officialOrderStatus) {
-      if (!ORDER_STATUSES.includes(query.officialOrderStatus)) {
-        throw ApiError.badRequest('officialOrderStatus 非法');
-      }
-      orderWhere.status = query.officialOrderStatus;
-    }
+    const officialStatusCondition = buildOfficialStatusCondition(query);
+    if (officialStatusCondition) orderWhere.status = officialStatusCondition;
+    const orderDateCondition = buildOrderDateCondition(query);
+    if (orderDateCondition) orderWhere.orderDate = orderDateCondition;
     const optionOrderWhere = { ...orderWhere };
     if (orderWhere[Op.and]) optionOrderWhere[Op.and] = [...orderWhere[Op.and]];
     const recipientTagCondition = buildRecipientTagCondition(
@@ -777,6 +833,38 @@ async function listDispatchTasks(query = {}) {
   } catch (error) {
     if (!(error instanceof ApiError))
       logger.error('查询付款调度列表失败', { error: error.message });
+    throw error;
+  }
+}
+
+/**
+ * 管理员按需读取付款任务链接并记录访问事件。
+ * @param {number} taskId 任务 ID
+ * @param {number} actorUserId 管理员 ID
+ * @returns {Promise<Object>} 付款链接与服务端时间
+ */
+async function getPaymentLink(taskId, actorUserId) {
+  try {
+    if (!Number.isSafeInteger(taskId) || taskId <= 0 || taskId > 2147483647) {
+      throw ApiError.badRequest('任务 ID 必须是有效正整数');
+    }
+    const task = await PaymentTask.findByPk(taskId, {
+      include: [{ model: Order, as: 'order', attributes: ['orderUrl'] }],
+    });
+    if (!task) throw ApiError.notFound('付款任务不存在');
+    if (!task.order?.orderUrl) throw ApiError.notFound('订单链接不存在');
+    const now = new Date();
+    await PaymentTaskEvent.create({
+      paymentTaskId: task.id,
+      eventType: 'payment_link_accessed',
+      actorUserId,
+      beforeStatus: task.processingStatus,
+      afterStatus: task.processingStatus,
+      details: { accessedAt: now.toISOString(), source: 'payment_dispatch' },
+    });
+    return { paymentUrl: task.order.orderUrl, serverTime: now, deadlineAt: task.deadlineAt };
+  } catch (error) {
+    logger.error('读取调度付款链接失败', { taskId, actorUserId, error: error.message });
     throw error;
   }
 }
@@ -925,6 +1013,9 @@ async function runDispatchScan(limit = 500) {
         const ruleIndex = buildRuleIndex(
           await PaymentTagRule.findAll({ where: { enabled: true }, transaction })
         );
+        const exclusiveUserIds = new Set(
+          [...ruleIndex.values()].flatMap(rule => rule.assigneeUserIds)
+        );
         let assigned = 0;
         let scannedTasks = 0;
         let cursor = null;
@@ -986,7 +1077,7 @@ async function runDispatchScan(limit = 500) {
             if (isOrderExcluded(task.order) || !currentDeadline || currentDeadline <= new Date())
               continue;
             const rule = matchRule(task.order, ruleIndex);
-            const candidate = selectCandidate(candidates, rule);
+            const candidate = selectCandidate(candidates, rule, exclusiveUserIds);
             if (!candidate) continue;
             const now = new Date();
             task.assigneeUserId = candidate.setting.userId;
@@ -1041,6 +1132,8 @@ async function runDispatchScan(limit = 500) {
 }
 
 module.exports = {
+  getPaymentLink,
+  getPendingOverview,
   enrollOrderInTransaction,
   getDispatchOverview,
   updateDispatchSettings,

@@ -1,8 +1,14 @@
 import { Check, ChevronDown, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
+const EMPTY_LABELS = Object.freeze({});
+
+function getOptionLabel(option, labels) {
+  return Object.prototype.hasOwnProperty.call(labels, option) ? labels[option] : option;
+}
+
 /**
- * 可搜索的 TAG 下拉多选框。
+ * 可搜索下拉多选框，默认用于 TAG，可提供代码到中文标签的映射。
  */
 export default function TagMultiSelect({
   options = [],
@@ -10,6 +16,8 @@ export default function TagMultiSelect({
   onChange,
   ariaLabel = 'TAG 筛选',
   placeholder = '全部 TAG',
+  itemLabel = 'TAG',
+  optionLabels = EMPTY_LABELS,
 }) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -34,15 +42,20 @@ export default function TagMultiSelect({
   const normalizedOptions = useMemo(
     () =>
       [...new Set([...options, ...value].filter(Boolean))].sort((left, right) =>
-        left.localeCompare(right, 'zh-CN')
+        getOptionLabel(left, optionLabels).localeCompare(
+          getOptionLabel(right, optionLabels),
+          'zh-CN'
+        )
       ),
-    [options, value]
+    [options, value, optionLabels]
   );
   const visibleOptions = useMemo(() => {
     const search = keyword.trim().toLocaleLowerCase('zh-CN');
     if (!search) return normalizedOptions;
-    return normalizedOptions.filter(option => option.toLocaleLowerCase('zh-CN').includes(search));
-  }, [keyword, normalizedOptions]);
+    return normalizedOptions.filter(option =>
+      getOptionLabel(option, optionLabels).toLocaleLowerCase('zh-CN').includes(search)
+    );
+  }, [keyword, normalizedOptions, optionLabels]);
 
   const toggleOption = option => {
     onChange(
@@ -51,7 +64,17 @@ export default function TagMultiSelect({
   };
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div
+      className="relative"
+      ref={containerRef}
+      onKeyDown={event => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation();
+          closeDropdown();
+          containerRef.current?.querySelector('button')?.focus();
+        }
+      }}
+    >
       <button
         type="button"
         className="input flex w-full items-center justify-between gap-2 text-left"
@@ -67,8 +90,8 @@ export default function TagMultiSelect({
           {value.length === 0
             ? placeholder
             : value.length === 1
-              ? value[0]
-              : `已选择 ${value.length} 个 TAG`}
+              ? getOptionLabel(value[0], optionLabels)
+              : `已选择 ${value.length} 个${itemLabel === 'TAG' ? ' TAG' : itemLabel}`}
         </span>
         <ChevronDown
           className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
@@ -83,7 +106,7 @@ export default function TagMultiSelect({
               <input
                 className="input w-full py-2 pl-9 pr-3"
                 autoFocus
-                placeholder="搜索 TAG"
+                placeholder={`搜索 ${itemLabel}`}
                 value={keyword}
                 onChange={event => setKeyword(event.target.value)}
                 onKeyDown={event => {
@@ -98,7 +121,9 @@ export default function TagMultiSelect({
           </div>
           <div className="max-h-64 overflow-y-auto p-1" role="listbox" aria-multiselectable="true">
             {visibleOptions.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-gray-400">暂无匹配 TAG</p>
+              <p className="px-3 py-6 text-center text-sm text-gray-400">
+                暂无匹配{itemLabel === 'TAG' ? ' TAG' : itemLabel}
+              </p>
             ) : (
               visibleOptions.map(option => {
                 const selected = value.includes(option);
@@ -122,8 +147,8 @@ export default function TagMultiSelect({
                     >
                       {selected && <Check className="h-3 w-3" />}
                     </span>
-                    <span className="truncate" title={option}>
-                      {option}
+                    <span className="truncate" title={getOptionLabel(option, optionLabels)}>
+                      {getOptionLabel(option, optionLabels)}
                     </span>
                   </button>
                 );

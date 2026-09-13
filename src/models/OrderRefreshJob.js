@@ -1,6 +1,6 @@
 const { DataTypes } = require('sequelize');
 
-const JOB_TRIGGERS = ['auto', 'page_open', 'manual_single', 'manual_all'];
+const JOB_TRIGGERS = ['initial', 'auto', 'page_open', 'manual_single', 'manual_all'];
 const JOB_STATUSES = ['pending', 'running', 'succeeded', 'failed', 'skipped'];
 
 /**

@@ -152,7 +152,7 @@ async function createOrderInTransaction(emailData, transaction, options = {}) {
     await OrderRefreshSchedule.create(
       {
         orderId: order.id,
-        nextAutoRefreshAt: order.orderUrl ? refreshScheduledAt : null,
+        nextAutoRefreshAt: null,
         freshnessStatus: 'stale',
       },
       { transaction }
@@ -161,7 +161,7 @@ async function createOrderInTransaction(emailData, transaction, options = {}) {
       await OrderRefreshJob.create(
         {
           orderId: order.id,
-          trigger: 'auto',
+          trigger: 'initial',
           status: 'pending',
           priority: 250,
           scheduledAt: refreshScheduledAt,
