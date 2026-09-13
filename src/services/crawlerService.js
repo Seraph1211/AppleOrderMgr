@@ -1169,6 +1169,8 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
   let order = null;
   const startTime = Date.now();
   const source = options.source || (options.manual ? 'manual' : 'auto');
+  // initial 用于首次刷新资格判断；审计日志沿用既有 auto 枚举。
+  const logSource = source === 'initial' ? 'auto' : source;
 
   try {
     // 1. 查询订单信息
@@ -1289,7 +1291,7 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     await CrawlLog.create(
       {
         orderId: order.id,
-        source,
+        source: logSource,
         severity: validationResult.status === VALIDATION_STATUS.ABNORMAL ? 'warn' : 'info',
         eventType:
           validationResult.status === VALIDATION_STATUS.ABNORMAL ? 'product_validation' : 'crawler',
@@ -1321,7 +1323,7 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     if (crawledData.officialOrderAmountParseError) {
       await createCrawlLog({
         orderId: order.id,
-        source,
+        source: logSource,
         severity: 'warn',
         eventType: 'amount_parse',
         event: 'official_amount_parse_missing',
@@ -1405,7 +1407,7 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     const responseTime = Date.now() - startTime;
     await createCrawlLog({
       orderId,
-      source,
+      source: logSource,
       severity: error.isWindControl ? 'error' : 'warn',
       eventType: error.eventType || 'crawler',
       event: error.isWindControl ? 'wind_control_detected' : 'order_sync_failed',
