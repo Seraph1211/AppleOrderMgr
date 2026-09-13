@@ -24,6 +24,8 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  OrderPaymentCode: require('./OrderPaymentCode')(sequelize),
+  CollectorUpdateJob: require('./CollectorUpdateJob')(sequelize),
   IngestionSetting: require('./IngestionSetting')(sequelize),
   AosDevice: require('./AosDevice')(sequelize),
   AosRecord: require('./AosRecord')(sequelize),

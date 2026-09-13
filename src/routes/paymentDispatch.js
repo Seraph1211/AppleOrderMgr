@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole, requirePermission } = require('../middleware/authMiddleware');
@@ -95,4 +96,23 @@ router.get(
   asyncHandler(controller.getPaymentLink)
 );
 
+router.get(
+  '/tasks/:id/payment-code',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_READ),
+  asyncHandler(async (req, res) => {
+    try {
+      const data = await require('../services/paymentCodeService').getPaymentCode(
+        Number(req.params.id),
+        req.user.id,
+        false
+      );
+      res.set('Cache-Control', 'no-store').json({ success: true, data });
+    } catch (error) {
+      logger.debug('付款码或采集更新操作未完成', {
+        errorCode: error.code || 'TEMPORARILY_UNAVAILABLE',
+      });
+      throw error;
+    }
+  })
+);
 module.exports = router;

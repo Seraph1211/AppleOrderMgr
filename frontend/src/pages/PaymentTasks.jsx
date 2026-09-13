@@ -1,3 +1,4 @@
+import PaymentCodeButton from '../components/PaymentCodeButton';
 import OrderDateFilter from '../components/OrderDateFilter';
 import OfficialStatusFilter from '../components/OfficialStatusFilter';
 import { getOfficialStatusTagClass } from '../utils/officialStatusStyle';
@@ -886,6 +887,9 @@ export default function PaymentTasks() {
                               />
                               <span className="md:hidden">保存</span>
                             </button>
+                          )}
+                          {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) && (
+                            <PaymentCodeButton taskId={task.id} />
                           )}
                           {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) && (
                             <button

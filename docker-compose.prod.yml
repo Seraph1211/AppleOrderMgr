@@ -40,6 +40,10 @@ services:
       RUN_WORKERS_IN_API: 'false'
       TRUST_PROXY: '1'
       DB_POOL_MAX: '8'
+      COLLECTOR_RELEASE_DIR: /opt/collector-updates/releases
+      COLLECTOR_UPDATE_PUBLIC_KEY_FILE: /opt/collector-updates/release-public.pem
+    volumes:
+      - /var/www/apple-order-mgr/shared/collector-updates:/opt/collector-updates:ro
     ports:
       - '${API_BIND_ADDRESS:-127.0.0.1}:${API_HOST_PORT:-3001}:3000'
     healthcheck:

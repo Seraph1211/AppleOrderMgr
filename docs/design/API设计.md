@@ -542,3 +542,12 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 ## 订单与付款下单日期范围（2026-09-13）
 
 订单列表／导出、渠道订单列表／订单统计、付款调度和本人付款任务统一支持 dateFrom/dateTo（兼容 date_from/date_to）。日期 YYYY-MM-DD 按北京时间完整日边界，起日 00:00:00.000 至止日 23:59:59.999；兼容已有精确 ISO 时间参数。允许仅起日或止日，不传不限制；非法日期、起日晚于止日返回 400。以来源下单时间 orders.order_date 为依据，缺失时间的订单在指定日期范围时不命中，不用入库时间补造。与其他筛选条件 AND，分页、总数及付款 TAG 候选均在过滤后计算；订单导出带相同条件。渠道订单统计受日期范围影响，取机人总数仍为渠道关联数量；本人权限范围保持。
+
+## AOS 付款码与 Windows 更新扩展（2026-09-13，实施中）
+
+- `POST /api/aos-collector/v1/payment-codes`：设备认证；`{records:[{eventId,orderNumber,orderDate,sourceTime,contactEmail,appleId,paymentMethod,imageDataUrl}]}`，每批 20 条、PNG 每张最多 128 KiB、整个请求最多 1 MiB。独立不可变事件回执，重复事件不同载荷 409；只接收微信 PNG。设备启用、当前来源为 AOS 才处理；无目标订单返回可重试等待，不因缺码阻断订单入库。已有订单允许历史补码，订单号、来源账号／联系邮箱及日期须一致。成功回执才结束本地上传。
+- `GET /api/payment-tasks/:id/payment-code`：沿用本人付款链接权限及当前任务归属；`GET /api/payment-dispatch/tasks/:id/payment-code`：沿用管理员付款调度读取权限。均返回 `{success:true,data:{availability,message,orderId,orderNumber,products,amount,paymentMethod,officialOrderStatus,officialPaymentStatus,deadlineAt,imageDataUrl,sourceTime}}`；支付宝只返回 availability=unsupported 与“支付宝暂无法获取付款码”，不返回图片或链接。微信缺码为 missing，已付款／取消／过期仍可查看。读码审计、no-store，不访问官网或改变付款状态。
+- `GET /api/order-ingestion/collector-releases`：管理员设备管理权限，列出已验签发布版本；`GET /api/order-ingestion/collector-updates` 列出最近更新任务；`POST /api/order-ingestion/collector-updates`：`{deviceIds,releaseVersion}`，限定最多 20 台已启用设备；重复同一进行中目标复用任务，不同目标冲突。
+- `GET /api/aos-collector/v1/update`：领取自身更新任务和签名 manifest；`GET /api/aos-collector/v1/update/:id/package`：仅自身非终态任务的已验签固定制品；`POST /api/aos-collector/v1/update/:id/status`：`{status,agentVersion,errorCode}`，稳定状态码，终态幂等且禁止倒退。
+- manifest 使用 `{payload,signature}`，两值为 Base64；原始 UTF-8 payload 为 `{product:'AppleOrderMgrAosCollector',version,platform:'win-x64',sha256,size,queueSchema:1}`，RSA-SHA256 PKCS#1 v1.5 校验精确字节。配置 `COLLECTOR_RELEASE_DIR` 与 `COLLECTOR_UPDATE_PUBLIC_KEY_FILE`；未配置时更新发布不可用，既有采集继续。
+- 首次管理员执行新安装包非交互入口，安装受保护的独立更新副本和固定计划任务；后续设备仅出站 HTTPS 获取固定签名制品。旧采集器 v1 context 与 records 保持兼容，不向旧版返回更高 protocolVersion。

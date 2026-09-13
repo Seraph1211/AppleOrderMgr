@@ -32,7 +32,8 @@
     "test:browser:tag-rules": "node scripts/testPaymentTagRulesBrowser.js",
     "test:browser:orders": "node scripts/testOrdersBrowser.js",
     "orders:restore-times": "node scripts/restoreOrderTimes.js",
-    "orders:revalidate-conflicts": "node scripts/revalidateOrderConflicts.js"
+    "orders:revalidate-conflicts": "node scripts/revalidateOrderConflicts.js",
+    "collector:package": "node scripts/packageCollectorRelease.js"
   },
   "keywords": [
     "apple",

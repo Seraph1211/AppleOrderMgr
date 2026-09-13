@@ -41,6 +41,35 @@ public sealed class CollectorClient : IDisposable
     try { return (await Request<BatchResult>("records", new { schemaVersion = 1, records = events }, token)).Results; }
     catch (Exception) { throw; }
   }
+  public async Task<List<Receipt>> SendCodes(List<PaymentCodeEvent> events, CancellationToken token)
+  {
+    try { return (await Request<BatchResult>("payment-codes", new { records = events }, token)).Results; }
+    catch (Exception) { throw; }
+  }
+  public Task<UpdateOffer> GetUpdate(CancellationToken token) => Request<UpdateOffer>("update", null, token);
+  public async Task ReportUpdate(string id, string status, string version, string? error, CancellationToken token)
+  {
+    try { await Request<JsonElement>("update/" + id + "/status", new { status, agentVersion = version, errorCode = error }, token); }
+    catch (Exception) { throw; }
+  }
+  public async Task DownloadUpdate(string id, string destination, long size, CancellationToken token)
+  {
+    try {
+      using var response = await client.GetAsync("api/aos-collector/v1/update/" + id + "/package", HttpCompletionOption.ResponseHeadersRead, token);
+      if (!response.IsSuccessStatusCode) throw new CollectorException("UPDATE_DOWNLOAD_FAILED");
+      if (response.Content.Headers.ContentLength is long length && length != size) throw new CollectorException("UPDATE_PACKAGE_INVALID");
+      using var input = await response.Content.ReadAsStreamAsync(token);
+      using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None);
+      var buffer = new byte[65536]; long total = 0; int read;
+      while ((read = await input.ReadAsync(buffer, token)) > 0) {
+        total += read; if (total > size) throw new CollectorException("UPDATE_PACKAGE_INVALID");
+        await output.WriteAsync(buffer.AsMemory(0, read), token);
+      }
+      output.Flush(true);
+      if (total != size) throw new CollectorException("UPDATE_PACKAGE_INVALID");
+    } catch (CollectorException) { throw; }
+    catch (Exception) { throw new CollectorException("UPDATE_DOWNLOAD_FAILED"); }
+  }
   public async Task ConfirmScan(string scanId, List<string> eventIds, CancellationToken token)
   {
     try { await Request<JsonElement>("records/status", new { scanRequestId = scanId, eventIds }, token); }

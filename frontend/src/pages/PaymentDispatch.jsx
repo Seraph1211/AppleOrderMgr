@@ -1,3 +1,4 @@
+import PaymentCodeButton from '../components/PaymentCodeButton';
 import OrderDateFilter from '../components/OrderDateFilter';
 import OfficialStatusFilter from '../components/OfficialStatusFilter';
 import { getOfficialStatusTagClass } from '../utils/officialStatusStyle';
@@ -852,6 +853,9 @@ export default function PaymentDispatch() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="flex flex-wrap justify-end gap-2">
+                          {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
+                            <PaymentCodeButton taskId={task.id} dispatch />
+                          )}
                           {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
                             <button
                               className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}

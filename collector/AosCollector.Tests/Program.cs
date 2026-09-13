@@ -13,6 +13,7 @@ string Line(string number = "W9900000001", string? day = null) => string.Join('\
 UploadEvent Event(string raw, string? scan = null) => new(Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), "AOS订单记录-测试.txt", 1, Protocol.Now(), scan, null, raw);
 var utf8 = new UTF8Encoding(false, true);
 try {
+  PaymentCodeTests.Run(Check, root);
   var line = Line();
   Check(FileParser.Parse(utf8.GetBytes(line + "\r\n"), "utf-8", false) is [{ PendingTail: false, BusinessDate: not null }], "15 列空字段、CRLF 与毫秒日期");
   Check(FileParser.Parse(utf8.GetBytes("\uFEFF" + line + "\n"), "utf-8", false)[0].RawLine == line, "UTF-8 BOM 与无 BOM 内容一致");

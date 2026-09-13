@@ -28,6 +28,26 @@ function route(permission, work, status = 200) {
     }),
   ];
 }
+router.get(
+  '/collector-releases',
+  ...route('ingestion.devices.manage', () =>
+    require('../services/collectorReleaseService').listReleases()
+  )
+);
+router.get(
+  '/collector-updates',
+  ...route('ingestion.devices.manage', () =>
+    require('../services/collectorUpdateService').listUpdates()
+  )
+);
+router.post(
+  '/collector-updates',
+  ...route(
+    'ingestion.devices.manage',
+    req => require('../services/collectorUpdateService').scheduleUpdates(req),
+    201
+  )
+);
 router.get('/settings', ...route('ingestion.read', () => management.getSettings()));
 router.post('/switch-preview', ...route('ingestion.manage', management.switchPreview));
 router.put('/settings', ...route('ingestion.manage', management.switchSource));

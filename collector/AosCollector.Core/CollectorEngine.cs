@@ -25,7 +25,7 @@ public sealed class CollectorEngine : IDisposable
   private DateTimeOffset nextConnect = DateTimeOffset.MinValue;
   private int connectionFailures;
   private DateTimeOffset lastHeartbeat = DateTimeOffset.MinValue;
-  public CollectorStatus Status => new("运行中", connectionState, context?.ActiveSource ?? "unknown", lastScanAt, errorCode, store.Counts(), directories, files, Protocol.Now(), context?.ServerCounts, context?.ServerTime);
+  public CollectorStatus Status => new("运行中", connectionState, context?.ActiveSource ?? "unknown", lastScanAt, errorCode, store.Counts(), directories, files, Protocol.Now(), context?.ServerCounts, context?.ServerTime, "1.1.0", store.CodeCounts().Pending, store.CodeCounts().Errors);
 
   public CollectorEngine(CollectorConfig config, QueueStore store, HttpMessageHandler? handler = null, TimeProvider? clock = null)
   {
@@ -35,7 +35,7 @@ public sealed class CollectorEngine : IDisposable
     foreach (var dir in config.Directories) {
       try {
         if (!Directory.Exists(dir.Path)) continue;
-        var watcher = new FileSystemWatcher(dir.Path, "AOS订单记录-*.txt") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size, IncludeSubdirectories = false, EnableRaisingEvents = true };
+        var watcher = new FileSystemWatcher(dir.Path, "AOS*.txt") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size, IncludeSubdirectories = false, EnableRaisingEvents = true };
         watcher.Created += (_, _) => Signal(); watcher.Changed += (_, _) => Signal(); watcher.Renamed += (_, _) => Signal(); watcher.Deleted += (_, _) => Signal(); watcher.Error += (_, _) => Signal();
         watchers.Add(watcher);
       } catch (Exception) { errorCode = "DIRECTORY_UNREADABLE"; }
@@ -57,13 +57,29 @@ public sealed class CollectorEngine : IDisposable
           } catch (CollectorException e) { SetFailure(e.Code, e.RetryAfterSeconds); }
         }
         await Scan(token);
+        foreach (var dir in config.Directories) {
+          try { PaymentCodeCollector.Scan(dir, config, store, token); }
+          catch (CollectorException e) { errorCode = e.Code; }
+          catch (Exception) { errorCode = "PAYMENT_FILE_READ_FAILED"; }
+        }
         if (!authPaused && connectionState == "已连接") await Upload(token);
+        if (!authPaused && connectionState == "已连接") {
+          var codes = store.PendingCodes();
+          if (codes.Count > 0) {
+            try {
+              var sent = codes.Select(c => c.EventId).ToHashSet(); var receipts = await client.SendCodes(codes, token);
+              foreach (var receipt in receipts) if (sent.Contains(receipt.EventId)) store.ApplyCode(receipt);
+              foreach (var id in sent.Except(receipts.Select(r => r.EventId))) store.ApplyCode(new(id, "rejected", null, null, null, "RECEIPT_MISSING", true));
+            }
+            catch (CollectorException e) { SetFailure(e.Code, e.RetryAfterSeconds); }
+          }
+        }
         if (!authPaused && connectionState == "已连接" && DateTimeOffset.UtcNow - lastHeartbeat > TimeSpan.FromSeconds(15)) {
           try {
             foreach (var scan in activeScans.Values)
               foreach (var batch in store.ScanReceipts(scan.Id).Chunk(100)) await client.ConfirmScan(scan.Id, [.. batch], token);
             var scanResults = activeScans.Values.Select(s => store.ScanCounts(s.Id, directories.All(d => d.State is "ready" or "waiting_file") && files.All(f => !f.PendingTail && f.ErrorCode == null), errorCode?.StartsWith("DIRECTORY_") == true ? errorCode : null)).ToList();
-            context = await client.Heartbeat(new(Guid.NewGuid().ToString(), "1.0.0", Environment.OSVersion.VersionString, Protocol.Now(), lastScanAt, lastNewOrderAt, directories, store.Counts(), scanResults), token);
+            context = await client.Heartbeat(new(Guid.NewGuid().ToString(), "1.1.0", Environment.OSVersion.VersionString, Protocol.Now(), lastScanAt, lastNewOrderAt, directories, store.Counts(), scanResults), token);
             store.SetState("context", context); lastHeartbeat = DateTimeOffset.UtcNow;
           } catch (CollectorException e) { SetFailure(e.Code, e.RetryAfterSeconds); }
         }

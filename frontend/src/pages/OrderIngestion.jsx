@@ -1,3 +1,5 @@
+import { useAuth } from '../contexts/AuthContext';
+import CollectorUpdates from '../components/CollectorUpdates';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Database, RefreshCw, Plus, X, Eye, Save, KeyRound, Copy } from 'lucide-react';
@@ -138,6 +140,7 @@ function Dialog({ title, onClose, children }) {
 
 /** 管理员来源开关、设备与可靠接收记录。 @returns {JSX.Element} 页面 */
 export default function OrderIngestion() {
+  const { can } = useAuth();
   const [settings, setSettings] = useState(null);
   const [devices, setDevices] = useState(EMPTY_LIST);
   const [records, setRecords] = useState(EMPTY_LIST);
@@ -627,6 +630,7 @@ export default function OrderIngestion() {
       )}
       {tab === 'devices' && (
         <>
+          {can('ingestion.devices.manage') && <CollectorUpdates devices={devices.items} />}
           <section className="rounded-xl border border-blue-200 bg-primary-50 p-4">
             <p className="text-sm font-medium text-gray-900">采集器服务器 HTTPS 地址</p>
             {settings?.collectorServerUrl ? (

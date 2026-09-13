@@ -12,7 +12,7 @@ internal sealed class MainForm : Form
   private readonly ComboBox encoding = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 130 };
   private readonly DataGridView directoryTable = Grid();
   private readonly DataGridView fileTable = Grid();
-  private readonly Label overview = new() { AutoSize = false, Height = 155, Dock = DockStyle.Top, Padding = new Padding(16) };
+  private readonly Label overview = new() { AutoSize = false, Height = 185, Dock = DockStyle.Top, Padding = new Padding(16) };
   private readonly Label message = new() { AutoSize = true, ForeColor = Color.Firebrick, Padding = new Padding(12) };
   private readonly NotifyIcon tray;
   private readonly System.Windows.Forms.Timer timer = new() { Interval = 2000 };
@@ -22,6 +22,14 @@ internal sealed class MainForm : Form
   private bool busy;
   private bool updating;
   private bool exiting;
+  protected override void WndProc(ref Message message)
+  {
+    if (message.Msg == 0x8000 + 427) {
+      if (!busy) { exiting = true; BeginInvoke(() => Close()); }
+      return;
+    }
+    base.WndProc(ref message);
+  }
   public MainForm(bool startInTray)
   {
     Text = "Apple 订单 · AOS 采集器"; Width = 1020; Height = 760; MinimumSize = new Size(850, 650); BackColor = Color.FromArgb(249, 250, 251); Font = new Font("Microsoft YaHei UI", 9); StartPosition = FormStartPosition.CenterScreen;
@@ -97,6 +105,7 @@ internal sealed class MainForm : Form
       var source = status.ActiveSource == "aos" ? "AOS 文件" : status.ActiveSource == "email" ? "邮件模式，AOS 暂停入库" : "尚未取得来源设置";
       overview.Text = $"后台服务：{status.ServiceState}　服务器：{status.ConnectionState}\n当前来源：{source}\n本地待上传：{status.Counts.PendingUpload}　上传异常：{status.Counts.UploadError}　今日发现：{status.Counts.TodayDiscovered}\n最近成功扫描：{status.LastScanAt ?? "尚未扫描"}　状态更新时间：{status.UpdatedAt}";
       overview.Text += status.ServerCounts is { } totals ? $"\n服务器累计已入库：{totals.Created}　重复：{totals.Duplicate}　待人工：{totals.ManualReview}　暂停：{totals.Paused}　今日接收：{totals.TodayReceived}" : "\n服务器处理结果：尚未取得";
+      overview.Text += $"\n付款码待上传：{status.PendingPaymentCodes}　付款码异常：{status.PaymentCodeErrors}　版本：{status.AgentVersion}";
       overview.Text += $"\n服务器计数上次同步：{status.ServerSyncedAt ?? "尚未同步"}";
       tray.Text = "AOS 采集器 · " + (status.ErrorCode == null ? source : ErrorText(status.ErrorCode)[..Math.Min(30, ErrorText(status.ErrorCode).Length)]);
       tray.Icon = status.ErrorCode == null ? SystemIcons.Information : SystemIcons.Warning;

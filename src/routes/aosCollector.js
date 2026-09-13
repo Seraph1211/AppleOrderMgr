@@ -56,6 +56,16 @@ router.post(
   respond(req => management.heartbeat(req.get('Authorization'), req.body))
 );
 router.post(
+  '/payment-codes',
+  limiter(60),
+  respond(req =>
+    require('../services/paymentCodeService').receivePaymentCodes(
+      req.get('Authorization'),
+      req.body
+    )
+  )
+);
+router.post(
   '/records',
   limiter(60),
   respond(req => aos.receiveBatch(req.get('Authorization'), req.body))
@@ -102,6 +112,37 @@ router.post(
     } catch (error) {
       logger.debug('来源操作未完成', { errorCode: error.code || 'DATABASE_TEMPORARY' });
       throw error;
+    }
+  })
+);
+router.get(
+  '/update',
+  respond(req => require('../services/collectorUpdateService').pollUpdate(req.get('Authorization')))
+);
+router.post(
+  '/update/:id/status',
+  respond(req =>
+    require('../services/collectorUpdateService').reportUpdate(
+      req.get('Authorization'),
+      req.params.id,
+      req.body
+    )
+  )
+);
+router.get(
+  '/update/:id/package',
+  asyncHandler(async (req, res, next) => {
+    try {
+      const release = await require('../services/collectorUpdateService').updatePackage(
+        req.get('Authorization'),
+        req.params.id
+      );
+      res.set('Content-Type', 'application/octet-stream');
+      res.sendFile(release.packagePath, error => {
+        if (error) next(error);
+      });
+    } catch (error) {
+      next(error);
     }
   })
 );
