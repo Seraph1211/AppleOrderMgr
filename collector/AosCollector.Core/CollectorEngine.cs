@@ -25,7 +25,7 @@ public sealed class CollectorEngine : IDisposable
   private DateTimeOffset nextConnect = DateTimeOffset.MinValue;
   private int connectionFailures;
   private DateTimeOffset lastHeartbeat = DateTimeOffset.MinValue;
-  public CollectorStatus Status => new("运行中", connectionState, context?.ActiveSource ?? "unknown", lastScanAt, errorCode, store.Counts(), directories, files, Protocol.Now(), context?.ServerCounts, context?.ServerTime, "1.2.2", store.CodeCounts().Pending, store.CodeCounts().Errors);
+  public CollectorStatus Status => new("运行中", connectionState, context?.ActiveSource ?? "unknown", lastScanAt, errorCode, store.Counts(), directories, files, Protocol.Now(), context?.ServerCounts, context?.ServerTime, "1.2.3", store.CodeCounts().Pending, store.CodeCounts().Errors);
 
   public CollectorEngine(CollectorConfig config, QueueStore store, HttpMessageHandler? handler = null, TimeProvider? clock = null)
   {
@@ -79,7 +79,7 @@ public sealed class CollectorEngine : IDisposable
             foreach (var scan in activeScans.Values)
               foreach (var batch in store.ScanReceipts(scan.Id).Chunk(100)) await client.ConfirmScan(scan.Id, [.. batch], token);
             var scanResults = activeScans.Values.Select(s => store.ScanCounts(s.Id, directories.All(d => d.State is "ready" or "waiting_file") && files.All(f => !f.PendingTail && f.ErrorCode == null), errorCode?.StartsWith("DIRECTORY_") == true ? errorCode : null)).ToList();
-            context = await client.Heartbeat(new(Guid.NewGuid().ToString(), "1.2.2", Environment.OSVersion.VersionString, Protocol.Now(), lastScanAt, lastNewOrderAt, directories, store.Counts(), scanResults), token);
+            context = await client.Heartbeat(new(Guid.NewGuid().ToString(), "1.2.3", Environment.OSVersion.VersionString, Protocol.Now(), lastScanAt, lastNewOrderAt, directories, store.Counts(), scanResults), token);
             store.SetState("context", context); lastHeartbeat = DateTimeOffset.UtcNow;
           } catch (CollectorException e) { SetFailure(e.Code, e.RetryAfterSeconds); }
         }

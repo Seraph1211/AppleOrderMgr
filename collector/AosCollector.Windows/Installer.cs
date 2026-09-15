@@ -57,7 +57,7 @@ internal static class Installer
       if (!existed) Run("sc.exe", "create", CollectorService.NameValue, "binPath=", $"\"{Executable}\" --service", "start=", "auto", "obj=", @"NT AUTHORITY\LocalService", "DisplayName=", "Apple 订单 AOS 采集服务");
       Run("sc.exe", "failure", CollectorService.NameValue, "reset=", "86400", "actions=", "restart/5000/restart/10000/restart/60000");
       using var registry = Registry.LocalMachine.CreateSubKey(RegistryPath);
-      registry.SetValue("DisplayName", "Apple 订单 AOS 采集器"); registry.SetValue("DisplayVersion", "1.2.2"); registry.SetValue("Publisher", "AppleOrderMgr");
+      registry.SetValue("DisplayName", "Apple 订单 AOS 采集器"); registry.SetValue("DisplayVersion", "1.2.3"); registry.SetValue("Publisher", "AppleOrderMgr");
       registry.SetValue("InstallLocation", InstallDirectory); registry.SetValue("UninstallString", $"\"{Executable}\" --uninstall"); registry.SetValue("ModifyPath", $"\"{Executable}\" --install");
       registry.SetValue("NoRepair", 0, RegistryValueKind.DWord);
       // 当前管理员交互登录后启动托盘，窗口退出不停止后台服务。
@@ -83,7 +83,7 @@ internal sealed class SetupForm : Form
   public SetupForm(bool uninstall)
   {
     Text = uninstall ? "卸载 AOS 采集器" : "安装 / 修复 AOS 采集器"; Width = 580; Height = 340; StartPosition = FormStartPosition.CenterScreen; BackColor = Color.White;
-    var text = new Label { Dock = DockStyle.Top, Height = 165, Padding = new Padding(24), Text = uninstall ? "将停止并注销 AOS 后台服务、移除登录托盘任务。\n\n本地配置和待发送队列保留，可在重新安装后恢复。程序文件保留在安装目录。" : "AOS 采集器 1.2.2 · Windows x64\n\n安装配置窗口、系统托盘与开机运行的后台服务。包含运行依赖。升级保留本地配置、设备身份和待发送队列。\n\n目录和服务器地址将在配置窗口中设置。" };
+    var text = new Label { Dock = DockStyle.Top, Height = 165, Padding = new Padding(24), Text = uninstall ? "将停止并注销 AOS 后台服务、移除登录托盘任务。\n\n本地配置和待发送队列保留，可在重新安装后恢复。程序文件保留在安装目录。" : "AOS 采集器 1.2.3 · Windows x64\n\n安装配置窗口、系统托盘与开机运行的后台服务。包含运行依赖。升级保留本地配置、设备身份和待发送队列。\n\n目录和服务器地址将在配置窗口中设置。" };
     var button = new Button { Text = uninstall ? "确认卸载，保留队列" : "安装 / 修复", Dock = DockStyle.Bottom, Height = 48 };
     button.Click += async (_, _) => {
       button.Enabled = false;

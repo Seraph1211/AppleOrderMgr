@@ -206,7 +206,12 @@ internal static class UpdateAgent
         File.Move(PreviousPath + ".new", PreviousPath, true);
         journal = journal with { Phase = "backed_up" }; Save(journal);
         // 同卷替换，旧程序和持久化恢复记录在此前均已落盘。
-        File.Move(CandidatePath, Installer.Executable, true);
+        // 更新目录仅管理员/SYSTEM可读，不能把其ACL随候选文件带入服务安装目录。
+        var installedAcl = new FileInfo(Installer.Executable).GetAccessControl();
+        var stagedExecutable = Installer.Executable + ".update";
+        File.Copy(CandidatePath, stagedExecutable, true);
+        new FileInfo(stagedExecutable).SetAccessControl(installedAcl);
+        File.Move(stagedExecutable, Installer.Executable, true);
         journal = journal with { Phase = "switched" }; Save(journal);
         Installer.SetRunning(true);
         if (!await Healthy(manifest.Version)) throw new CollectorException("UPDATE_HEALTH_FAILED");
