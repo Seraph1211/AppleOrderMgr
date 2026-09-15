@@ -9,13 +9,24 @@ public sealed class LogMonitor(QueueStore store)
 {
   private const int READ_BUDGET = 64 * 1024 * 1024;
   private const int MAX_EVENTS = 100000;
+  private const int MAX_XML_CONTINUATION_LINES = 100;
+  private const string STATE_VERSION = "v2";
   private static readonly Regex FileName = new(@"^Log[0-9]{8}_[A-Za-z0-9_-]+\.txt$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
   public sealed record Hit(string Key, DateTimeOffset At, string File, List<string> Rules, Dictionary<string, List<string>> Keywords);
-  public sealed record Cursor(string Identity, long Offset, string Checkpoint, long Length, long Modified, bool Invalid);
+  public sealed record Cursor(string Identity, long Offset, string Checkpoint, long Length, long Modified, bool Invalid, bool HasTimestamp = false, int XmlContinuationLines = 0);
   public sealed record ScanState(string Revision, Dictionary<string, Cursor> Cursors, List<Hit> Hits);
   public static bool Matches(MonitorRule rule, string line) => !rule.Excludes.Any(k => line.Contains(k, StringComparison.Ordinal)) && (rule.Mode == "all" ? rule.Keywords.All(k => line.Contains(k, StringComparison.Ordinal)) : rule.Keywords.Any(k => line.Contains(k, StringComparison.Ordinal)));
   public static bool Applies(MonitorRule rule, string deviceId, string localId) => rule.Enabled && (rule.DeviceIds.Count == 0 || rule.DeviceIds.Contains(deviceId)) && (rule.DirectoryIds.Count == 0 || rule.DirectoryIds.Contains(localId));
   private static string Digest(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
+  private static bool IsXmlContinuation(string line)
+  {
+    var trimmed = line.AsSpan().Trim();
+    if (trimmed.Length < 3 || trimmed[0] != '<' || trimmed[^1] != '>') return false;
+    var nameOffset = trimmed.Length > 1 && trimmed[1] == '/' ? 2 : 1;
+    if (nameOffset >= trimmed.Length) return false;
+    var first = trimmed[nameOffset];
+    return char.IsLetter(first) || first is '_' or ':' or '!' or '?';
+  }
   private static string Checkpoint(FileStream stream, long offset)
   {
     stream.Position = Math.Max(0, offset - 128); var bytes = new byte[(int)(offset - stream.Position)]; stream.ReadExactly(bytes); return Digest(bytes);
@@ -27,7 +38,7 @@ public sealed class LogMonitor(QueueStore store)
       if (!Directory.Exists(directory.Path)) return new(directory.DirectoryId, directory.Label, "missing", files, results);
       var rules = context.Rules.Where(r => Applies(r, deviceId, directory.DirectoryId)).ToList();
       var stateKey = "monitor-log:" + directory.DirectoryId;
-      var revision = context.Revision + ":" + directory.Path + ":" + encodingName;
+      var revision = STATE_VERSION + ":" + context.Revision + ":" + directory.Path + ":" + encodingName;
       var saved = store.GetState<ScanState>(stateKey);
       var state = saved?.Revision == revision ? saved : new ScanState(revision, [], []);
       var cutoff = now.AddMinutes(-60);
@@ -51,6 +62,7 @@ public sealed class LogMonitor(QueueStore store)
           var bytes = new byte[(int)Math.Min(Math.Min(stream.Length - cursor.Offset, remaining), READ_BUDGET)];
           stream.ReadExactly(bytes); remaining -= bytes.Length;
           var lastNewline = Array.LastIndexOf(bytes, (byte)'\n'); var offset = 0; var invalid = cursor.Invalid;
+          var hasTimestamp = cursor.HasTimestamp; var xmlContinuationLines = cursor.XmlContinuationLines;
           // 未写完整尾行保留在下一次读取，最多64KiB；不解码半个字符。
           if (lastNewline < 0 && bytes.Length > 65536) { invalid = true; lastNewline = bytes.Length - 1; }
           if (lastNewline >= 0) {
@@ -63,7 +75,11 @@ public sealed class LogMonitor(QueueStore store)
               catch (DecoderFallbackException) { invalid = true; offset = end + 1; continue; }
               offset = end + 1;
               if (string.IsNullOrWhiteSpace(line)) continue;
-              if (line.Length < 23 || !DateTime.TryParseExact(line[..23], "yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)) { invalid = true; continue; }
+              if (line.Length < 23 || !DateTime.TryParseExact(line[..23], "yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture, DateTimeStyles.None, out var local)) {
+                if (hasTimestamp && xmlContinuationLines < MAX_XML_CONTINUATION_LINES && IsXmlContinuation(line)) { xmlContinuationLines++; continue; }
+                invalid = true; continue;
+              }
+              hasTimestamp = true; xmlContinuationLines = 0;
               var at = new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), TimeSpan.FromHours(8));
               if (at > now.AddMinutes(1)) { invalid = true; continue; }
               if (at < cutoff || at > now) continue;
@@ -75,7 +91,7 @@ public sealed class LogMonitor(QueueStore store)
           }
           var newOffset = cursor.Offset + offset;
           catchingUp |= stream.Length > newOffset;
-          state.Cursors[path] = new(identity, newOffset, Checkpoint(stream, newOffset), stream.Length, info.LastWriteTimeUtc.Ticks, invalid);
+          state.Cursors[path] = new(identity, newOffset, Checkpoint(stream, newOffset), stream.Length, info.LastWriteTimeUtc.Ticks, invalid, hasTimestamp, xmlContinuationLines);
         } catch (IOException) { unreadable = true; }
         catch (UnauthorizedAccessException) { unreadable = true; }
       }

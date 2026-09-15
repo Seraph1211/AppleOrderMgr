@@ -61,6 +61,17 @@ internal static class MonitorTests
       check(monitor.Scan(directory, "utf-8", device, changed, now).Results[0].Count == 1, "规则版本变化重新检查窗口");
       File.WriteAllText(today, "2026-09-15 00:02:50.000 [1]购买异常\n");
       check(monitor.Scan(directory, "utf-8", device, changed, now).State == "ready", "日志截断重写可继续读取");
+      var xmlPath = Path.Combine(root, "monitor-xml"); Directory.CreateDirectory(xmlPath);
+      var xmlFile = Path.Combine(xmlPath, "Log20260915_4321.txt");
+      File.WriteAllText(xmlFile, "2026-09-15 00:01:00.000 [1]购买异常\n");
+      var xmlDirectory = new DirectoryConfig(Guid.NewGuid().ToString(), "多行响应实例", xmlPath);
+      check(monitor.Scan(xmlDirectory, "utf-8", device, changed, now).State == "ready", "时间戳记录首次扫描正常");
+      File.AppendAllText(xmlFile, "<response>\n<message>购买异常</message>\n</response>\n2026-09-15 00:02:00.000 [1]购买异常\n");
+      var xmlScan = monitor.Scan(xmlDirectory, "utf-8", device, changed, now);
+      check(xmlScan.State == "ready" && xmlScan.Results[0].Count == 2, "跨扫描的XML续行不标解析异常且不参与规则计数");
+      var leadingXmlPath = Path.Combine(root, "monitor-leading-xml"); Directory.CreateDirectory(leadingXmlPath);
+      File.WriteAllText(Path.Combine(leadingXmlPath, "Log20260915_4322.txt"), "<response>\n</response>\n2026-09-15 00:02:00.000 [1]购买异常\n");
+      check(monitor.Scan(new(Guid.NewGuid().ToString(), "无起始时间实例", leadingXmlPath), "utf-8", device, changed, now).State == "invalid", "文件开头无时间戳的XML仍标解析异常");
       File.AppendAllText(today, "broken line\n");
       check(monitor.Scan(directory, "utf-8", device, changed, now).State == "invalid", "坏行标记无法检测");
       check(monitor.Scan(directory with { Path = path + "missing" }, "utf-8", device, context, now).State == "missing", "缺失目录可见");
