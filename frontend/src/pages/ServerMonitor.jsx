@@ -1,5 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Activity, Plus, RefreshCw, Save, X } from 'lucide-react';
+import {
+  Activity,
+  CalendarDays,
+  Filter,
+  Plus,
+  RefreshCw,
+  Save,
+  Server,
+  X,
+} from 'lucide-react';
 import {
   ResponsiveContainer,
   LineChart,
@@ -11,6 +20,7 @@ import {
   Legend,
 } from 'recharts';
 import client from '../api/client';
+import TagMultiSelect from '../components/TagMultiSelect';
 
 const BASE = '/server-monitor';
 const TODAY = () => new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
@@ -67,7 +77,7 @@ const bytes = n => {
         ? `${(value / 1000).toFixed(2)} KB`
         : `${value.toFixed(0)} B`;
 };
-const selected = event => Array.from(event.target.selectedOptions, o => o.value);
+const selected = event => Array.from(event.target.selectedOptions, option => option.value);
 const words = text =>
   text
     .split('\n')
@@ -224,6 +234,12 @@ export default function ServerMonitor() {
     if (detailId) detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [detailId]);
   const deviceName = id => data?.devices.find(d => d.id === id)?.name || id;
+  const deviceOptions = useMemo(() => data?.devices.map(device => device.id) || [], [data]);
+  const deviceLabels = useMemo(
+    () =>
+      Object.fromEntries((data?.devices || []).map(device => [device.id, device.name])),
+    [data]
+  );
   const instance = data?.instances.find(i => i.id === detailId);
   const totals = useMemo(
     () =>
@@ -382,7 +398,11 @@ export default function ServerMonitor() {
           {notice}
         </p>
       )}
-      <div className="flex gap-2 border-b pb-2">
+      <div
+        className="flex overflow-x-auto border-b border-gray-200 bg-white"
+        role="tablist"
+        aria-label="服务器监控功能"
+      >
         {[
           ['traffic', '流量统计'],
           ['instances', '实例监控'],
@@ -390,7 +410,14 @@ export default function ServerMonitor() {
         ].map(([id, label]) => (
           <button
             key={id}
-            className={`btn ${tab === id ? 'btn-primary' : 'btn-secondary'}`}
+            type="button"
+            role="tab"
+            aria-selected={tab === id}
+            className={`-mb-px whitespace-nowrap border-x border-t-2 px-6 py-3 text-sm font-medium transition-colors first:border-l-gray-200 ${
+              tab === id
+                ? 'border-x-gray-200 border-t-primary bg-white text-primary'
+                : 'border-x-transparent border-t-transparent text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+            }`}
             onClick={() => {
               setTab(id);
               setDetailId(null);
@@ -403,57 +430,88 @@ export default function ServerMonitor() {
       {!data && !error && <p className="p-8 text-center text-gray-500">正在读取监控数据…</p>}
       {tab === 'traffic' && (
         <>
-          <div className="bg-white border rounded-xl p-4 flex flex-wrap items-end gap-3">
-            <Field label="开始日期">
-              <input
-                aria-label="开始日期"
-                className="input"
-                type="date"
-                value={from}
-                onChange={e => setFrom(e.target.value)}
-              />
-            </Field>
-            <Field label="结束日期">
-              <input
-                aria-label="结束日期"
-                className="input"
-                type="date"
-                value={to}
-                onChange={e => setTo(e.target.value)}
-              />
-            </Field>
-            <Field label="服务器（可多选，未选表示全部）">
-              <select
-                aria-label="服务器筛选"
-                multiple
-                className="input min-w-48 h-24"
-                value={deviceIds}
-                onChange={e => setDeviceIds(selected(e))}
+          <section className="card hover:shadow-sm">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Filter className="h-5 w-5 text-gray-500" />
+                <h2 className="font-medium text-gray-800">筛选条件</h2>
+                {deviceIds.length > 0 && (
+                  <span className="badge badge-info">已选 {deviceIds.length} 台</span>
+                )}
+              </div>
+              <button
+                type="button"
+                className="inline-flex items-center gap-1 text-sm text-gray-500 hover:text-primary"
+                onClick={() => {
+                  setFrom(TODAY());
+                  setTo(TODAY());
+                  setDeviceIds([]);
+                  setGranularity('day');
+                }}
               >
-                {data?.devices.map(d => (
-                  <option key={d.id} value={d.id}>
-                    {d.name}
-                  </option>
-                ))}
-              </select>
-            </Field>
-            <button
-              className="btn btn-secondary inline-flex items-center gap-1"
-              onClick={() => setDeviceIds([])}
-            >
-              全部服务器
-            </button>
-            <Field label="汇总粒度">
-              <select
-                className="input"
-                value={granularity}
-                onChange={e => setGranularity(e.target.value)}
-              >
-                <option value="day">每日</option>
-                <option value="hour">每小时</option>
-              </select>
-            </Field>
-          </div>
+                <RefreshCw className="h-4 w-4" />
+                重置筛选
+              </button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+              <div>
+                <label className="mb-2 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                  <CalendarDays className="h-4 w-4 text-gray-400" />
+                  开始日期
+                </label>
+                <input
+                  aria-label="开始日期"
+                  className="input"
+                  type="date"
+                  value={from}
+                  max={to}
+                  onChange={event => setFrom(event.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-2 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                  <CalendarDays className="h-4 w-4 text-gray-400" />
+                  结束日期
+                </label>
+                <input
+                  aria-label="结束日期"
+                  className="input"
+                  type="date"
+                  value={to}
+                  min={from}
+                  onChange={event => setTo(event.target.value)}
+                />
+              </div>
+              <div>
+                <label className="mb-2 flex items-center gap-1.5 text-sm font-medium text-gray-700">
+                  <Server className="h-4 w-4 text-gray-400" />
+                  服务器
+                  <span className="font-normal text-gray-400">可多选</span>
+                </label>
+                <TagMultiSelect
+                  options={deviceOptions}
+                  value={deviceIds}
+                  onChange={setDeviceIds}
+                  ariaLabel="服务器筛选"
+                  placeholder="全部服务器"
+                  itemLabel="服务器"
+                  optionLabels={deviceLabels}
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-gray-700">汇总粒度</label>
+                <select
+                  aria-label="汇总粒度"
+                  className="input"
+                  value={granularity}
+                  onChange={event => setGranularity(event.target.value)}
+                >
+                  <option value="day">每日</option>
+                  <option value="hour">每小时</option>
+                </select>
+              </div>
+            </div>
+          </section>
           {trafficError && (
             <p role="alert" className="text-red-700">
               {trafficError}
