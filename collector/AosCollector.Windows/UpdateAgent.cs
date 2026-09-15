@@ -104,7 +104,8 @@ internal static class UpdateAgent
       if (!acquired) return;
       var config = LocalStorage.ReadConfig();
       if (config == null || !File.Exists(PublicKeyPath)) return;
-      using var client = new CollectorClient(config);
+      using var accounting = new QueueStore(LocalStorage.QueuePath, LocalStorage.Protector);
+      using var client = new CollectorClient(config, accounting: accounting);
       using var timeout = new CancellationTokenSource(TimeSpan.FromMinutes(8));
       var token = timeout.Token;
       Journal? journal = File.Exists(JournalPath) ? JsonSerializer.Deserialize<Journal>(File.ReadAllText(JournalPath), Protocol.Json) : null;

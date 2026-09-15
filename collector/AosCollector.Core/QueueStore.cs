@@ -5,7 +5,7 @@ using System.Text.Json;
 
 namespace AosCollector.Core;
 
-public sealed class QueueStore : IDisposable
+public sealed partial class QueueStore : IDisposable
 {
   private readonly SqliteConnection connection;
   private readonly IProtector protector;
@@ -22,6 +22,7 @@ public sealed class QueueStore : IDisposable
     using (var info = Command("PRAGMA table_info(payment_events)")) { using var rows = info.ExecuteReader(); while (rows.Read()) paymentColumns.Add(rows.GetString(1)); }
     if (!paymentColumns.Contains("attempts")) Execute("ALTER TABLE payment_events ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0");
     if (!paymentColumns.Contains("next_attempt")) Execute("ALTER TABLE payment_events ADD COLUMN next_attempt TEXT");
+    InitializeMonitor();
     fingerprintKey = GetState<byte[]>("fingerprintKey") ?? RandomNumberGenerator.GetBytes(32);
     SetState("fingerprintKey", fingerprintKey);
   }
@@ -96,7 +97,7 @@ public sealed class QueueStore : IDisposable
       return new(scanId, error != null ? "failed" : scanned && total == received ? "completed" : "running", total, received, total - received, error);
     }
   }
-  public bool HasEvents() { lock (sync) { using var cmd = Command("SELECT EXISTS(SELECT 1 FROM events UNION ALL SELECT 1 FROM payment_events)"); return Convert.ToInt32(cmd.ExecuteScalar()) == 1; } }
+  public bool HasEvents() { lock (sync) { using var cmd = Command("SELECT EXISTS(SELECT 1 FROM events UNION ALL SELECT 1 FROM payment_events UNION ALL SELECT 1 FROM monitor_reports)"); return Convert.ToInt32(cmd.ExecuteScalar()) == 1; } }
   public void RetryPending() { lock (sync) Execute("UPDATE events SET next_attempt=NULL WHERE state='pending'"); }
   public (int Pending, int Errors) CodeCounts()
   {

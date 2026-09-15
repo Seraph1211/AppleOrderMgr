@@ -264,6 +264,7 @@ function resolveAvailableHome(permissions) {
     [PERMISSIONS.APPLE_IDS_READ, '/apple-ids'],
     [PERMISSIONS.RECIPIENTS_READ, '/recipients'],
     [PERMISSIONS.IDENTITY_READ, '/identity-verifications'],
+    [PERMISSIONS.MONITOR_MANAGE, '/server-monitor'],
     [PERMISSIONS.CHANNELS_READ, '/channels'],
     [PERMISSIONS.PAYMENT_DISPATCH_READ, '/payment-dispatch'],
     [PERMISSIONS.PAYMENT_TASKS_READ_OWN, '/payment-tasks'],

@@ -3,7 +3,7 @@
     <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWindowsForms>true</UseWindowsForms>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier><SelfContained>true</SelfContained><PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract><ApplicationManifest>app.manifest</ApplicationManifest>
-    <AssemblyName>AosCollector</AssemblyName><Version>1.1.0</Version>
+    <AssemblyName>AosCollector</AssemblyName><Version>1.2.0</Version>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../AosCollector.Core/AosCollector.Core.csproj" />

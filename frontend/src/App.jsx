@@ -17,6 +17,7 @@ import ChangePassword from './pages/ChangePassword';
 import SystemLogs from './pages/SystemLogs';
 import EmailProcessing from './pages/EmailProcessing';
 import OrderIngestion from './pages/OrderIngestion';
+import ServerMonitor from './pages/ServerMonitor';
 import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
 import IdentityVerifications from './pages/IdentityVerifications';
@@ -40,6 +41,7 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Routes>
+                  <Route path="/server-monitor" element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerMonitor />)} />
                   <Route
                     path="/identity-verifications"
                     element={permissionRoute(PERMISSIONS.IDENTITY_READ, <IdentityVerifications />)}

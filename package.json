@@ -33,7 +33,8 @@
     "test:browser:orders": "node scripts/testOrdersBrowser.js",
     "orders:restore-times": "node scripts/restoreOrderTimes.js",
     "orders:revalidate-conflicts": "node scripts/revalidateOrderConflicts.js",
-    "collector:package": "node scripts/packageCollectorRelease.js"
+    "collector:package": "node scripts/packageCollectorRelease.js",
+    "test:browser:monitor": "node scripts/testServerMonitorBrowser.js"
   },
   "keywords": [
     "apple",

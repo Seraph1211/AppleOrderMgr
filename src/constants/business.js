@@ -46,6 +46,7 @@ const EMAIL_TERMINAL_STATUSES = Object.freeze([
 ]);
 
 const PERMISSIONS = Object.freeze({
+  MONITOR_MANAGE: 'monitor.manage',
   INGESTION_READ: 'ingestion.read',
   INGESTION_MANAGE: 'ingestion.manage',
   INGESTION_DEVICES_MANAGE: 'ingestion.devices.manage',

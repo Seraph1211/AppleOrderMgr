@@ -34,5 +34,5 @@ internal static class LocalStorage
     }
     File.Move(temporary, ConfigPath, true);
   }
-  public static object SafeConfig(CollectorConfig? config) => new { deviceName = config?.DeviceName ?? "", serverUrl = config?.ServerUrl ?? "", credentialConfigured = !string.IsNullOrEmpty(config?.Credential), deviceId = config?.DeviceId ?? "", directories = config?.Directories ?? [], encoding = config?.Encoding ?? "utf-8" };
+  public static object SafeConfig(CollectorConfig? config) => new { deviceName = config?.DeviceName ?? "", serverUrl = config?.ServerUrl ?? "", credentialConfigured = !string.IsNullOrEmpty(config?.Credential), deviceId = config?.DeviceId ?? "", directories = config?.Directories ?? [], encoding = config?.Encoding ?? "utf-8", monitoring = config?.Monitoring ?? new MonitorConfig([], []) };
 }

@@ -8,8 +8,10 @@ namespace AosCollector.Core;
 public sealed class CollectorClient : IDisposable
 {
   private readonly HttpClient client;
-  public CollectorClient(CollectorConfig config, HttpMessageHandler? handler = null)
+  private readonly QueueStore? accounting;
+  public CollectorClient(CollectorConfig config, HttpMessageHandler? handler = null, QueueStore? accounting = null)
   {
+    this.accounting = accounting;
     if (!Uri.TryCreate(config.ServerUrl, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
       !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || uri.AbsolutePath != "/") throw new CollectorException("SERVER_URL_INVALID");
     // 不跟随重定向向另一个主机发送设备凭据，保留默认 TLS 证书校验。
@@ -20,20 +22,23 @@ public sealed class CollectorClient : IDisposable
   {
     try {
       using var request = new HttpRequestMessage(body == null ? HttpMethod.Get : HttpMethod.Post, "api/aos-collector/v1/" + path);
-      if (body != null) request.Content = JsonContent.Create(body, options: Protocol.Json);
+      if (body != null) { var bytes = JsonSerializer.SerializeToUtf8Bytes(body, Protocol.Json); request.Content = new ByteArrayContent(bytes); request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json"); accounting?.AddTransport(0, bytes.Length); }
       using var response = await client.SendAsync(request, token);
+      var responseBytes = await response.Content.ReadAsByteArrayAsync(token); accounting?.AddTransport(responseBytes.Length, 0);
       if (!response.IsSuccessStatusCode) {
         var retryAfter = response.Headers.RetryAfter;
         var delay = retryAfter?.Delta?.TotalSeconds ?? (retryAfter?.Date - DateTimeOffset.UtcNow)?.TotalSeconds;
         throw new CollectorException(response.StatusCode switch { HttpStatusCode.Unauthorized => "DEVICE_UNAUTHORIZED", HttpStatusCode.Forbidden => "DEVICE_DISABLED", HttpStatusCode.TooManyRequests => "RATE_LIMITED", HttpStatusCode.RequestEntityTooLarge => "PAYLOAD_TOO_LARGE", _ => "SERVER_UNAVAILABLE" }, delay.HasValue ? (int)Math.Clamp(Math.Ceiling(delay.Value), 1, 86400) : null);
       }
-      using var json = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(token));
+      using var json = JsonDocument.Parse(responseBytes);
       if (!json.RootElement.GetProperty("success").GetBoolean()) throw new CollectorException("SERVER_RESPONSE_INVALID");
       return json.RootElement.GetProperty("data").Deserialize<T>(Protocol.Json) ?? throw new CollectorException("SERVER_RESPONSE_INVALID");
     } catch (CollectorException) { throw; }
     catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
     catch (Exception) { throw new CollectorException("CONNECTION_FAILED"); }
   }
+  public Task<MonitorContext> MonitorContext(CancellationToken token) => Request<MonitorContext>("monitor/context", null, token);
+  public Task<MonitorReceipt> SendMonitor(List<MonitorReport> reports, CancellationToken token) => Request<MonitorReceipt>("monitor/reports", new { reports }, token);
   public Task<CollectorContext> Context(CancellationToken token) => Request<CollectorContext>("context", null, token);
   public Task<CollectorContext> Heartbeat(HeartbeatRequest body, CancellationToken token) => Request<CollectorContext>("heartbeat", body, token);
   public async Task<List<Receipt>> Send(List<UploadEvent> events, CancellationToken token)
@@ -62,6 +67,7 @@ public sealed class CollectorClient : IDisposable
       using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None);
       var buffer = new byte[65536]; long total = 0; int read;
       while ((read = await input.ReadAsync(buffer, token)) > 0) {
+        accounting?.AddTransport(read, 0);
         total += read; if (total > size) throw new CollectorException("UPDATE_PACKAGE_INVALID");
         await output.WriteAsync(buffer.AsMemory(0, read), token);
       }

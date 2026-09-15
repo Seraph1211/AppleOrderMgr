@@ -11,7 +11,7 @@ public static class Protocol
 }
 
 public sealed record DirectoryConfig(string DirectoryId, string Label, string Path);
-public sealed record CollectorConfig(string DeviceName, string ServerUrl, string Credential, string DeviceId, List<DirectoryConfig> Directories, string Encoding = "utf-8");
+public sealed record CollectorConfig(string DeviceName, string ServerUrl, string Credential, string DeviceId, List<DirectoryConfig> Directories, string Encoding = "utf-8", MonitorConfig? Monitoring = null);
 public sealed record DeviceIdentity(string Id, string Name, bool Enabled, int CredentialVersion);
 public sealed record ScanRequest(string Id, string? BackfillId, string BusinessDate, string From, string ToExclusive, int SettingsVersion);
 public sealed record CollectorContext(DeviceIdentity Device, int ProtocolVersion, string ServerTime, int SettingsVersion, string ActiveSource, string BusinessDate, string? CapturePermitId, List<ScanRequest> PendingScanRequests, ServerCounts? ServerCounts = null);
@@ -23,6 +23,6 @@ public sealed record ServerCounts(int TodayReceived, int Created, int Duplicate,
 public sealed record LocalCounts(int PendingUpload, int UploadError, int TodayDiscovered);
 public sealed record ScanResult(string ScanRequestId, string Status, int DiscoveredCount, int ReceiptedCount, int PendingUploadCount, string? ErrorCode);
 public sealed record HeartbeatRequest(string HeartbeatId, string AgentVersion, string OsVersion, string ObservedAt, string? LastSuccessfulScanAt, string? LastNewOrderAt, List<DirectoryStatus> Directories, LocalCounts LocalCounts, List<ScanResult> ScanResults);
-public sealed record CollectorStatus(string ServiceState, string ConnectionState, string ActiveSource, string? LastScanAt, string? ErrorCode, LocalCounts Counts, List<DirectoryStatus> Directories, List<FileStatus> Files, string UpdatedAt, ServerCounts? ServerCounts = null, string? ServerSyncedAt = null, string AgentVersion = "1.1.0", int PendingPaymentCodes = 0, int PaymentCodeErrors = 0);
+public sealed record CollectorStatus(string ServiceState, string ConnectionState, string ActiveSource, string? LastScanAt, string? ErrorCode, LocalCounts Counts, List<DirectoryStatus> Directories, List<FileStatus> Files, string UpdatedAt, ServerCounts? ServerCounts = null, string? ServerSyncedAt = null, string AgentVersion = "1.2.0", int PendingPaymentCodes = 0, int PaymentCodeErrors = 0);
 public interface IProtector { byte[] Protect(byte[] plain); byte[] Unprotect(byte[] encrypted); }
 public sealed class CollectorException(string code, int? retryAfterSeconds = null) : Exception(code) { public string Code { get; } = code; public int? RetryAfterSeconds { get; } = retryAfterSeconds; }

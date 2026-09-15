@@ -24,6 +24,7 @@ import AlertModal from './AlertModal';
 import { PERMISSIONS } from '../constants/permissions';
 
 const baseNavigation = [
+  { name: '服务器监控', href: '/server-monitor', icon: TrendingUp, permission: PERMISSIONS.MONITOR_MANAGE },
   { name: '仪表板', href: '/', icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD_READ },
   { name: '订单管理', href: '/orders', icon: Package, permission: PERMISSIONS.ORDERS_READ },
   { name: 'Apple ID', href: '/apple-ids', icon: Apple, permission: PERMISSIONS.APPLE_IDS_READ },

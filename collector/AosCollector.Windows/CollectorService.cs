@@ -17,6 +17,8 @@ internal sealed class CollectorService : ServiceBase
   private Task? pipeTask;
   private Task? engineTask;
   private CollectorEngine? engine;
+  private MonitorEngine? monitor;
+  private Task? monitorTask;
   private QueueStore? queue;
   public CollectorService() { ServiceName = NameValue; CanStop = true; AutoLog = false; }
   protected override void OnStart(string[] args)
@@ -30,12 +32,13 @@ internal sealed class CollectorService : ServiceBase
   {
     engineCancellation = new(); engine = new CollectorEngine(config, queue!);
     engineTask = Task.Run(() => engine.Run(engineCancellation.Token));
+    monitor = new MonitorEngine(config, queue!); monitorTask = Task.Run(() => monitor.Run(engineCancellation.Token));
   }
   private async Task StopEngine()
   {
-    try { engineCancellation?.Cancel(); if (engineTask != null) await engineTask; }
+    try { engineCancellation?.Cancel(); await Task.WhenAll(new[] { engineTask, monitorTask }.OfType<Task>()); }
     catch (OperationCanceledException) { }
-    finally { engine?.Dispose(); engine = null; engineTask = null; engineCancellation?.Dispose(); engineCancellation = null; }
+    finally { monitor?.Dispose(); monitor = null; monitorTask = null; engine?.Dispose(); engine = null; engineTask = null; engineCancellation?.Dispose(); engineCancellation = null; }
   }
   protected override void OnStop()
   {
@@ -80,6 +83,8 @@ internal sealed class CollectorService : ServiceBase
     try {
       var command = request.GetProperty("command").GetString();
       if (command == "status") return engine?.Status ?? new CollectorStatus("运行中", "等待配置", "unknown", null, null, queue!.Counts(), [], [], Protocol.Now());
+      if (command == "monitor-status") return monitor?.Status ?? new MonitorStatus("等待配置", null, null, 0, 0, [], null, null);
+      if (command == "interfaces") return TrafficMonitor.ReadInterfaces();
       if (command == "config") return LocalStorage.SafeConfig(LocalStorage.ReadConfig());
       if (command == "scan") { engine?.Signal(); return new { queued = true }; }
       if (command == "retry") { engine?.RetryConnection(); return new { queued = true }; }
@@ -91,6 +96,13 @@ internal sealed class CollectorService : ServiceBase
         foreach (var dir in candidate.Directories) {
           if (!Guid.TryParse(dir.DirectoryId, out _) || !Path.IsPathFullyQualified(dir.Path) || dir.Path.StartsWith(@"\\") || dir.Label.Length is < 1 or > 100 || dir.Label.IndexOfAny(['/', '\\']) >= 0) throw new CollectorException("DIRECTORY_INVALID");
           try { using var entries = Directory.EnumerateFiles(dir.Path, "AOS订单记录-*.txt").GetEnumerator(); if (entries.MoveNext()) { using var stream = new FileStream(entries.Current, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete); stream.ReadByte(); } }
+          catch (Exception) { throw new CollectorException("SERVICE_DIRECTORY_UNREADABLE"); }
+        }
+        var monitorDirs = candidate.Monitoring?.Directories ?? [];
+        if (monitorDirs.Count > 20 || monitorDirs.Select(d => d.DirectoryId).Distinct().Count() != monitorDirs.Count || monitorDirs.Select(d => Path.GetFullPath(d.Path).TrimEnd('\\')).Distinct(StringComparer.OrdinalIgnoreCase).Count() != monitorDirs.Count || (candidate.Monitoring?.InterfaceIds.Count ?? 0) > 20) throw new CollectorException("CONFIG_INVALID");
+        foreach (var dir in monitorDirs) {
+          if (!Guid.TryParse(dir.DirectoryId, out _) || !Path.IsPathFullyQualified(dir.Path) || dir.Path.StartsWith(@"\\") || dir.Label.Length is < 1 or > 100 || dir.Label.IndexOfAny(['/', '\\']) >= 0) throw new CollectorException("DIRECTORY_INVALID");
+          try { using var entries = Directory.EnumerateFiles(dir.Path, "Log*.txt").GetEnumerator(); if (entries.MoveNext()) { using var stream = new FileStream(entries.Current, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete); stream.ReadByte(); } }
           catch (Exception) { throw new CollectorException("SERVICE_DIRECTORY_UNREADABLE"); }
         }
         using var client = new CollectorClient(candidate); var context = await client.Context(token);

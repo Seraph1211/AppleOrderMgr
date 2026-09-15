@@ -48,6 +48,14 @@ function respond(work) {
   });
 }
 router.get(
+  '/monitor/context',
+  respond(req => require('../services/monitorService').context(req.collectorDevice.id))
+);
+router.post(
+  '/monitor/reports',
+  respond(req => require('../services/monitorService').receive(req.collectorDevice.id, req.body))
+);
+router.get(
   '/context',
   respond(req => management.context(req.get('Authorization')))
 );

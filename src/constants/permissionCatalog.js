@@ -74,6 +74,7 @@ const PERMISSION_DEPENDENCIES = Object.freeze({
 
 /* eslint-disable camelcase -- 权限模块名与对外权限码完全一致 */
 const PERMISSION_MODULE_NAMES = Object.freeze({
+  monitor: '服务器监控',
   ingestion: '订单数据源',
   identity: '身份核验',
   dashboard: '仪表板',
@@ -92,6 +93,7 @@ const PERMISSION_MODULE_NAMES = Object.freeze({
 /* eslint-enable camelcase */
 
 const PERMISSION_LABELS = Object.freeze({
+  [PERMISSIONS.MONITOR_MANAGE]: '服务器监控（查看、处理告警、配置规则）',
   [PERMISSIONS.INGESTION_READ]: '查看订单数据源',
   [PERMISSIONS.INGESTION_MANAGE]: '切换订单数据源',
   [PERMISSIONS.INGESTION_DEVICES_MANAGE]: '管理 AOS 采集设备',

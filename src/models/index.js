@@ -24,6 +24,12 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  MonitorRule: require('./MonitorRule')(sequelize),
+  MonitorInstance: require('./MonitorInstance')(sequelize),
+  MonitorTraffic: require('./MonitorTraffic')(sequelize),
+  MonitorAlert: require('./MonitorAlert')(sequelize),
+  MonitorAction: require('./MonitorAction')(sequelize),
+
   OrderPaymentCode: require('./OrderPaymentCode')(sequelize),
   CollectorUpdateJob: require('./CollectorUpdateJob')(sequelize),
   IngestionSetting: require('./IngestionSetting')(sequelize),

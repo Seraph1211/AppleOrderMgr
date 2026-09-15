@@ -551,3 +551,9 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `GET /api/aos-collector/v1/update`：领取自身更新任务和签名 manifest；`GET /api/aos-collector/v1/update/:id/package`：仅自身非终态任务的已验签固定制品；`POST /api/aos-collector/v1/update/:id/status`：`{status,agentVersion,errorCode}`，稳定状态码，终态幂等且禁止倒退。
 - manifest 使用 `{payload,signature}`，两值为 Base64；原始 UTF-8 payload 为 `{product:'AppleOrderMgrAosCollector',version,platform:'win-x64',sha256,size,queueSchema:1}`，RSA-SHA256 PKCS#1 v1.5 校验精确字节。配置 `COLLECTOR_RELEASE_DIR` 与 `COLLECTOR_UPDATE_PUBLIC_KEY_FILE`；未配置时更新发布不可用，既有采集继续。
 - 首次管理员执行新安装包非交互入口，安装受保护的独立更新副本和固定计划任务；后续设备仅出站 HTTPS 获取固定签名制品。旧采集器 v1 context 与 records 保持兼容，不向旧版返回更高 protocolVersion。
+
+## 服务器监控契约（2026-09-15）
+
+网站 `/api/server-monitor` 全部要求登录和唯一权限 `monitor.manage`，不要求 admin／ingestion 权限。GET `/overview` 返回安全设备、实例与规则；GET `/traffic?from=YYYY-MM-DD&to=YYYY-MM-DD&deviceIds=UUID,UUID` 查询最多 90 个北京时间日，返回按设备、日、小时聚合、收发与采集器正文流量及覆盖秒数；GET `/instances/:id/history?page=1` 返回分页告警及动作。POST `/rules` 新建，PUT `/rules/:id` 更新（expectedVersion 乐观锁），POST `/rules/test` 试匹配（rule、text，不持久化输入）；POST `/instances/:id/actions` 接受 expectedVersion、action=start/ignore/extend/end/complete/note、minutes=15/30/60/120（默认30）、note（最多500字符）。规则包含 name、enabled、mode=any/all、keywords/excludes 字符串数组、windowMinutes=1..60、threshold=1..100000、severity=info/warning/critical、deviceIds/directoryIds UUID 数组；空范围为全部。规则正文放在 config 属性。
+
+设备独立认证协议新增 GET `/api/aos-collector/v1/monitor/context` 返回 revision 与规则；POST `/monitor/reports` 一批最多 10 份报告，每份包含 id、revision、startedAt、endedAt、traffic（receivedBytes/sentBytes/collectorReceivedBytes/collectorSentBytes/quality）、instances（localId、label、state、files、results：ruleId/count/samples）。字节非负安全整数，quality=complete/gap/unavailable，状态 ready/missing/unreadable/invalid/catching_up；samples 仅时间／安全文件名／命中词，禁止日志原文。报告有独立 UUID，事务幂等，同 ID 不同载荷409。每设备最多20实例／100规则，请求体仍1MiB。旧采集器无需上传新字段；未知新端点不能阻断原订单采集。监控不受邮件／AOS来源切换影响，但仍受设备启停和身份认证约束。

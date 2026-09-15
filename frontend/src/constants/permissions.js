@@ -1,4 +1,5 @@
 export const PERMISSIONS = Object.freeze({
+  MONITOR_MANAGE: 'monitor.manage',
   INGESTION_READ: 'ingestion.read',
   INGESTION_MANAGE: 'ingestion.manage',
   INGESTION_DEVICES_MANAGE: 'ingestion.devices.manage',

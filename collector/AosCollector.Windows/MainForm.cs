@@ -17,6 +17,12 @@ internal sealed class MainForm : Form
   private readonly NotifyIcon tray;
   private readonly System.Windows.Forms.Timer timer = new() { Interval = 2000 };
   private readonly List<DirectoryConfig> directories = [];
+  private readonly List<DirectoryConfig> monitorDirectories = [];
+  private readonly DataGridView monitorDirectoriesTable = Grid();
+  private readonly DataGridView monitorStatusTable = Grid();
+  private readonly Label monitorOverview = new() { Dock = DockStyle.Top, Height = 85, Padding = new Padding(12) };
+  private readonly CheckedListBox interfaces = new() { Dock = DockStyle.Bottom, Height = 95, CheckOnClick = true };
+  private readonly List<string> interfaceIds = [];
   private readonly List<Button> buttons = [];
   private string deviceId = "";
   private bool busy;
@@ -54,6 +60,19 @@ internal sealed class MainForm : Form
     configButtons.Controls.Add(Action("测试连接与目录权限", async () => { await ServiceClient.Call(new { command = "test", config = Candidate() }); message.Text = "连接成功，后台服务可读取所选目录；未提交真实订单。"; }));
     configButtons.Controls.Add(Action("保存配置", async () => { await ServiceClient.Call(new { command = "save", config = Candidate() }); credential.Clear(); message.Text = "配置已保存，后台采集已开始。"; }));
     configButtons.Controls.Add(message); configTab.Controls.Add(directoryTable); configTab.Controls.Add(form); configTab.Controls.Add(configButtons);
+    var monitorTab = new TabPage("服务器监控");
+    var monitorConfig = new TabPage("日志实例配置");
+    monitorStatusTable.Columns.Add("instance", "实例"); monitorStatusTable.Columns.Add("state", "检测状态"); monitorStatusTable.Columns.Add("files", "日志文件数"); monitorStatusTable.Columns.Add("hits", "规则命中数");
+    monitorTab.Controls.Add(monitorStatusTable); monitorTab.Controls.Add(monitorOverview);
+    monitorDirectoriesTable.Columns.Add("label", "实例名称"); monitorDirectoriesTable.Columns.Add("path", "日志目录");
+    var monitorButtons = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 85, AutoScroll = true };
+    monitorButtons.Controls.Add(Action("添加日志实例", () => EditMonitorDirectory(false)));
+    monitorButtons.Controls.Add(Action("编辑所选实例", () => EditMonitorDirectory(true)));
+    monitorButtons.Controls.Add(Action("移除所选实例", () => { if (monitorDirectoriesTable.CurrentRow != null) { monitorDirectories.RemoveAt(monitorDirectoriesTable.CurrentRow.Index); ShowMonitorDirectories(); } return Task.CompletedTask; }));
+    monitorButtons.Controls.Add(Action("保存监控配置", async () => { await ServiceClient.Call(new { command = "save", config = Candidate() }); credential.Clear(); message.Text = "监控配置已保存。"; }));
+    monitorButtons.Controls.Add(new Label { AutoSize = true, Text = "各目录对应独立实例；规则在网站配置。下方勾选统计网卡，不勾选时自动统计有默认网关的活动网卡。" });
+    monitorConfig.Controls.Add(monitorDirectoriesTable); monitorConfig.Controls.Add(interfaces); monitorConfig.Controls.Add(monitorButtons);
+    tabs.TabPages.Add(monitorTab); tabs.TabPages.Add(monitorConfig);
     tabs.TabPages.Add(statusTab); tabs.TabPages.Add(configTab); Controls.Add(tabs);
     tray = new NotifyIcon { Text = "AOS 采集器 · 等待状态", Icon = SystemIcons.Application, Visible = true };
     var menu = new ContextMenuStrip(); menu.Items.Add("打开配置窗口", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
@@ -77,7 +96,7 @@ internal sealed class MainForm : Form
       finally { busy = false; foreach (var b in buttons) b.Enabled = true; }
     }; return button;
   }
-  private CollectorConfig Candidate() => new(deviceName.Text.Trim(), serverUrl.Text.Trim(), credential.Text, deviceId, [.. directories], encoding.SelectedItem?.ToString() ?? "utf-8");
+  private CollectorConfig Candidate() => new(deviceName.Text.Trim(), serverUrl.Text.Trim(), credential.Text, deviceId, [.. directories], encoding.SelectedItem?.ToString() ?? "utf-8", new MonitorConfig([.. monitorDirectories], interfaces.CheckedIndices.Cast<int>().Select(i => interfaceIds[i]).ToList()));
   private Task AddDirectory()
   {
     if (directories.Count >= 20) { message.Text = "最多配置 20 个目录。"; return Task.CompletedTask; }
@@ -87,12 +106,39 @@ internal sealed class MainForm : Form
     }
     return Task.CompletedTask;
   }
+  private Task EditMonitorDirectory(bool edit)
+  {
+    var index = edit ? monitorDirectoriesTable.CurrentRow?.Index ?? -1 : -1;
+    if (edit && index < 0 || !edit && monitorDirectories.Count >= 20) return Task.CompletedTask;
+    var old = index >= 0 ? monitorDirectories[index] : null;
+    using var form = new Form { Text = "日志实例", Width = 580, Height = 210, StartPosition = FormStartPosition.CenterParent };
+    var name = new TextBox { Left = 110, Top = 20, Width = 430, Text = old?.Label ?? $"抢购实例 {monitorDirectories.Count + 1}", MaxLength = 100 };
+    var path = new TextBox { Left = 110, Top = 60, Width = 340, Text = old?.Path ?? "" };
+    var browse = new Button { Left = 455, Top = 58, Text = "选择目录" };
+    browse.Click += (_, _) => { using var folder = new FolderBrowserDialog(); if (folder.ShowDialog() == DialogResult.OK) path.Text = folder.SelectedPath; };
+    var save = new Button { Left = 450, Top = 105, Text = "确定", DialogResult = DialogResult.OK };
+    form.Controls.AddRange([new Label { Left = 15, Top = 23, Text = "实例名称" }, name, new Label { Left = 15, Top = 63, Text = "日志目录" }, path, browse, save]); form.AcceptButton = save;
+    if (form.ShowDialog(this) == DialogResult.OK) {
+      if (string.IsNullOrWhiteSpace(name.Text) || string.IsNullOrWhiteSpace(path.Text)) throw new CollectorException("CONFIG_INVALID");
+      var candidate = new DirectoryConfig(old?.DirectoryId ?? Guid.NewGuid().ToString(), name.Text.Trim(), path.Text.Trim());
+      if (index >= 0) monitorDirectories[index] = candidate; else monitorDirectories.Add(candidate);
+      ShowMonitorDirectories();
+    }
+    return Task.CompletedTask;
+  }
+  private void ShowMonitorDirectories() { monitorDirectoriesTable.Rows.Clear(); foreach (var d in monitorDirectories) monitorDirectoriesTable.Rows.Add(d.Label, d.Path); }
   private void ShowDirectories() { directoryTable.Rows.Clear(); foreach (var d in directories) directoryTable.Rows.Add(d.Label, d.Path); }
   private async Task LoadConfig()
   {
     try {
       var c = await ServiceClient.Call(new { command = "config" }); deviceName.Text = c.GetProperty("deviceName").GetString(); serverUrl.Text = c.GetProperty("serverUrl").GetString(); deviceId = c.GetProperty("deviceId").GetString() ?? "";
       credential.PlaceholderText = c.GetProperty("credentialConfigured").GetBoolean() ? "已配置，留空保留" : "从网页设备登记页面复制";
+      var monitoring = c.TryGetProperty("monitoring", out var m) ? m.Deserialize<MonitorConfig>(Protocol.Json) : null;
+      monitorDirectories.Clear(); monitorDirectories.AddRange(monitoring?.Directories ?? []); ShowMonitorDirectories();
+      var networks = (await ServiceClient.Call(new { command = "interfaces" })).Deserialize<List<InterfaceCounter>>(Protocol.Json) ?? [];
+      interfaces.Items.Clear(); interfaceIds.Clear();
+      foreach (var n in networks) { interfaceIds.Add(n.Id); interfaces.Items.Add(n.Name + (n.DefaultRoute ? "（默认出口）" : ""), monitoring?.InterfaceIds.Contains(n.Id) == true); }
+      foreach (var id in monitoring?.InterfaceIds ?? []) if (!interfaceIds.Contains(id)) { interfaceIds.Add(id); interfaces.Items.Add(id + "（当前不可用）", true); }
       directories.Clear(); directories.AddRange(c.GetProperty("directories").Deserialize<List<DirectoryConfig>>(Protocol.Json) ?? []); ShowDirectories(); encoding.SelectedItem = c.GetProperty("encoding").GetString();
     } catch (Exception) { message.Text = "服务未就绪，请先启动服务。"; }
   }
@@ -102,6 +148,10 @@ internal sealed class MainForm : Form
     try {
       var result = await ServiceClient.Call(new { command = "status" }); var status = result.Deserialize<CollectorStatus>(Protocol.Json)!;
       if (IsDisposed) return;
+      var monitoring = (await ServiceClient.Call(new { command = "monitor-status" })).Deserialize<MonitorStatus>(Protocol.Json)!;
+      if (IsDisposed) return;
+      monitorOverview.Text = $"监控：{monitoring.State}　待上传：{monitoring.Pending}　超过90天丢弃：{monitoring.Expired}\n最近检测：{monitoring.LastScanAt ?? "尚未检测"}　最近上传：{monitoring.LastUploadAt ?? "尚未上传"}\n本次流量：收 {monitoring.Traffic?.ReceivedBytes ?? 0} 字节 / 发 {monitoring.Traffic?.SentBytes ?? 0} 字节　质量：{MonitorStateText(monitoring.Traffic?.Quality ?? "等待采样")}";
+      monitorStatusTable.Rows.Clear(); foreach (var instance in monitoring.Instances) monitorStatusTable.Rows.Add(instance.Label, MonitorStateText(instance.State), instance.Files.Count, string.Join(" / ", instance.Results.Select(r => r.Count)));
       var source = status.ActiveSource == "aos" ? "AOS 文件" : status.ActiveSource == "email" ? "邮件模式，AOS 暂停入库" : "尚未取得来源设置";
       overview.Text = $"后台服务：{status.ServiceState}　服务器：{status.ConnectionState}\n当前来源：{source}\n本地待上传：{status.Counts.PendingUpload}　上传异常：{status.Counts.UploadError}　今日发现：{status.Counts.TodayDiscovered}\n最近成功扫描：{status.LastScanAt ?? "尚未扫描"}　状态更新时间：{status.UpdatedAt}";
       overview.Text += status.ServerCounts is { } totals ? $"\n服务器累计已入库：{totals.Created}　重复：{totals.Duplicate}　待人工：{totals.ManualReview}　暂停：{totals.Paused}　今日接收：{totals.TodayReceived}" : "\n服务器处理结果：尚未取得";
@@ -123,6 +173,9 @@ internal sealed class MainForm : Form
       if (dialog.ShowDialog() == DialogResult.OK) await File.WriteAllTextAsync(dialog.FileName, JsonSerializer.Serialize(status, new JsonSerializerOptions { WriteIndented = true }));
     } catch (Exception) { throw new CollectorException("DIAGNOSTIC_FAILED"); }
   }
+  private static string MonitorStateText(string state) => state switch {
+    "ready" => "检测正常", "missing" => "未找到日志", "unreadable" => "目录无法读取", "invalid" => "日志解析异常", "catching_up" => "正在追赶／等待尾行", "complete" => "完整", "gap" => "采样存在缺口", "unavailable" => "网卡不可用", _ => state
+  };
   private static string ErrorText(string code) => code switch {
     "SERVICE_NOT_AVAILABLE" => "后台服务不可用，请启动服务后重试。", "DEVICE_UNAUTHORIZED" => "设备凭证失效，请更新凭证。", "DEVICE_DISABLED" => "设备已被网页管理员禁用。",
     "SERVICE_DIRECTORY_UNREADABLE" => "后台服务无法读取目录，请选择服务可读取的本机目录。", "PENDING_QUEUE_IDENTITY_CHANGE" => "本机队列已有历史记录，不能更换服务器或设备身份；请使用原设备凭证。",

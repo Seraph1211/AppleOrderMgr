@@ -116,6 +116,7 @@ app.use('/api/recipients', recipientsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/order-refresh', orderRefreshRouter);
 app.use('/api/email-processing', emailProcessingRouter);
+app.use('/api/server-monitor', require('./routes/serverMonitor'));
 app.use('/api/order-ingestion', require('./routes/orderIngestion'));
 app.use('/api/stats', statsRouter);
 app.use('/api/import', importRouter);
@@ -152,6 +153,7 @@ const server = app.listen(DEFAULT_PORT, () => {
   paymentDispatchScheduler.start();
   identityVerificationRunner.start();
   ingestionScheduler.start();
+  require('./services/monitorService').start();
 
   if (process.env.RUN_WORKERS_IN_API === 'true') {
     try {
@@ -175,6 +177,7 @@ function shutdown(signal) {
   paymentDispatchScheduler.stop();
   const identityStopped = identityVerificationRunner.stop();
   const ingestionStopped = ingestionScheduler.stop();
+  const monitorStopped = require('./services/monitorService').stop();
 
   server.close(async err => {
     if (err) {
@@ -186,6 +189,7 @@ function shutdown(signal) {
       await crawlerStopped;
       await identityStopped;
       await ingestionStopped;
+      await monitorStopped;
       await emailService.stopEmailService();
       await sequelize.close();
       logger.info('数据库连接已关闭');
