@@ -43,9 +43,10 @@ internal sealed class TrayControl : IDisposable
       using var pipe = new NamedPipeClientStream(".", Name(pid), PipeDirection.InOut, PipeOptions.Asynchronous);
       using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
       pipe.ConnectAsync(timeout.Token).GetAwaiter().GetResult();
-      pipe.WriteAsync(new byte[] { 1 }, timeout.Token).GetAwaiter().GetResult();
+      // 内存重载返回 ValueTask；转换为 Task 后才能在同步入口等待真正的 I/O 完成。
+      pipe.WriteAsync(new byte[] { 1 }, timeout.Token).AsTask().GetAwaiter().GetResult();
       var response = new byte[1];
-      if (pipe.ReadAsync(response, timeout.Token).GetAwaiter().GetResult() != 1 || response[0] != 1) throw new CollectorException("TRAY_BUSY");
+      if (pipe.ReadAsync(response, timeout.Token).AsTask().GetAwaiter().GetResult() != 1 || response[0] != 1) throw new CollectorException("TRAY_BUSY");
       return true;
     } catch (CollectorException) { throw; }
     catch (Exception) { return false; }

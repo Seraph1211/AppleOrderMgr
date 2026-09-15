@@ -5,7 +5,7 @@ param(
   [Parameter(Mandatory=$true)][ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedSha256,
   [Parameter(Mandatory=$true)][ValidatePattern('^[a-fA-F0-9]{64}$')][string]$ExpectedPublicKeySha256,
   [string]$Executable = (Join-Path $PSScriptRoot 'AosCollector.exe'),
-  [ValidatePattern('^\d+\.\d+\.\d+$')][string]$TargetVersion = '1.2.1'
+  [ValidatePattern('^\d+\.\d+\.\d+$')][string]$TargetVersion = '1.2.2'
 )
 $ErrorActionPreference = 'Stop'
 $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
