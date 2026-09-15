@@ -7,6 +7,7 @@ require('dotenv').config();
 
 const { sequelize } = require('../models');
 const emailService = require('../services/emailService');
+const monitorNotificationSender = require('../services/monitorNotificationSender');
 const logger = require('../utils/logger');
 const { validateConfig } = require('../utils/config');
 const { validateEncryptionConfiguration } = require('../utils/fieldEncryption');
@@ -15,6 +16,7 @@ async function shutdown(signal) {
   try {
     logger.info('邮件 Worker 正在关闭', { signal });
     await emailService.stopEmailService();
+    await monitorNotificationSender.stop();
     await sequelize.close();
     process.exit(0);
   } catch (error) {
@@ -27,6 +29,7 @@ try {
   validateConfig();
   validateEncryptionConfiguration();
   emailService.startEmailService();
+  monitorNotificationSender.start();
   logger.info('邮件 Worker 已启动');
 } catch (error) {
   logger.error('邮件 Worker 启动失败', { error: error.message });

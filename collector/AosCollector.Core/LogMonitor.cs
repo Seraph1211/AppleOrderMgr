@@ -10,10 +10,11 @@ public sealed class LogMonitor(QueueStore store)
   private const int READ_BUDGET = 64 * 1024 * 1024;
   private const int MAX_EVENTS = 100000;
   private const int MAX_XML_CONTINUATION_LINES = 100;
-  private const string STATE_VERSION = "v2";
+  private const int MAX_SAMPLE_CHARS = 4000;
+  private const string STATE_VERSION = "v3";
   private static readonly Regex FileName = new(@"^Log[0-9]{8}_[A-Za-z0-9_-]+\.txt$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
-  public sealed record Hit(string Key, DateTimeOffset At, string File, List<string> Rules, Dictionary<string, List<string>> Keywords);
-  public sealed record Cursor(string Identity, long Offset, string Checkpoint, long Length, long Modified, bool Invalid, bool HasTimestamp = false, int XmlContinuationLines = 0);
+  public sealed record Hit(string Key, DateTimeOffset At, string File, long LineNumber, string Message, bool Truncated, List<string> Rules, Dictionary<string, List<string>> Keywords);
+  public sealed record Cursor(string Identity, long Offset, string Checkpoint, long Length, long Modified, bool Invalid, bool HasTimestamp = false, int XmlContinuationLines = 0, long LineNumber = 0);
   public sealed record ScanState(string Revision, Dictionary<string, Cursor> Cursors, List<Hit> Hits);
   public static bool Matches(MonitorRule rule, string line) => !rule.Excludes.Any(k => line.Contains(k, StringComparison.Ordinal)) && (rule.Mode == "all" ? rule.Keywords.All(k => line.Contains(k, StringComparison.Ordinal)) : rule.Keywords.Any(k => line.Contains(k, StringComparison.Ordinal)));
   public static bool Applies(MonitorRule rule, string deviceId, string localId) => rule.Enabled && (rule.DeviceIds.Count == 0 || rule.DeviceIds.Contains(deviceId)) && (rule.DirectoryIds.Count == 0 || rule.DirectoryIds.Contains(localId));
@@ -62,13 +63,14 @@ public sealed class LogMonitor(QueueStore store)
           var bytes = new byte[(int)Math.Min(Math.Min(stream.Length - cursor.Offset, remaining), READ_BUDGET)];
           stream.ReadExactly(bytes); remaining -= bytes.Length;
           var lastNewline = Array.LastIndexOf(bytes, (byte)'\n'); var offset = 0; var invalid = cursor.Invalid;
-          var hasTimestamp = cursor.HasTimestamp; var xmlContinuationLines = cursor.XmlContinuationLines;
+          var hasTimestamp = cursor.HasTimestamp; var xmlContinuationLines = cursor.XmlContinuationLines; var lineNumber = cursor.LineNumber;
           // 未写完整尾行保留在下一次读取，最多64KiB；不解码半个字符。
           if (lastNewline < 0 && bytes.Length > 65536) { invalid = true; lastNewline = bytes.Length - 1; }
           if (lastNewline >= 0) {
             while (offset <= lastNewline) {
               var end = Array.IndexOf(bytes, (byte)'\n', offset, lastNewline - offset + 1);
               if (end < 0) { invalid = true; offset = lastNewline + 1; break; }
+              lineNumber++;
               if (end - offset > 65536) { invalid = true; offset = end + 1; continue; }
               string line;
               try { line = encoding.GetString(bytes, offset, end - offset).TrimEnd('\r').TrimStart('\uFEFF'); }
@@ -86,19 +88,21 @@ public sealed class LogMonitor(QueueStore store)
               var matched = rules.Where(r => Matches(r, line)).ToList(); if (matched.Count == 0) continue;
               var key = Digest(Encoding.UTF8.GetBytes(line));
               if (hits.Count >= MAX_EVENTS && !hits.ContainsKey(key)) { catchingUp = true; invalid = true; continue; }
-              hits.TryAdd(key, new Hit(key, at, name, matched.Select(r => r.Id).ToList(), matched.ToDictionary(r => r.Id, r => r.Keywords.Where(k => line.Contains(k, StringComparison.Ordinal)).ToList())));
+              var truncated = line.Length > MAX_SAMPLE_CHARS;
+              var message = truncated ? line[..MAX_SAMPLE_CHARS] : line;
+              hits.TryAdd(key, new Hit(key, at, name, lineNumber, message, truncated, matched.Select(r => r.Id).ToList(), matched.ToDictionary(r => r.Id, r => r.Keywords.Where(k => line.Contains(k, StringComparison.Ordinal)).ToList())));
             }
           }
           var newOffset = cursor.Offset + offset;
           catchingUp |= stream.Length > newOffset;
-          state.Cursors[path] = new(identity, newOffset, Checkpoint(stream, newOffset), stream.Length, info.LastWriteTimeUtc.Ticks, invalid, hasTimestamp, xmlContinuationLines);
+          state.Cursors[path] = new(identity, newOffset, Checkpoint(stream, newOffset), stream.Length, info.LastWriteTimeUtc.Ticks, invalid, hasTimestamp, xmlContinuationLines, lineNumber);
         } catch (IOException) { unreadable = true; }
         catch (UnauthorizedAccessException) { unreadable = true; }
       }
       var observationState = unreadable ? "unreadable" : state.Cursors.Values.Any(c => c.Invalid) ? "invalid" : catchingUp ? "catching_up" : paths.Count == 0 ? "missing" : "ready";
       foreach (var rule in rules) {
         var found = hits.Values.Where(h => h.At >= now.AddMinutes(-rule.WindowMinutes) && h.Rules.Contains(rule.Id)).OrderByDescending(h => h.At).ToList();
-        results.Add(new(rule.Id, found.Count, found.Where(h => files.Contains(h.File)).Take(1).Select(h => new MonitorSample(h.At.ToString("O"), h.File, h.Keywords[rule.Id].Take(1).ToList())).ToList()));
+        results.Add(new(rule.Id, found.Count, found.Where(h => files.Contains(h.File)).Take(3).Select(h => new MonitorSample(h.At.ToString("O"), h.File, h.Keywords[rule.Id].Take(1).ToList(), h.LineNumber, h.Message, h.Truncated)).ToList()));
       }
       store.SetState(stateKey, state with { Hits = hits.Values.ToList() });
       return new(directory.DirectoryId, directory.Label, observationState, files, results);

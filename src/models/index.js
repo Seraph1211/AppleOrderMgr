@@ -29,6 +29,9 @@ const models = {
   MonitorTraffic: require('./MonitorTraffic')(sequelize),
   MonitorAlert: require('./MonitorAlert')(sequelize),
   MonitorAction: require('./MonitorAction')(sequelize),
+  MonitorNotificationSetting: require('./MonitorNotificationSetting')(sequelize),
+  MonitorNotificationDelivery: require('./MonitorNotificationDelivery')(sequelize),
+  MonitorNotificationEvent: require('./MonitorNotificationEvent')(sequelize),
 
   OrderPaymentCode: require('./OrderPaymentCode')(sequelize),
   CollectorUpdateJob: require('./CollectorUpdateJob')(sequelize),

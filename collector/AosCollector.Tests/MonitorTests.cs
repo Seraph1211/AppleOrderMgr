@@ -47,7 +47,7 @@ internal static class MonitorTests
       var monitor = new LogMonitor(store);
       var scan = monitor.Scan(directory, "utf-8", device, context, now);
       check(scan.State == "ready" && scan.Results[0].Count == 2 && scan.Files.Count == 2, "日志按北京时间跨午夜多文件滚动窗口与排除摘要");
-      check(!System.Text.Json.JsonSerializer.Serialize(scan).Contains("secret"), "日志样例不包含原文和代理凭证");
+      check(scan.Results[0].Samples.Count == 2 && scan.Results[0].Samples.Any(item => item.Message.Contains("secret") && item.LineNumber == 1), "日志样例包含原始正文与行号");
       check(monitor.Scan(directory, "utf-8", device, context, now).Results[0].Count == 2, "重复扫描不重复累计");
       File.WriteAllText(Path.Combine(path, "Log20260915_5678.txt"), first + "\n");
       check(monitor.Scan(directory, "utf-8", device, context, now).Results[0].Count == 2, "同目录跨文件相同记录去重");
@@ -61,6 +61,10 @@ internal static class MonitorTests
       check(monitor.Scan(directory, "utf-8", device, changed, now).Results[0].Count == 1, "规则版本变化重新检查窗口");
       File.WriteAllText(today, "2026-09-15 00:02:50.000 [1]购买异常\n");
       check(monitor.Scan(directory, "utf-8", device, changed, now).State == "ready", "日志截断重写可继续读取");
+      var longLine = "2026-09-15 00:02:51.000 [1]购买异常" + new string('x', 5000);
+      File.WriteAllText(today, longLine + "\n");
+      var longScan = monitor.Scan(directory, "utf-8", device, changed, now);
+      check(longScan.Results[0].Samples[0].Message.Length == 4000 && longScan.Results[0].Samples[0].Truncated, "超长原始日志按上限截断并标记");
       var xmlPath = Path.Combine(root, "monitor-xml"); Directory.CreateDirectory(xmlPath);
       var xmlFile = Path.Combine(xmlPath, "Log20260915_4321.txt");
       File.WriteAllText(xmlFile, "2026-09-15 00:01:00.000 [1]购买异常\n");

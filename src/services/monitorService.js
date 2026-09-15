@@ -8,10 +8,12 @@ const {
   MonitorTraffic,
   MonitorAlert,
   MonitorAction,
+  MonitorNotificationDelivery,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
 const p = require('./monitorPolicy');
+const notification = require('./monitorNotificationService');
 const MINUTE_MS = 60000;
 const RETENTION_MS = 90 * 86400000;
 const hash = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -54,7 +56,7 @@ async function context(deviceId) {
  */
 async function overview() {
   try {
-    const [devices, instances, rules, alerts] = await Promise.all([
+    const [devices, instances, rules, alerts, notificationSettings] = await Promise.all([
       AosDevice.findAll({
         attributes: ['id', 'name', 'enabled', 'heartbeatAt'],
         order: [['name', 'ASC']],
@@ -62,6 +64,7 @@ async function overview() {
       MonitorInstance.findAll({ order: [['label', 'ASC']] }),
       MonitorRule.findAll({ order: [['createdAt', 'ASC']] }),
       MonitorAlert.findAll({ where: { status: 'active' }, order: [['lastSeenAt', 'DESC']] }),
+      notification.settings(),
     ]);
     const revision = hash(
       [...rules].sort((a, b) => a.id.localeCompare(b.id)).map(r => [r.id, r.version, r.config])
@@ -70,6 +73,7 @@ async function overview() {
       revision,
       devices,
       rules,
+      notificationSettings,
       instances: instances.map(row => {
         const item = plain(row);
         const display = p.displayState(item);
@@ -231,7 +235,7 @@ function validateReport(report, now) {
       resultIds.add(r.ruleId);
       if (!Array.isArray(r.samples) || r.samples.length > 3) throw ApiError.badRequest('样例过多');
       r.samples.forEach(s => {
-        p.fields(s, ['at', 'file', 'keywords']);
+        p.fields(s, ['at', 'file', 'keywords', 'lineNumber', 'message', 'truncated']);
         if (
           !Number.isFinite(+new Date(s.at)) ||
           !instance.files.includes(s.file) ||
@@ -240,6 +244,14 @@ function validateReport(report, now) {
         )
           throw ApiError.badRequest('样例无效');
         s.keywords.forEach(k => p.shortText(k, 100));
+        if (s.lineNumber !== undefined) p.integer(s.lineNumber, 1, 1000000000);
+        if (
+          s.message !== undefined &&
+          (typeof s.message !== 'string' || s.message.length > 4000 || s.message.includes('\0'))
+        )
+          throw ApiError.badRequest('日志正文无效');
+        if (s.truncated !== undefined && typeof s.truncated !== 'boolean')
+          throw ApiError.badRequest('日志截断标记无效');
       });
     }
   }
@@ -341,7 +353,7 @@ async function receive(deviceId, body, now = new Date()) {
               report.revision === current.revision &&
               observed.state === 'ready' &&
               applicable.every(r => observed.results.some(result => result.ruleId === r.id));
-            // 样例只允许回传实际规则关键词，拒绝借样例字段携带原文。
+            // 原始日志仅允许有界字段，并继续校验关键词必须来自对应规则。
             const results = observed.results
               .filter(r => applicable.some(rule => rule.id === r.ruleId))
               .map(r => ({
@@ -352,6 +364,9 @@ async function receive(deviceId, body, now = new Date()) {
                   keywords: s.keywords.filter(k =>
                     applicable.find(rule => rule.id === r.ruleId).keywords.includes(k)
                   ),
+                  ...(s.lineNumber === undefined ? {} : { lineNumber: s.lineNumber }),
+                  ...(s.message === undefined ? {} : { message: s.message }),
+                  ...(s.truncated === undefined ? {} : { truncated: s.truncated }),
                 })),
               }));
             const previousObservationAt = instance.observedAt;
@@ -389,7 +404,7 @@ async function receive(deviceId, body, now = new Date()) {
               const alert = active.find(a => a.ruleId === rule.id);
               const change = p.transition(alert, rule, result?.count || 0, report.endedAt, valid);
               if (!change) continue;
-              if (alert)
+              if (alert) {
                 await alert.update(
                   {
                     ...change,
@@ -397,8 +412,22 @@ async function receive(deviceId, body, now = new Date()) {
                   },
                   { transaction }
                 );
-              else
-                await MonitorAlert.create(
+                if (change.status === 'recovered')
+                  await notification.enqueueRecovery(
+                    {
+                      alertId: alert.id,
+                      instanceId: instance.id,
+                      deviceId,
+                      instanceLabel: instance.label,
+                      ruleName: alert.ruleName,
+                      severity: alert.severity,
+                      hitCount: alert.hitCount,
+                      at: report.endedAt,
+                    },
+                    transaction
+                  );
+              } else {
+                const created = await MonitorAlert.create(
                   {
                     id: randomUUID(),
                     instanceId: instance.id,
@@ -412,6 +441,20 @@ async function receive(deviceId, body, now = new Date()) {
                   },
                   { transaction }
                 );
+                await notification.enqueueAlert(
+                  {
+                    alertId: created.id,
+                    instanceId: instance.id,
+                    deviceId,
+                    instanceLabel: instance.label,
+                    ruleName: rule.name,
+                    severity: rule.severity,
+                    hitCount: result.count,
+                    at: report.endedAt,
+                  },
+                  transaction
+                );
+              }
             }
           }
           if (fresh && report.revision === current.revision)
@@ -495,6 +538,17 @@ async function act(actorId, id, body, now = new Date()) {
           },
           { transaction }
         );
+        if (['start', 'ignore', 'extend'].includes(body.action))
+          await notification.enqueueReminder(
+            {
+              instanceId: instance.id,
+              deviceId: instance.deviceId,
+              instanceLabel: instance.label,
+              until: handling.until,
+              at: handling.until,
+            },
+            transaction
+          );
         return instance;
       } catch (error) {
         logger.debug('监控操作未完成', { errorCode: error.code || error.name });
@@ -507,7 +561,7 @@ async function act(actorId, id, body, now = new Date()) {
   }
 }
 /**
- * 按实例分页读取脱敏历史。
+ * 按实例分页读取告警与人工操作历史。
  * @param {string} id 实例UUID
  * @param {number} page 页码
  * @returns {Promise<Object>} 处理结果
@@ -589,6 +643,10 @@ async function cleanup() {
         await MonitorTraffic.destroy({ where: { endedAt: { [Op.lt]: before } }, transaction });
         await MonitorAction.destroy({ where: { createdAt: { [Op.lt]: before } }, transaction });
         await MonitorAlert.destroy({ where: { lastSeenAt: { [Op.lt]: before } }, transaction });
+        await MonitorNotificationDelivery.destroy({
+          where: { createdAt: { [Op.lt]: before } },
+          transaction,
+        });
         await MonitorInstance.update(
           { snapshot: {}, handling: {} },
           { where: { observedAt: { [Op.lt]: before } }, transaction }

@@ -16,6 +16,8 @@ const {
 
 const EMAIL_DOMAIN_PATTERN =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
+const deriveSmtpHost = host =>
+  typeof host === 'string' && /^imap\./i.test(host) ? host.replace(/^imap\./i, 'smtp.') : null;
 
 /**
  * 验证必需的环境变量
@@ -83,6 +85,18 @@ const config = {
       .split(',')
       .map(domain => domain.trim().toLowerCase().replace(/^@/, ''))
       .filter(Boolean),
+  },
+
+  // 监控告警发信配置；缺省时复用订单邮箱账号与授权码。
+  smtp: {
+    host: process.env.SMTP_HOST || deriveSmtpHost(process.env.IMAP_HOST),
+    port: parseInt(process.env.SMTP_PORT, 10) || 465,
+    secure: process.env.SMTP_SECURE !== 'false',
+    user: process.env.SMTP_USER || process.env.IMAP_USER,
+    password: process.env.SMTP_PASSWORD || process.env.IMAP_PASSWORD,
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || process.env.IMAP_USER,
+    reusedFromImap:
+      !process.env.SMTP_USER && !process.env.SMTP_PASSWORD && Boolean(process.env.IMAP_USER),
   },
 
   // 爬虫配置

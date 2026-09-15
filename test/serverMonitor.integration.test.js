@@ -10,8 +10,12 @@ const crypto = require('crypto');
     MonitorTraffic,
     MonitorAlert,
     MonitorAction,
+    MonitorNotificationSetting,
+    MonitorNotificationDelivery,
+    MonitorNotificationEvent,
   } = require('../src/models');
   const service = require('../src/services/monitorService');
+  const notifications = require('../src/services/monitorNotificationService');
   let actor;
   let device;
   let rule;
@@ -55,7 +59,24 @@ const crypto = require('crypto');
           label: '实例一',
           state,
           files: ['Log20260915_1234.txt'],
-          results: [{ ruleId: rule.id, count, samples: [] }],
+          results: [
+            {
+              ruleId: rule.id,
+              count,
+              samples: count
+                ? [
+                    {
+                      at: clock.toISOString(),
+                      file: 'Log20260915_1234.txt',
+                      keywords: ['没有可用的代理'],
+                      lineNumber: 42,
+                      message: '2026-09-15 00:00:00.000 没有可用的代理 user:secret@example.com',
+                      truncated: false,
+                    },
+                  ]
+                : [],
+            },
+          ],
         },
       ],
       ...overrides,
@@ -65,7 +86,11 @@ const crypto = require('crypto');
     if (!/^aos_monitor_test_/.test(sequelize.config.database))
       throw new Error('仅可使用监控独立测试数据库');
     await sequelize.query(
-      'TRUNCATE monitor_actions, monitor_alerts, monitor_traffic, monitor_instances, monitor_rules, aos_devices, users CASCADE'
+      'TRUNCATE monitor_notification_events, monitor_notification_deliveries, monitor_actions, monitor_alerts, monitor_traffic, monitor_instances, monitor_rules, aos_devices, users CASCADE'
+    );
+    await MonitorNotificationSetting.update(
+      { enabled: false, recipients: [], sendRecovery: true, version: 1, updatedBy: null },
+      { where: { id: 1 } }
     );
     actor = await User.create({
       username: 'monitor_test',
@@ -126,6 +151,11 @@ const crypto = require('crypto');
     await service.receive(device.id, { reports: [r] }, clock);
     instance = await MonitorInstance.findOne({ where: { deviceId: device.id, localId } });
     expect(await MonitorAlert.count()).toBe(1);
+    expect((await MonitorAlert.findOne()).samples[0]).toMatchObject({
+      lineNumber: 42,
+      message: expect.stringContaining('user:secret@example.com'),
+      truncated: false,
+    });
     await service.receive(device.id, { reports: [r] }, clock);
     expect(await MonitorTraffic.count()).toBe(1);
     await expect(
@@ -138,6 +168,93 @@ const crypto = require('crypto');
     await expect(
       service.receive(device.id, { reports: [{ ...r, id: crypto.randomUUID() }] }, clock)
     ).rejects.toMatchObject({ code: 'MONITOR_INTERVAL_OVERLAP' });
+  });
+  test('警告按服务器合并十分钟，严重告警立即独立入队，设置不泄漏凭据', async () => {
+    const smtp = require('../src/utils/config').config.smtp;
+    Object.assign(smtp, {
+      host: 'smtp.example.test',
+      user: 'sender@example.test',
+      password: 'synthetic-password',
+      from: 'sender@example.test',
+    });
+    const saved = await notifications.saveSettings(actor.id, {
+      enabled: true,
+      recipients: ['ops@example.test'],
+      sendRecovery: true,
+      expectedVersion: 1,
+    });
+    expect(JSON.stringify(saved)).not.toContain('synthetic-password');
+    const at = new Date();
+    await sequelize.transaction(async transaction => {
+      for (const alertId of [crypto.randomUUID(), crypto.randomUUID()])
+        await notifications.enqueueAlert(
+          {
+            alertId,
+            instanceId: instance.id,
+            deviceId: device.id,
+            instanceLabel: '实例一',
+            ruleName: '合成警告',
+            severity: 'warning',
+            hitCount: 5,
+            at: at.toISOString(),
+          },
+          transaction
+        );
+      await notifications.enqueueAlert(
+        {
+          alertId: crypto.randomUUID(),
+          instanceId: instance.id,
+          deviceId: device.id,
+          instanceLabel: '实例一',
+          ruleName: '合成严重告警',
+          severity: 'critical',
+          hitCount: 1,
+          at: at.toISOString(),
+        },
+        transaction
+      );
+    });
+    const deliveries = await MonitorNotificationDelivery.findAll({ order: [['notBefore', 'ASC']] });
+    expect(deliveries).toHaveLength(2);
+    expect(await MonitorNotificationEvent.count({ where: { deliveryId: deliveries[1].id } })).toBe(
+      2
+    );
+    expect(+deliveries[1].notBefore - +at).toBe(10 * 60000);
+    expect(+deliveries[0].notBefore).toBe(+at);
+  });
+  test('到期邮件由 Worker 异步发送且正文不复制原始日志', async () => {
+    const sender = require('../src/services/monitorNotificationSender');
+    await MonitorNotificationDelivery.destroy({ where: {} });
+    const alert = await MonitorAlert.findOne({ where: { status: 'active' } });
+    const at = new Date(Date.now() - 11 * 60000);
+    await sequelize.transaction(async transaction => {
+      await notifications.enqueueAlert(
+        {
+          alertId: alert.id,
+          instanceId: instance.id,
+          deviceId: device.id,
+          instanceLabel: '实例一',
+          ruleName: alert.ruleName,
+          severity: 'warning',
+          hitCount: alert.hitCount,
+          at: at.toISOString(),
+        },
+        transaction
+      );
+    });
+    let sent;
+    sender._setTransporter({
+      sendMail: async message => {
+        sent = message;
+      },
+      close: () => {},
+    });
+    expect(await sender.processOne(new Date())).toBe(true);
+    expect(sent.to).toEqual(['ops@example.test']);
+    expect(sent.text).toContain('代理不可用');
+    expect(sent.text).not.toContain('user:secret@example.com');
+    expect((await MonitorNotificationDelivery.findOne()).status).toBe('sent');
+    await sender.stop();
   });
   test('处理中整实例静默、并发冲突、延长、备注及人工完成独立于检测状态', async () => {
     let result = await service.act(
@@ -280,10 +397,14 @@ const crypto = require('crypto');
     expect(await MonitorRule.count()).toBe(1);
   });
   test('迁移down/up可往返，不触及设备及账号', async () => {
-    const migration = require('../migrations/20260915000001-add-server-monitoring');
-    await migration.down(sequelize.getQueryInterface());
-    await migration.up(sequelize.getQueryInterface(), require('sequelize'));
+    const monitorMigration = require('../migrations/20260915000001-add-server-monitoring');
+    const notificationMigration = require('../migrations/20260915000002-add-monitor-notifications');
+    await notificationMigration.down(sequelize.getQueryInterface());
+    await monitorMigration.down(sequelize.getQueryInterface());
+    await monitorMigration.up(sequelize.getQueryInterface(), require('sequelize'));
+    await notificationMigration.up(sequelize.getQueryInterface(), require('sequelize'));
     expect(await MonitorInstance.count()).toBe(0);
+    expect(await MonitorNotificationSetting.count()).toBe(1);
     expect(await AosDevice.count()).toBe(1);
     expect(await User.count()).toBe(1);
   });

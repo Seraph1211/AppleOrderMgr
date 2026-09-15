@@ -3,6 +3,7 @@ const express = require('express');
 const { requirePermission } = require('../middleware/authMiddleware');
 const asyncHandler = require('../utils/asyncHandler');
 const service = require('../services/monitorService');
+const notifications = require('../services/monitorNotificationService');
 const router = express.Router();
 router.use(requirePermission('monitor.manage'));
 router.use((_req, res, next) => {
@@ -46,5 +47,17 @@ router.post(
 router.put(
   '/rules/:id',
   respond(req => service.saveRule(req.user.id, req.params.id, req.body))
+);
+router.put(
+  '/notifications/settings',
+  respond(req => notifications.saveSettings(req.user.id, req.body))
+);
+router.post(
+  '/notifications/test',
+  respond(() => notifications.queueTest())
+);
+router.get(
+  '/notifications/history',
+  respond(req => notifications.history(Number(req.query.page || 1)))
 );
 module.exports = router;

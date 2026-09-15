@@ -3,6 +3,7 @@ import {
   Activity,
   CalendarDays,
   Filter,
+  Mail,
   Plus,
   RefreshCw,
   Save,
@@ -51,6 +52,19 @@ const HANDLING = {
   ended: '静默已结束',
 };
 const SEVERITY = { info: '提醒', warning: '警告', critical: '严重' };
+const NOTIFICATION_CATEGORY = {
+  alert: '异常告警',
+  recovery: '恢复通知',
+  reminder: '静默到期提醒',
+  test: '测试邮件',
+};
+const DELIVERY_STATUS = {
+  pending: '等待发送',
+  sending: '发送中',
+  sent: '已发送',
+  skipped: '已跳过',
+  failed: '发送失败',
+};
 const blankRule = () => ({
   name: '',
   enabled: true,
@@ -122,6 +136,25 @@ function Field({ label, children }) {
     </label>
   );
 }
+function LogSamples({ samples = [] }) {
+  if (!samples.length) return <span className="text-gray-500">暂无日志样例</span>;
+  return (
+    <div className="space-y-2">
+      {samples.map((item, index) => (
+        <div key={`${item.file}/${item.lineNumber || index}`} className="rounded-lg bg-gray-50 p-2">
+          <p className="text-xs text-gray-500">
+            {formatTime(item.at)} · {item.file}
+            {item.lineNumber ? ` 第 ${item.lineNumber} 行` : ''}
+            {item.truncated ? ' · 正文已截断' : ''}
+          </p>
+          <pre className="mt-1 whitespace-pre-wrap break-all font-mono text-xs text-gray-800">
+            {item.message || `命中关键词：${item.keywords.join(' / ')}`}
+          </pre>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 /** 服务器流量、实例告警和规则管理，唯一权限由路由及服务端共同校验。 */
 export default function ServerMonitor() {
@@ -151,6 +184,9 @@ export default function ServerMonitor() {
   const [minutes, setMinutes] = useState(30);
   const [note, setNote] = useState('');
   const [notice, setNotice] = useState('');
+  const [notificationForm, setNotificationForm] = useState(null);
+  const [notificationHistory, setNotificationHistory] = useState(null);
+  const [notificationPage, setNotificationPage] = useState(1);
   const detailRef = useRef(null);
   const mounted = useRef(true);
   useEffect(() => {
@@ -182,6 +218,20 @@ export default function ServerMonitor() {
     const timer = setInterval(load, 15000);
     return () => clearInterval(timer);
   }, [load]);
+  useEffect(() => {
+    const setting = data?.notificationSettings;
+    if (!setting) return;
+    setNotificationForm(current =>
+      !current || current.version !== setting.version
+        ? {
+            enabled: setting.enabled,
+            recipients: setting.recipients.join('\n'),
+            sendRecovery: setting.sendRecovery,
+            version: setting.version,
+          }
+        : current
+    );
+  }, [data?.notificationSettings]);
   useEffect(() => {
     let active = true;
     const controller = new AbortController();
@@ -230,6 +280,21 @@ export default function ServerMonitor() {
       active = false;
     };
   }, [detailId, page, notice]);
+  useEffect(() => {
+    if (tab !== 'notifications') return undefined;
+    let active = true;
+    client
+      .get(`${BASE}/notifications/history`, { params: { page: notificationPage } })
+      .then(response => {
+        if (active) setNotificationHistory(response.data);
+      })
+      .catch(e => {
+        if (active) setError(e.message || '邮件投递历史读取失败');
+      });
+    return () => {
+      active = false;
+    };
+  }, [tab, notificationPage, notice]);
   useEffect(() => {
     if (detailId) detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [detailId]);
@@ -407,6 +472,7 @@ export default function ServerMonitor() {
           ['traffic', '流量统计'],
           ['instances', '实例监控'],
           ['rules', '告警规则'],
+          ['notifications', '通知设置'],
         ].map(([id, label]) => (
           <button
             key={id}
@@ -726,7 +792,7 @@ export default function ServerMonitor() {
               </form>
               <h3 className="font-medium">当前窗口检测结果</h3>
               <Table
-                headers={['规则', '命中数', '脱敏样例']}
+                headers={['规则', '命中数', '错误日志']}
                 empty={!instance.snapshot.results?.length}
               >
                 {instance.snapshot.results?.map(r => (
@@ -736,11 +802,7 @@ export default function ServerMonitor() {
                     </Cell>
                     <Cell>{r.count}</Cell>
                     <Cell>
-                      {r.samples.map((s, index) => (
-                        <p key={index} className="break-words">
-                          {formatTime(s.at)} · {s.file} · {s.keywords.join(' / ')}
-                        </p>
-                      ))}
+                      <LogSamples samples={r.samples} />
                     </Cell>
                   </tr>
                 ))}
@@ -755,7 +817,14 @@ export default function ServerMonitor() {
               {history && (
                 <>
                   <Table
-                    headers={['规则', '状态', '命中数', '首次 / 最后异常', '恢复时间']}
+                    headers={[
+                      '规则',
+                      '状态',
+                      '命中数',
+                      '首次 / 最后异常',
+                      '错误日志',
+                      '恢复时间',
+                    ]}
                     empty={!history.alerts.rows.length}
                   >
                     {history.alerts.rows.map(a => (
@@ -767,6 +836,9 @@ export default function ServerMonitor() {
                           {formatTime(a.firstSeenAt)}
                           <br />
                           {formatTime(a.lastSeenAt)}
+                        </Cell>
+                        <Cell>
+                          <LogSamples samples={a.samples} />
                         </Cell>
                         <Cell>{formatTime(a.recoveredAt)}</Cell>
                       </tr>
@@ -984,7 +1056,7 @@ export default function ServerMonitor() {
                 >
                   清空适用范围，使用全部实例
                 </button>
-                <Field label="脱敏样例试匹配（仅测试文本条件，不保存正文）">
+                <Field label="日志样例试匹配（测试输入不保存）">
                   <textarea
                     className="input h-24"
                     maxLength={20000}
@@ -1071,6 +1143,133 @@ export default function ServerMonitor() {
             ))}
           </Table>
         </>
+      )}
+      {tab === 'notifications' && notificationForm && (
+        <div className="space-y-4">
+          <section className="card space-y-4">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="flex items-center gap-2 font-semibold text-gray-900">
+                  <Mail className="h-5 w-5 text-primary" /> 邮件通知
+                </h2>
+                <p className="mt-1 text-sm text-gray-500">
+                  发件账号：{data.notificationSettings.smtp.sender} ·{' '}
+                  {data.notificationSettings.smtp.reusedFromOrderMailbox
+                    ? '已复用订单邮箱'
+                    : '使用独立 SMTP 配置'}
+                </p>
+              </div>
+              <span
+                className={`badge ${
+                  data.notificationSettings.smtp.configured ? 'badge-success' : 'badge-warning'
+                }`}
+              >
+                {data.notificationSettings.smtp.configured ? '发件配置正常' : '发件配置不完整'}
+              </span>
+            </div>
+            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
+              严重告警立即发送；警告按服务器合并 10 分钟内发送；提醒按服务器每小时汇总。
+              同一持续告警不重复发送，人工处理或临时忽略期间停止待发告警，静默到期仍异常时提醒一次。
+            </div>
+            <form
+              className="space-y-4"
+              onSubmit={event => {
+                event.preventDefault();
+                perform(async () => {
+                  await client.put(`${BASE}/notifications/settings`, {
+                    enabled: notificationForm.enabled,
+                    recipients: words(notificationForm.recipients),
+                    sendRecovery: notificationForm.sendRecovery,
+                    expectedVersion: notificationForm.version,
+                  });
+                  setNotice('邮件通知设置已保存。');
+                });
+              }}
+            >
+              <fieldset disabled={busy} className="space-y-4">
+                <div className="flex flex-wrap gap-6">
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={notificationForm.enabled}
+                      onChange={event =>
+                        setNotificationForm(value => ({ ...value, enabled: event.target.checked }))
+                      }
+                    />
+                    启用邮件通知
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={notificationForm.sendRecovery}
+                      onChange={event =>
+                        setNotificationForm(value => ({
+                          ...value,
+                          sendRecovery: event.target.checked,
+                        }))
+                      }
+                    />
+                    发送恢复通知
+                  </label>
+                </div>
+                <Field label="收件邮箱（每行一个，最多 20 个）">
+                  <textarea
+                    className="input min-h-28 max-w-2xl font-mono"
+                    value={notificationForm.recipients}
+                    onChange={event =>
+                      setNotificationForm(value => ({ ...value, recipients: event.target.value }))
+                    }
+                    placeholder="ops@example.com"
+                  />
+                </Field>
+                <div className="flex flex-wrap gap-3">
+                  <button className="btn btn-primary inline-flex items-center gap-1" type="submit">
+                    <Save className="h-4 w-4" /> 保存设置
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    type="button"
+                    onClick={() =>
+                      perform(async () => {
+                        await client.post(`${BASE}/notifications/test`);
+                        setNotice('测试邮件已进入发送队列。');
+                      })
+                    }
+                  >
+                    发送测试邮件
+                  </button>
+                </div>
+              </fieldset>
+            </form>
+          </section>
+          <section className="space-y-3">
+            <h2 className="font-semibold text-gray-900">最近投递记录</h2>
+            <Table
+              headers={['创建时间', '类型 / 级别', '事件数', '状态', '发送时间', '失败原因']}
+              empty={!notificationHistory?.rows.length}
+            >
+              {notificationHistory?.rows.map(item => (
+                <tr key={item.id}>
+                  <Cell>{formatTime(item.createdAt)}</Cell>
+                  <Cell>{NOTIFICATION_CATEGORY[item.category] || item.category} / {SEVERITY[item.severity] || item.severity}</Cell>
+                  <Cell>{item.eventCount}</Cell>
+                  <Cell>{DELIVERY_STATUS[item.status] || item.status}</Cell>
+                  <Cell>{formatTime(item.sentAt)}</Cell>
+                  <Cell>{item.lastError || '—'}</Cell>
+                </tr>
+              ))}
+            </Table>
+            <div className="flex items-center gap-3">
+              <button className="btn btn-secondary" disabled={notificationPage <= 1} onClick={() => setNotificationPage(value => value - 1)}>
+                上一页
+              </button>
+              <span>第 {notificationPage} 页</span>
+              <button className="btn btn-secondary" disabled={!notificationHistory || notificationPage * 30 >= notificationHistory.count} onClick={() => setNotificationPage(value => value + 1)}>
+                下一页
+              </button>
+            </div>
+          </section>
+        </div>
       )}
     </div>
   );
