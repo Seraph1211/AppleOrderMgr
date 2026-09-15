@@ -12,7 +12,7 @@ internal static class UpdateAgent
 {
   private static readonly string Root = Path.Combine(Installer.InstallDirectory, "Updater");
   private static readonly string JournalPath = Path.Combine(Root, "journal.json");
-  private static readonly string PublicKeyPath = Path.Combine(Root, "release-public.pem");
+  internal static readonly string PublicKeyPath = Path.Combine(Root, "release-public.pem");
   private static readonly string CandidatePath = Path.Combine(Root, "candidate.exe");
   private static readonly string PreviousPath = Path.Combine(Root, "previous.exe");
   private const string TaskName = "AppleOrderMgr AOS Update";
@@ -31,8 +31,53 @@ internal static class UpdateAgent
     if (File.Exists(PublicKeyPath) && File.ReadAllText(PublicKeyPath) != key) throw new CollectorException("UPDATE_PUBLIC_KEY_CHANGED");
     File.WriteAllText(PublicKeyPath, key);
     var executable = Path.Combine(Root, "AosUpdater.exe");
-    if (!File.Exists(executable)) File.Copy(Environment.ProcessPath!, executable);
+    RefreshUpdater(executable);
     Run("schtasks.exe", "/Create", "/TN", TaskName, "/TR", $"\"{executable}\" --update-agent", "/SC", "MINUTE", "/MO", "1", "/RU", "SYSTEM", "/RL", "HIGHEST", "/F");
+  }
+  private static void RefreshUpdater(string executable)
+  {
+    using var gate = AcquireGate(30000);
+    var source = Installer.Executable;
+    if (Path.GetFullPath(Environment.ProcessPath!).Equals(executable, StringComparison.OrdinalIgnoreCase)) return;
+    if (File.Exists(executable)) {
+      using var old = File.OpenRead(executable); using var current = File.OpenRead(source);
+      if (System.Security.Cryptography.SHA256.HashData(old).SequenceEqual(System.Security.Cryptography.SHA256.HashData(current))) return;
+    }
+    var temporary = executable + ".new";
+    File.Copy(source, temporary, true);
+    File.Move(temporary, executable, true);
+  }
+  public static void RefreshInstalledUpdater()
+  {
+    // 由已安装并通过发布签名校验的程序执行。旧更新进程结束后再替换其固定副本。
+    for (var attempt = 0; attempt < 12; attempt++) {
+      try { if (File.Exists(PublicKeyPath)) { RefreshUpdater(Path.Combine(Root, "AosUpdater.exe")); } return; }
+      catch (Exception) { Thread.Sleep(1000); }
+    }
+    throw new CollectorException("UPDATER_REFRESH_FAILED");
+  }
+  private sealed class Gate(Mutex mutex) : IDisposable
+  {
+    public void Dispose() { mutex.ReleaseMutex(); mutex.Dispose(); }
+  }
+  public static IDisposable AcquireGate(int timeout = 0)
+  {
+    var mutex = new Mutex(false, @"Global\AppleOrderMgrAosUpdater");
+    try {
+      bool acquired; try { acquired = mutex.WaitOne(timeout); } catch (AbandonedMutexException) { acquired = true; }
+      if (!acquired) throw new CollectorException("UPDATE_IN_PROGRESS");
+      return new Gate(mutex);
+    } catch (Exception) { mutex.Dispose(); throw; }
+  }
+  private static void StartUpdaterRefresh()
+  {
+    Process.Start(new ProcessStartInfo(Installer.Executable, "--refresh-updater") { UseShellExecute = false, CreateNoWindow = true });
+  }
+  public static void StopAndExitOthers()
+  {
+    using var gate = AcquireGate();
+    CloseTray();
+    Installer.SetRunning(false);
   }
   public static void RemoveTask()
   {
@@ -77,7 +122,11 @@ internal static class UpdateAgent
         if (process.Id == Environment.ProcessId || process.SessionId == 0) continue;
         if (!StringComparer.OrdinalIgnoreCase.Equals(process.MainModule?.FileName, Installer.Executable)) continue;
         // 发送自定义退出通知，GUI 保存中的操作由下一轮更新重试，禁止终止用户配置写入。
-        EnumWindows((window, _) => { GetWindowThreadProcessId(window, out var owner); if (owner == process.Id) PostMessageW(window, 0x8000 + 427, IntPtr.Zero, IntPtr.Zero); return true; }, IntPtr.Zero);
+        if (!TrayControl.RequestClose(process.Id) && !process.HasExited) {
+          // 仅用于旧版首次引导：安装程序须在同一交互会话运行。
+          if (process.SessionId != Process.GetCurrentProcess().SessionId) throw new CollectorException("LEGACY_TRAY_SESSION");
+          EnumWindows((window, _) => { GetWindowThreadProcessId(window, out var owner); if (owner == process.Id) PostMessageW(window, 0x8000 + 427, IntPtr.Zero, IntPtr.Zero); return true; }, IntPtr.Zero);
+        }
         if (!process.WaitForExit(10000)) throw new CollectorException("TRAY_STILL_RUNNING");
       }
     }
@@ -95,13 +144,14 @@ internal static class UpdateAgent
     }
     return false;
   }
-  public static async Task RunOnce()
+  public static Task RunOnce() => Task.Run(() => {
+    // Mutex绑定线程；在同一线程取得和释放，异步网络逻辑在内部执行。
+    try { using var gate = AcquireGate(); RunCore().GetAwaiter().GetResult(); }
+    catch (Exception) { /* 保留阶段日志，下次计划任务继续恢复。 */ }
+  });
+  private static async Task RunCore()
   {
-    using var mutex = new Mutex(false, @"Global\AppleOrderMgrAosUpdater");
-    var acquired = false;
     try {
-      try { acquired = mutex.WaitOne(0); } catch (AbandonedMutexException) { acquired = true; }
-      if (!acquired) return;
       var config = LocalStorage.ReadConfig();
       if (config == null || !File.Exists(PublicKeyPath)) return;
       using var accounting = new QueueStore(LocalStorage.QueuePath, LocalStorage.Protector);
@@ -128,7 +178,10 @@ internal static class UpdateAgent
         RestoreTray(journal);
         await client.ReportUpdate(journal.JobId, journal.Phase, InstalledVersion(), journal.Error, token);
         File.Delete(JournalPath);
+        if (journal.Phase == "succeeded") StartUpdaterRefresh();
       }
+      // 人工停止服务时不领取更新，也不通过失败恢复逻辑将其重新启动。
+      if (!Installer.IsRunning()) return;
       var offer = await client.GetUpdate(token);
       if (offer.Job == null || offer.Envelope == null) return;
       if (!Guid.TryParse(offer.Job.Id, out _)) throw new CollectorException("UPDATE_JOB_INVALID");
@@ -174,8 +227,9 @@ internal static class UpdateAgent
       RestoreTray(journal);
       await client.ReportUpdate(journal.JobId, journal.Phase, InstalledVersion(), journal.Error, token);
       File.Delete(JournalPath);
+      if (journal.Phase == "succeeded") StartUpdaterRefresh();
     } catch (Exception) {
       // 计划任务无交互窗口；保留已落盘阶段，下一轮先恢复或重报。
-    } finally { if (acquired) mutex.ReleaseMutex(); }
+    }
   }
 }

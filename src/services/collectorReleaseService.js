@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const fs = require('fs/promises');
+const { createReadStream } = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 const ApiError = require('../utils/ApiError');
@@ -43,6 +44,40 @@ function verifyManifest(envelope, key) {
     throw ApiError.badRequest('采集器发布清单或签名无效');
   }
 }
+const pendingDigests = new Map();
+/** 流式校验摘要，仅合并相同文件身份的在途读取。 @param {string} file 文件 @returns {Promise<string>} 摘要 */
+async function packageDigest(file) {
+  try {
+    const before = await fs.stat(file);
+    const identity = stat => [stat.dev, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs].join(':');
+    const key = `${file}:${identity(before)}`;
+    if (pendingDigests.has(key)) return await pendingDigests.get(key);
+    const work = (async () => {
+      try {
+        const hash = crypto.createHash('sha256');
+        for await (const chunk of createReadStream(file, { highWaterMark: 65536 })) {
+          hash.update(chunk);
+        }
+        if (identity(await fs.stat(file)) !== identity(before)) {
+          throw ApiError.badRequest('发布制品在校验期间发生变化');
+        }
+        return hash.digest('hex');
+      } catch (error) {
+        logger.debug('采集器制品流式校验失败', { errorCode: error.code || 'DIGEST_FAILED' });
+        throw error;
+      }
+    })();
+    pendingDigests.set(key, work);
+    try {
+      return await work;
+    } finally {
+      pendingDigests.delete(key);
+    }
+  } catch (error) {
+    logger.debug('采集器制品校验未完成', { errorCode: error.code || 'DIGEST_FAILED' });
+    throw error;
+  }
+}
 /** 从受控本地目录读取发布，不跟随目录链接。 @param {string} version 版本 @returns {Promise<Object>} 清单与制品 */
 async function getRelease(version) {
   try {
@@ -72,10 +107,7 @@ async function getRelease(version) {
     if (manifest.version !== version || (await fs.stat(packagePath)).size !== manifest.size)
       throw ApiError.badRequest('发布制品与清单不一致');
     // 制品体积有上限；下载前再验摘要，发布目录必须只读挂载。
-    const digest = crypto
-      .createHash('sha256')
-      .update(await fs.readFile(packagePath))
-      .digest('hex');
+    const digest = await packageDigest(packagePath);
     if (digest !== manifest.sha256) throw ApiError.badRequest('发布制品摘要不一致');
     return { envelope, manifest, packagePath };
   } catch (error) {

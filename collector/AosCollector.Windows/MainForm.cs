@@ -28,6 +28,7 @@ internal sealed class MainForm : Form
   private bool busy;
   private bool updating;
   private bool exiting;
+  private TrayControl? trayControl;
   protected override void WndProc(ref Message message)
   {
     if (message.Msg == 0x8000 + 427) {
@@ -46,6 +47,8 @@ internal sealed class MainForm : Form
     statusButtons.Controls.Add(Action("启动服务", () => Task.Run(() => Installer.SetRunning(true))));
     statusButtons.Controls.Add(Action("停止服务", async () => { if (MessageBox.Show("停止后将暂停本机采集，待发送队列保留。是否停止？", "停止采集服务", MessageBoxButtons.YesNo) == DialogResult.Yes) await Task.Run(() => Installer.SetRunning(false)); }));
     statusButtons.Controls.Add(Action("导出脱敏诊断", ExportDiagnostics));
+    var exitBar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 45, Padding = new Padding(8, 4, 8, 4), FlowDirection = FlowDirection.RightToLeft };
+    exitBar.Controls.Add(Action("一键退出（停止服务）", StopAndExit));
     statusTab.Controls.Add(fileTable); statusTab.Controls.Add(overview); statusTab.Controls.Add(statusButtons);
     fileTable.Columns.Add("directory", "目录名称"); fileTable.Columns.Add("file", "文件名"); fileTable.Columns.Add("records", "已识别记录"); fileTable.Columns.Add("tail", "未完成尾行"); fileTable.Columns.Add("error", "读取状态");
     var form = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, ColumnCount = 2, Padding = new Padding(16) };
@@ -73,14 +76,17 @@ internal sealed class MainForm : Form
     monitorButtons.Controls.Add(new Label { AutoSize = true, Text = "各目录对应独立实例；规则在网站配置。下方勾选统计网卡，不勾选时自动统计有默认网关的活动网卡。" });
     monitorConfig.Controls.Add(monitorDirectoriesTable); monitorConfig.Controls.Add(interfaces); monitorConfig.Controls.Add(monitorButtons);
     tabs.TabPages.Add(monitorTab); tabs.TabPages.Add(monitorConfig);
-    tabs.TabPages.Add(statusTab); tabs.TabPages.Add(configTab); Controls.Add(tabs);
+    tabs.TabPages.Add(statusTab); tabs.TabPages.Add(configTab); Controls.Add(tabs); Controls.Add(exitBar);
     tray = new NotifyIcon { Text = "AOS 采集器 · 等待状态", Icon = SystemIcons.Application, Visible = true };
     var menu = new ContextMenuStrip(); menu.Items.Add("打开配置窗口", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); });
-    menu.Items.Add("退出托盘（后台服务继续）", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu;
+    menu.Items.Add("退出托盘（后台服务继续）", null, (_, _) => { if (!busy) { exiting = true; Close(); } });
+    menu.Items.Add("一键退出（停止服务）", null, async (_, _) => await RunAction(StopAndExit)); tray.ContextMenuStrip = menu;
     tray.DoubleClick += (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); };
     FormClosing += (_, e) => { if (!exiting && e.CloseReason == CloseReason.UserClosing) { e.Cancel = true; Hide(); } };
-    FormClosed += (_, _) => { timer.Stop(); tray.Dispose(); timer.Dispose(); };
-    Shown += async (_, _) => { await LoadConfig(); await RefreshStatus(); if (startInTray) Hide(); };
+    FormClosed += (_, _) => { trayControl?.Dispose(); timer.Stop(); tray.Dispose(); timer.Dispose(); };
+    Shown += async (_, _) => {
+      trayControl = new TrayControl(() => Task.FromResult(!busy && !exiting), () => { exiting = true; BeginInvoke(() => Close()); });
+      await LoadConfig(); await RefreshStatus(); if (startInTray) Hide(); };
     timer.Tick += async (_, _) => await RefreshStatus(); timer.Start();
   }
   private static DataGridView Grid() => new() { Dock = DockStyle.Fill, BackgroundColor = Color.White, AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill, ReadOnly = true, AllowUserToAddRows = false, AllowUserToDeleteRows = false, RowHeadersVisible = false, SelectionMode = DataGridViewSelectionMode.FullRowSelect, MultiSelect = false };
@@ -88,13 +94,24 @@ internal sealed class MainForm : Form
   private Button Action(string text, Func<Task> work)
   {
     var button = new Button { Text = text, AutoSize = true, Height = 32, Padding = new Padding(8, 2, 8, 2) }; buttons.Add(button);
-    button.Click += async (_, _) => {
-      if (busy) return; busy = true; foreach (var b in buttons) b.Enabled = false; message.Text = "正在处理…";
-      try { await work(); if (message.Text == "正在处理…") message.Text = "操作完成。"; }
-      catch (CollectorException e) { message.Text = ErrorText(e.Code); MessageBox.Show(message.Text, "AOS 采集器"); }
-      catch (Exception) { message.Text = "操作未完成，请检查服务、目录和网络。队列保留。"; }
-      finally { busy = false; foreach (var b in buttons) b.Enabled = true; }
-    }; return button;
+    button.Click += async (_, _) => await RunAction(work);
+    return button;
+  }
+  private async Task RunAction(Func<Task> work)
+  {
+    if (busy || exiting) return; busy = true; foreach (var b in buttons) b.Enabled = false; message.Text = "正在处理…";
+    try { await work(); if (!IsDisposed && message.Text == "正在处理…") message.Text = "操作完成。"; }
+    catch (CollectorException e) { if (!IsDisposed) { message.Text = ErrorText(e.Code); MessageBox.Show(message.Text, "AOS 采集器"); } }
+    catch (Exception) { if (!IsDisposed) { message.Text = "操作未完成，请检查服务、目录和网络。队列保留。"; MessageBox.Show(message.Text, "AOS 采集器"); } }
+    finally { busy = false; if (!IsDisposed) foreach (var b in buttons) b.Enabled = true; }
+  }
+  private async Task StopAndExit()
+  {
+    try {
+      timer.Stop();
+      await Task.Run(UpdateAgent.StopAndExitOthers);
+      exiting = true; Close();
+    } catch (Exception) { timer.Start(); throw; }
   }
   private CollectorConfig Candidate() => new(deviceName.Text.Trim(), serverUrl.Text.Trim(), credential.Text, deviceId, [.. directories], encoding.SelectedItem?.ToString() ?? "utf-8", new MonitorConfig([.. monitorDirectories], interfaces.CheckedIndices.Cast<int>().Select(i => interfaceIds[i]).ToList()));
   private Task AddDirectory()
@@ -177,6 +194,11 @@ internal sealed class MainForm : Form
     "ready" => "检测正常", "missing" => "未找到日志", "unreadable" => "目录无法读取", "invalid" => "日志解析异常", "catching_up" => "正在追赶／等待尾行", "complete" => "完整", "gap" => "采样存在缺口", "unavailable" => "网卡不可用", _ => state
   };
   private static string ErrorText(string code) => code switch {
+    "UPDATE_IN_PROGRESS" => "正在安装更新，请待更新结束后再一键退出。",
+    "TRAY_BUSY" => "另一采集器窗口正在处理配置，请稍后重试。",
+    "LEGACY_TRAY_SESSION" => "旧版托盘位于其他登录会话，请在对应桌面退出托盘后重试。",
+    "TRAY_STILL_RUNNING" => "采集器托盘尚未退出，请关闭其他窗口后重试。",
+
     "SERVICE_NOT_AVAILABLE" => "后台服务不可用，请启动服务后重试。", "DEVICE_UNAUTHORIZED" => "设备凭证失效，请更新凭证。", "DEVICE_DISABLED" => "设备已被网页管理员禁用。",
     "SERVICE_DIRECTORY_UNREADABLE" => "后台服务无法读取目录，请选择服务可读取的本机目录。", "PENDING_QUEUE_IDENTITY_CHANGE" => "本机队列已有历史记录，不能更换服务器或设备身份；请使用原设备凭证。",
     "CONNECTION_FAILED" => "连接失败，请检查网络和 HTTPS 地址。", "SERVER_URL_INVALID" => "请输入根 HTTPS 服务地址，不含路径、账号或查询参数。",
