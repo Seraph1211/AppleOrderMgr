@@ -177,6 +177,7 @@ export default function ServerMonitor() {
   const [sample, setSample] = useState('');
   const [testResult, setTestResult] = useState(null);
   const [detailId, setDetailId] = useState(null);
+  const [showRemoved, setShowRemoved] = useState(false);
   const [history, setHistory] = useState(null);
   const [historyError, setHistoryError] = useState('');
   const [page, setPage] = useState(1);
@@ -301,11 +302,13 @@ export default function ServerMonitor() {
   const deviceName = id => data?.devices.find(d => d.id === id)?.name || id;
   const deviceOptions = useMemo(() => data?.devices.map(device => device.id) || [], [data]);
   const deviceLabels = useMemo(
-    () =>
-      Object.fromEntries((data?.devices || []).map(device => [device.id, device.name])),
+    () => Object.fromEntries((data?.devices || []).map(device => [device.id, device.name])),
     [data]
   );
   const instance = data?.instances.find(i => i.id === detailId);
+  const currentInstances = data?.instances.filter(i => i.active) || [];
+  const removedCount = (data?.instances.length || 0) - currentInstances.length;
+  const visibleInstances = showRemoved ? data?.instances || [] : currentInstances;
   const totals = useMemo(
     () =>
       rows.reduce(
@@ -421,7 +424,7 @@ export default function ServerMonitor() {
     keywords: words(keywords),
     excludes: words(excludes),
   });
-  const actionable = data?.instances.filter(i => i.actionable && i.alerts.length).length || 0;
+  const actionable = currentInstances.filter(i => i.actionable && i.alerts.length).length;
   const coverage = item => {
     const start = new Date(
       `${item.time.length === 10 ? item.time + 'T00:00:00' : item.time.replace(' ', 'T') + ':00'}+08:00`
@@ -668,11 +671,28 @@ export default function ServerMonitor() {
       )}
       {tab === 'instances' && (
         <>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm">
+            <p className="text-gray-500">
+              当前实例 {currentInstances.length} 个 · 已移除 {removedCount} 个
+            </p>
+            <label className="inline-flex cursor-pointer items-center gap-2 text-gray-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={showRemoved}
+                onChange={e => {
+                  setShowRemoved(e.target.checked);
+                  if (!e.target.checked && instance && !instance.active) setDetailId(null);
+                }}
+              />
+              显示已移除实例
+            </label>
+          </div>
           <Table
             headers={['服务器 / 实例', '检测状态', '当前异常', '人工处理', '最近检测', '操作']}
-            empty={!data?.instances.length}
+            empty={!visibleInstances.length}
           >
-            {data?.instances.map(i => (
+            {visibleInstances.map(i => (
               <tr key={i.id} className="hover:bg-gray-50">
                 <Cell>
                   <p>{deviceName(i.deviceId)}</p>
@@ -715,13 +735,13 @@ export default function ServerMonitor() {
                       setNote('');
                     }}
                   >
-                    查看 / 处理
+                    {i.active ? '查看 / 处理' : '查看历史'}
                   </button>
                 </Cell>
               </tr>
             ))}
           </Table>
-          {instance && (
+          {instance && (instance.active || showRemoved) && (
             <section ref={detailRef} className="bg-white border rounded-xl p-4 space-y-4">
               <div className="flex justify-between">
                 <h2 className="font-semibold">
@@ -732,65 +752,74 @@ export default function ServerMonitor() {
                 </button>
               </div>
               <p className="text-sm text-gray-500">
-                检测恢复与人工处理完成分别记录。静默覆盖该实例全部规则，期间继续检测。
+                {instance.active
+                  ? '检测恢复与人工处理完成分别记录。静默覆盖该实例全部规则，期间继续检测。'
+                  : '该实例已移除，仅供查看历史，不再产生邮件提醒。告警及处理记录保留90天。'}
               </p>
-              <form
-                className="flex flex-wrap gap-3 items-end"
-                onSubmit={e => {
-                  e.preventDefault();
-                  perform(async () => {
-                    await client.post(`${BASE}/instances/${instance.id}/actions`, {
-                      action,
-                      minutes,
-                      note,
-                      expectedVersion: instance.version,
+              {instance.active && (
+                <form
+                  className="flex flex-wrap gap-3 items-end"
+                  onSubmit={e => {
+                    e.preventDefault();
+                    perform(async () => {
+                      await client.post(`${BASE}/instances/${instance.id}/actions`, {
+                        action,
+                        minutes,
+                        note,
+                        expectedVersion: instance.version,
+                      });
+                      setNote('');
+                      setNotice(`${ACTIONS[action]}已记录 · ${new Date().toLocaleTimeString()}`);
                     });
-                    setNote('');
-                    setNotice(`${ACTIONS[action]}已记录 · ${new Date().toLocaleTimeString()}`);
-                  });
-                }}
-              >
-                <Field label="处理操作">
-                  <select
-                    className="input"
-                    value={action}
-                    onChange={e => setAction(e.target.value)}
+                  }}
+                >
+                  <Field label="处理操作">
+                    <select
+                      className="input"
+                      value={action}
+                      onChange={e => setAction(e.target.value)}
+                    >
+                      {Object.entries(ACTIONS).map(([key, value]) => (
+                        <option key={key} value={key}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="静默时长">
+                    <select
+                      className="input"
+                      disabled={!['start', 'ignore', 'extend'].includes(action)}
+                      value={minutes}
+                      onChange={e => setMinutes(Number(e.target.value))}
+                    >
+                      {[15, 30, 60, 120].map(n => (
+                        <option key={n} value={n}>
+                          {n} 分钟
+                        </option>
+                      ))}
+                    </select>
+                  </Field>
+                  <Field label="备注">
+                    <input
+                      aria-label="处理备注"
+                      className="input min-w-60"
+                      value={note}
+                      onChange={e => setNote(e.target.value)}
+                      maxLength={500}
+                    />
+                  </Field>
+                  <button
+                    className="btn btn-primary inline-flex items-center gap-1"
+                    disabled={busy}
                   >
-                    {Object.entries(ACTIONS).map(([key, value]) => (
-                      <option key={key} value={key}>
-                        {value}
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="静默时长">
-                  <select
-                    className="input"
-                    disabled={!['start', 'ignore', 'extend'].includes(action)}
-                    value={minutes}
-                    onChange={e => setMinutes(Number(e.target.value))}
-                  >
-                    {[15, 30, 60, 120].map(n => (
-                      <option key={n} value={n}>
-                        {n} 分钟
-                      </option>
-                    ))}
-                  </select>
-                </Field>
-                <Field label="备注">
-                  <input
-                    aria-label="处理备注"
-                    className="input min-w-60"
-                    value={note}
-                    onChange={e => setNote(e.target.value)}
-                    maxLength={500}
-                  />
-                </Field>
-                <button className="btn btn-primary inline-flex items-center gap-1" disabled={busy}>
-                  提交操作
-                </button>
-              </form>
-              <h3 className="font-medium">当前窗口检测结果</h3>
+                    提交操作
+                  </button>
+                </form>
+              )}
+              <h3 className="font-medium">
+                {instance.active ? '当前窗口检测结果' : '移除前检测记录'}
+              </h3>
               <Table
                 headers={['规则', '命中数', '错误日志']}
                 empty={!instance.snapshot.results?.length}
@@ -817,14 +846,7 @@ export default function ServerMonitor() {
               {history && (
                 <>
                   <Table
-                    headers={[
-                      '规则',
-                      '状态',
-                      '命中数',
-                      '首次 / 最后异常',
-                      '错误日志',
-                      '恢复时间',
-                    ]}
+                    headers={['规则', '状态', '命中数', '首次 / 最后异常', '错误日志', '恢复时间']}
                     empty={!history.alerts.rows.length}
                   >
                     {history.alerts.rows.map(a => (
@@ -1038,11 +1060,14 @@ export default function ServerMonitor() {
                       value={editor.config.directoryIds}
                       onChange={e => edit('directoryIds', selected(e))}
                     >
-                      {data?.instances.map(i => (
-                        <option key={i.id} value={i.localId}>
-                          {deviceName(i.deviceId)} / {i.label}
-                        </option>
-                      ))}
+                      {data?.instances
+                        .filter(i => i.active || editor.config.directoryIds.includes(i.localId))
+                        .map(i => (
+                          <option key={i.id} value={i.localId} disabled={!i.active}>
+                            {deviceName(i.deviceId)} / {i.label}
+                            {!i.active ? '（已移除，原范围保留）' : ''}
+                          </option>
+                        ))}
                     </select>
                   </Field>
                 </div>
@@ -1098,10 +1123,10 @@ export default function ServerMonitor() {
           )}
           <p className="text-sm text-gray-500">
             规则同步：
-            {data?.instances.filter(i => i.fresh && i.snapshot.revision === data.revision).length ||
-              0}{' '}
+            {currentInstances.filter(i => i.fresh && i.snapshot.revision === data.revision)
+              .length || 0}{' '}
             个实例已应用当前版本；
-            {data?.instances.filter(i => !i.fresh || i.snapshot.revision !== data.revision)
+            {currentInstances.filter(i => !i.fresh || i.snapshot.revision !== data.revision)
               .length || 0}{' '}
             个实例待同步或离线。
           </p>
@@ -1171,18 +1196,36 @@ export default function ServerMonitor() {
               严重告警立即发送；警告按服务器合并 10 分钟内发送；提醒按服务器每小时汇总。
               同一持续告警不重复发送，人工处理或临时忽略期间停止待发告警，静默到期仍异常时提醒一次。
             </div>
+            <p className="text-sm text-gray-600" role="status">
+              已保存状态：{data.notificationSettings.enabled ? '邮件通知已启用' : '邮件通知已关闭'}
+              {data.notificationSettings.updatedAt &&
+                ` · 更新于 ${formatTime(data.notificationSettings.updatedAt)}`}
+              {!data.notificationSettings.enabled &&
+                '。待发邮件已取消；已交给邮件服务商的邮件可能延迟到达。'}
+            </p>
+            {(notificationForm.enabled !== data.notificationSettings.enabled ||
+              notificationForm.sendRecovery !== data.notificationSettings.sendRecovery ||
+              words(notificationForm.recipients).join('\n') !==
+                data.notificationSettings.recipients.join('\n')) && (
+              <p className="text-sm text-amber-700">有未保存的修改，点击“保存设置”后生效。</p>
+            )}
             <form
               className="space-y-4"
               onSubmit={event => {
                 event.preventDefault();
                 perform(async () => {
-                  await client.put(`${BASE}/notifications/settings`, {
+                  const response = await client.put(`${BASE}/notifications/settings`, {
                     enabled: notificationForm.enabled,
                     recipients: words(notificationForm.recipients),
                     sendRecovery: notificationForm.sendRecovery,
                     expectedVersion: notificationForm.version,
                   });
-                  setNotice('邮件通知设置已保存。');
+                  setData(current => ({ ...current, notificationSettings: response.data }));
+                  setNotice(
+                    response.data.enabled
+                      ? '邮件通知设置已保存。'
+                      : '邮件通知已关闭，待发邮件已取消。'
+                  );
                 });
               }}
             >
@@ -1229,6 +1272,7 @@ export default function ServerMonitor() {
                   <button
                     className="btn btn-secondary"
                     type="button"
+                    disabled={!data.notificationSettings.enabled || !notificationForm.enabled}
                     onClick={() =>
                       perform(async () => {
                         await client.post(`${BASE}/notifications/test`);
@@ -1251,7 +1295,10 @@ export default function ServerMonitor() {
               {notificationHistory?.rows.map(item => (
                 <tr key={item.id}>
                   <Cell>{formatTime(item.createdAt)}</Cell>
-                  <Cell>{NOTIFICATION_CATEGORY[item.category] || item.category} / {SEVERITY[item.severity] || item.severity}</Cell>
+                  <Cell>
+                    {NOTIFICATION_CATEGORY[item.category] || item.category} /{' '}
+                    {SEVERITY[item.severity] || item.severity}
+                  </Cell>
                   <Cell>{item.eventCount}</Cell>
                   <Cell>{DELIVERY_STATUS[item.status] || item.status}</Cell>
                   <Cell>{formatTime(item.sentAt)}</Cell>
@@ -1260,11 +1307,21 @@ export default function ServerMonitor() {
               ))}
             </Table>
             <div className="flex items-center gap-3">
-              <button className="btn btn-secondary" disabled={notificationPage <= 1} onClick={() => setNotificationPage(value => value - 1)}>
+              <button
+                className="btn btn-secondary"
+                disabled={notificationPage <= 1}
+                onClick={() => setNotificationPage(value => value - 1)}
+              >
                 上一页
               </button>
               <span>第 {notificationPage} 页</span>
-              <button className="btn btn-secondary" disabled={!notificationHistory || notificationPage * 30 >= notificationHistory.count} onClick={() => setNotificationPage(value => value + 1)}>
+              <button
+                className="btn btn-secondary"
+                disabled={
+                  !notificationHistory || notificationPage * 30 >= notificationHistory.count
+                }
+                onClick={() => setNotificationPage(value => value + 1)}
+              >
                 下一页
               </button>
             </div>

@@ -1,5 +1,7 @@
 /* global localStorage, document */
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { chromium } = require('playwright-core');
 const logger = require('../src/utils/logger');
 /** 独立浏览器合成监控交互；所有API均拦截，不接触业务数据。 */
@@ -7,10 +9,17 @@ async function main() {
   let browser;
   let context;
   try {
-    if (!process.env.MONITOR_BROWSER_WS) throw new Error('需要专用临时浏览器地址');
-    browser = await chromium.connectOverCDP(process.env.MONITOR_BROWSER_WS, {
-      headers: { Host: '127.0.0.1' },
-    });
+    if (!process.env.MONITOR_BROWSER_WS && !process.env.MONITOR_BROWSER_EXECUTABLE)
+      throw new Error('需要专用临时浏览器地址或可执行文件');
+    browser = process.env.MONITOR_BROWSER_EXECUTABLE
+      ? await chromium.launch({
+        executablePath: process.env.MONITOR_BROWSER_EXECUTABLE,
+        headless: true,
+      })
+      : await chromium.connectOverCDP(process.env.MONITOR_BROWSER_WS, {
+        headers: { Host: '127.0.0.1' },
+      });
+    fs.mkdirSync(path.resolve('coverage'), { recursive: true });
     context = await browser.newContext({
       viewport: { width: 1440, height: 1000 },
       serviceWorkers: 'block',
@@ -24,6 +33,7 @@ async function main() {
     let actions = 0;
     let saves = 0;
     let monitoredReads = 0;
+    let removedOnly = false;
     const errors = [];
     page.on('pageerror', e => errors.push(e.message));
     const deviceId = '11111111-1111-4111-8111-111111111111';
@@ -31,6 +41,14 @@ async function main() {
     const localId = '33333333-3333-4333-8333-333333333333';
     const ruleId = '44444444-4444-4444-8444-444444444444';
     const now = new Date().toISOString();
+    let notificationSettings = {
+      enabled: true,
+      sendRecovery: true,
+      recipients: ['ops@example.test'],
+      version: 1,
+      updatedAt: now,
+      smtp: { configured: true, reusedFromOrderMailbox: true, sender: 'op***@example.test' },
+    };
     let rules = [
       {
         id: ruleId,
@@ -76,6 +94,34 @@ async function main() {
       },
       alerts: [{ id: 'alert', ruleName: '没有可用代理', hitCount: 8 }],
     };
+    const removed = {
+      ...instance,
+      id: 'removed-instance',
+      localId: 'removed-local',
+      active: false,
+      actionable: false,
+      state: 'removed',
+      label: '旧实例',
+    };
+    const offline = {
+      ...instance,
+      id: 'offline-instance',
+      localId: 'offline-local',
+      fresh: false,
+      actionable: false,
+      state: 'offline',
+      label: '离线实例',
+      alerts: [],
+    };
+    const invalid = {
+      ...instance,
+      id: 'invalid-instance',
+      localId: 'invalid-local',
+      actionable: false,
+      state: 'invalid',
+      label: '解析异常实例',
+      alerts: [],
+    };
     await page.route('**/*', async route => {
       try {
         const url = new URL(route.request().url());
@@ -107,8 +153,13 @@ async function main() {
             data = {
               revision: 'v1',
               devices: [{ id: deviceId, name: '测试服务器01', enabled: true }],
-              instances: empty ? [] : [instance],
+              instances: empty
+                ? []
+                : removedOnly
+                  ? [removed]
+                  : [instance, removed, offline, invalid],
               rules: empty ? [] : rules,
+              notificationSettings,
             };
           else if (url.pathname.endsWith('/traffic'))
             data = {
@@ -128,6 +179,18 @@ async function main() {
                   },
                 ],
             };
+          else if (url.pathname.endsWith('/notifications/settings')) {
+            const body = route.request().postDataJSON();
+            assert.equal(body.enabled, false);
+            assert.equal(body.expectedVersion, notificationSettings.version);
+            notificationSettings = {
+              ...notificationSettings,
+              ...body,
+              version: notificationSettings.version + 1,
+              updatedAt: new Date().toISOString(),
+            };
+            data = notificationSettings;
+          } else if (url.pathname.endsWith('/notifications/history')) data = { rows: [], count: 0 };
           else if (url.pathname.endsWith('/history'))
             data = {
               alerts: {
@@ -193,21 +256,39 @@ async function main() {
     await page.getByRole('heading', { name: '服务器监控', exact: true }).waitFor();
     await page.getByText('总计 13.000 GB', { exact: false }).waitFor();
     await page.screenshot({
-      path: '/app/coverage/monitor-traffic-desktop.png',
+      path: path.resolve('coverage/monitor-traffic-desktop.png'),
       fullPage: true,
       animations: 'disabled',
     });
-    await page.getByRole('button', { name: '实例监控', exact: true }).click();
-    await page.getByRole('button', { name: '查看 / 处理' }).click();
+    await page.getByRole('tab', { name: '实例监控', exact: true }).click();
+    assert.equal(await page.getByText('旧实例', { exact: true }).count(), 0);
+    await page.getByText('离线实例', { exact: true }).waitFor();
+    await page.getByText('解析异常实例', { exact: true }).waitFor();
+    await page.getByText('1 个实例待核实', { exact: false }).waitFor();
+    await page.getByLabel('显示已移除实例').check();
+    await page.getByRole('button', { name: '查看历史', exact: true }).click();
+    await page.getByText('该实例已移除，仅供查看历史', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '提交操作' }).count(), 0);
+    await page.getByLabel('显示已移除实例').uncheck();
+    assert.equal(await page.getByText('旧实例', { exact: true }).count(), 0);
+    await page
+      .getByRole('row')
+      .filter({ hasText: '抢购实例一' })
+      .getByRole('button', { name: '查看 / 处理' })
+      .click();
     await page.getByLabel('处理备注').fill('检查代理连接');
     await page.getByRole('button', { name: '提交操作' }).click();
     await page.getByText('静默剩余', { exact: false }).waitFor();
     assert.equal(actions, 1);
-    await page.getByRole('button', { name: '告警规则', exact: true }).click();
+    await page.getByRole('tab', { name: '告警规则', exact: true }).click();
     await page.getByRole('button', { name: '新增规则' }).click();
     await page.getByLabel('规则名称', { exact: true }).fill('连接异常测试');
     await page.getByLabel('关键词（每行一个，最多20个）', { exact: true }).fill('连接失败');
-    await page.getByLabel('脱敏样例试匹配（仅测试文本条件，不保存正文）').fill('连接失败\n正常');
+    assert.equal(
+      await page.getByLabel('规则适用实例').locator('option', { hasText: '旧实例' }).count(),
+      0
+    );
+    await page.getByLabel('日志样例试匹配（测试输入不保存）').fill('连接失败\n正常');
     await page.getByRole('button', { name: '试匹配', exact: true }).click();
     await page.getByText('命中 1 行', { exact: false }).waitFor();
     conflict = true;
@@ -218,16 +299,27 @@ async function main() {
     await page.getByRole('button', { name: '保存规则' }).click();
     await page.getByText('规则已保存', { exact: false }).waitFor();
     assert.equal(saves, 1);
+    await page.getByRole('tab', { name: '通知设置', exact: true }).click();
+    await page.getByText('已保存状态：邮件通知已启用', { exact: false }).waitFor();
+    await page.getByLabel('启用邮件通知', { exact: true }).uncheck();
+    await page.getByText('有未保存的修改', { exact: false }).waitFor();
+    assert.equal(await page.getByRole('button', { name: '发送测试邮件' }).isDisabled(), true);
+    await page.getByRole('button', { name: '保存设置', exact: true }).click();
+    await page.getByText('已保存状态：邮件通知已关闭', { exact: false }).waitFor();
+    await page.getByRole('button', { name: '刷新状态' }).click();
+    assert.equal(notificationSettings.enabled, false);
+    assert.equal(await page.getByLabel('启用邮件通知', { exact: true }).isChecked(), false);
+    assert.equal(await page.getByText('有未保存的修改', { exact: false }).count(), 0);
     fail = true;
     await page.getByRole('button', { name: '刷新状态' }).click();
     await page.getByRole('alert').filter({ hasText: '合成监控读取失败' }).waitFor();
     fail = false;
     await page.getByRole('button', { name: '刷新状态' }).click();
     await page.setViewportSize({ width: 375, height: 812 });
-    await page.getByRole('button', { name: '实例监控', exact: true }).click();
-    await page.getByRole('button', { name: '查看 / 处理' }).waitFor();
+    await page.getByRole('tab', { name: '实例监控', exact: true }).click();
+    await page.getByRole('button', { name: '查看 / 处理' }).first().waitFor();
     await page.screenshot({
-      path: '/app/coverage/monitor-instances-mobile.png',
+      path: path.resolve('coverage/monitor-instances-mobile.png'),
       fullPage: true,
       animations: 'disabled',
     });
@@ -236,6 +328,11 @@ async function main() {
         () => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1
       )
     );
+    removedOnly = true;
+    await page.getByRole('button', { name: '刷新状态' }).click();
+    await page.getByText('暂无数据', { exact: true }).waitFor();
+    await page.getByLabel('显示已移除实例').check();
+    await page.getByText('旧实例', { exact: true }).waitFor();
     empty = true;
     await page.reload();
     await page.getByText('暂无数据', { exact: true }).waitFor();

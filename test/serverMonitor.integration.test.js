@@ -65,15 +65,15 @@ const crypto = require('crypto');
               count,
               samples: count
                 ? [
-                    {
-                      at: clock.toISOString(),
-                      file: 'Log20260915_1234.txt',
-                      keywords: ['没有可用的代理'],
-                      lineNumber: 42,
-                      message: '2026-09-15 00:00:00.000 没有可用的代理 user:secret@example.com',
-                      truncated: false,
-                    },
-                  ]
+                  {
+                    at: clock.toISOString(),
+                    file: 'Log20260915_1234.txt',
+                    keywords: ['没有可用的代理'],
+                    lineNumber: 42,
+                    message: '2026-09-15 00:00:00.000 没有可用的代理 user:secret@example.com',
+                    truncated: false,
+                  },
+                ]
                 : [],
             },
           ],
@@ -244,8 +244,9 @@ const crypto = require('crypto');
     });
     let sent;
     sender._setTransporter({
-      sendMail: async message => {
+      sendMail: message => {
         sent = message;
+        return Promise.resolve();
       },
       close: () => {},
     });
@@ -340,6 +341,124 @@ const crypto = require('crypto');
     await service.receive(device.id, { reports: [current] }, clock);
     expect((await MonitorInstance.findByPk(instance.id)).active).toBe(true);
   });
+  test('已移除实例保留历史但拒绝处理和新增规则范围，既有范围不会被清空', async () => {
+    const removed = await MonitorInstance.findOne({ where: { active: false } });
+    const overview = await service.overview();
+    expect(overview.instances.find(i => i.id === removed.id)).toMatchObject({
+      state: 'removed',
+      actionable: false,
+    });
+    expect((await service.history(removed.id)).alerts).toBeDefined();
+    await expect(
+      service.act(actor.id, removed.id, {
+        action: 'note',
+        note: '不应保存',
+        expectedVersion: removed.version,
+      })
+    ).rejects.toMatchObject({ statusCode: 409, code: 'MONITOR_INSTANCE_REMOVED' });
+    const scoped = { ...config, directoryIds: [removed.localId] };
+    await expect(service.saveRule(actor.id, null, { config: scoped })).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    await expect(
+      service.saveRule(actor.id, rule.id, {
+        config: scoped,
+        expectedVersion: rule.version,
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    const legacy = await MonitorRule.create({
+      id: crypto.randomUUID(),
+      config: scoped,
+      version: 1,
+    });
+    try {
+      const saved = await service.saveRule(actor.id, legacy.id, {
+        config: { ...scoped, enabled: false },
+        expectedVersion: 1,
+      });
+      expect(saved.config.directoryIds).toEqual([removed.localId]);
+    } finally {
+      await legacy.destroy();
+    }
+  });
+  test('移除后的待发告警、恢复和提醒均跳过，合并邮件仍发送其他有效实例', async () => {
+    const sender = require('../src/services/monitorNotificationSender');
+    const removed = await MonitorInstance.findOne({ where: { active: false } });
+    const now = new Date();
+    const at = new Date(+now - 20 * 60000).toISOString();
+    const sendMail = jest.fn().mockResolvedValue({});
+    sender._setTransporter({ sendMail, close: () => {} });
+    try {
+      await MonitorNotificationDelivery.destroy({ where: {} });
+      await removed.update({ handling: { until: at } });
+      const alert = await MonitorAlert.create({
+        id: crypto.randomUUID(),
+        instanceId: removed.id,
+        ruleId: rule.id,
+        ruleVersion: rule.version,
+        ruleName: '旧实例持续异常',
+        severity: 'warning',
+        status: 'active',
+        hitCount: 9,
+        firstSeenAt: at,
+        lastSeenAt: at,
+      });
+      for (const category of ['alert', 'recovery', 'reminder']) {
+        const delivery = await MonitorNotificationDelivery.create({
+          id: crypto.randomUUID(),
+          deviceId: device.id,
+          category,
+          severity: 'warning',
+          status: 'pending',
+          notBefore: at,
+          recipientSnapshot: ['ops@example.test'],
+        });
+        const payload = {
+          instanceId: removed.id,
+          alertId: alert.id,
+          until: at,
+          category,
+          instanceLabel: '已移除实例',
+          at,
+        };
+        await MonitorNotificationEvent.create({
+          id: crypto.randomUUID(),
+          deliveryId: delivery.id,
+          sourceKey: crypto.randomUUID(),
+          payload,
+        });
+        await sender.processOne(now);
+        expect((await delivery.reload()).status).toBe('skipped');
+      }
+      expect(sendMail).not.toHaveBeenCalled();
+      const mixed = await MonitorNotificationDelivery.create({
+        id: crypto.randomUUID(),
+        deviceId: device.id,
+        category: 'recovery',
+        severity: 'info',
+        status: 'pending',
+        notBefore: at,
+        recipientSnapshot: ['ops@example.test'],
+      });
+      for (const [id, label] of [
+        [removed.id, '已移除实例'],
+        [instance.id, '有效实例'],
+      ]) {
+        await MonitorNotificationEvent.create({
+          id: crypto.randomUUID(),
+          deliveryId: mixed.id,
+          sourceKey: crypto.randomUUID(),
+          payload: { instanceId: id, instanceLabel: label, category: 'recovery', at },
+        });
+      }
+      await sender.processOne(now);
+      expect(sendMail).toHaveBeenCalledTimes(1);
+      expect(sendMail.mock.calls[0][0].text).toContain('有效实例');
+      expect(sendMail.mock.calls[0][0].text).not.toContain('已移除实例');
+    } finally {
+      await sender.stop();
+    }
+  });
   test('接口约束及流量汇总不重复；历史可读取', async () => {
     const invalid = report(1);
     invalid.traffic.receivedBytes = -1;
@@ -395,6 +514,128 @@ const crypto = require('crypto');
     expect(await MonitorAction.count()).toBe(0);
     expect(await AosDevice.count()).toBe(1);
     expect(await MonitorRule.count()).toBe(1);
+  });
+  async function changeNotifications(changes) {
+    const setting = await notifications.settings();
+    return notifications.saveSettings(actor.id, {
+      enabled: setting.enabled,
+      sendRecovery: setting.sendRecovery,
+      recipients: setting.recipients,
+      expectedVersion: setting.version,
+      ...changes,
+    });
+  }
+  async function pendingMail(category = 'test', overrides = {}) {
+    const at = new Date(Date.now() - 60000);
+    const delivery = await MonitorNotificationDelivery.create({
+      id: crypto.randomUUID(),
+      deviceId: device.id,
+      category,
+      severity: 'warning',
+      status: 'pending',
+      notBefore: at,
+      recipientSnapshot: ['ops@example.test'],
+      ...overrides,
+    });
+    await MonitorNotificationEvent.create({
+      id: crypto.randomUUID(),
+      deliveryId: delivery.id,
+      sourceKey: crypto.randomUUID(),
+      payload: {
+        category,
+        instanceId: instance.id,
+        instanceLabel: '设置回归实例',
+        at: at.toISOString(),
+      },
+    });
+    return delivery;
+  }
+  test('关闭总开关立即取消延迟、重试和已领取任务，重启用不复活旧邮件', async () => {
+    await MonitorNotificationDelivery.destroy({ where: {} });
+    const pending = await pendingMail('alert', { notBefore: new Date(Date.now() + 3600000) });
+    const retry = await pendingMail('recovery', { attempts: 2 });
+    const sending = await pendingMail('test', { status: 'sending' });
+    const sent = await pendingMail('alert', { status: 'sent', sentAt: new Date() });
+    const saved = await changeNotifications({ enabled: false });
+    expect(saved.updatedAt).toBeDefined();
+    for (const item of [pending, retry, sending])
+      expect((await item.reload()).status).toBe('skipped');
+    expect((await sent.reload()).status).toBe('sent');
+    await expect(notifications.queueTest()).rejects.toMatchObject({ statusCode: 400 });
+    await changeNotifications({ enabled: true });
+    expect(await MonitorNotificationDelivery.count({ where: { status: 'pending' } })).toBe(0);
+  });
+  test('仅关闭恢复通知取消其待发任务，发送端也拦截遗留恢复队列', async () => {
+    const sender = require('../src/services/monitorNotificationSender');
+    await MonitorNotificationDelivery.destroy({ where: {} });
+    const recovery = await pendingMail('recovery');
+    const normal = await pendingMail('alert', { notBefore: new Date(Date.now() + 3600000) });
+    await changeNotifications({ sendRecovery: false });
+    expect((await recovery.reload()).status).toBe('skipped');
+    expect((await normal.reload()).status).toBe('pending');
+    const legacy = await pendingMail('recovery');
+    const sendMail = jest.fn().mockResolvedValue({});
+    sender._setTransporter({ sendMail, close: () => {} });
+    try {
+      await sender.processOne();
+      expect((await legacy.reload()).status).toBe('skipped');
+      expect(sendMail).not.toHaveBeenCalled();
+    } finally {
+      await sender.stop();
+      await changeNotifications({ sendRecovery: true });
+    }
+  });
+  test('正文准备期间关闭再开启，旧领取任务仍不能发出', async () => {
+    const sender = require('../src/services/monitorNotificationSender');
+    await MonitorNotificationDelivery.destroy({ where: {} });
+    const delivery = await pendingMail();
+    const sendMail = jest.fn().mockResolvedValue({});
+    sender._setTransporter({ sendMail, close: () => {} });
+    const original = AosDevice.findByPk.bind(AosDevice);
+    const lookup = jest.spyOn(AosDevice, 'findByPk').mockImplementationOnce(async (...args) => {
+      await changeNotifications({ enabled: false });
+      await changeNotifications({ enabled: true });
+      return original(...args);
+    });
+    try {
+      await sender.processOne();
+      expect(lookup).toHaveBeenCalled();
+      expect(sendMail).not.toHaveBeenCalled();
+      expect((await delivery.reload()).status).toBe('skipped');
+    } finally {
+      lookup.mockRestore();
+      await sender.stop();
+    }
+  });
+  test('发送失败遇到关闭不再重试，普通失败仍正常退避', async () => {
+    const sender = require('../src/services/monitorNotificationSender');
+    await MonitorNotificationDelivery.destroy({ where: {} });
+    const delivery = await pendingMail();
+    sender._setTransporter({
+      sendMail: async () => {
+        await changeNotifications({ enabled: false });
+        throw new Error('合成SMTP失败');
+      },
+      close: () => {},
+    });
+    try {
+      await sender.processOne();
+      expect((await delivery.reload()).status).toBe('skipped');
+      await changeNotifications({ enabled: true });
+      const retry = await pendingMail();
+      sender._setTransporter({
+        sendMail: jest.fn().mockRejectedValue(new Error('合成SMTP失败')),
+        close: () => {},
+      });
+      const now = new Date();
+      await sender.processOne(now);
+      expect((await retry.reload()).status).toBe('pending');
+      expect(retry.attempts).toBe(1);
+      expect(+retry.notBefore - +now).toBe(60000);
+    } finally {
+      await sender.stop();
+      await changeNotifications({ enabled: true });
+    }
   });
   test('迁移down/up可往返，不触及设备及账号', async () => {
     const monitorMigration = require('../migrations/20260915000001-add-server-monitoring');

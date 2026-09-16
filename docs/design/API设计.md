@@ -554,6 +554,10 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ## 服务器监控契约（2026-09-15）
 
+通知设置响应增加 `updatedAt`（ISO时间），用于显示服务端已保存状态。保存 `enabled=false` 时事务内将 pending/sending 投递标记 skipped；仅 `sendRecovery=false` 时只取消 recovery 类型。重启用不恢复旧队列；已进入SMTP的邮件无法撤回，最终发送结果仍如实记录。
+
+`overview` 继续包含已移除实例（`active=false`、`state=removed`），供网站显式查看历史；默认列表、规则同步统计排除它们。已移除实例的历史接口保持可读，提交处理动作返回409（`MONITOR_INSTANCE_REMOVED`）。规则保存时禁止新增已移除实例范围（400），更新规则允许保留原有旧范围，避免无意扩大为全部实例。
+
 网站 `/api/server-monitor` 全部要求登录和唯一权限 `monitor.manage`，不要求 admin／ingestion 权限。GET `/overview` 返回安全设备、实例与规则；GET `/traffic?from=YYYY-MM-DD&to=YYYY-MM-DD&deviceIds=UUID,UUID` 查询最多 90 个北京时间日，返回按设备、日、小时聚合、收发与采集器正文流量及覆盖秒数；GET `/instances/:id/history?page=1` 返回分页告警及动作。POST `/rules` 新建，PUT `/rules/:id` 更新（expectedVersion 乐观锁），POST `/rules/test` 试匹配（rule、text，不持久化输入）；POST `/instances/:id/actions` 接受 expectedVersion、action=start/ignore/extend/end/complete/note、minutes=15/30/60/120（默认30）、note（最多500字符）。规则包含 name、enabled、mode=any/all、keywords/excludes 字符串数组、windowMinutes=1..60、threshold=1..100000、severity=info/warning/critical、deviceIds/directoryIds UUID 数组；空范围为全部。规则正文放在 config 属性。
 
 设备独立认证协议新增 GET `/api/aos-collector/v1/monitor/context` 返回 revision 与规则；POST `/monitor/reports` 一批最多 10 份报告，每份包含 id、revision、startedAt、endedAt、traffic（receivedBytes/sentBytes/collectorReceivedBytes/collectorSentBytes/quality）、instances（localId、label、state、files、results：ruleId/count/samples）。字节非负安全整数，quality=complete/gap/unavailable，状态 ready/missing/unreadable/invalid/catching_up；samples 包含 at、file、keywords、lineNumber、message、truncated，每规则最多 3 条，message 为用户确认的未经脱敏原始日志行、最多 4,000 字符。报告有独立 UUID，事务幂等，同 ID 不同载荷409。每设备最多20实例／100规则，请求体仍1MiB。旧采集器无需上传新字段；未知新端点不能阻断原订单采集。监控不受邮件／AOS来源切换影响，但仍受设备启停和身份认证约束。

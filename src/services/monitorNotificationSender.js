@@ -90,6 +90,7 @@ async function validEvents(delivery, now) {
     alerts.filter(alert => alert.status === 'active').map(alert => alert.instanceId)
   );
   return payloads.filter(payload => {
+    if (payload.category !== 'test' && !instanceById.get(payload.instanceId)?.active) return false;
     if (payload.category === 'alert') {
       const alert = alertById.get(payload.alertId);
       const instance = instanceById.get(payload.instanceId);
@@ -149,18 +150,36 @@ async function content(delivery, events) {
 async function processOne(now = new Date()) {
   const delivery = await claim(now);
   if (!delivery) return false;
+  let settingVersion;
   try {
     const setting = await MonitorNotificationSetting.findByPk(1);
-    if (!setting?.enabled) {
-      await delivery.update({ status: 'skipped', lastError: '通知已停用' });
+    settingVersion = setting?.version;
+    if (!setting?.enabled || (delivery.category === 'recovery' && !setting.sendRecovery)) {
+      await delivery.update({ status: 'skipped', lastError: '通知或恢复通知已停用' });
       return true;
     }
     const events = await validEvents(delivery, now);
     if (!events.length) {
-      await delivery.update({ status: 'skipped', lastError: '异常已恢复或处于人工静默' });
+      await delivery.update({
+        status: 'skipped',
+        lastError: '实例已移除、异常已恢复或处于人工静默',
+      });
       return true;
     }
     const message = await content(delivery, events);
+    // 准备正文期间设置可能被关闭，不能仅依赖领取任务时读取的开关。
+    const latest = await MonitorNotificationSetting.findByPk(1);
+    await delivery.reload();
+    if (
+      delivery.status !== 'sending' ||
+      !latest?.enabled ||
+      latest.version !== settingVersion ||
+      (delivery.category === 'recovery' && !latest.sendRecovery)
+    ) {
+      if (delivery.status === 'sending')
+        await delivery.update({ status: 'skipped', lastError: '通知设置已变更，取消本次投递' });
+      return true;
+    }
     await mailClient().sendMail({
       from: config.smtp.from,
       to: delivery.recipientSnapshot,
@@ -173,14 +192,30 @@ async function processOne(now = new Date()) {
       lastError: null,
     });
   } catch (error) {
+    const latest = await MonitorNotificationSetting.findByPk(1);
+    await delivery.reload();
+    if (
+      delivery.status !== 'sending' ||
+      !latest?.enabled ||
+      latest.version !== settingVersion ||
+      (delivery.category === 'recovery' && !latest.sendRecovery)
+    ) {
+      if (delivery.status === 'sending')
+        await delivery.update({ status: 'skipped', lastError: '通知设置已变更，取消失败重试' });
+      return true;
+    }
     const attempts = delivery.attempts + 1;
     const retry = RETRIES_MS[attempts - 1];
-    await delivery.update({
-      attempts,
-      status: retry ? 'pending' : 'failed',
-      notBefore: retry ? new Date(+now + retry) : delivery.notBefore,
-      lastError: String(error.message || error.name).slice(0, 500),
-    });
+    // 关闭设置可能与失败回写并发，不能把已经取消的任务重新置为待发。
+    await MonitorNotificationDelivery.update(
+      {
+        attempts,
+        status: retry ? 'pending' : 'failed',
+        notBefore: retry ? new Date(+now + retry) : delivery.notBefore,
+        lastError: String(error.message || error.name).slice(0, 500),
+      },
+      { where: { id: delivery.id, status: 'sending' } }
+    );
     logger.warn('服务器监控邮件投递失败', {
       deliveryId: delivery.id,
       attempts,

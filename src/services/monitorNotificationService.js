@@ -46,6 +46,7 @@ function settingDto(setting) {
     recipients: value.recipients,
     sendRecovery: value.sendRecovery,
     version: value.version,
+    updatedAt: value.updatedAt,
     smtp: {
       configured: smtpConfigured(),
       reusedFromOrderMailbox: config.smtp.reusedFromImap,
@@ -90,6 +91,20 @@ async function saveSettings(actorId, body) {
       },
       { transaction }
     );
+    if (!body.enabled || !body.sendRecovery)
+      await MonitorNotificationDelivery.update(
+        {
+          status: 'skipped',
+          lastError: !body.enabled ? '通知已停用，取消待发邮件' : '恢复通知已停用，取消待发邮件',
+        },
+        {
+          where: {
+            status: { [Op.in]: ['pending', 'sending'] },
+            ...(body.enabled ? { category: 'recovery' } : {}),
+          },
+          transaction,
+        }
+      );
     return settingDto(setting);
   });
 }

@@ -112,6 +112,12 @@ async function saveRule(actorId, id, body) {
         await sequelize.query("SELECT pg_advisory_xact_lock(hashtext('server-monitor-rules'))", {
           transaction,
         });
+        let row;
+        if (id) {
+          row = await MonitorRule.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+          if (!row) throw ApiError.notFound();
+          if (row.version !== body.expectedVersion) throw conflict();
+        }
         if (
           config.deviceIds.length &&
           (await AosDevice.count({ where: { id: { [Op.in]: config.deviceIds } }, transaction })) !==
@@ -121,17 +127,22 @@ async function saveRule(actorId, id, body) {
         if (config.directoryIds.length) {
           const directories = await MonitorInstance.findAll({
             where: { localId: { [Op.in]: config.directoryIds } },
-            attributes: ['localId'],
+            attributes: ['localId', 'active'],
             transaction,
           });
           if (new Set(directories.map(d => d.localId)).size !== config.directoryIds.length)
             throw ApiError.badRequest('适用实例不存在');
+          const retainedIds = row?.config.directoryIds || [];
+          if (
+            config.directoryIds.some(
+              localId =>
+                !retainedIds.includes(localId) &&
+                !directories.some(d => d.localId === localId && d.active)
+            )
+          )
+            throw ApiError.badRequest('不能新增已移除实例作为规则适用范围');
         }
-        let row;
         if (id) {
-          row = await MonitorRule.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
-          if (!row) throw ApiError.notFound();
-          if (row.version !== body.expectedVersion) throw conflict();
           await row.update({ config, version: row.version + 1 }, { transaction });
           await MonitorAlert.update(
             { status: 'rule_changed' },
@@ -506,6 +517,8 @@ async function act(actorId, id, body, now = new Date()) {
           lock: transaction.LOCK.UPDATE,
         });
         if (!instance) throw ApiError.notFound();
+        if (!instance.active)
+          throw new ApiError(409, 'MONITOR_INSTANCE_REMOVED', '实例已移除，仅可查看历史记录');
         if (instance.version !== body.expectedVersion) throw conflict();
         let handling = { ...instance.handling };
         if (['start', 'ignore', 'extend'].includes(body.action)) {
