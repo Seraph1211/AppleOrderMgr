@@ -1,4 +1,4 @@
-/* eslint-disable no-unused-vars, require-await, camelcase */
+/* eslint-disable camelcase -- 导入类型键沿用 API 的 apple_ids */
 const XLSX = require('xlsx');
 const logger = require('../utils/logger');
 const { isValidEmail, isValidPhone, isValidIdCard } = require('../utils/helpers');
@@ -17,7 +17,6 @@ const COLUMN_MAPPING = {
     国家: 'country',
     使用状态: 'status',
     国家地区: 'country',
-    是否已修改: 'isModified',
     状态: 'status',
     密保问题1: 'question1',
     密保答案1: 'answer1',
@@ -184,13 +183,6 @@ function validateAppleId(data) {
   }
 
   // 枚举值校验
-  if (data.isModified && !['是', '否'].includes(data.isModified)) {
-    errors.push({
-      field: 'isModified',
-      message: '是否已修改必须是"是"或"否"',
-    });
-  }
-
   if (data.status && !ACCOUNT_STATUSES.includes(data.status)) {
     errors.push({
       field: 'status',

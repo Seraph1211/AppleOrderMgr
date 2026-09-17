@@ -220,13 +220,6 @@ export const ordersColumns = [
 ];
 
 export const appleIdsColumns = [
-  {
-    key: 'bound',
-    label: '当前绑定',
-    defaultVisible: true,
-    sortable: false,
-    width: '160px',
-  },
   // 基础信息
   {
     key: 'appleId',
@@ -248,7 +241,7 @@ export const appleIdsColumns = [
     key: 'notes',
     label: '备注',
     width: '150px',
-    defaultVisible: true,
+    defaultVisible: false,
     sortable: true,
     pinned: false,
   },
@@ -263,25 +256,25 @@ export const appleIdsColumns = [
   },
   // 账号属性
   {
-    key: 'country',
-    label: '国家地区',
-    width: '120px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  {
-    key: 'isModified',
-    label: '已修改',
-    width: '100px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  {
     key: 'status',
     label: '状态',
     width: '100px',
+    defaultVisible: true,
+    sortable: true,
+    pinned: false,
+  },
+  {
+    key: 'bound',
+    label: '当前绑定',
+    defaultVisible: true,
+    sortable: false,
+    width: '160px',
+    pinned: false,
+  },
+  {
+    key: 'country',
+    label: '国家地区',
+    width: '120px',
     defaultVisible: true,
     sortable: true,
     pinned: false,

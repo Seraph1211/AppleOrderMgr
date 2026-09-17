@@ -56,7 +56,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       status: '未使用',
       notes: '唯一备注',
       recipient_count: 1,
+      recipient_names: ['欧阳明'],
       order_count: 2,
+      last_order_date: '2026-09-17T00:00:00Z',
       recipients: [{ id: 1, name: '欧阳明' }],
     };
     const qa = {
@@ -228,7 +230,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       );
     });
     await page.goto('http://127.0.0.1:5173/apple-ids');
-    await page.getByText('唯一备注', { exact: true }).waitFor();
+    await page.getByText('a@example.invalid', { exact: true }).waitFor();
     await page.goto('http://127.0.0.1:5173/recipients');
     await page.getByText('13900000000', { exact: true }).waitFor();
     const restoredHeaders = (await page.locator('thead th').allTextContents())
@@ -330,12 +332,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       .last()
       .click();
     await page.locator('tbody input[type="checkbox"]').first().check();
-    const [, download] = await Promise.all([
+    await Promise.all([
       page.waitForRequest(request => request.url().includes('/api/recipients/export')),
-      page.waitForEvent('download'),
       page.getByRole('button', { name: '导出录入信息' }).click(),
     ]);
-    assert.match(download.suggestedFilename(), /^取机人录入信息_\d{4}-\d{2}-\d{2}\.txt$/);
+    const importInfoDialog = page.getByRole('dialog', { name: '选中记录的录入信息' });
+    await importInfoDialog.waitFor();
+    assert.equal(
+      await importInfoDialog.getByLabel('录入信息').inputValue(),
+      'a@example.invalid,synthetic-pass,,,1,指定地址,13800000000,欧阳,明'
+    );
+    await importInfoDialog.getByRole('button', { name: '复制', exact: true }).click();
+    await importInfoDialog.getByRole('button', { name: '已复制', exact: true }).waitFor();
     assert(
       requests.some(
         request =>
@@ -344,8 +352,56 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           request.query.ids === '1'
       )
     );
+    await importInfoDialog.getByRole('button', { name: '关闭', exact: true }).last().click();
     await page.goto('http://127.0.0.1:5173/apple-ids');
-    await page.getByText('唯一备注', { exact: true }).waitFor();
+    await page.getByText('a@example.invalid', { exact: true }).waitFor();
+    const appleHeaders = (await page.locator('thead th').allTextContents())
+      .map(value => value.trim())
+      .filter(Boolean);
+    assert.deepEqual(appleHeaders.slice(0, 7), [
+      'Apple ID',
+      '密码',
+      '状态',
+      '当前绑定',
+      '国家地区',
+      '订单数',
+      '最后下单',
+    ]);
+    assert.equal(appleHeaders.includes('已修改'), false);
+    assert.equal(await page.getByText('全部国家地区', { exact: true }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: '欧阳明', exact: true }).count(), 1);
+    assert.match(
+      await page.getByRole('table').getByText('未使用', { exact: true }).getAttribute('class'),
+      /badge/
+    );
+    await Promise.all([
+      page.waitForResponse(
+        response => new URL(response.url()).searchParams.get('keyword') === '欧阳明'
+      ),
+      page.getByPlaceholder('搜索 Apple ID 或取机人姓名...').fill('欧阳明'),
+    ]);
+    assert(
+      requests.some(
+        request => request.path === '/api/apple-ids' && request.query.keyword === '欧阳明'
+      )
+    );
+    await page.getByPlaceholder('搜索 Apple ID 或取机人姓名...').fill('');
+    await page.getByLabel('状态筛选').selectOption('使用中');
+    await page.getByLabel('当前绑定筛选').selectOption('true');
+    const filterCardControls = await page
+      .locator('main .card')
+      .first()
+      .locator('input, select')
+      .evaluateAll(elements =>
+        elements.map(
+          element => element.getAttribute('aria-label') || element.getAttribute('placeholder')
+        )
+      );
+    assert.deepEqual(filterCardControls, [
+      '搜索 Apple ID 或取机人姓名...',
+      '状态筛选',
+      '当前绑定筛选',
+    ]);
     await page.getByRole('button', { name: '编辑 Apple ID 1' }).click();
     await page.getByLabel('答案 1', { exact: true }).waitFor();
     await page.waitForFunction(() =>
@@ -383,7 +439,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     }
     assert.deepEqual(errors, []);
     process.stdout.write(
-      'PASS: 默认列、TAG多选与Apple ID搜索、完整编辑/换绑、导入预览、历史关联、逐行TXT导出、密保回显、默认状态、桌面与375px弹窗\n'
+      'PASS: 默认列、TAG多选、Apple ID/取机人搜索、录入信息弹窗复制、完整编辑/换绑、导入预览、历史关联、密保回显、默认状态、桌面与375px弹窗\n'
     );
     await context.close();
   } finally {

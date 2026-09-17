@@ -25,7 +25,7 @@ const { lockProfiles } = require('../services/profileBindingService');
 /**
  * 把 AppleId 实例序列化为对外对象
  * @param {Object} appleId - Sequelize AppleId JSON 形态
- * @param {Object} stats - 统计数据 { orderCount, recipientCount, lastOrderDate }
+ * @param {Object} stats - 统计数据 { orderCount, recipientCount, recipientNames, lastOrderDate }
  * @param {boolean} includePassword - 是否包含密码
  * @returns {Object} 对外对象
  */
@@ -35,10 +35,10 @@ function serializeAppleId(appleId, stats = {}, includePassword = false) {
     apple_id: appleId.appleId,
     notes: appleId.notes,
     country: appleId.country,
-    is_modified: appleId.isModified,
     status: appleId.status,
     order_count: stats.orderCount ?? 0,
     recipient_count: stats.recipientCount ?? 0,
+    recipient_names: stats.recipientNames ?? [],
     last_order_date: stats.lastOrderDate ?? null,
     created_at: appleId.createdAt,
     updated_at: appleId.updatedAt,
@@ -60,6 +60,7 @@ async function listAppleIds(req, res) {
     const limit = parsePositiveInt(req.query.limit, { defaultValue: 20, min: 1, max: 100 });
 
     const where = {};
+    const andConditions = [];
     if (req.query.status) {
       if (!ACCOUNT_STATUSES.includes(req.query.status)) {
         throw ApiError.badRequest(`Apple ID 状态非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
@@ -74,18 +75,27 @@ async function listAppleIds(req, res) {
     if (req.query.keyword) {
       const kw = String(req.query.keyword).trim();
       if (kw.length > 0) {
+        const pattern = sequelize.escape(`%${kw}%`);
         where[Op.or] = [
           { appleId: { [Op.iLike]: `%${kw}%` } },
-          { notes: { [Op.iLike]: `%${kw}%` } },
+          sequelize.literal(`EXISTS (
+            SELECT 1 FROM recipients r
+            WHERE r.apple_id_ref="AppleId".id
+              AND (r.last_name ILIKE ${pattern}
+                OR r.first_name ILIKE ${pattern}
+                OR concat_ws('', r.last_name, r.first_name) ILIKE ${pattern})
+          )`),
         ];
       }
     }
 
     if (['true', 'false'].includes(req.query.bound)) {
-      where[Op.and] = sequelize.literal(
-        `${req.query.bound === 'false' ? 'NOT ' : ''}EXISTS (SELECT 1 FROM recipients r WHERE r.apple_id_ref="AppleId".id)`
+      const boundExists = 'EXISTS (SELECT 1 FROM recipients r WHERE r.apple_id_ref="AppleId".id)';
+      andConditions.push(
+        sequelize.literal(`${req.query.bound === 'false' ? 'NOT ' : ''}${boundExists}`)
       );
     }
+    if (andConditions.length > 0) where[Op.and] = andConditions;
     const { count, rows } = await AppleId.findAndCountAll({
       where,
       order: [['id', 'DESC']],
@@ -97,7 +107,7 @@ async function listAppleIds(req, res) {
     // 聚合每个 Apple ID 的订单数、收件人数、最后下单日期（一次性 in 查询，避免 N+1）
     const ids = rows.map(r => r.id);
     const orderStats = await getOrderStatsByAppleIds(ids);
-    const recipientCounts = await getRecipientCountsByAppleIds(ids);
+    const recipientStats = await getRecipientStatsByAppleIds(ids);
     const includePassword = Boolean(req.user?.permissions?.includes(PERMISSIONS.APPLE_IDS_READ));
     res.set('Cache-Control', 'no-store');
 
@@ -108,7 +118,8 @@ async function listAppleIds(req, res) {
             row.toJSON(),
             {
               orderCount: orderStats[row.id]?.orderCount || 0,
-              recipientCount: recipientCounts[row.id] || 0,
+              recipientCount: recipientStats[row.id]?.count || 0,
+              recipientNames: recipientStats[row.id]?.names || [],
               lastOrderDate: orderStats[row.id]?.lastOrderDate || null,
             },
             includePassword
@@ -159,20 +170,22 @@ async function getOrderStatsByAppleIds(ids) {
 
 /**
  * @param {number[]} ids - Apple ID 列表
- * @returns {Promise<Object>} { [id]: count }
+ * @returns {Promise<Object>} { [id]: { count, names } }
  */
-async function getRecipientCountsByAppleIds(ids) {
+async function getRecipientStatsByAppleIds(ids) {
   if (ids.length === 0) return {};
   const { Recipient } = require('../models');
   const rows = await Recipient.findAll({
-    attributes: ['appleIdRef', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+    attributes: ['id', 'appleIdRef', 'lastName', 'firstName'],
     where: { appleIdRef: { [Op.in]: ids } },
-    group: ['appleIdRef'],
+    order: [['id', 'ASC']],
     raw: true,
   });
   const out = {};
   rows.forEach(r => {
-    out[r.appleIdRef] = parseInt(r.count, 10);
+    if (!out[r.appleIdRef]) out[r.appleIdRef] = { count: 0, names: [] };
+    out[r.appleIdRef].count += 1;
+    out[r.appleIdRef].names.push(`${r.lastName}${r.firstName}`);
   });
   return out;
 }
@@ -193,7 +206,7 @@ async function getAppleIdDetail(req, res) {
     }
 
     const orderStats = await getOrderStatsByAppleIds([id]);
-    const recipientCounts = await getRecipientCountsByAppleIds([id]);
+    const recipientStats = await getRecipientStatsByAppleIds([id]);
 
     const includePassword = Boolean(req.user?.permissions?.includes(PERMISSIONS.APPLE_IDS_READ));
     res.set('Cache-Control', 'no-store');
@@ -204,12 +217,13 @@ async function getAppleIdDetail(req, res) {
     const securityQa = includeSecrets ? plain.securityQa : undefined;
     delete plain.securityQa;
     const { Recipient } = require('../models');
-    const recipients = hasPermission(req, PERMISSIONS.RECIPIENTS_READ)
-      ? await Recipient.findAll({
+    let recipients = [];
+    if (hasPermission(req, PERMISSIONS.RECIPIENTS_READ)) {
+      recipients = await Recipient.findAll({
         where: { appleIdRef: id },
         attributes: ['id', 'lastName', 'firstName'],
-      })
-      : [];
+      });
+    }
 
     res.json({
       success: true,
@@ -218,7 +232,8 @@ async function getAppleIdDetail(req, res) {
           plain,
           {
             orderCount: orderStats[id]?.orderCount || 0,
-            recipientCount: recipientCounts[id] || 0,
+            recipientCount: recipientStats[id]?.count || 0,
+            recipientNames: recipientStats[id]?.names || [],
             lastOrderDate: orderStats[id]?.lastOrderDate || null,
           },
           includePassword
@@ -310,7 +325,7 @@ async function updateAppleId(req, res) {
       throw ApiError.badRequest('Apple ID 必须是正整数', { received: req.params.id });
     }
 
-    const { password, notes, country, status, security_qa, is_modified } = req.body || {};
+    const { password, notes, country, status, security_qa } = req.body || {};
 
     validateAccountText({ password, notes, country });
     if (status !== undefined && !ACCOUNT_STATUSES.includes(status)) {
@@ -340,13 +355,6 @@ async function updateAppleId(req, res) {
       assertPermission(req, PERMISSIONS.APPLE_IDS_SECRETS_READ);
       updates.securityQa = validateSecurityQa(security_qa);
     }
-    if (is_modified !== undefined) updates.isModified = is_modified;
-
-    // 一旦发生过任意字段更新，标记为 is_modified = true（用于审计）
-    if (Object.keys(updates).length > 0 && is_modified === undefined) {
-      updates.isModified = true;
-    }
-
     await sequelize.transaction(async transaction => {
       await lockProfiles(transaction, req.user?.id);
       await appleId.update(updates, { transaction });

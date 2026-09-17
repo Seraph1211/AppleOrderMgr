@@ -154,12 +154,12 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 
 ## Apple ID 与取机人
 
-- Apple ID 列表 query 为 page、limit、status、country、keyword；新增接收 apple_id、password、notes、country、status、security_qa，更新另支持 is_modified。返回使用 snake_case。经 2026-09-17 用户确认，持有 `apple_ids.read` 的用户在所有环境均可通过列表和详情读取完整 `password`；普通请求不返回密保，详情 includeSecrets=true 另要求 secrets 权限。响应 `Cache-Control: no-store`，存储继续加密，日志不记录明文。
+- Apple ID 列表 query 为 page、limit、status、country、bound、keyword；前端筛选区使用 keyword、status、bound，不展示国家地区筛选。`keyword` 同时模糊搜索 Apple ID 和当前绑定取机人的完整姓名、姓或名；`bound` 仅接受 true／false。列表返回 `recipient_count` 和 `recipient_names`，当前绑定列直接展示姓名。新增接收 apple_id、password、notes、country、status、security_qa；更新不再接收或维护 is_modified。返回使用 snake_case。经 2026-09-17 用户确认，持有 `apple_ids.read` 的用户在所有环境均可通过列表和详情读取完整 `password`；普通请求不返回密保，详情 includeSecrets=true 另要求 secrets 权限。响应 `Cache-Control: no-store`，存储继续加密，日志不记录明文。
 - 取机人列表 query 包含 page、limit、tags、status、apple_id_ref、keyword；`tags` 接受数组或兼容逗号分隔值，逐项精确匹配，同一维度按 OR 组合，兼容旧单值 `tag`。数组形式可保留 TAG 内部的逗号。`keyword` 只搜索姓名、当前 Apple ID、完整身份证号或身份证后四位；完整身份证走盲索引精确匹配，不对密文字段做模糊查询。`GET /recipients/filter-options` 返回数据库中非空原始 TAG。新增必须 lastName、firstName、idCardNumber，关联写入使用 appleIdRef。写入为 camelCase，不按列表字段直接回传。
 - 经 2026-09-17 用户确认，持有 `recipients.read` 的用户在所有环境均可通过列表和详情读取完整 `id_card_number`、`phone`，响应 `Cache-Control: no-store`。详细地址在具有 `recipients.edit` 或 `recipients.export_sensitive` 权限时返回；仍兼容本地管理员敏感显示配置，其他请求返回 `street_address=null`。订单快照及导出权限不随此变更扩大。
 - 下单手机号 `phone` 和真实联系电话 `realPhone` 非必填；新增／编辑支持省略、null、空字符串或纯空白，空值规范为 null；编辑时省略代表不修改，显式空值代表清空，非空须为合法大陆手机号。
 - 联系方式/地址批量生成接收 recipient_ids；联系方式生成会覆盖选中记录已有的电话和邮箱，电话满足 `^1[3-9]\\d{9}$`，邮箱为“电话@vvv8.net”。前端在生成意图首次确认后，若选中记录已有对应数据，必须再次确认覆盖；取消二次确认不得调用生成接口。绑定 Apple ID 使用 recipientIds，保留现状差异，不能统一猜测。
-- 取机人导出需要 export 权限；显式 includeSensitive=true 必须另有 recipients.export_sensitive 权限，否则 403。完整导出响应为 UTF-8 TXT，只含逐条“信息导入模板”值，每条一行且无表头；默认导出仍为脱敏 Excel 并处理公式注入。
+- 取机人导出需要 export 权限；显式 includeSensitive=true 必须另有 recipients.export_sensitive 权限，否则 403。完整导出响应为 UTF-8 文本，只含逐条“信息导入模板”值，每条一行且无表头；页面只允许对已勾选记录请求完整文本，并在弹窗中展示及一键复制，不自动下载文件。默认导出仍为脱敏 Excel 并处理公式注入。
 
 来源：[Apple ID 控制器](../../src/controllers/appleIdController.js)、[取机人控制器](../../src/controllers/recipientController.js)。
 

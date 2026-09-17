@@ -75,7 +75,7 @@ export const deleteRecipient = id => {
 /**
  * 导出取机人数据
  * @param {Object} params - 导出筛选参数
- * @returns {Promise<Blob>} 完整录入信息 TXT 或脱敏 Excel 文件内容
+ * @returns {Promise<Blob>} 完整录入信息文本或脱敏 Excel 文件内容
  */
 export const exportRecipients = (params = {}) => {
   return client.get('/recipients/export', {

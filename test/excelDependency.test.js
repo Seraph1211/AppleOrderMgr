@@ -1,4 +1,3 @@
-/* eslint-disable camelcase -- 合成数据保留既有接口字段 */
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
@@ -206,10 +205,9 @@ describe('固定 SheetJS 制品与读写兼容', () => {
       validateAppleId({
         appleId: 'sample@example.invalid',
         password: 'synthetic-value',
-        isModified: 'bad',
         status: 'bad',
       }).map(item => item.field)
-    ).toEqual(['isModified', 'status']);
+    ).toEqual(['status']);
   });
 });
 

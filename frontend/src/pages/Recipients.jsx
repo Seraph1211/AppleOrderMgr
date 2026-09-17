@@ -46,6 +46,7 @@ import { recipientsColumns } from '../constants/tableColumns';
 import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status';
 import { PERMISSIONS } from '../constants/permissions';
 import TagMultiSelect from '../components/TagMultiSelect';
+import RecipientImportInfoModal from '../components/RecipientImportInfoModal';
 
 export default function Recipients() {
   const { can } = useAuth();
@@ -73,6 +74,10 @@ export default function Recipients() {
   const [showAlertModal, setShowAlertModal] = useState(false);
   const [alertMessage, setAlertMessage] = useState('');
   const [showExportConfirm, setShowExportConfirm] = useState(false);
+  const [showImportInfo, setShowImportInfo] = useState(false);
+  const [importInfo, setImportInfo] = useState('');
+  const [importInfoLoading, setImportInfoLoading] = useState(false);
+  const [importInfoError, setImportInfoError] = useState('');
   const [showBindModal, setShowBindModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -353,16 +358,42 @@ export default function Recipients() {
     setPendingAddressParams(null);
   };
 
-  // 导出录入信息 TXT 或无敏感权限时的脱敏 Excel
+  // 完整录入信息在弹窗展示；无敏感权限时保留脱敏 Excel 下载。
   const handleExport = () => {
-    // 如果没有选中任何记录，显示确认对话框
+    if (can(PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE)) {
+      if (selectedIds.length === 0) {
+        setAlertMessage('请先选择需要查看录入信息的取机人记录');
+        setShowAlertModal(true);
+        return;
+      }
+      loadSelectedImportInfo();
+      return;
+    }
+
     if (selectedIds.length === 0) {
       setShowExportConfirm(true);
       return;
     }
 
-    // 有选中记录，直接导出
     executeExport();
+  };
+
+  const loadSelectedImportInfo = async () => {
+    setShowImportInfo(true);
+    setImportInfo('');
+    setImportInfoError('');
+    setImportInfoLoading(true);
+    try {
+      const blob = await exportRecipients({
+        ids: selectedIds.join(','),
+        includeSensitive: true,
+      });
+      setImportInfo(await blob.text());
+    } catch (error) {
+      setImportInfoError(error.message || '生成录入信息失败，请稍后重试');
+    } finally {
+      setImportInfoLoading(false);
+    }
   };
 
   const executeExport = async () => {
@@ -376,14 +407,12 @@ export default function Recipients() {
           };
       const blob = await exportRecipients({
         ...params,
-        includeSensitive: can(PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE),
+        includeSensitive: false,
       });
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = can(PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE)
-        ? `取机人录入信息_${new Date().toISOString().slice(0, 10)}.txt`
-        : `取机人数据_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      link.download = `取机人数据_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -897,6 +926,15 @@ export default function Recipients() {
           selectedRecipients={selectedRecipients}
           onClose={() => setShowBindModal(false)}
           onConfirm={handleConfirmBind}
+        />
+      )}
+
+      {showImportInfo && (
+        <RecipientImportInfoModal
+          content={importInfo}
+          loading={importInfoLoading}
+          error={importInfoError}
+          onClose={() => setShowImportInfo(false)}
         />
       )}
 

@@ -6,7 +6,14 @@ jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),
 }));
 jest.mock('../src/models', () => ({
-  sequelize: { query: jest.fn(), fn: jest.fn(), col: jest.fn(), where: jest.fn() },
+  sequelize: {
+    query: jest.fn(),
+    fn: jest.fn(),
+    col: jest.fn(),
+    where: jest.fn(),
+    escape: jest.fn(value => `'${value}'`),
+    literal: jest.fn(value => ({ literal: value })),
+  },
   AppleId: { findAndCountAll: jest.fn(), findByPk: jest.fn() },
   Recipient: { findAndCountAll: jest.fn(), findByPk: jest.fn(), findAll: jest.fn() },
   Order: { findAll: jest.fn() },
@@ -104,6 +111,34 @@ describe('基础资料读取权限与选填联系电话', () => {
       expect(next).not.toHaveBeenCalled();
     }
   );
+
+  test('Apple ID 列表按账号或取机人姓名搜索，并返回当前绑定姓名', async () => {
+    const appleRow = {
+      id: 1,
+      toJSON: () => ({ id: 1, appleId: 'synthetic@example.invalid', status: '使用中' }),
+    };
+    models.AppleId.findAndCountAll.mockResolvedValue({ count: 1, rows: [appleRow] });
+    models.Recipient.findAll.mockResolvedValue([
+      { id: 2, appleIdRef: 1, lastName: '欧阳', firstName: '明' },
+    ]);
+    const res = response();
+    await appleController.listAppleIds(
+      {
+        query: { keyword: '欧阳明', bound: 'true' },
+        user: { permissions: ['apple_ids.read'] },
+      },
+      res
+    );
+
+    const query = models.AppleId.findAndCountAll.mock.calls[0][0];
+    expect(query.where[Op.or]).toHaveLength(2);
+    expect(models.sequelize.literal).toHaveBeenCalledWith(expect.stringContaining('concat_ws'));
+    expect(models.sequelize.literal).toHaveBeenCalledWith(expect.stringContaining('EXISTS'));
+    expect(res.json.mock.calls[0][0].data.apple_ids[0]).toMatchObject({
+      recipient_count: 1,
+      recipient_names: ['欧阳明'],
+    });
+  });
 
   test.each([undefined, null, '', '   '])('空联系电话 %s 接受并清空', value => {
     expect(normalizeRecipientPhone(value)).toBeNull();

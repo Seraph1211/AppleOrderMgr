@@ -23,7 +23,6 @@ export default function AppleIds() {
   const [pageError, setPageError] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterCountry, setFilterCountry] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -43,14 +42,7 @@ export default function AppleIds() {
 
   useEffect(() => {
     loadAppleIds();
-  }, [
-    pagination.currentPage,
-    pagination.pageSize,
-    searchTerm,
-    filterCountry,
-    filterStatus,
-    filterBound,
-  ]);
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterStatus, filterBound]);
 
   const loadAppleIds = async () => {
     setLoading(true);
@@ -60,7 +52,6 @@ export default function AppleIds() {
         page: pagination.currentPage,
         limit: pagination.pageSize,
         keyword: searchTerm || undefined,
-        country: filterCountry || undefined,
         status: filterStatus || undefined,
         bound: filterBound || undefined,
       };
@@ -73,9 +64,9 @@ export default function AppleIds() {
             password: item.password || '-',
             notes: item.notes || '',
             bound: item.recipient_count > 0,
+            boundRecipientNames: item.recipient_names || [],
             securityQa: item.security_qa || null,
             country: item.country || '-',
-            isModified: item.is_modified ? '是' : '否',
             status: item.status,
             orderCount: item.order_count || 0,
             lastOrderDate: item.last_order_date
@@ -196,13 +187,11 @@ export default function AppleIds() {
       case 'bound':
         return (
           <button className="text-primary underline" onClick={() => setDetailItem(item)}>
-            {item.bound ? '已绑定 · 查看取机人' : '未绑定'}
+            {item.bound ? item.boundRecipientNames.join('、') : '未绑定'}
           </button>
         );
       case 'country':
         return <span className="text-sm text-gray-600">{item.country}</span>;
-      case 'isModified':
-        return <span className="text-sm text-gray-600">{item.isModified}</span>;
       case 'status': {
         const badge = getStatusBadge(item.status);
         return <span className={`badge ${badge.class}`}>{badge.text}</span>;
@@ -299,6 +288,36 @@ export default function AppleIds() {
       {/* 搜索和筛选 */}
       <div className="card">
         <div className="flex flex-wrap items-center gap-3">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="搜索 Apple ID 或取机人姓名..."
+              value={searchTerm}
+              onChange={e => {
+                setSearchTerm(e.target.value);
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+              className="input pl-10 w-full"
+            />
+          </div>
+          <select
+            aria-label="状态筛选"
+            value={filterStatus}
+            onChange={e => {
+              setFilterStatus(e.target.value);
+              setPagination(previous => ({ ...previous, currentPage: 1 }));
+            }}
+            className="input flex-shrink-0"
+            style={{ width: 'auto' }}
+          >
+            <option value="">全部状态</option>
+            {STATUS_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
           <select
             aria-label="当前绑定筛选"
             className="input"
@@ -312,42 +331,6 @@ export default function AppleIds() {
             <option value="">全部绑定状态</option>
             <option value="true">已绑定</option>
             <option value="false">未绑定</option>
-          </select>
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <input
-              type="text"
-              placeholder="搜索 Apple ID..."
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className="input pl-10 w-full"
-            />
-          </div>
-          <select
-            value={filterCountry}
-            onChange={e => setFilterCountry(e.target.value)}
-            className="input flex-shrink-0"
-            style={{ width: 'auto' }}
-          >
-            <option value="">全部国家地区</option>
-            <option value="美国">美国</option>
-            <option value="中国">中国</option>
-            <option value="日本">日本</option>
-            <option value="英国">英国</option>
-            <option value="澳大利亚">澳大利亚</option>
-          </select>
-          <select
-            value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
-            className="input flex-shrink-0"
-            style={{ width: 'auto' }}
-          >
-            <option value="">全部状态</option>
-            {STATUS_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
           </select>
           <button
             onClick={() => setShowColumnConfig(true)}

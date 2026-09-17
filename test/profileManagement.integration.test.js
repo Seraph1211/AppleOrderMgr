@@ -134,6 +134,26 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
     ).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
   });
 
+  test('Apple ID 列表可按当前取机人姓名搜索并返回绑定姓名', async () => {
+    const a = await account({ status: '使用中' });
+    const recipient = await person('欧阳明');
+    await changeBinding(recipient, a.id);
+    const res = response();
+
+    await appleController.listAppleIds(
+      { query: { keyword: '欧阳明', bound: 'true', status: '使用中' }, user },
+      res
+    );
+
+    expect(res.json.mock.lastCall[0].data.apple_ids).toEqual([
+      expect.objectContaining({
+        id: a.id,
+        recipient_count: 1,
+        recipient_names: ['欧阳明'],
+      }),
+    ]);
+  });
+
   test('过期绑定值拒绝，不会抢占；删除账号关闭历史并清空当前关联', async () => {
     const a = await account(),
       b = await account(),

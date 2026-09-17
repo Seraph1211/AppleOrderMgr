@@ -82,13 +82,6 @@ module.exports = sequelize => {
           },
         },
       },
-      isModified: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: false,
-        field: 'is_modified',
-        comment: '是否被修改过（账号信息变更标记）',
-      },
       status: {
         type: DataTypes.STRING(20),
         allowNull: false,
@@ -139,10 +132,6 @@ module.exports = sequelize => {
         {
           fields: ['country'],
           name: 'idx_apple_ids_country',
-        },
-        {
-          fields: ['is_modified'],
-          name: 'idx_apple_ids_is_modified',
         },
         {
           fields: ['last_order_at'],
