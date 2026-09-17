@@ -33,10 +33,39 @@ const { ORDER_STATUSES, PERMISSIONS, normalizeOrderStatus } = require('../consta
 const { buildOrderStatusCondition } = require('../utils/orderStatusFilter');
 const { maskIdCard, maskPhone, escapeSpreadsheetFormula } = require('../utils/masking');
 const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
-const { formatPickupTime, normalizePickupDate } = require('../utils/orderPickupTime');
+const {
+  formatPickupDate,
+  formatPickupTime,
+  formatPickupTimeSlot,
+  normalizePickupDate,
+} = require('../utils/orderPickupTime');
 
 const MAX_MULTI_SELECT_ITEMS = 100;
 const MAX_FILTER_VALUE_LENGTH = 255;
+
+function getPickupReferenceTime(order) {
+  return order.officialStatusObservedAt || order.lastCrawledAt || null;
+}
+
+function serializePickupFields(order) {
+  const referenceTime = getPickupReferenceTime(order);
+  return {
+    pickup_time: formatPickupTime(order.officialFulfillmentMessage, referenceTime),
+    official_pickup_date: formatPickupDate(order.officialFulfillmentMessage, referenceTime),
+    official_pickup_time_slot: formatPickupTimeSlot(
+      order.officialFulfillmentMessage,
+      referenceTime
+    ),
+  };
+}
+
+function serializeOfficialProductsWithPickup(order) {
+  const referenceTime = getPickupReferenceTime(order);
+  return serializePublicProducts(order.officialProducts).map(product => ({
+    ...product,
+    pickupTime: formatPickupTime(product.fulfillmentMessage, referenceTime),
+  }));
+}
 
 /**
  * 把 Order（含 appleAccount/recipient）序列化为对外列表项
@@ -102,7 +131,7 @@ function serializeOrderListItem(
     official_order_amount: plain.officialOrderAmount,
     official_order_amount_currency: plain.officialOrderAmountCurrency,
     official_order_amount_parse_error: plain.officialOrderAmountParseError,
-    official_products: serializePublicProducts(plain.officialProducts),
+    official_products: serializeOfficialProductsWithPickup(plain),
     validation_status: plain.validationStatus,
     validation_issues: serializeValidationIssues(plain.validationIssues),
     anomaly_detected_at: plain.anomalyDetectedAt,
@@ -119,7 +148,7 @@ function serializeOrderListItem(
     pickup_store_code: plain.pickupStoreCode,
     pickup_code: plain.pickupCode,
     pickup_time_slot: plain.pickupTimeSlot,
-    pickup_time: formatPickupTime(plain.officialFulfillmentMessage),
+    ...serializePickupFields(plain),
     actual_pickup_date: plain.actualPickupDate,
     payment_method: plain.paymentMethod,
     payer_name: plain.payerName,
@@ -193,6 +222,8 @@ function serializeOrderDetail(
       plain.recipient.tag !== plain.sourceRecipientTag
     ),
     apple_id: appleId,
+    recipient_email: plain.recipientEmail,
+    recipient_phone: includeRecipientPhone ? plain.recipientPhone : maskPhone(plain.recipientPhone),
     recipient,
     recipient_tag:
       plain.ingestionSource === 'aos'
@@ -206,7 +237,7 @@ function serializeOrderDetail(
     official_order_amount: plain.officialOrderAmount,
     official_order_amount_currency: plain.officialOrderAmountCurrency,
     official_order_amount_parse_error: plain.officialOrderAmountParseError,
-    official_products: serializePublicProducts(plain.officialProducts),
+    official_products: serializeOfficialProductsWithPickup(plain),
     validation_status: plain.validationStatus,
     validation_issues: serializeValidationIssues(plain.validationIssues),
     anomaly_detected_at: plain.anomalyDetectedAt,
@@ -221,9 +252,10 @@ function serializeOrderDetail(
     pickup_store: plain.pickupStore,
     pickup_store_code: plain.pickupStoreCode,
     pickup_code: plain.pickupCode,
+    pickup_time_slot: plain.pickupTimeSlot,
+    ...serializePickupFields(plain),
     order_date: plain.orderDate,
     order_placed_date: plain.orderPlacedDate,
-    official_pickup_date: plain.officialPickupDate,
     actual_pickup_date: plain.actualPickupDate,
     last_crawled_at: plain.lastCrawledAt,
     crawl_fail_count: plain.crawlFailCount,
@@ -360,7 +392,29 @@ function buildListFilters(query) {
   if (query.pickupDate !== undefined && query.pickupDate !== '') {
     const pickupDate = normalizePickupDate(query.pickupDate);
     if (!pickupDate) throw ApiError.badRequest('pickupDate 必须是有效的 YYYY-MM-DD 日期');
-    where.officialFulfillmentMessage = { [Op.iLike]: `%${pickupDate}%` };
+    const isoPickupDate = pickupDate.replaceAll('/', '-');
+    const referenceDateSql =
+      '(COALESCE("official_status_observed_at", "last_crawled_at") ' +
+      'AT TIME ZONE \'Asia/Shanghai\')::date';
+    where[Op.and] = (where[Op.and] || []).concat({
+      [Op.or]: [
+        { officialFulfillmentMessage: { [Op.iLike]: `%${pickupDate}%` } },
+        {
+          [Op.and]: [
+            { officialFulfillmentMessage: { [Op.iLike]: '%今天%' } },
+            Sequelize.literal(`${referenceDateSql} = ${sequelize.escape(isoPickupDate)}::date`),
+          ],
+        },
+        {
+          [Op.and]: [
+            { officialFulfillmentMessage: { [Op.iLike]: '%明天%' } },
+            Sequelize.literal(
+              `${referenceDateSql} + INTERVAL '1 day' = ${sequelize.escape(isoPickupDate)}::date`
+            ),
+          ],
+        },
+      ],
+    });
   }
   if (query.recipientName) {
     const recipientName = String(query.recipientName).trim();

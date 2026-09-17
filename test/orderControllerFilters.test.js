@@ -87,9 +87,15 @@ describe('订单列表组合筛选', () => {
     });
 
     expect(where.pickupStore[Op.in]).toEqual(['Apple Store 零售店', 'Apple 成都万象城']);
-    expect(where.officialFulfillmentMessage[Op.iLike]).toBe('%2026/09/19%');
     expect(where[Op.and][0].val).toContain("item->>'name' IN");
     expect(where[Op.and][0].val).toContain('iPhone 18 Pro Max 512GB 勃艮第酒红色');
+    const pickupAlternatives = where[Op.and][1][Op.or];
+    const [absoluteCondition, todayCondition, tomorrowCondition] = pickupAlternatives;
+    expect(absoluteCondition.officialFulfillmentMessage[Op.iLike]).toBe('%2026/09/19%');
+    expect(todayCondition[Op.and][0].officialFulfillmentMessage[Op.iLike]).toBe('%今天%');
+    expect(todayCondition[Op.and][1].val).toContain("'2026-09-19'::date");
+    expect(tomorrowCondition[Op.and][0].officialFulfillmentMessage[Op.iLike]).toBe('%明天%');
+    expect(tomorrowCondition[Op.and][1].val).toContain("INTERVAL '1 day'");
   });
 
   test.each(['2026/09/19', '2026-02-30', 'bad'])('拒绝非法取货日期 %s', pickupDate => {
@@ -112,6 +118,7 @@ describe('邮件快照展示回归', () => {
     id: 1,
     appleId: 'account@example.test',
     recipientName: '测试取机人',
+    recipientEmail: 'contact@example.test',
     recipientPhone: '13800138000',
     tag: '测试渠道',
     products: [],
@@ -129,9 +136,11 @@ describe('邮件快照展示回归', () => {
     expect(detail.apple_id).toMatchObject({ id: null, apple_id: snapshot.appleId });
     expect(detail.recipient).toMatchObject({ id: null, name: snapshot.recipientName });
     expect(detail.recipient.phone).not.toBe(snapshot.recipientPhone);
+    expect(detail.recipient_email).toBe(snapshot.recipientEmail);
+    expect(detail.recipient_phone).not.toBe(snapshot.recipientPhone);
   });
 
-  test('列表从官网履约提示派生取货时间但详情原字段不变', () => {
+  test('列表和详情从官网履约提示派生取货安排但保留原文', () => {
     const order = {
       toJSON: () => ({
         ...snapshot,
@@ -141,7 +150,37 @@ describe('邮件快照展示回归', () => {
     };
 
     expect(serializeOrderListItem(order).pickup_time).toBe('2026/09/19 20:30 – 20:45');
-    expect(serializeOrderDetail(order).official_fulfillment_message).toContain('星期六');
+    expect(serializeOrderDetail(order)).toMatchObject({
+      official_fulfillment_message:
+        '请于 星期六 2026/09/19 的 20:30 – 20:45 之间到 Apple Store 零售店签到',
+      official_pickup_date: '2026/09/19',
+      official_pickup_time_slot: '20:30 – 20:45',
+      pickup_time: '2026/09/19 20:30 – 20:45',
+    });
+  });
+
+  test('今天明天以官网观测时间换算且商品履约提示同步返回绝对时间', () => {
+    const order = {
+      toJSON: () => ({
+        ...snapshot,
+        officialStatusObservedAt: '2026-09-18T01:02:36+08:00',
+        officialFulfillmentMessage: '请于 明天 的 19:15 – 19:30 之间到店',
+        officialProducts: [
+          {
+            name: 'iPhone 18 Pro Max',
+            quantity: 1,
+            fulfillmentMessage: '请于 明天 的 19:15 – 19:30 之间到店',
+          },
+        ],
+      }),
+    };
+
+    expect(serializeOrderListItem(order)).toMatchObject({
+      pickup_time: '2026/09/19 19:15 – 19:30',
+      official_pickup_date: '2026/09/19',
+      official_pickup_time_slot: '19:15 – 19:30',
+      official_products: [{ pickupTime: '2026/09/19 19:15 – 19:30' }],
+    });
   });
   test('关联档案优先，空标签回退订单标签', () => {
     const order = {

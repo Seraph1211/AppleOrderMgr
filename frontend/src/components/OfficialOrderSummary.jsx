@@ -12,6 +12,8 @@ export default function OfficialOrderSummary({ order }) {
   const expiresAt = order.officialPaymentExpiresAt ?? order.official_payment_expires_at;
   const products = order.officialProducts || order.official_products || [];
   const pickupStatus = order.pickupStatus ?? order.pickup_status;
+  const pickupTime = order.pickupTime ?? order.pickup_time;
+  const fulfillmentMessage = order.officialFulfillmentMessage || order.official_fulfillment_message;
   return (
     <section className="rounded-lg border border-gray-200 bg-white p-4 space-y-3">
       <h3 className="font-semibold text-gray-900">官网状态与来源核对</h3>
@@ -38,10 +40,13 @@ export default function OfficialOrderSummary({ order }) {
           </dd>
         </div>
         <div>
-          <dt className="inline text-gray-500">履约提示：</dt>
+          <dt className="inline text-gray-500">预约取货：</dt>
           <dd className="inline">
-            {order.officialFulfillmentMessage || order.official_fulfillment_message || '-'}
+            {pickupTime || fulfillmentMessage || '官网未提供可识别的预约时间'}
           </dd>
+          {fulfillmentMessage && pickupTime && (
+            <dd className="mt-1 text-xs text-gray-500">官网原文：{fulfillmentMessage}</dd>
+          )}
         </div>
       </dl>
       {products.length > 0 && (
@@ -52,7 +57,7 @@ export default function OfficialOrderSummary({ order }) {
                 <th className="p-2">商品</th>
                 <th className="p-2">数量</th>
                 <th className="p-2">官网阶段</th>
-                <th className="p-2">履约提示</th>
+                <th className="p-2">预约取货</th>
               </tr>
             </thead>
             <tbody>
@@ -66,7 +71,14 @@ export default function OfficialOrderSummary({ order }) {
                       <p className="text-xs text-gray-500">{product.statusDescription}</p>
                     )}
                   </td>
-                  <td className="p-2">{product.fulfillmentMessage || '-'}</td>
+                  <td className="p-2">
+                    {product.pickupTime || product.fulfillmentMessage || '-'}
+                    {product.pickupTime && product.fulfillmentMessage && (
+                      <p className="text-xs text-gray-500">
+                        官网原文：{product.fulfillmentMessage}
+                      </p>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

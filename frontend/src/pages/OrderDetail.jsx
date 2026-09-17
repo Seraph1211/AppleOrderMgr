@@ -274,12 +274,24 @@ export default function OrderDetail() {
               <div className="flex items-start gap-3">
                 <Calendar className="mt-0.5 h-5 w-5 text-primary" />
                 <div>
-                  <p className="font-medium text-gray-900">预约取货时间</p>
+                  <p className="font-medium text-gray-900">预约取货日期</p>
+                  <p className="mt-1 text-sm text-gray-500">{order.official_pickup_date || '-'}</p>
                   <p className="mt-1 text-sm text-gray-500">
-                    {formatDate(order.official_pickup_date || order.actual_pickup_date)}
+                    预约时段：{order.official_pickup_time_slot || '-'}
                   </p>
                 </div>
               </div>
+              {order.actual_pickup_date && (
+                <div className="flex items-start gap-3">
+                  <Calendar className="mt-0.5 h-5 w-5 text-primary" />
+                  <div>
+                    <p className="font-medium text-gray-900">实际取货日期（业务记录）</p>
+                    <p className="mt-1 text-sm text-gray-500">
+                      {formatDate(order.actual_pickup_date)}
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -364,8 +376,12 @@ export default function OrderDetail() {
                 </dd>
               </div>
               <div>
-                <dt className="text-gray-500">联系电话</dt>
-                <dd className="mt-1 text-gray-900">{order.recipient?.phone || '-'}</dd>
+                <dt className="text-gray-500">下单手机号</dt>
+                <dd className="mt-1 text-gray-900">{order.recipient_phone || '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">下单邮箱</dt>
+                <dd className="mt-1 break-all text-gray-900">{order.recipient_email || '-'}</dd>
               </div>
             </dl>
           </div>

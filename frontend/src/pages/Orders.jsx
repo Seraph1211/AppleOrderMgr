@@ -360,6 +360,8 @@ export default function Orders() {
           pickupCode: order.pickup_code || '-',
           pickupTimeSlot: order.pickup_time_slot || '-',
           pickupTime: order.pickup_time || '-',
+          officialPickupDate: order.official_pickup_date || '-',
+          officialPickupTimeSlot: order.official_pickup_time_slot || '-',
           actualPickupDate: order.actual_pickup_date || '-',
           // 付款信息
           paymentMethod: order.payment_method || '-',

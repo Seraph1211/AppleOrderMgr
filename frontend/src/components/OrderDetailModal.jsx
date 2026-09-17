@@ -413,8 +413,12 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                   <p className="text-sm text-gray-900 mt-1">{order.recipientName}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">联系电话</label>
+                  <label className="text-sm text-gray-600">下单手机号</label>
                   <p className="text-sm text-gray-900 mt-1">{order.recipientPhone}</p>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">下单邮箱</label>
+                  <p className="text-sm text-gray-900 mt-1 break-all">{order.recipientEmail}</p>
                 </div>
                 <div className="col-span-2">
                   <label className="text-sm text-gray-600">收件地址</label>
@@ -436,17 +440,23 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                   <p className="text-sm text-gray-900 mt-1">{order.pickupCode || '-'}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">取货时间段</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.pickupTimeSlot || '-'}</p>
+                  <label className="text-sm text-gray-600">预约取货日期</label>
+                  <p className="text-sm text-gray-900 mt-1">{order.officialPickupDate || '-'}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">实际取货日期</label>
+                  <label className="text-sm text-gray-600">预约取货时间段</label>
                   <p className="text-sm text-gray-900 mt-1">
-                    {order.actualPickupDate !== '-'
-                      ? new Date(order.actualPickupDate).toLocaleDateString('zh-CN')
-                      : '-'}
+                    {order.officialPickupTimeSlot || '-'}
                   </p>
                 </div>
+                {order.actualPickupDate !== '-' && (
+                  <div>
+                    <label className="text-sm text-gray-600">实际取货日期（业务记录）</label>
+                    <p className="text-sm text-gray-900 mt-1">
+                      {new Date(order.actualPickupDate).toLocaleDateString('zh-CN')}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 
