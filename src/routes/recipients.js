@@ -21,6 +21,17 @@ router.get(
   asyncHandler(controller.exportRecipients)
 );
 router.get(
+  '/:id/bindings',
+  requirePermission(PERMISSIONS.RECIPIENTS_READ),
+  requirePermission(PERMISSIONS.APPLE_IDS_READ),
+  asyncHandler(controller.listBindings)
+);
+router.put(
+  '/:id/binding',
+  requirePermission(PERMISSIONS.RECIPIENTS_BIND_APPLE_IDS),
+  asyncHandler(controller.updateBinding)
+);
+router.get(
   '/:id',
   requirePermission(PERMISSIONS.RECIPIENTS_READ),
   asyncHandler(controller.getRecipientDetail)

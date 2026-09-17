@@ -46,6 +46,7 @@ module.exports = sequelize => {
           return decrypt(this.getDataValue('password'));
         },
       },
+      notes: { type: DataTypes.TEXT, allowNull: true, comment: '备注' },
       nickname: {
         type: DataTypes.STRING(255),
         allowNull: true,
@@ -72,6 +73,7 @@ module.exports = sequelize => {
       country: {
         type: DataTypes.STRING(50),
         allowNull: true,
+        defaultValue: '中国',
         comment: '账号所属国家/地区',
         validate: {
           len: {
@@ -156,7 +158,7 @@ module.exports = sequelize => {
    * @param {Object} models - 所有模型的集合
    */
   AppleId.associate = models => {
-    // 一个Apple账号可以有多个收件人
+    // 保留旧关联别名；数据库唯一约束保证当前最多一个取机人，历史另存。
     AppleId.hasMany(models.Recipient, {
       foreignKey: 'appleIdRef',
       as: 'recipients',

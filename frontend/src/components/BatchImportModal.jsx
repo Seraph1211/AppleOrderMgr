@@ -1,234 +1,276 @@
 import { useState } from 'react';
-import { X, Upload, Download, FileSpreadsheet, AlertCircle, CheckCircle } from 'lucide-react';
-import { downloadTemplate } from '../api/importApi';
+import { X, Upload, Download } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
+import { downloadTemplate, previewImport, reviewImport, executeImport } from '../api/importApi';
 
+/** 上传、预览、裁定、确认执行四步导入，密码及密保不进入预览。 */
 export default function BatchImportModal({ type, onClose, onImport }) {
-  const [file, setFile] = useState(null);
-  const [importing, setImporting] = useState(false);
+  const apiType = type === 'appleIds' ? 'apple_ids' : 'recipients';
+  const { can } = useAuth();
+  const [files, setFiles] = useState([]);
+  const [plan, setPlan] = useState(null);
+  const [token, setToken] = useState('');
+  const [decisions, setDecisions] = useState({});
+  const [dirty, setDirty] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
   const [result, setResult] = useState(null);
-
-  const config = {
-    appleIds: {
-      title: '批量导入 Apple ID',
-      templateUrl: '/templates/apple_ids_import_template.xlsx',
-      templateName: 'apple_ids_import_template.xlsx',
-      acceptFormats: '.xlsx',
-      instructions: [
-        '1. 下载导入模板，按照格式填写数据',
-        '2. Apple ID 和密码为必填项',
-        '3. 国家地区、密保问答为可选项',
-        '4. 密保问答需成对填写（问题+答案）',
-        '5. 系统将自动设置状态为"活跃"',
-      ],
-    },
-    recipients: {
-      title: '批量导入取机人',
-      templateUrl: '/templates/recipients_import_template.xlsx',
-      templateName: 'recipients_import_template.xlsx',
-      acceptFormats: '.xlsx',
-      instructions: [
-        '1. 下载导入模板，按照格式填写数据',
-        '2. 姓、名、身份证号为必填项',
-        '3. 标签为可选项',
-        '4. 身份证号必须为18位有效号码',
-        '5. 邮箱和手机号将由系统自动生成',
-      ],
-    },
-  };
-
-  const currentConfig = config[type];
-
-  const handleFileChange = e => {
-    const selectedFile = e.target.files[0];
-    if (selectedFile) {
-      // 验证文件类型
-      const fileExtension = selectedFile.name.split('.').pop().toLowerCase();
-      if (fileExtension !== 'xlsx') {
-        alert('请上传 .xlsx 文件');
-        return;
-      }
-      setFile(selectedFile);
-      setResult(null);
-    }
-  };
-
-  const handleDownloadTemplate = async () => {
+  const [page, setPage] = useState(1);
+  const run = async action => {
+    setBusy(true);
+    setError('');
     try {
-      await downloadTemplate(type === 'appleIds' ? 'apple_ids' : 'recipients');
-    } catch (error) {
-      setResult({ success: false, message: error.message || '模板下载失败', details: [] });
-    }
-  };
-
-  const handleImport = async () => {
-    if (!file) {
-      alert('请先选择要导入的文件');
-      return;
-    }
-
-    setImporting(true);
-    setResult(null);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const res = await onImport(formData);
-
-      setResult({
-        success: true,
-        message: `成功导入 ${res.imported || 0} 条数据${res.skipped > 0 ? `，跳过 ${res.skipped} 条` : ''}`,
-        details:
-          res.errors?.length > 0 ? res.errors.map(e => `行 ${e.rowNumber || '?'}: ${e.error}`) : [],
-      });
-
-      // 3秒后自动关闭
-      setTimeout(() => {
-        onClose();
-      }, 3000);
-    } catch (error) {
-      setResult({
-        success: false,
-        message: error.message || '导入失败，请检查文件格式',
-        details: error.details || [],
-      });
+      await action();
+    } catch (failure) {
+      setError(failure.message || '操作失败');
     } finally {
-      setImporting(false);
+      setBusy(false);
     }
   };
-
+  const preview = () =>
+    run(async () => {
+      const response = await previewImport(files, apiType);
+      setPlan(response.data);
+      setToken(response.data.sessionToken);
+      setDecisions({});
+      setDirty(false);
+      setResult(null);
+      setPage(1);
+    });
+  const review = () =>
+    run(async () => {
+      const response = await reviewImport(token, apiType, decisions);
+      setPlan(response.data);
+      setDirty(false);
+    });
+  const execute = () =>
+    run(async () => {
+      const response = await executeImport(token, apiType, decisions);
+      setResult(response.data);
+      setToken('');
+      await onImport();
+    });
+  const choose = (key, value) => {
+    setDecisions(previous => ({ ...previous, [key]: value }));
+    setDirty(true);
+  };
+  const visibleRecords = plan?.records.slice((page - 1) * 30, page * 30) || [];
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999]">
-      <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full mx-4">
-        {/* 标题栏 */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">{currentConfig.title}</h2>
-          <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <X className="w-5 h-5 text-gray-400" />
+    <div className="!m-0 fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="批量导入预览"
+        className="bg-white rounded-xl shadow-xl w-full max-w-5xl max-h-[90vh] flex flex-col"
+      >
+        <div className="p-5 border-b flex justify-between items-center">
+          <h2 className="text-xl font-semibold">
+            批量导入{type === 'appleIds' ? ' Apple ID' : '取机人'}
+          </h2>
+          <button aria-label="关闭" disabled={busy} onClick={onClose}>
+            <X className="w-5 h-5" />
           </button>
         </div>
-
-        {/* 内容 */}
-        <div className="p-6 space-y-6">
-          {/* 下载模板 */}
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex items-start space-x-3">
-              <FileSpreadsheet className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-              <div className="flex-1">
-                <h3 className="text-sm font-medium text-blue-900 mb-2">第一步：下载导入模板</h3>
+        <div className="p-5 overflow-y-auto space-y-4">
+          <p className="text-sm text-gray-600">
+            支持同时上传汇总表和渠道表的 .xlsx
+            文件。自动去重；差异必须选择来源后确认。首次导入后由系统维护。空值不覆盖已有资料。
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            {can(`${apiType}.template.read`) && (
+              <button
+                className="btn btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={busy}
+                onClick={() => run(() => downloadTemplate(apiType))}
+              >
+                <Download className="w-4 h-4 inline mr-2" />
+                下载模板
+              </button>
+            )}
+            <input
+              aria-label="选择导入文件"
+              type="file"
+              accept=".xlsx"
+              multiple
+              disabled={busy}
+              onChange={e => {
+                setFiles([...e.target.files]);
+                setPlan(null);
+                setToken('');
+                setResult(null);
+              }}
+            />
+            <button
+              className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={busy || !files.length}
+              onClick={preview}
+            >
+              <Upload className="w-4 h-4 inline mr-2" />
+              生成预览
+            </button>
+          </div>
+          {files.length > 0 && (
+            <p className="text-sm text-gray-500">{files.map(file => file.name).join('、')}</p>
+          )}
+          {error && (
+            <p role="alert" className="bg-red-50 text-red-700 p-3 rounded">
+              {error}
+            </p>
+          )}
+          {result && (
+            <p role="status" className="bg-green-50 text-green-800 p-3 rounded">
+              导入完成：新增 {result.imported}，更新 {result.updated}，重复或跳过 {result.skipped}
+              ，无效源行 {result.errors?.length || 0}。
+            </p>
+          )}
+          {plan && (
+            <>
+              <p className="text-sm bg-blue-50 p-3 rounded">
+                源行 {plan.summary.total} · 档案 {plan.summary.records} · 无效行{' '}
+                {plan.summary.invalid} · 未裁定差异 {plan.summary.conflicts} · 有问题档案{' '}
+                {plan.summary.blocked}
+                {dirty && ' · 选择已改变，请更新预览'}
+              </p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="p-2 text-left">跳过</th>
+                      <th className="p-2 text-left">档案／来源</th>
+                      <th className="p-2 text-left">操作</th>
+                      <th className="p-2 text-left">差异与问题</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {visibleRecords.map(record => (
+                      <tr key={record.id} className="border-b align-top">
+                        <td className="p-2">
+                          <input
+                            aria-label={`跳过 ${record.label}`}
+                            type="checkbox"
+                            disabled={busy || !token}
+                            checked={Boolean(decisions[`${record.id}:skip`])}
+                            onChange={e => choose(`${record.id}:skip`, e.target.checked)}
+                          />
+                        </td>
+                        <td className="p-2">
+                          <p>
+                            {record.kind === 'account' ? '账号' : '取机人'}：{record.label}
+                          </p>
+                          <details className="text-gray-600 mt-1">
+                            <summary>查看待保留字段</summary>
+                            {Object.entries(record.fields || {}).map(([key, value]) => (
+                              <p key={key}>
+                                {key}：{String(value)}
+                              </p>
+                            ))}
+                          </details>
+                          <details className="text-gray-500 mt-1">
+                            <summary>{record.sources.length} 条来源</summary>
+                            {record.sources.map((source, i) => (
+                              <p key={i}>{source}</p>
+                            ))}
+                          </details>
+                        </td>
+                        <td className="p-2">{record.action}</td>
+                        <td className="p-2 space-y-2">
+                          {record.problems.map((message, i) => (
+                            <p key={i} className="text-red-700">
+                              {message}
+                            </p>
+                          ))}
+                          {plan.conflicts
+                            .filter(conflict => conflict.groupId === record.id)
+                            .map(conflict => (
+                              <label key={conflict.id} className="block">
+                                {conflict.field}
+                                <select
+                                  className="input w-full mt-1"
+                                  aria-label={`${record.label} ${conflict.field} 来源`}
+                                  value={decisions[conflict.id] || ''}
+                                  disabled={busy || !token || decisions[`${record.id}:skip`]}
+                                  onChange={e => choose(conflict.id, e.target.value)}
+                                >
+                                  <option value="">请选择保留来源</option>
+                                  {conflict.options.map(option => (
+                                    <option key={option.key} value={option.key}>
+                                      {String(option.value)} — {option.source}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {!plan.records.length && <p className="p-4 text-gray-500">没有有效档案</p>}
+              </div>
+              <div className="flex justify-end gap-3 items-center">
                 <button
-                  onClick={handleDownloadTemplate}
-                  className="btn btn-secondary flex items-center space-x-2"
+                  className="btn btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={page === 1}
+                  onClick={() => setPage(page - 1)}
                 >
-                  <Download className="w-4 h-4" />
-                  <span>下载模板</span>
+                  上一页
+                </button>
+                <span>
+                  {page} / {Math.max(1, Math.ceil(plan.records.length / 30))}
+                </span>
+                <button
+                  className="btn btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={page * 30 >= plan.records.length}
+                  onClick={() => setPage(page + 1)}
+                >
+                  下一页
                 </button>
               </div>
-            </div>
-          </div>
-
-          {/* 填写说明 */}
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-            <h3 className="text-sm font-medium text-gray-900 mb-2">填写说明</h3>
-            <ul className="space-y-1">
-              {currentConfig.instructions.map((instruction, index) => (
-                <li key={index} className="text-sm text-gray-600">
-                  {instruction}
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          {/* 上传文件 */}
-          <div>
-            <h3 className="text-sm font-medium text-gray-900 mb-3">第二步：上传填写好的文件</h3>
-            <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center hover:border-primary transition-colors">
-              <Upload className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-              <input
-                type="file"
-                accept={currentConfig.acceptFormats}
-                onChange={handleFileChange}
-                className="hidden"
-                id="file-upload"
-              />
-              <label
-                htmlFor="file-upload"
-                className="btn btn-secondary cursor-pointer inline-block"
-              >
-                选择文件
-              </label>
-              {file && (
-                <p className="mt-3 text-sm text-gray-600">
-                  已选择：<span className="font-medium">{file.name}</span>
-                </p>
+              {plan.errors.length > 0 && (
+                <details className="text-sm text-red-700">
+                  <summary>以下 {plan.errors.length} 行不会导入，请修正后重传</summary>
+                  {plan.errors.map((entry, i) => (
+                    <p key={i}>
+                      {entry.fileName} / {entry.sheetName} / 第{entry.rowNumber}行：{entry.error}
+                    </p>
+                  ))}
+                </details>
               )}
-              <p className="mt-2 text-xs text-gray-500">支持格式：{currentConfig.acceptFormats}</p>
-            </div>
-          </div>
-
-          {/* 导入结果 */}
-          {result && (
-            <div
-              className={`border rounded-lg p-4 ${
-                result.success ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'
-              }`}
-            >
-              <div className="flex items-start space-x-3">
-                {result.success ? (
-                  <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                ) : (
-                  <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                )}
-                <div className="flex-1">
-                  <p
-                    className={`text-sm font-medium ${
-                      result.success ? 'text-green-900' : 'text-red-900'
-                    }`}
-                  >
-                    {result.message}
-                  </p>
-                  {result.details && result.details.length > 0 && (
-                    <ul className="mt-2 space-y-1">
-                      {result.details.map((detail, index) => (
-                        <li key={index} className="text-xs text-gray-600">
-                          {detail}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </div>
-            </div>
+            </>
           )}
         </div>
-
-        {/* 按钮 */}
-        <div className="flex items-center justify-end space-x-3 px-6 py-4 border-t border-gray-200">
+        <div className="p-4 border-t flex flex-wrap justify-end gap-3">
           <button
-            type="button"
+            className="btn btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={busy}
             onClick={onClose}
-            className="btn btn-secondary"
-            disabled={importing}
           >
-            取消
+            关闭
           </button>
-          <button
-            onClick={handleImport}
-            disabled={!file || importing}
-            className="btn btn-primary flex items-center space-x-2"
-          >
-            {importing ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                <span>导入中...</span>
-              </>
-            ) : (
-              <>
-                <Upload className="w-4 h-4" />
-                <span>开始导入</span>
-              </>
-            )}
-          </button>
+          {token && (
+            <>
+              <button
+                className="btn btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={busy}
+                onClick={review}
+              >
+                更新预览
+              </button>
+              <button
+                className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={
+                  busy ||
+                  dirty ||
+                  plan.summary.conflicts > 0 ||
+                  plan.summary.blocked > 0 ||
+                  !plan.records.length
+                }
+                onClick={execute}
+              >
+                {busy ? '处理中…' : '确认导入有效档案'}
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

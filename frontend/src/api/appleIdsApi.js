@@ -3,7 +3,7 @@
  * @module api/appleIdsApi
  */
 
-import client from './client'
+import client from './client';
 
 /**
  * 获取 Apple ID 列表
@@ -15,17 +15,17 @@ import client from './client'
  * @returns {Promise<Object>} Apple ID 列表
  */
 export const getAppleIds = (params = {}) => {
-  return client.get('/apple-ids', { params })
-}
+  return client.get('/apple-ids', { params });
+};
 
 /**
  * 获取 Apple ID 详情
  * @param {number} id - Apple ID
  * @returns {Promise<Object>} Apple ID 详情
  */
-export const getAppleIdDetail = (id) => {
-  return client.get(`/apple-ids/${id}`)
-}
+export const getAppleIdDetail = (id, params = {}) => {
+  return client.get(`/apple-ids/${id}`, { params });
+};
 
 /**
  * 创建 Apple ID
@@ -37,9 +37,9 @@ export const getAppleIdDetail = (id) => {
  * @param {string} data.status - 状态
  * @returns {Promise<Object>} 创建结果
  */
-export const createAppleId = (data) => {
-  return client.post('/apple-ids', data)
-}
+export const createAppleId = data => {
+  return client.post('/apple-ids', data);
+};
 
 /**
  * 更新 Apple ID
@@ -48,14 +48,14 @@ export const createAppleId = (data) => {
  * @returns {Promise<Object>} 更新结果
  */
 export const updateAppleId = (id, data) => {
-  return client.put(`/apple-ids/${id}`, data)
-}
+  return client.put(`/apple-ids/${id}`, data);
+};
 
 /**
  * 删除 Apple ID
  * @param {number} id - Apple ID
  * @returns {Promise<Object>} 删除结果
  */
-export const deleteAppleId = (id) => {
-  return client.delete(`/apple-ids/${id}`)
-}
+export const deleteAppleId = id => {
+  return client.delete(`/apple-ids/${id}`);
+};

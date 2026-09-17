@@ -1,3 +1,5 @@
+import ProfileAssociationModal from '../components/ProfileAssociationModal';
+import ProfileDetailsModal from '../components/ProfileDetailsModal';
 import { useState, useEffect } from 'react';
 import {
   Search,
@@ -23,7 +25,6 @@ import {
   deleteRecipient,
   exportRecipients,
 } from '../api';
-import { previewImport, executeImport } from '../api/importApi';
 import {
   batchGenerateContact,
   batchGenerateAddress,
@@ -47,6 +48,10 @@ import { PERMISSIONS } from '../constants/permissions';
 export default function Recipients() {
   const { can } = useAuth();
   const [recipients, setRecipients] = useState([]);
+  const [showAssociations, setShowAssociations] = useState(false);
+  const [detailItem, setDetailItem] = useState(null);
+  const [filterBound, setFilterBound] = useState('');
+  const [pageError, setPageError] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTag, setFilterTag] = useState('');
@@ -83,10 +88,29 @@ export default function Recipients() {
 
   useEffect(() => {
     loadRecipients();
-  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterTag, filterStatus]);
+  }, [
+    pagination.currentPage,
+    pagination.pageSize,
+    searchTerm,
+    filterTag,
+    filterStatus,
+    filterBound,
+  ]);
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [
+    pagination.currentPage,
+    pagination.pageSize,
+    searchTerm,
+    filterTag,
+    filterStatus,
+    filterBound,
+  ]);
 
   const loadRecipients = async () => {
     setLoading(true);
+    setPageError('');
     try {
       const params = {
         page: pagination.currentPage,
@@ -94,6 +118,7 @@ export default function Recipients() {
         keyword: searchTerm || undefined,
         tag: filterTag || undefined,
         status: filterStatus || undefined,
+        bound: filterBound || undefined,
       };
       const res = await getRecipients(params);
       if (res.success) {
@@ -105,6 +130,12 @@ export default function Recipients() {
             firstName: item.first_name,
             idCard: item.id_card_number || item.id_card_last4,
             phone: item.phone || '-',
+            realPhone: item.real_phone || '',
+            notes: item.notes || '',
+            password: item.password || '',
+            streetAddress: item.street_address || '',
+            appleIdRef: item.apple_id_ref,
+            bound: Boolean(item.apple_id_ref),
             email: item.email || '-',
             address: item.street_address
               ? [item.province, item.city, item.district, item.street_address]
@@ -130,7 +161,7 @@ export default function Recipients() {
         }));
       }
     } catch (error) {
-      console.error('加载取机人失败:', error);
+      setPageError(error.message || '加载取机人失败');
     } finally {
       setLoading(false);
     }
@@ -173,28 +204,8 @@ export default function Recipients() {
   };
 
   const handleSaveEdit = async (id, formData) => {
-    try {
-      const normalizedName = formData.name.trim();
-      const payload = {
-        lastName: normalizedName.slice(0, 1),
-        firstName: normalizedName.slice(1),
-        email: formData.email || null,
-        tag: formData.tag || null,
-        status: formData.status,
-      };
-      if (formData.idCard && !formData.idCard.includes('*')) payload.idCardNumber = formData.idCard;
-      if (!formData.phone.includes('*')) payload.phone = formData.phone.trim() || null;
-      const response = await updateRecipient(id, payload);
-
-      if (response.success) {
-        await loadRecipients();
-      } else {
-        throw new Error(response.error || '更新失败');
-      }
-    } catch (error) {
-      console.error('更新取机人失败:', error);
-      throw error;
-    }
+    await updateRecipient(id, formData);
+    await loadRecipients();
   };
 
   const handleDelete = item => {
@@ -220,36 +231,7 @@ export default function Recipients() {
     }
   };
 
-  const handleBatchImport = async formData => {
-    try {
-      // 第一步：预览导入数据
-      const file = formData.get('file');
-      const previewRes = await previewImport(file, 'recipients');
-
-      if (!previewRes.success) {
-        throw new Error(previewRes.error || '数据预览失败');
-      }
-
-      // 第二步：执行导入
-      const executeRes = await executeImport(previewRes.data.sessionToken, 'recipients');
-
-      if (!executeRes.success) {
-        throw new Error(executeRes.error || '导入失败');
-      }
-
-      // 导入成功后重新加载列表
-      await loadRecipients();
-
-      return {
-        imported: executeRes.data.imported || 0,
-        skipped: executeRes.data.skipped || 0,
-        errors: executeRes.data.errors || [],
-      };
-    } catch (error) {
-      console.error('批量导入失败:', error);
-      throw error;
-    }
-  };
+  const handleBatchImport = loadRecipients;
 
   // 全选/取消全选
   const handleSelectAll = e => {
@@ -398,8 +380,12 @@ export default function Recipients() {
             keyword: searchTerm || undefined,
             tag: filterTag || undefined,
             status: filterStatus || undefined,
+            bound: filterBound || undefined,
           };
-      const blob = await exportRecipients(params);
+      const blob = await exportRecipients({
+        ...params,
+        includeSensitive: can(PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE),
+      });
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
@@ -461,7 +447,7 @@ export default function Recipients() {
     switch (column.key) {
       case 'name':
         return (
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap gap-3 items-center">
             <div className="flex-shrink-0">
               <div className="w-10 h-10 bg-primary-50 rounded-lg flex items-center justify-center">
                 <User className="w-5 h-5 text-primary" />
@@ -481,12 +467,22 @@ export default function Recipients() {
             <span>{item.phone}</span>
           </div>
         );
+      case 'realPhone':
+      case 'notes':
+      case 'password':
+        return <span className="text-sm text-gray-600">{item[column.key] || '-'}</span>;
+      case 'bound':
+        return item.bound ? '已绑定' : '未绑定';
       case 'email':
         return <span className="text-sm text-gray-600">{item.email}</span>;
       case 'address':
         return <span className="text-sm text-gray-600">{item.address}</span>;
       case 'boundAppleId':
-        return <span className="text-sm text-gray-600">{item.boundAppleId}</span>;
+        return (
+          <button className="text-sm text-primary underline" onClick={() => setDetailItem(item)}>
+            {item.boundAppleId}
+          </button>
+        );
       case 'tag':
         return item.tag !== '-' ? (
           <span className="badge badge-info">{item.tag}</span>
@@ -501,7 +497,13 @@ export default function Recipients() {
         return (
           <div className="flex items-center justify-center space-x-2">
             <Package className="w-4 h-4 text-gray-400" />
-            <span className="text-lg font-semibold text-primary">{item.orderCount}</span>
+            <button
+              className="text-lg font-semibold text-primary underline"
+              disabled={!can(PERMISSIONS.ORDERS_READ)}
+              onClick={() => setDetailItem(item)}
+            >
+              {item.orderCount}
+            </button>
           </div>
         );
       case 'totalAmount':
@@ -550,20 +552,32 @@ export default function Recipients() {
 
   return (
     <div className="space-y-6">
+      {pageError && (
+        <p role="alert" className="text-red-700 bg-red-50 p-3 rounded">
+          {pageError}
+        </p>
+      )}
       {/* 页面标题 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">取机人管理</h1>
           <p className="text-gray-500 mt-1">管理所有取机人信息</p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap gap-3 items-center">
+          {['orders.read', 'orders.edit', 'recipients.read', 'apple_ids.read'].every(can) && (
+            <button className="btn btn-secondary" onClick={() => setShowAssociations(true)}>
+              关联历史订单
+            </button>
+          )}
           {can(PERMISSIONS.RECIPIENTS_EXPORT) && (
             <button
               onClick={handleExport}
               className="btn btn-secondary flex items-center space-x-2"
             >
               <Download className="w-4 h-4" />
-              <span>导出Excel</span>
+              <span>
+                {can(PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE) ? '导出录入信息' : '导出脱敏资料'}
+              </span>
             </button>
           )}
           {can(PERMISSIONS.RECIPIENTS_IMPORT) && (
@@ -590,6 +604,20 @@ export default function Recipients() {
       {/* 搜索、筛选和批量操作 */}
       <div className="card">
         <div className="flex flex-wrap items-center gap-3">
+          <select
+            aria-label="当前绑定筛选"
+            className="input"
+            style={{ width: 'auto' }}
+            value={filterBound}
+            onChange={e => {
+              setFilterBound(e.target.value);
+              setPagination(previous => ({ ...previous, currentPage: 1 }));
+            }}
+          >
+            <option value="">全部绑定状态</option>
+            <option value="true">已绑定</option>
+            <option value="false">未绑定</option>
+          </select>
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -600,17 +628,17 @@ export default function Recipients() {
               className="input pl-10 w-full"
             />
           </div>
-          <select
+          <input
+            aria-label="TAG 精确筛选"
+            placeholder="输入原始 TAG 筛选"
             value={filterTag}
-            onChange={e => setFilterTag(e.target.value)}
-            className="input flex-shrink-0"
-            style={{ width: 'auto' }}
-          >
-            <option value="">全部标签</option>
-            <option value="刘天佟 微信">刘天佟 微信</option>
-            <option value="群华华 微信">群华华 微信</option>
-            <option value="水果惠">水果惠</option>
-          </select>
+            onChange={e => {
+              setFilterTag(e.target.value);
+              setPagination(previous => ({ ...previous, currentPage: 1 }));
+            }}
+            className="input"
+            style={{ width: '180px' }}
+          />
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
@@ -763,6 +791,20 @@ export default function Recipients() {
         )}
       </div>
 
+      {showAssociations && (
+        <ProfileAssociationModal
+          onClose={() => setShowAssociations(false)}
+          onComplete={loadRecipients}
+        />
+      )}
+      {detailItem && (
+        <ProfileDetailsModal
+          kind="recipient"
+          item={detailItem}
+          onClose={() => setDetailItem(null)}
+        />
+      )}
+
       {/* 列配置弹窗 */}
       {showColumnConfig && (
         <ColumnConfigModal
@@ -817,7 +859,7 @@ export default function Recipients() {
       {showGenerateConfirm && (
         <ConfirmModal
           title="生成联系方式"
-          message={`确定要为选中的 ${selectedIds.length} 个取机人生成电话和邮箱吗？\n电话号码格式：1[3-9]xxxxxxxxx（11位）\n邮箱格式：电话号码@8lvv.com`}
+          message={`确定要为选中的 ${selectedIds.length} 个取机人生成电话和邮箱吗？\n电话号码格式：1[3-9]xxxxxxxxx（11位）\n邮箱格式：电话号码@vvv8.net`}
           type="generate"
           onConfirm={handleConfirmGenerate}
           onCancel={() => setShowGenerateConfirm(false)}

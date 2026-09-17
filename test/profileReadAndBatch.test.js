@@ -87,7 +87,7 @@ describe('基础资料读取权限与选填联系电话', () => {
         const item = key ? data[key][0] : data;
         expect(item).toMatchObject(expected);
         expect(item).not.toHaveProperty('securityQa');
-        if (expected.phone) expect(item).not.toHaveProperty('password');
+        if (expected.phone) expect(item.password).toBe('hidden');
         expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
       }
     }

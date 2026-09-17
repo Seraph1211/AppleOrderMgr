@@ -220,6 +220,7 @@ export const ordersColumns = [
 ];
 
 export const appleIdsColumns = [
+  { key: 'bound', label: '当前绑定', defaultVisible: true, sortable: false, width: '160px' },
   // 基础信息
   {
     key: 'appleId',
@@ -238,8 +239,8 @@ export const appleIdsColumns = [
     pinned: false,
   },
   {
-    key: 'nickname',
-    label: '备注名称',
+    key: 'notes',
+    label: '备注',
     width: '150px',
     defaultVisible: true,
     sortable: true,
@@ -325,6 +326,23 @@ export const appleIdsColumns = [
 ];
 
 export const recipientsColumns = [
+  {
+    key: 'realPhone',
+    label: '真实联系电话',
+    defaultVisible: true,
+    sortable: false,
+    width: '160px',
+  },
+  { key: 'notes', label: '备注', defaultVisible: true, sortable: false, width: '160px' },
+  {
+    key: 'password',
+    label: '关联账号密码',
+    defaultVisible: false,
+    sortable: false,
+    width: '160px',
+    sensitive: true,
+  },
+  { key: 'bound', label: '当前绑定', defaultVisible: true, sortable: false, width: '160px' },
   {
     key: 'name',
     label: '姓名',

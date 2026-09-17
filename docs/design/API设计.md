@@ -153,12 +153,12 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 
 ## Apple ID 与取机人
 
-- Apple ID 列表 query 为 page、limit、status、country、keyword；新增接收 apple_id、password、nickname、country、status、security_qa，更新另支持 is_modified。返回使用 snake_case。经 2026-09-17 用户确认，持有 `apple_ids.read` 的用户在所有环境均可通过列表和详情读取完整 `password`；不返回密保。响应 `Cache-Control: no-store`，存储继续加密，日志不记录明文。
+- Apple ID 列表 query 为 page、limit、status、country、keyword；新增接收 apple_id、password、notes、country、status、security_qa，更新另支持 is_modified。返回使用 snake_case。经 2026-09-17 用户确认，持有 `apple_ids.read` 的用户在所有环境均可通过列表和详情读取完整 `password`；普通请求不返回密保，详情 includeSecrets=true 另要求 secrets 权限。响应 `Cache-Control: no-store`，存储继续加密，日志不记录明文。
 - 取机人列表 query 包含 page、limit、tag、status、apple_id_ref、keyword；新增必须 lastName、firstName、idCardNumber，关联写入使用 appleIdRef。写入为 camelCase，不按列表字段直接回传。
-- 经 2026-09-17 用户确认，持有 `recipients.read` 的用户在所有环境均可通过列表和详情读取完整 `id_card_number`、`phone`，响应 `Cache-Control: no-store`。详细地址仍仅在 development、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且具备管理员敏感权限时返回，其他环境返回 `street_address=null`。订单快照及导出权限不随此变更扩大。
-- 联系电话 `phone` 非必填；新增／编辑支持省略、null、空字符串或纯空白，空值规范为 null；编辑时省略代表不修改，显式空值代表清空，非空须为合法大陆手机号。
-- 联系方式/地址批量生成接收 recipient_ids；联系方式生成会覆盖选中记录已有的电话和邮箱，电话满足 `^1[3-9]\\d{9}$`，邮箱为“电话@8lvv.com”。前端在生成意图首次确认后，若选中记录已有对应数据，必须再次确认覆盖；取消二次确认不得调用生成接口。绑定 Apple ID 使用 recipientIds，保留现状差异，不能统一猜测。
-- 取机人导出需要 export 权限；admin 显式 includeSensitive=true 存在敏感字段导出分支，此行为需要受控授权与验收。默认导出脱敏并处理公式注入。
+- 经 2026-09-17 用户确认，持有 `recipients.read` 的用户在所有环境均可通过列表和详情读取完整 `id_card_number`、`phone`，响应 `Cache-Control: no-store`。详细地址在具有 `recipients.edit` 或 `recipients.export_sensitive` 权限时返回；仍兼容本地管理员敏感显示配置，其他请求返回 `street_address=null`。订单快照及导出权限不随此变更扩大。
+- 下单手机号 `phone` 和真实联系电话 `realPhone` 非必填；新增／编辑支持省略、null、空字符串或纯空白，空值规范为 null；编辑时省略代表不修改，显式空值代表清空，非空须为合法大陆手机号。
+- 联系方式/地址批量生成接收 recipient_ids；联系方式生成会覆盖选中记录已有的电话和邮箱，电话满足 `^1[3-9]\\d{9}$`，邮箱为“电话@vvv8.net”。前端在生成意图首次确认后，若选中记录已有对应数据，必须再次确认覆盖；取消二次确认不得调用生成接口。绑定 Apple ID 使用 recipientIds，保留现状差异，不能统一猜测。
+- 取机人导出需要 export 权限；显式 includeSensitive=true 必须另有 recipients.export_sensitive 权限，否则 403。默认导出脱敏并处理公式注入。
 
 来源：[Apple ID 控制器](../../src/controllers/appleIdController.js)、[取机人控制器](../../src/controllers/recipientController.js)。
 
@@ -577,3 +577,19 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 设备独立认证协议新增 GET `/api/aos-collector/v1/monitor/context` 返回 revision 与规则；POST `/monitor/reports` 一批最多 10 份报告，每份包含 id、revision、startedAt、endedAt、traffic（receivedBytes/sentBytes/collectorReceivedBytes/collectorSentBytes/quality）、instances（localId、label、state、files、results：ruleId/count/samples）。字节非负安全整数，quality=complete/gap/unavailable，状态 ready/missing/unreadable/invalid/catching_up；samples 包含 at、file、keywords、lineNumber、message、truncated，每规则最多 3 条，message 为用户确认的未经脱敏原始日志行、最多 4,000 字符。报告有独立 UUID，事务幂等，同 ID 不同载荷409。每设备最多20实例／100规则，请求体仍1MiB。旧采集器无需上传新字段；未知新端点不能阻断原订单采集。监控不受邮件／AOS来源切换影响，但仍受设备启停和身份认证约束。
 
 `GET /api/server-monitor/overview` 同时返回 `notificationSettings`，只含网站通知设置版本、启停、收件地址、恢复通知开关和 SMTP 是否就绪／是否复用订单邮箱，不返回授权码。`PUT /api/server-monitor/notifications/settings` 使用 `expectedVersion` 更新 `enabled`、`recipients`（最多20个标准邮箱）和 `sendRecovery`；启用时至少一个收件人且 SMTP 必须就绪。`POST /api/server-monitor/notifications/test` 创建异步测试邮件；`GET /api/server-monitor/notifications/history?page=1` 返回每页30条投递记录。全部沿用唯一 `monitor.manage` 权限及 `no-store`。
+
+## 基础档案管理增量契约（2026-09-17 本地实现）
+
+- Apple ID 接收／返回 notes，country 默认中国；列表支持 bound=true/false。详情 includeSecrets=true 要求 apple_ids.secrets.read，返回 security_qa。取机人新增 realPhone，返回 real_phone，phone 为下单手机号；地址在具有 recipients.edit 或 recipients.export_sensitive 权限时可读。账号密码读取仍要求 apple_ids.read。
+- PUT /recipients/:id/binding：{appleIdRef: 正整数或 null, expectedAppleIdRef: 当前值或 null}，要求 recipients.bind_apple_ids；账号被其他人占用返回 409，不自动抢占。GET /recipients/:id/bindings 和 /apple-ids/:id/bindings 返回历史，双方读取权限同时检查。绑定不改状态。
+- 导出 includeSensitive=true 要求 recipients.export_sensitive，默认脱敏。完整导出按腾讯文档信息导入模板生成，包含使用状态／真实电话／备注；空账号输出空字符串。
+- POST /import/preview 支持 files（兼容 file），返回服务器会话 token、有效行／差异／来源位置／汇总；execute 提交 {type,sessionToken,decisions}，差异决策为 keep/source/skip，未裁定不能执行。跨资源写入分别检查账号导入／编辑、取机人编辑／绑定权限；执行前重验档案摘要。
+- POST /import/associations/preview 和 /execute：要求 orders.edit、orders.read、recipients.read、apple_ids.read；预览未关联订单并选中执行，只补空关联，不改快照、TAG、付款任务；无证据或歧义保持未关联。
+
+基础档案增量补充：
+
+- `GET /api/recipients/:id/bindings`、`GET /api/apple-ids/:id/bindings` 均要求 recipients.read 与 apple_ids.read，返回最近 200 条历史（不含密码和身份证）。当前名单由账号详情 recipients 返回，未获取机人读取权限时不返回姓名。
+- `PUT /api/recipients/:id/binding` 要求 recipients.bind_apple_ids，body `{ appleIdRef: 正整数或null, expectedAppleIdRef: 当前编号或null }`。普通编辑也支持 appleId 邮箱／appleIdRef 与 expectedAppleIdRef；占用或预期值过期为 409。绑定不改双方状态。批量分配仅处理空绑定，不抢占。
+- `POST /api/import/associations/preview` 要求 orders.read、orders.edit、recipients.read、apple_ids.read，body `{cursor?: 上批最后订单ID}`，每批最多 500 条缺关联订单；返回 token、nextCursor、records，其中 matchable 标识有唯一证据的候选。
+- `POST /api/import/associations/execute` 相同权限，body `{token,orderIds}`；令牌 5 分钟、绑定用户、一次性消费。事务内重验选中订单快照摘要及候选，只补空外键。没有足够证据的订单拒绝，不通过账号绑定倒推取机人。分页下一批不会自动执行本批。
+- 导入完整协议与计数口径见[Excel 导入规范](Excel导入规范.md)。

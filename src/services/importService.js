@@ -11,7 +11,11 @@ const COLUMN_MAPPING = {
   apple_ids: {
     'Apple ID': 'appleId',
     密码: 'password',
-    备注名称: 'nickname',
+    备注名称: 'notes',
+    备注: 'notes',
+    AppleID: 'appleId',
+    国家: 'country',
+    使用状态: 'status',
     国家地区: 'country',
     是否已修改: 'isModified',
     状态: 'status',
@@ -26,6 +30,18 @@ const COLUMN_MAPPING = {
     姓: 'lastName',
     名: 'firstName',
     身份证号: 'idCardNumber',
+    身份证号码: 'idCardNumber',
+    姓名: 'name',
+    真实联系电话: 'realPhone',
+    下单手机号码: 'phone',
+    下单手机号: 'phone',
+    Email: 'email',
+    下单邮箱: 'email',
+    'Apple ID': 'appleId',
+    AppleID: 'appleId',
+    密码: 'password',
+    TAG: 'tag',
+    使用状态: 'status',
     手机号: 'phone',
     邮箱: 'email',
     省: 'province',
@@ -48,60 +64,79 @@ const COLUMN_MAPPING = {
 function parseExcelFile(filePath, type) {
   try {
     const workbook = XLSX.readFile(filePath);
-    const sheetName = type === 'apple_ids' ? 'Apple IDs' : 'Recipients';
-    const worksheet = workbook.Sheets[sheetName];
-
-    if (!worksheet) {
-      throw new Error(`工作表 "${sheetName}" 不存在`);
-    }
-
-    const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
-
-    if (data.length < 2) {
-      throw new Error('Excel 文件至少需要包含表头和一行数据');
-    }
-
-    const headers = data[0];
-    const rows = data.slice(1);
-    const mapping = COLUMN_MAPPING[type];
-
     const parsedData = [];
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-
-      // 跳过空行
-      if (row.every(cell => !cell && cell !== 0)) {
+    let matched = 0;
+    for (const sheetName of workbook.SheetNames) {
+      const tencentApple = type === 'apple_ids' && sheetName.startsWith('26年AppleID');
+      if (type === 'apple_ids' && !tencentApple && sheetName !== 'Apple IDs') continue;
+      const worksheet = workbook.Sheets[sheetName];
+      if (!worksheet['!ref']) continue;
+      const range = XLSX.utils.decode_range(worksheet['!ref']);
+      if (range.e.r > 20000 || range.e.c > 100) throw new Error('工作表范围过大，请拆分文件');
+      const data = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', blankrows: true });
+      const headers = data[0]?.map(value => String(value).trim()) || [];
+      const mapping = COLUMN_MAPPING[type];
+      if (type === 'recipients' && !headers.some(h => ['身份证号', '身份证号码'].includes(h)))
         continue;
-      }
-
-      const rowData = {};
-      headers.forEach((header, colIndex) => {
-        // 上传表头不可信；原型继承属性不是列映射，必须按自有键白名单读取。
-        const fieldName = Object.prototype.hasOwnProperty.call(mapping, header)
-          ? mapping[header]
-          : null;
-        if (fieldName) {
-          const cellValue = row[colIndex];
-          rowData[fieldName] = cellValue === '' ? null : String(cellValue).trim();
+      matched++;
+      for (let i = 1; i < data.length; i++) {
+        const row = data[i];
+        const rowData = {};
+        const issues = [];
+        headers.forEach((header, colIndex) => {
+          const field = Object.prototype.hasOwnProperty.call(mapping, header)
+            ? mapping[header]
+            : null;
+          if (!field) return;
+          if (tencentApple && ['status', 'country', 'notes'].includes(field)) return;
+          const cell =
+            worksheet[XLSX.utils.encode_cell({ r: i + range.s.r, c: colIndex + range.s.c })];
+          if (field === 'idCardNumber' && cell?.t === 'n')
+            issues.push({ field, message: '身份证必须为文本；数值单元格可能已丢精度，请修正源表' });
+          // 不执行公式。身份／凭据不能从无缓存公式猜测。
+          if (cell?.f && !cell.v)
+            issues.push({ field, message: '公式没有缓存值，请在源表确认后粘贴为值' });
+          if (row[colIndex] !== '' && row[colIndex] != null)
+            rowData[field] = field === 'tag' ? String(row[colIndex]) : String(row[colIndex]).trim();
+        });
+        if (tencentApple) {
+          rowData.country = '中国';
+          rowData.status = row[10] ? String(row[10]).trim() : undefined;
+          for (let j = 1; j <= 3; j++) {
+            if (row[2 * j + 1] !== '') rowData[`question${j}`] = String(row[2 * j + 1] || '');
+            if (row[2 * j + 2] !== '') rowData[`answer${j}`] = String(row[2 * j + 2] || '');
+          }
+          if (!sheetName.includes('香港') && row[11]) rowData.notes = String(row[11]);
         }
-      });
-
-      parsedData.push({
-        rowNumber: i + 2,
-        data: rowData,
-      });
+        if (
+          !rowData.appleId &&
+          !rowData.idCardNumber &&
+          !rowData.firstName &&
+          !rowData.lastName &&
+          !rowData.password
+        )
+          continue;
+        if (rowData.appleId) rowData.appleId = rowData.appleId.trim().toLowerCase();
+        if (rowData.idCardNumber) rowData.idCardNumber = rowData.idCardNumber.toUpperCase();
+        if (type === 'recipients') {
+          const statusMapping = { 已挂服务器: '使用中', '已进表 未挂': '未使用' };
+          rowData.status = statusMapping[rowData.status] || rowData.status;
+          if (rowData.name && (!rowData.lastName || !rowData.firstName))
+            issues.push({ field: 'name', message: '请分别填写姓和名，系统不猜测复姓' });
+        }
+        parsedData.push({ rowNumber: i + 1 + range.s.r, sheetName, data: rowData, issues });
+      }
     }
-
-    logger.info('Excel 文件解析成功', {
-      type,
-      sheetName,
-      totalRows: parsedData.length,
-    });
-
+    if (!matched)
+      throw new Error(
+        type === 'apple_ids'
+          ? '未找到 Apple IDs 或 26年AppleID 工作表'
+          : '未找到包含身份证列的取机人工作表'
+      );
+    if (!parsedData.length) throw new Error('没有可导入资料');
     return parsedData;
   } catch (error) {
-    logger.error('Excel 文件解析失败', { type, error: error.message });
+    logger.warn('导入解析失败', { type, errorType: error.name });
     throw error;
   }
 }
@@ -173,8 +208,8 @@ function validateRecipient(data) {
   // 必填校验
   if (!data.lastName) {
     errors.push({ field: 'lastName', message: '姓氏不能为空' });
-  } else if (data.lastName.length !== 1) {
-    errors.push({ field: 'lastName', message: '姓氏必须是1个字符' });
+  } else if (data.lastName.length > 50) {
+    errors.push({ field: 'lastName', message: '姓氏不能超过50个字符' });
   }
 
   if (!data.firstName) {
@@ -233,9 +268,10 @@ function previewImportData(filePath, type) {
     const validateFn = type === 'apple_ids' ? validateAppleId : validateRecipient;
 
     const preview = parsedData.map(item => {
-      const errors = validateFn(item.data);
+      const errors = [...(item.issues || []), ...validateFn(item.data)];
       return {
         rowNumber: item.rowNumber,
+        sheetName: item.sheetName,
         data: item.data,
         errors,
       };

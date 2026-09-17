@@ -1,237 +1,126 @@
-/**
- * Excel 导入控制器。
- * @module controllers/importController
- */
-
+/** 基础档案导入：服务端预览、逐项裁定、事务执行。 */
 const crypto = require('crypto');
 const fs = require('fs/promises');
-
-const { AppleId, Recipient, sequelize } = require('../models');
-const logger = require('../utils/logger');
+const { sequelize } = require('../models');
 const ApiError = require('../utils/ApiError');
-const { blindIndex } = require('../utils/fieldEncryption');
-const { previewImportData } = require('../services/importService');
+const logger = require('../utils/logger');
+const { parseExcelFile } = require('../services/importService');
+const {
+  loadProfiles,
+  buildImportPlan,
+  applyImportPlan,
+} = require('../services/profileImportService');
+const { lockProfiles } = require('../services/profileBindingService');
+const sessions = new Map();
+const TTL = 15 * 60 * 1000;
 
-const IMPORT_TYPES = Object.freeze(['apple_ids', 'recipients']);
-const MAX_IMPORT_ROWS = 1000;
-const SESSION_TTL_MS = 15 * 60 * 1000;
-const importSessions = new Map();
-
-function validateType(type) {
-  if (!IMPORT_TYPES.includes(type)) {
-    throw ApiError.badRequest('导入类型必须是 apple_ids 或 recipients');
-  }
+function cleanSessions() {
+  for (const [key, session] of sessions) if (session.expiresAt <= Date.now()) sessions.delete(key);
+}
+function getSession(req) {
+  cleanSessions();
+  const session = sessions.get(req.body?.sessionToken);
+  if (!session || session.userId !== req.user.id || session.type !== req.body.type)
+    throw ApiError.badRequest('预览已过期、已使用或类型／用户不匹配，请重新上传');
+  const decisions = req.body.decisions || {};
+  if (
+    typeof decisions !== 'object' ||
+    Array.isArray(decisions) ||
+    Object.keys(decisions).length > 100000
+  )
+    throw ApiError.badRequest('差异选择格式错误');
+  return session;
+}
+function publicPlan(plan) {
+  return {
+    summary: plan.summary,
+    records: plan.records,
+    conflicts: plan.conflicts,
+    errors: plan.errors,
+  };
 }
 
-function removeExpiredSessions() {
-  const now = Date.now();
-  for (const [token, session] of importSessions.entries()) {
-    if (session.expiresAt <= now) importSessions.delete(token);
-  }
-}
-
-async function removeUploadedFile(filePath) {
-  if (!filePath) return;
-  try {
-    await fs.unlink(filePath);
-  } catch (error) {
-    if (error.code !== 'ENOENT') {
-      logger.warn('清理导入临时文件失败', { filePath, error: error.message });
-    }
-  }
-}
-
-/**
- * 预览导入文件并创建仅服务端保存的数据会话。
- * @param {Object} req - Express request
- * @param {Object} res - Express response
- * @returns {Promise<void>}
- */
+/** 上传多个文件并生成无敏感明文的差异预览。 */
 async function previewImport(req, res) {
+  const files = req.files ? Object.values(req.files).flat() : req.file ? [req.file] : [];
   try {
-    if (!req.file) throw ApiError.badRequest('请上传 .xlsx 文件');
-    validateType(req.body.type);
-
-    const result = previewImportData(req.file.path, req.body.type);
-    if (result.summary.total > MAX_IMPORT_ROWS) {
-      throw ApiError.badRequest(`单次导入不能超过 ${MAX_IMPORT_ROWS} 行`);
-    }
-
-    removeExpiredSessions();
+    const type = req.query.type || req.body.type;
+    if (!['apple_ids', 'recipients'].includes(type)) throw ApiError.badRequest('导入类型无效');
+    if (!files.length) throw ApiError.badRequest('请选择 xlsx 文件');
+    cleanSessions();
+    if ([...sessions.values()].filter(s => s.userId === req.user.id).length >= 5)
+      throw ApiError.badRequest('未完成预览过多，请稍后再试');
+    const rows = files.flatMap(file =>
+      parseExcelFile(file.path, type).map(row => ({ ...row, fileName: file.originalname }))
+    );
+    if (rows.length > 10000) throw ApiError.badRequest('单批最多 10000 行，请拆分导入');
+    const profiles = await loadProfiles();
+    const plan = buildImportPlan(rows, type, profiles);
     const sessionToken = crypto.randomBytes(32).toString('base64url');
-    importSessions.set(sessionToken, {
-      type: req.body.type,
+    sessions.set(sessionToken, {
+      rows,
+      type,
+      profiles,
       userId: req.user.id,
-      preview: result.preview,
-      expiresAt: Date.now() + SESSION_TTL_MS,
+      expiresAt: Date.now() + TTL,
     });
-
-    logger.info('导入预览成功', {
-      type: req.body.type,
-      userId: req.user.id,
-      total: result.summary.total,
-      valid: result.summary.valid,
-      invalid: result.summary.invalid,
-    });
+    res.set('Cache-Control', 'no-store');
     res.json({
       success: true,
-      data: {
-        sessionToken,
-        expiresInSeconds: SESSION_TTL_MS / 1000,
-        summary: result.summary,
-        errors: result.preview
-          .filter(item => item.errors.length > 0)
-          .map(item => ({ rowNumber: item.rowNumber, errors: item.errors })),
-      },
+      data: { sessionToken, expiresInSeconds: TTL / 1000, ...publicPlan(plan) },
     });
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    logger.error('导入预览失败', { userId: req.user?.id, error: error.message });
-    throw ApiError.badRequest('导入文件解析失败', { reason: error.message });
+    logger.warn('导入预览失败', { errorType: error.name });
+    throw ApiError.badRequest(
+      error.message.startsWith('未找到') || error.message.startsWith('没有可导入')
+        ? error.message
+        : '文件格式无法解析，请检查表头及数据'
+    );
   } finally {
-    await removeUploadedFile(req.file?.path);
+    await Promise.all(files.map(file => fs.unlink(file.path).catch(() => {})));
   }
 }
 
-async function batchImportAppleIds(dataList, transaction) {
-  const result = { imported: 0, skipped: 0, errors: [] };
-  for (const previewItem of dataList) {
-    const item = previewItem.data;
-    if (previewItem.errors.length > 0) {
-      result.errors.push({
-        rowNumber: previewItem.rowNumber,
-        error: previewItem.errors.map(error => error.message).join(', '),
-      });
-      continue;
-    }
-    const existing = await AppleId.findOne({ where: { appleId: item.appleId }, transaction });
-    if (existing) {
-      result.skipped += 1;
-      result.errors.push({ rowNumber: previewItem.rowNumber, error: 'Apple ID 已存在' });
-      continue;
-    }
-    const securityQa = item.question1
-      ? {
-        question1: item.question1,
-        answer1: item.answer1,
-        question2: item.question2,
-        answer2: item.answer2,
-        question3: item.question3,
-        answer3: item.answer3,
-      }
-      : null;
-    await AppleId.create(
-      {
-        appleId: item.appleId,
-        password: item.password,
-        nickname: item.nickname || null,
-        country: item.country || null,
-        isModified: item.isModified === '是',
-        status: item.status || '未使用',
-        securityQa,
-      },
-      { transaction }
-    );
-    result.imported += 1;
+/** 选择差异后重新计算预览，尚不写库。 */
+function reviewImport(req, res) {
+  try {
+    const session = getSession(req);
+    const plan = buildImportPlan(session.rows, session.type, session.profiles, req.body.decisions);
+    res.set('Cache-Control', 'no-store');
+    res.json({ success: true, data: publicPlan(plan) });
+  } catch (error) {
+    logger.warn('基础档案操作未完成', { errorType: error.name });
+    throw error;
   }
-  return result;
 }
 
-async function batchImportRecipients(dataList, transaction) {
-  const result = { imported: 0, skipped: 0, errors: [] };
-  for (const previewItem of dataList) {
-    const item = previewItem.data;
-    if (previewItem.errors.length > 0) {
-      result.errors.push({
-        rowNumber: previewItem.rowNumber,
-        error: previewItem.errors.map(error => error.message).join(', '),
-      });
-      continue;
-    }
-    const existing = await Recipient.findOne({
-      where: { idCardHash: blindIndex(item.idCardNumber) },
-      transaction,
-    });
-    if (existing) {
-      result.skipped += 1;
-      result.errors.push({ rowNumber: previewItem.rowNumber, error: '身份证号已存在' });
-      continue;
-    }
-
-    let appleIdRef = null;
-    if (item.appleId) {
-      const account = await AppleId.findOne({ where: { appleId: item.appleId }, transaction });
-      if (!account) {
-        result.errors.push({ rowNumber: previewItem.rowNumber, error: '绑定的 Apple ID 不存在' });
-        continue;
-      }
-      appleIdRef = account.id;
-    }
-    await Recipient.create(
-      {
-        lastName: item.lastName,
-        firstName: item.firstName,
-        idCardNumber: item.idCardNumber,
-        phone: item.phone || null,
-        email: item.email || null,
-        province: item.province || null,
-        city: item.city || null,
-        district: item.district || null,
-        streetAddress: item.streetAddress || null,
-        appleIdRef,
-        tag: item.tag || null,
-        status: item.status || '未使用',
-        notes: item.notes || null,
-      },
-      { transaction }
-    );
-    result.imported += 1;
-  }
-  return result;
-}
-
-/**
- * 使用服务端导入会话执行导入。
- * @param {Object} req - Express request
- * @param {Object} res - Express response
- * @returns {Promise<void>}
- */
+/** 消费用户绑定令牌，锁内检查预览是否过时后原子写入。 */
 async function executeImport(req, res) {
   try {
-    const { sessionToken } = req.body || {};
-    if (!sessionToken || typeof sessionToken !== 'string') {
-      throw ApiError.badRequest('sessionToken 不能为空');
-    }
-    removeExpiredSessions();
-    const session = importSessions.get(sessionToken);
-    if (!session || session.userId !== req.user.id) {
-      throw ApiError.badRequest('导入会话不存在、已过期或不属于当前用户');
-    }
-    if (req.body.type !== session.type) {
-      throw ApiError.badRequest('导入类型与预览会话不匹配');
-    }
-    // 执行前即消费令牌，防止并发重放。失败后需重新预览。
-    importSessions.delete(sessionToken);
-
-    const result = await sequelize.transaction(transaction => {
-      if (session.type === 'apple_ids') {
-        return batchImportAppleIds(session.preview, transaction);
-      }
-      return batchImportRecipients(session.preview, transaction);
+    const session = getSession(req);
+    const plan = buildImportPlan(session.rows, session.type, session.profiles, req.body.decisions);
+    if (plan.summary.conflicts || plan.summary.blocked)
+      throw ApiError.conflict('请先裁定差异或跳过问题档案');
+    sessions.delete(req.body.sessionToken);
+    const result = await sequelize.transaction(async transaction => {
+      await lockProfiles(transaction, req.user.id, true);
+      const current = await loadProfiles(transaction);
+      if (current.fingerprint !== session.profiles.fingerprint)
+        throw ApiError.conflict('预览后档案已变化，请重新上传核对');
+      return applyImportPlan(plan, req, transaction);
     });
-    logger.info('批量导入完成', {
-      type: session.type,
+    logger.info('档案导入完成', {
       userId: req.user.id,
+      type: session.type,
       imported: result.imported,
-      skipped: result.skipped,
-      errorCount: result.errors.length,
+      updated: result.updated,
     });
     res.json({ success: true, data: result });
   } catch (error) {
     if (error instanceof ApiError) throw error;
-    logger.error('批量导入失败', { userId: req.user?.id, error: error.message });
-    throw ApiError.database('批量导入失败', { reason: error.message });
+    logger.error('档案导入事务失败', { errorType: error.name });
+    throw ApiError.database('导入未完成，整批已回滚，请重新预览');
   }
 }
-
-module.exports = { previewImport, executeImport };
+module.exports = { previewImport, reviewImport, executeImport };

@@ -1,7 +1,8 @@
 /** 公共订单创建：调用方持有来源锁及订单号锁，所有后续任务在同一事务登记。 */
-const { AppleId, Recipient, Order, OrderRefreshSchedule, OrderRefreshJob } = require('../models');
+const { sequelize, AppleId, Order, OrderRefreshSchedule, OrderRefreshJob } = require('../models');
 const logger = require('../utils/logger');
 const paymentDispatchService = require('./paymentDispatchService');
+const { findRecipientForOrder } = require('./profileOrderMatching');
 
 /** 创建订单与首次任务。 @param {Object} emailData 标准化来源资料 @param {Object} transaction 事务 @param {Object} options 来源选项 @returns {Promise<Object>} 订单 */
 async function createOrderInTransaction(emailData, transaction, options = {}) {
@@ -16,64 +17,38 @@ async function createOrderInTransaction(emailData, transaction, options = {}) {
       recipientAddress: null,
     };
 
-    if (options.source === 'aos') {
-      const recipientWhere = {
-        lastName: emailData.sourceLastName,
-        firstName: emailData.sourceFirstName,
-        phone: emailData.recipient.phone,
-      };
-      if (emailData.recipient.idLast4) {
-        recipientWhere.idCardLast4 = emailData.recipient.idLast4;
-      }
-      const candidates = await Recipient.findAll({
-        where: recipientWhere,
-        limit: 2,
-        transaction,
-      });
-      const matched = candidates.length === 1 ? candidates[0] : null;
-      if (
-        matched &&
-        (!matched.email || matched.email.toLowerCase() === emailData.recipient.email.toLowerCase())
-      ) {
-        recipientData.recipientRef = matched.id;
-        recipientData.recipientIdCard = matched.idCardNumber;
-      }
-    } else if (emailData.recipient?.name && emailData.recipient?.idLast4) {
-      const recipient = await Recipient.findOne({
-        where: {
-          // 姓名匹配：拆分姓和名
-          lastName: emailData.recipient.name.substring(0, 1),
-          firstName: emailData.recipient.name.substring(1),
-          idCardLast4: emailData.recipient.idLast4,
-        },
-        transaction,
-      });
-
-      if (recipient) {
-        recipientData.recipientRef = recipient.id;
-        recipientData.recipientIdCard = recipient.idCardNumber;
-        recipientData.recipientEmail = recipient.email;
-        recipientData.recipientPhone = recipient.phone;
-        recipientData.recipientAddress = [
-          recipient.province,
-          recipient.city,
-          recipient.district,
-          recipient.streetAddress,
+    const matchedRecipient = await findRecipientForOrder(
+      {
+        recipientName: emailData.recipient?.name,
+        recipientIdCard: emailData.recipient?.idCard,
+        recipientIdLast4: emailData.recipient?.idLast4,
+        recipientPhone: emailData.recipient?.phone,
+        recipientEmail: emailData.recipient?.email,
+        ingestionSource: options.source || 'email',
+      },
+      transaction
+    );
+    if (matchedRecipient) {
+      recipientData = {
+        recipientRef: matchedRecipient.id,
+        recipientName: emailData.recipient?.name,
+        recipientIdCard: matchedRecipient.idCardNumber,
+        recipientEmail: matchedRecipient.email,
+        recipientPhone: matchedRecipient.phone,
+        recipientAddress: [
+          matchedRecipient.province,
+          matchedRecipient.city,
+          matchedRecipient.district,
+          matchedRecipient.streetAddress,
         ]
           .filter(Boolean)
-          .join('');
-
-        logger.info('取机人信息自动匹配成功', {
-          emailRecordId: options.emailLogId || null,
-          recipientId: recipient.id,
-        });
-      } else {
-        logger.warn('未找到匹配的取机人', { emailRecordId: options.emailLogId || null });
-      }
+          .join(''),
+      };
     }
 
     recipientData = {
       ...recipientData,
+      recipientIdLast4: emailData.recipient?.idLast4?.toUpperCase() || null,
       recipientIdCard: emailData.recipient?.idCard || recipientData.recipientIdCard,
       recipientEmail: emailData.recipient?.email || recipientData.recipientEmail,
       recipientPhone: emailData.recipient?.phone || recipientData.recipientPhone,
@@ -88,7 +63,10 @@ async function createOrderInTransaction(emailData, transaction, options = {}) {
     };
 
     const appleAccount = await AppleId.findOne({
-      where: { appleId: emailData.appleId },
+      where: sequelize.where(
+        sequelize.fn('lower', sequelize.fn('trim', sequelize.col('apple_id'))),
+        (emailData.appleId || '').trim().toLowerCase()
+      ),
       transaction,
     });
 

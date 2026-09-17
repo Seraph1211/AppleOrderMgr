@@ -16,6 +16,8 @@ export const PERMISSIONS = Object.freeze({
   ORDERS_EXPORT: 'orders.export',
   ORDERS_REFRESH: 'orders.refresh',
   ORDERS_PAYER_EDIT: 'orders.payer.edit',
+  APPLE_IDS_SECRETS_READ: 'apple_ids.secrets.read',
+  RECIPIENTS_EXPORT_SENSITIVE: 'recipients.export_sensitive',
   APPLE_IDS_READ: 'apple_ids.read',
   APPLE_IDS_CREATE: 'apple_ids.create',
   APPLE_IDS_EDIT: 'apple_ids.edit',

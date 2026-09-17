@@ -83,10 +83,16 @@ module.exports = sequelize => {
         field: 'id_card_hash',
         comment: '身份证标准化值的 HMAC-SHA256 盲索引',
       },
+      realPhone: {
+        type: DataTypes.STRING(20),
+        allowNull: true,
+        field: 'real_phone',
+        comment: '真实联系电话（可空，不参与生成）',
+      },
       phone: {
         type: DataTypes.STRING(20),
         allowNull: true,
-        comment: '手机号',
+        comment: '下单手机号',
         validate: {
           is: {
             args: /^1[3-9]\d{9}$/,

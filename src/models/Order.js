@@ -97,6 +97,11 @@ module.exports = sequelize => {
         field: 'recipient_name',
         comment: '收件人姓名（邮件解析）',
       },
+      recipientIdLast4: {
+        type: DataTypes.STRING(4),
+        field: 'recipient_id_last4',
+        comment: '来源身份证后四位',
+      },
       recipientIdCard: {
         type: DataTypes.TEXT,
         allowNull: true,

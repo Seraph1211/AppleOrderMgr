@@ -4,10 +4,27 @@ const path = require('path');
 const fs = require('fs');
 const { requirePermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
-const { previewImport, executeImport } = require('../controllers/importController');
+const { previewImport, reviewImport, executeImport } = require('../controllers/importController');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
+const associations = require('../controllers/profileAssociationController');
+const associationPermissions = [
+  PERMISSIONS.ORDERS_READ,
+  PERMISSIONS.ORDERS_EDIT,
+  PERMISSIONS.RECIPIENTS_READ,
+  PERMISSIONS.APPLE_IDS_READ,
+].map(requirePermission);
+router.post(
+  '/associations/preview',
+  ...associationPermissions,
+  asyncHandler(associations.previewAssociations)
+);
+router.post(
+  '/associations/execute',
+  ...associationPermissions,
+  asyncHandler(associations.executeAssociations)
+);
 
 function requireImportPermission(permissionByType) {
   return (req, res, next) => {
@@ -75,7 +92,10 @@ const upload = multer({
 router.post(
   '/preview',
   requireImportPermission(importPermissionByType),
-  upload.single('file'),
+  upload.fields([
+    { name: 'file', maxCount: 1 },
+    { name: 'files', maxCount: 20 },
+  ]),
   asyncHandler(previewImport)
 );
 
@@ -84,6 +104,8 @@ router.post(
  * @desc 执行批量导入
  * @access Public
  */
+router.post('/review', requireImportPermission(importPermissionByType), asyncHandler(reviewImport));
+
 router.post(
   '/execute',
   requireImportPermission(importPermissionByType),
@@ -106,18 +128,58 @@ router.get('/template/:type', (req, res) => {
   }
 
   return requirePermission(templatePermissionByType[type])(req, res, () => {
-    const templateName =
-      type === 'apple_ids' ? 'apple_ids_import_template.xlsx' : 'recipients_import_template.xlsx';
-    const templatePath = path.join(__dirname, '../../templates', templateName);
-
-    if (!fs.existsSync(templatePath)) {
-      return res.status(404).json({
-        success: false,
-        error: '模板文件不存在',
-      });
+    const XLSX = require('xlsx');
+    const headers =
+      type === 'apple_ids'
+        ? [
+          'Apple ID',
+          '密码',
+          '国家',
+          '状态',
+          '备注',
+          '密保问题1',
+          '密保答案1',
+          '密保问题2',
+          '密保答案2',
+          '密保问题3',
+          '密保答案3',
+        ]
+        : [
+          'Apple ID',
+          '密码',
+          '下单手机号码',
+          'Email',
+          '省',
+          '市',
+          '区',
+          '街道地址',
+          '使用状态',
+          '姓',
+          '名',
+          '身份证号码',
+          'TAG',
+          '信息导入模板',
+          '真实联系电话',
+          '备注',
+        ];
+    const book = XLSX.utils.book_new();
+    const sheet = XLSX.utils.aoa_to_sheet([headers]);
+    for (let row = 1; row <= 1000; row++) {
+      for (let col = 0; col < headers.length; col++) {
+        sheet[XLSX.utils.encode_cell({ r: row, c: col })] = { t: 's', v: '', z: '@' };
+      }
     }
-
-    return res.download(templatePath, templateName);
+    sheet['!ref'] = XLSX.utils.encode_range({
+      s: { r: 0, c: 0 },
+      e: { r: 1000, c: headers.length - 1 },
+    });
+    XLSX.utils.book_append_sheet(book, sheet, type === 'apple_ids' ? 'Apple IDs' : 'Recipients');
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+    res.setHeader('Content-Disposition', `attachment; filename="${type}_import_template.xlsx"`);
+    return res.send(XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }));
   });
 });
 

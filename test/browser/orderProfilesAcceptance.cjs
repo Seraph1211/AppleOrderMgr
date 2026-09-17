@@ -109,6 +109,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
               {
                 id: 1,
                 name: '合成人员',
+                last_name: '合',
+                first_name: '成人员',
                 id_card_number: '110101199001011234',
                 phone: '13800000000',
                 status: '使用中',
@@ -170,10 +172,10 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.getByText('110101199001011234', { exact: true }).waitFor();
     await page.getByText('13800000000', { exact: true }).waitFor();
     await page.getByRole('button', { name: '编辑取机人 1', exact: true }).click();
-    await page.getByLabel('联系电话（选填）').fill('');
+    await page.getByLabel('下单手机号', { exact: true }).fill('');
     await page.getByRole('button', { name: /保存/ }).click();
     await page.getByRole('heading', { name: '编辑取机人' }).waitFor({ state: 'hidden' });
-    assert.equal(phoneWrites[0].phone, null);
+    assert.equal(phoneWrites[0].phone, '');
     await page.goto('http://127.0.0.1:5173/apple-ids');
     await page.getByText('synthetic-display-only', { exact: true }).waitFor();
     assert.deepEqual(errors, []);

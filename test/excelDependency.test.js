@@ -11,10 +11,10 @@ jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),
 }));
 jest.mock('../src/models', () => ({
-  AppleId: { findOne: jest.fn(), create: jest.fn() },
+  AppleId: { findAll: jest.fn(), findOne: jest.fn(), create: jest.fn() },
   Recipient: { findAll: jest.fn() },
   Order: { findAll: jest.fn() },
-  sequelize: { transaction: jest.fn() },
+  sequelize: { transaction: jest.fn(), query: jest.fn() },
 }));
 jest.mock('../src/services/crawler/refreshJobService', () => ({}));
 
@@ -42,7 +42,7 @@ function workbookFile(rows, sheetName = 'Apple IDs') {
 }
 
 function response() {
-  return { json: jest.fn(), send: jest.fn(), setHeader: jest.fn() };
+  return { set: jest.fn(), json: jest.fn(), send: jest.fn(), setHeader: jest.fn() };
 }
 
 async function previewRows(count = 1) {
@@ -51,7 +51,7 @@ async function previewRows(count = 1) {
   const filePath = workbookFile(rows);
   const res = response();
   await previewImport(
-    { file: { path: filePath }, body: { type: 'apple_ids' }, user: { id: 1 } },
+    { query: {}, file: { path: filePath }, body: { type: 'apple_ids' }, user: { id: 1 } },
     res
   );
   return { filePath, result: res.json.mock.calls[0][0].data };
@@ -65,6 +65,9 @@ afterAll(() => {
 });
 beforeEach(() => {
   jest.clearAllMocks();
+  AppleId.findAll.mockResolvedValue([]);
+  Recipient.findAll.mockResolvedValue([]);
+  sequelize.query.mockResolvedValue([[]]);
 });
 
 describe('固定 SheetJS 制品与读写兼容', () => {
@@ -99,20 +102,22 @@ describe('固定 SheetJS 制品与读写兼容', () => {
     expect(parseExcelFile(file, 'apple_ids')).toEqual([
       {
         rowNumber: 2,
+        sheetName: 'Apple IDs',
+        issues: [],
         data: {
           appleId: 'first@example.invalid',
           password: '00123456',
-          nickname: null,
           country: '中国',
         },
       },
       {
         rowNumber: 4,
+        sheetName: 'Apple IDs',
+        issues: [],
         data: {
           appleId: 'second@example.invalid',
           password: '00000001',
-          nickname: '测试',
-          country: null,
+          notes: '测试',
         },
       },
     ]);
@@ -132,10 +137,10 @@ describe('固定 SheetJS 制品与读写兼容', () => {
 
   test('错误工作表、无数据、畸形 ZIP 被拒绝', () => {
     expect(() => parseExcelFile(workbookFile([['a'], ['b']], '错误工作表'), 'apple_ids')).toThrow(
-      '不存在'
+      '未找到'
     );
     expect(() => parseExcelFile(workbookFile([['Apple ID', '密码']]), 'apple_ids')).toThrow(
-      '一行数据'
+      '没有可导入资料'
     );
     const badFile = path.join(tempDir, 'malformed.xlsx');
     fs.writeFileSync(badFile, Buffer.from([0x50, 0x4b, 3, 4, 0, 0]));
@@ -184,7 +189,7 @@ describe('固定 SheetJS 制品与读写兼容', () => {
     ]);
     expect(
       validateRecipient({
-        lastName: '两个',
+        lastName: '姓'.repeat(51),
         firstName: '名'.repeat(50),
         idCardNumber: 'bad',
         phone: 'bad',
@@ -280,14 +285,14 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
 
   test('1000 行可预览且不返回密码或完整预览数据', async () => {
     const { filePath, result } = await previewRows(1000);
-    expect(result.summary).toEqual({ total: 1000, valid: 1000, invalid: 0 });
+    expect(result.summary).toMatchObject({ total: 1000, valid: 1000, invalid: 0, conflicts: 0 });
     expect(result.preview).toBeUndefined();
     expect(JSON.stringify(result)).not.toContain('synthetic-value');
     expect(fs.existsSync(filePath)).toBe(false);
   });
 
-  test('1001 行拒绝且 finally 清理上传文件', async () => {
-    await expect(previewRows(1001)).rejects.toMatchObject({ statusCode: 400 });
+  test('10001 行拒绝且 finally 清理上传文件', async () => {
+    await expect(previewRows(10001)).rejects.toMatchObject({ statusCode: 400 });
   });
 
   test('不能跨用户执行，事务失败也不能重放会话', async () => {
@@ -308,7 +313,10 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
 
   test('并发重复执行最多进入一个事务', async () => {
     const { result } = await previewRows();
-    const req = { body: { type: 'apple_ids', sessionToken: result.sessionToken }, user: { id: 1 } };
+    const req = {
+      body: { type: 'apple_ids', sessionToken: result.sessionToken },
+      user: { id: 1, permissions: ['apple_ids.import'] },
+    };
     sequelize.transaction.mockImplementationOnce(callback => callback({ synthetic: true }));
     AppleId.findOne.mockResolvedValue(null);
     AppleId.create.mockResolvedValue({ id: 1 });
@@ -361,10 +369,13 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
       },
     ]);
     const res = response();
-    await exportRecipients(
-      { query: { includeSensitive: 'true' }, user: { id: 2, role: 'operator' } },
-      res
-    );
+    await expect(
+      exportRecipients(
+        { query: { includeSensitive: 'true' }, user: { id: 2, role: 'operator' } },
+        res
+      )
+    ).rejects.toMatchObject({ statusCode: 403 });
+    await exportRecipients({ query: {}, user: { id: 2, role: 'operator' } }, res);
     const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
     const data = XLSX.utils.sheet_to_json(book.Sheets['取机人数据']);
     expect(data[0]['密码']).toBe('******');

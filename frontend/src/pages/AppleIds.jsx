@@ -1,9 +1,9 @@
+import ProfileDetailsModal from '../components/ProfileDetailsModal';
 import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect } from 'react';
 import { Search, Plus, Mail, Package, Edit, Trash2, Settings, Upload } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAppleIds, createAppleId, updateAppleId, deleteAppleId } from '../api';
-import { previewImport, executeImport } from '../api/importApi';
 import useColumnConfig from '../hooks/useColumnConfig';
 import ColumnConfigModal from '../components/ColumnConfigModal';
 import Pagination from '../components/Pagination';
@@ -18,6 +18,9 @@ import { PERMISSIONS } from '../constants/permissions';
 export default function AppleIds() {
   const { can } = useAuth();
   const [appleIds, setAppleIds] = useState([]);
+  const [detailItem, setDetailItem] = useState(null);
+  const [filterBound, setFilterBound] = useState('');
+  const [pageError, setPageError] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCountry, setFilterCountry] = useState('');
@@ -40,10 +43,18 @@ export default function AppleIds() {
 
   useEffect(() => {
     loadAppleIds();
-  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterCountry, filterStatus]);
+  }, [
+    pagination.currentPage,
+    pagination.pageSize,
+    searchTerm,
+    filterCountry,
+    filterStatus,
+    filterBound,
+  ]);
 
   const loadAppleIds = async () => {
     setLoading(true);
+    setPageError('');
     try {
       const params = {
         page: pagination.currentPage,
@@ -51,6 +62,7 @@ export default function AppleIds() {
         keyword: searchTerm || undefined,
         country: filterCountry || undefined,
         status: filterStatus || undefined,
+        bound: filterBound || undefined,
       };
       const res = await getAppleIds(params);
       if (res.success) {
@@ -59,7 +71,8 @@ export default function AppleIds() {
             id: item.id,
             appleId: item.apple_id,
             password: item.password || '-',
-            nickname: item.nickname || '-',
+            notes: item.notes || '',
+            bound: item.recipient_count > 0,
             securityQa: item.security_qa || null,
             country: item.country || '-',
             isModified: item.is_modified ? '是' : '否',
@@ -81,7 +94,7 @@ export default function AppleIds() {
         }));
       }
     } catch (error) {
-      console.error('加载 Apple ID 失败:', error);
+      setPageError(error.message || '加载账号失败');
     } finally {
       setLoading(false);
     }
@@ -101,59 +114,25 @@ export default function AppleIds() {
     }));
   };
 
+  const accountPayload = formData => ({
+    apple_id: formData.appleId,
+    password: formData.password,
+    notes: formData.notes || null,
+    country: formData.country || '中国',
+    status: formData.status,
+    ...(formData.securityQa !== undefined ? { security_qa: formData.securityQa } : {}),
+  });
   const handleSaveAppleId = async formData => {
-    const response = await createAppleId({
-      apple_id: formData.appleId,
-      password: formData.password,
-      nickname: formData.nickname || null,
-      country: formData.country || null,
-      status: formData.status,
-      security_qa: formData.securityQa,
-    });
-    if (!response.success) throw new Error(response.error?.message || '保存失败');
+    await createAppleId(accountPayload(formData));
     await loadAppleIds();
   };
-
   const handleEdit = item => {
     setSelectedItem(item);
     setShowEditModal(true);
   };
-
   const handleSaveEdit = async (id, formData) => {
-    try {
-      // 构建密保 JSONB 对象
-      const securityQa =
-        formData.question1 && formData.answer1
-          ? {
-              question1: formData.question1,
-              answer1: formData.answer1,
-              question2: formData.question2 || null,
-              answer2: formData.answer2 || null,
-              question3: formData.question3 || null,
-              answer3: formData.answer3 || null,
-            }
-          : null;
-
-      // 调用后端 API 更新
-      const payload = {
-        nickname: formData.nickname || null,
-        country: formData.country || null,
-        status: formData.status,
-        is_modified: formData.isModified,
-      };
-      if (formData.password) payload.password = formData.password;
-      if (securityQa) payload.security_qa = securityQa;
-      const response = await updateAppleId(id, payload);
-
-      if (response.success) {
-        await loadAppleIds();
-      } else {
-        throw new Error(response.error || '更新失败');
-      }
-    } catch (error) {
-      console.error('更新 Apple ID 失败:', error);
-      throw error;
-    }
+    await updateAppleId(id, accountPayload(formData));
+    await loadAppleIds();
   };
 
   const handleDelete = item => {
@@ -179,36 +158,7 @@ export default function AppleIds() {
     }
   };
 
-  const handleBatchImport = async formData => {
-    try {
-      // 第一步：预览导入数据
-      const file = formData.get('file');
-      const previewRes = await previewImport(file, 'apple_ids');
-
-      if (!previewRes.success) {
-        throw new Error(previewRes.error || '数据预览失败');
-      }
-
-      // 第二步：执行导入
-      const executeRes = await executeImport(previewRes.data.sessionToken, 'apple_ids');
-
-      if (!executeRes.success) {
-        throw new Error(executeRes.error || '导入失败');
-      }
-
-      // 导入成功后重新加载列表
-      await loadAppleIds();
-
-      return {
-        imported: executeRes.data.imported || 0,
-        skipped: executeRes.data.skipped || 0,
-        errors: executeRes.data.errors || [],
-      };
-    } catch (error) {
-      console.error('批量导入失败:', error);
-      throw error;
-    }
-  };
+  const handleBatchImport = loadAppleIds;
 
   const visibleColumns = columns.filter(col => col.visible);
 
@@ -220,7 +170,7 @@ export default function AppleIds() {
     switch (column.key) {
       case 'appleId':
         return (
-          <div className="flex items-center space-x-3">
+          <div className="flex flex-wrap gap-3 items-center">
             <div className="flex-shrink-0">
               <div className="w-10 h-10 bg-primary-50 rounded-lg flex items-center justify-center">
                 <Mail className="w-5 h-5 text-primary" />
@@ -233,36 +183,21 @@ export default function AppleIds() {
         );
       case 'password':
         return <span className="text-sm text-gray-900 font-mono">{item.password}</span>;
-      case 'nickname':
-        return <span className="text-sm text-gray-900">{item.nickname}</span>;
+      case 'notes':
+        return <span className="text-sm text-gray-900">{item.notes || '-'}</span>;
       case 'securityQa':
-        if (!item.securityQa) {
-          return <span className="text-sm text-gray-400">未设置</span>;
-        }
+        return can(PERMISSIONS.APPLE_IDS_SECRETS_READ) ? (
+          <button className="text-primary underline" onClick={() => setDetailItem(item)}>
+            查看密保
+          </button>
+        ) : (
+          <span className="text-gray-400">无权限</span>
+        );
+      case 'bound':
         return (
-          <div className="text-xs space-y-1">
-            {item.securityQa.question1 && (
-              <div>
-                <span className="text-gray-500">问题1:</span> {item.securityQa.question1}
-                <span className="text-gray-500 ml-2">答案:</span>{' '}
-                <span className="font-mono">{item.securityQa.answer1}</span>
-              </div>
-            )}
-            {item.securityQa.question2 && (
-              <div>
-                <span className="text-gray-500">问题2:</span> {item.securityQa.question2}
-                <span className="text-gray-500 ml-2">答案:</span>{' '}
-                <span className="font-mono">{item.securityQa.answer2}</span>
-              </div>
-            )}
-            {item.securityQa.question3 && (
-              <div>
-                <span className="text-gray-500">问题3:</span> {item.securityQa.question3}
-                <span className="text-gray-500 ml-2">答案:</span>{' '}
-                <span className="font-mono">{item.securityQa.answer3}</span>
-              </div>
-            )}
-          </div>
+          <button className="text-primary underline" onClick={() => setDetailItem(item)}>
+            {item.bound ? '已绑定 · 查看取机人' : '未绑定'}
+          </button>
         );
       case 'country':
         return <span className="text-sm text-gray-600">{item.country}</span>;
@@ -276,7 +211,13 @@ export default function AppleIds() {
         return (
           <div className="flex items-center justify-center space-x-2">
             <Package className="w-4 h-4 text-gray-400" />
-            <span className="text-lg font-semibold text-primary">{item.orderCount}</span>
+            <button
+              className="text-lg font-semibold text-primary underline"
+              disabled={!can(PERMISSIONS.ORDERS_READ)}
+              onClick={() => setDetailItem(item)}
+            >
+              {item.orderCount}
+            </button>
           </div>
         );
       case 'lastOrderDate':
@@ -298,6 +239,7 @@ export default function AppleIds() {
           <div className="flex items-center justify-end space-x-2">
             {can(PERMISSIONS.APPLE_IDS_EDIT) && (
               <button
+                aria-label={`编辑 Apple ID ${item.id}`}
                 onClick={() => handleEdit(item)}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
@@ -321,13 +263,18 @@ export default function AppleIds() {
 
   return (
     <div className="space-y-6">
+      {pageError && (
+        <p role="alert" className="text-red-700 bg-red-50 p-3 rounded">
+          {pageError}
+        </p>
+      )}
       {/* 页面标题 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap gap-3 items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Apple ID 管理</h1>
           <p className="text-gray-500 mt-1">管理所有 Apple ID 账号</p>
         </div>
-        <div className="flex items-center space-x-3">
+        <div className="flex flex-wrap gap-3 items-center">
           {can(PERMISSIONS.APPLE_IDS_IMPORT) && (
             <button
               onClick={() => setShowBatchImport(true)}
@@ -352,6 +299,20 @@ export default function AppleIds() {
       {/* 搜索和筛选 */}
       <div className="card">
         <div className="flex flex-wrap items-center gap-3">
+          <select
+            aria-label="当前绑定筛选"
+            className="input"
+            style={{ width: 'auto' }}
+            value={filterBound}
+            onChange={e => {
+              setFilterBound(e.target.value);
+              setPagination(previous => ({ ...previous, currentPage: 1 }));
+            }}
+          >
+            <option value="">全部绑定状态</option>
+            <option value="true">已绑定</option>
+            <option value="false">未绑定</option>
+          </select>
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
@@ -462,6 +423,10 @@ export default function AppleIds() {
           </div>
         )}
       </div>
+
+      {detailItem && (
+        <ProfileDetailsModal kind="account" item={detailItem} onClose={() => setDetailItem(null)} />
+      )}
 
       {/* 列配置弹窗 */}
       {showColumnConfig && (

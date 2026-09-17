@@ -7,7 +7,7 @@ import client from './client';
  */
 export async function previewImport(file, type) {
   const formData = new FormData();
-  formData.append('file', file);
+  for (const entry of Array.isArray(file) ? file : [file]) formData.append('files', entry);
   formData.append('type', type);
 
   const response = await client.post(`/import/preview?type=${encodeURIComponent(type)}`, formData, {
@@ -24,8 +24,8 @@ export async function previewImport(file, type) {
  * @param {string} type - 导入类型（apple_ids 或 recipients）
  * @param {Array} data - 导入数据
  */
-export async function executeImport(sessionToken, type) {
-  const response = await client.post('/import/execute', { sessionToken, type });
+export async function executeImport(sessionToken, type, decisions = {}) {
+  const response = await client.post('/import/execute', { sessionToken, type, decisions });
   return response;
 }
 
@@ -45,3 +45,7 @@ export async function downloadTemplate(type) {
   link.remove();
   URL.revokeObjectURL(objectUrl);
 }
+
+/** 重新预览差异裁定，不执行导入。 */
+export const reviewImport = (sessionToken, type, decisions) =>
+  client.post('/import/review', { sessionToken, type, decisions });

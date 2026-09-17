@@ -9,6 +9,12 @@ const { PERMISSIONS } = require('../constants/business');
 const controller = require('../controllers/appleIdController');
 
 const router = express.Router();
+router.get(
+  '/:id/bindings',
+  requirePermission(PERMISSIONS.RECIPIENTS_READ),
+  requirePermission(PERMISSIONS.APPLE_IDS_READ),
+  asyncHandler(require('../controllers/recipientController').listBindings)
+);
 
 router.get(
   '/',

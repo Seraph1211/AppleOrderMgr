@@ -1,44 +1,44 @@
-import { useState, useEffect } from 'react'
-import { X, AlertCircle } from 'lucide-react'
-import { getAppleIds } from '../api/appleIdsApi'
+import { useState, useEffect } from 'react';
+import { X, AlertCircle } from 'lucide-react';
+import { getAppleIds } from '../api/appleIdsApi';
 
 export default function BindAppleIdModal({ selectedRecipients, onClose, onConfirm }) {
-  const [loading, setLoading] = useState(true)
-  const [availableCount, setAvailableCount] = useState(0)
-  const [binding, setBinding] = useState(false)
+  const [loading, setLoading] = useState(true);
+  const [availableCount, setAvailableCount] = useState(0);
+  const [binding, setBinding] = useState(false);
 
   useEffect(() => {
     // 查询未使用的 Apple ID 数量
     const fetchAvailableCount = async () => {
       try {
-        const response = await getAppleIds({ status: '未使用', limit: 1000 })
+        const response = await getAppleIds({ status: '未使用', bound: false, limit: 1 });
         // 后端返回的数据结构：response.data.total
-        setAvailableCount(response.data?.total || 0)
+        setAvailableCount(response.data?.total || 0);
       } catch (error) {
-        console.error('获取可用 Apple ID 数量失败:', error)
-        setAvailableCount(0)
+        console.error('获取可用 Apple ID 数量失败:', error);
+        setAvailableCount(0);
       } finally {
-        setLoading(false)
+        setLoading(false);
       }
-    }
+    };
 
-    fetchAvailableCount()
-  }, [])
+    fetchAvailableCount();
+  }, []);
 
   const handleConfirm = async () => {
-    setBinding(true)
+    setBinding(true);
     try {
-      await onConfirm()
-      onClose()
+      await onConfirm();
+      onClose();
     } catch (error) {
-      console.error('绑定失败:', error)
+      console.error('绑定失败:', error);
     } finally {
-      setBinding(false)
+      setBinding(false);
     }
-  }
+  };
 
-  const selectedCount = selectedRecipients.length
-  const insufficientStock = availableCount < selectedCount
+  const selectedCount = selectedRecipients.length;
+  const insufficientStock = availableCount < selectedCount;
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-4">
@@ -65,7 +65,9 @@ export default function BindAppleIdModal({ selectedRecipients, onClose, onConfir
           ) : (
             <>
               <p className="text-gray-700">
-                是否要为当前选中的 <span className="font-semibold text-primary">{selectedCount}</span> 个取机人绑定 Apple ID？
+                是否要为当前选中的{' '}
+                <span className="font-semibold text-primary">{selectedCount}</span> 个取机人绑定
+                Apple ID？
               </p>
 
               <div className="bg-gray-50 rounded-lg p-4 space-y-2">
@@ -75,7 +77,9 @@ export default function BindAppleIdModal({ selectedRecipients, onClose, onConfir
                 </div>
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-gray-600">可用 Apple ID 数量：</span>
-                  <span className={`font-medium ${insufficientStock ? 'text-orange-600' : 'text-green-600'}`}>
+                  <span
+                    className={`font-medium ${insufficientStock ? 'text-orange-600' : 'text-green-600'}`}
+                  >
                     {availableCount} 个
                   </span>
                 </div>
@@ -87,14 +91,15 @@ export default function BindAppleIdModal({ selectedRecipients, onClose, onConfir
                   <div className="flex-1">
                     <p className="text-sm text-orange-800 font-medium">库存不足提示</p>
                     <p className="text-sm text-orange-700 mt-1">
-                      当前库存未使用状态的 Apple ID 仅 {availableCount} 个，超过库存数量的取机人将无法绑定。
+                      当前库存未使用状态的 Apple ID 仅 {availableCount}{' '}
+                      个，超过库存数量的取机人将无法绑定。
                     </p>
                   </div>
                 </div>
               )}
 
               <p className="text-xs text-gray-500">
-                * 绑定后，Apple ID 的状态将自动更新为"使用中"
+                * 已有绑定的取机人会跳过；绑定不改变双方的使用状态。
               </p>
             </>
           )}
@@ -102,11 +107,7 @@ export default function BindAppleIdModal({ selectedRecipients, onClose, onConfir
 
         {/* 按钮 */}
         <div className="flex items-center justify-end space-x-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
-          <button
-            onClick={onClose}
-            className="btn btn-secondary"
-            disabled={binding || loading}
-          >
+          <button onClick={onClose} className="btn btn-secondary" disabled={binding || loading}>
             取消
           </button>
           <button
@@ -119,5 +120,5 @@ export default function BindAppleIdModal({ selectedRecipients, onClose, onConfir
         </div>
       </div>
     </div>
-  )
+  );
 }
