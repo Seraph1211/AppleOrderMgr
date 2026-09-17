@@ -21,6 +21,11 @@ router.get(
   asyncHandler(controller.exportRecipients)
 );
 router.get(
+  '/filter-options',
+  requirePermission(PERMISSIONS.RECIPIENTS_READ),
+  asyncHandler(controller.getFilterOptions)
+);
+router.get(
   '/:id/bindings',
   requirePermission(PERMISSIONS.RECIPIENTS_READ),
   requirePermission(PERMISSIONS.APPLE_IDS_READ),

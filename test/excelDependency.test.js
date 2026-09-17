@@ -385,4 +385,40 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
       /synthetic-secret|synthetic-address|110101199001010001/
     );
   });
+
+  test('敏感取机人导出为无表头逐行 TXT 录入信息', async () => {
+    Recipient.findAll.mockResolvedValue([
+      {
+        lastName: '测',
+        firstName: '试甲',
+        phone: '13800000000',
+        email: '13800000000@vvv8.net',
+        idCardNumber: '110101199001010001',
+        tag: '北京-负责人甲',
+        appleAccount: { appleId: 'a@example.invalid', password: 'synthetic-a' },
+      },
+      {
+        lastName: '测',
+        firstName: '试乙',
+        phone: '13900000000',
+        idCardNumber: '110101199001010002',
+        tag: '上海-负责人乙',
+        appleAccount: { appleId: 'b@example.invalid', password: 'synthetic-b' },
+      },
+    ]);
+    const res = response();
+    await exportRecipients(
+      {
+        query: { includeSensitive: 'true' },
+        user: { id: 1, permissions: ['recipients.export_sensitive'] },
+      },
+      res
+    );
+    const text = res.send.mock.lastCall[0].toString('utf8');
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/plain; charset=utf-8');
+    expect(text.split('\n')).toHaveLength(2);
+    expect(text).toMatch(/^a@example\.invalid,synthetic-a,/);
+    expect(text).toContain('\nb@example.invalid,synthetic-b,');
+    expect(text).not.toContain('信息导入模板');
+  });
 });

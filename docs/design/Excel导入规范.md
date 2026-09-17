@@ -36,9 +36,9 @@
 
 ## 导出及回导
 
-普通导出脱敏，不生成完整录入串。完整导出显式 `includeSensitive=true`，要求 `recipients.export_sensitive`；前端根据权限显示“导出录入信息”或“导出脱敏资料”。支持勾选导出和当前筛选导出。
+普通导出为脱敏 Excel，不生成完整录入串。完整导出显式 `includeSensitive=true`，要求 `recipients.export_sensitive`；前端根据权限显示“导出录入信息”或“导出脱敏资料”。支持勾选导出和当前筛选导出。
 
-完整导出 A—N 与腾讯模板对应，追加真实电话和备注。N 列按已核对腾讯公式保留连续逗号、WECHAT 配置及尾部占位，空账号／地址输出空字符串。身份证文本存储，公式型文本做保护。脱敏文件不可作为完整档案回导；完整文件中的普通业务字符可以回导，带保护前缀的公式型文字需在预览中核对，不承诺自动剥离所有前缀。
+完整导出不生成工作簿，只把腾讯模板 N 列“信息导入模板”的计算结果写入 UTF-8 TXT：每条档案一行、无列名、无状态／真实电话／备注等附加列。每行按已核对公式保留连续逗号、WECHAT 配置及尾部占位，空账号／地址输出空字符串；字段内换行替换为空格，避免拆成额外记录。脱敏 Excel 不可作为完整档案回导，录入 TXT 也不是本系统的批量导入格式。
 
 来源、具体规则与验收见[实施方案](../planning/取机人与AppleID管理实施方案.md)。代码：[解析](../../src/services/importService.js)、[差异计划](../../src/services/profileImportService.js)、[接口](../../src/controllers/importController.js)、[前端](../../frontend/src/components/BatchImportModal.jsx)。
 

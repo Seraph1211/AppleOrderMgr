@@ -382,11 +382,7 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
     });
   });
 
-  test('完整导出符合腾讯 A-N 表头及固定串，文本身份证可导回', async () => {
-    const XLSX = require('xlsx'),
-      fs = require('fs'),
-      os = require('os'),
-      path = require('path');
+  test('完整导出只返回逐行 TXT 录入模板串', async () => {
     const x = await person('欧阳明', {
         lastName: '欧阳',
         firstName: '明',
@@ -396,52 +392,26 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
         realPhone: '13900000000',
         notes: '备注',
       }),
-      a = await account();
+      a = await account(),
+      y = await person('测试乙', { phone: '13900000001', tag: '第二TAG' }),
+      b = await account();
     await changeBinding(x, a.id);
+    await changeBinding(y, b.id);
     const res = response();
     await recipientController.exportRecipients(
-      { query: { ids: String(x.id), includeSensitive: 'true' }, user },
+      { query: { ids: `${x.id},${y.id}`, includeSensitive: 'true' }, user },
       res
     );
-    const book = XLSX.read(res.send.mock.lastCall[0], { type: 'buffer' }),
-      sheet = book.Sheets['取机人数据'];
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-    expect(rows[0].slice(0, 14)).toEqual([
-      'Apple ID',
-      '密码',
-      '下单手机号码',
-      'Email',
-      '省',
-      '市',
-      '区',
-      '街道地址',
-      '使用状态',
-      '姓',
-      '名',
-      '身份证号码',
-      'TAG',
-      '信息导入模板',
-    ]);
-    expect(sheet.L2.t).toBe('s');
-    expect(sheet.L2.v).toBe(x.idCardNumber);
-    expect(rows[1][13]).toBe(
+    expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/plain; charset=utf-8');
+    expect(res.setHeader.mock.calls.find(([name]) => name === 'Content-Disposition')[1]).toContain(
+      '.txt'
+    );
+    const lines = res.send.mock.lastCall[0].toString('utf8').split('\n');
+    expect(lines).toHaveLength(2);
+    expect(lines).toContain(
       `${a.appleId},${a.password},,,1,指定地址,13800000000,欧阳,明,,13800000000@vvv8.net,,,,,,,,,,,,WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#,${x.idCardNumber},合成TAG,,,`
     );
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'profile-export-'));
-    try {
-      const file = path.join(dir, 'export.xlsx');
-      fs.writeFileSync(file, res.send.mock.lastCall[0]);
-      const parsed = require('../src/services/importService').parseExcelFile(file, 'recipients');
-      expect(parsed[0].data).toMatchObject({
-        lastName: '欧阳',
-        firstName: '明',
-        realPhone: '13900000000',
-        notes: '备注',
-      });
-      expect(parsed[0].issues).toEqual([]);
-    } finally {
-      fs.rmSync(dir, { recursive: true, force: true });
-    }
+    expect(lines.some(line => line.startsWith(`${b.appleId},${b.password},`))).toBe(true);
   });
   test('手工新增默认值、按邮箱换绑和解绑、权限及不存在账号校验', async () => {
     const res = response();

@@ -11,15 +11,16 @@ import {
   Trash2,
   Phone,
   Settings,
-  Upload,
+  FileUp,
   Zap,
   MapPin,
-  Download,
+  FileText,
   Link,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   getRecipients,
+  getRecipientFilterOptions,
   createRecipient,
   updateRecipient,
   deleteRecipient,
@@ -44,17 +45,18 @@ import BindAppleIdModal from '../components/BindAppleIdModal';
 import { recipientsColumns } from '../constants/tableColumns';
 import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status';
 import { PERMISSIONS } from '../constants/permissions';
+import TagMultiSelect from '../components/TagMultiSelect';
 
 export default function Recipients() {
   const { can } = useAuth();
   const [recipients, setRecipients] = useState([]);
   const [showAssociations, setShowAssociations] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
-  const [filterBound, setFilterBound] = useState('');
   const [pageError, setPageError] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterTag, setFilterTag] = useState('');
+  const [filterTags, setFilterTags] = useState([]);
+  const [tagOptions, setTagOptions] = useState([]);
   const [filterStatus, setFilterStatus] = useState('');
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -88,25 +90,17 @@ export default function Recipients() {
 
   useEffect(() => {
     loadRecipients();
-  }, [
-    pagination.currentPage,
-    pagination.pageSize,
-    searchTerm,
-    filterTag,
-    filterStatus,
-    filterBound,
-  ]);
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterTags, filterStatus]);
 
   useEffect(() => {
     setSelectedIds([]);
-  }, [
-    pagination.currentPage,
-    pagination.pageSize,
-    searchTerm,
-    filterTag,
-    filterStatus,
-    filterBound,
-  ]);
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterTags, filterStatus]);
+
+  useEffect(() => {
+    getRecipientFilterOptions()
+      .then(response => setTagOptions(response.data?.tags || []))
+      .catch(error => setPageError(error.message || '加载 TAG 选项失败'));
+  }, []);
 
   const loadRecipients = async () => {
     setLoading(true);
@@ -116,9 +110,8 @@ export default function Recipients() {
         page: pagination.currentPage,
         limit: pagination.pageSize,
         keyword: searchTerm || undefined,
-        tag: filterTag || undefined,
+        tags: filterTags.length ? filterTags : undefined,
         status: filterStatus || undefined,
-        bound: filterBound || undefined,
       };
       const res = await getRecipients(params);
       if (res.success) {
@@ -360,7 +353,7 @@ export default function Recipients() {
     setPendingAddressParams(null);
   };
 
-  // 导出Excel
+  // 导出录入信息 TXT 或无敏感权限时的脱敏 Excel
   const handleExport = () => {
     // 如果没有选中任何记录，显示确认对话框
     if (selectedIds.length === 0) {
@@ -378,9 +371,8 @@ export default function Recipients() {
         ? { ids: selectedIds.join(',') }
         : {
             keyword: searchTerm || undefined,
-            tag: filterTag || undefined,
+            tags: filterTags.length ? filterTags : undefined,
             status: filterStatus || undefined,
-            bound: filterBound || undefined,
           };
       const blob = await exportRecipients({
         ...params,
@@ -389,7 +381,9 @@ export default function Recipients() {
       const downloadUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = downloadUrl;
-      link.download = `取机人数据_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      link.download = can(PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE)
+        ? `取机人录入信息_${new Date().toISOString().slice(0, 10)}.txt`
+        : `取机人数据_${new Date().toISOString().slice(0, 10)}.xlsx`;
       document.body.appendChild(link);
       link.click();
       link.remove();
@@ -574,7 +568,7 @@ export default function Recipients() {
               onClick={handleExport}
               className="btn btn-secondary flex items-center space-x-2"
             >
-              <Download className="w-4 h-4" />
+              <FileText className="w-4 h-4" />
               <span>
                 {can(PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE) ? '导出录入信息' : '导出脱敏资料'}
               </span>
@@ -585,7 +579,7 @@ export default function Recipients() {
               onClick={() => setShowBatchImport(true)}
               className="btn btn-secondary flex items-center space-x-2"
             >
-              <Upload className="w-4 h-4" />
+              <FileUp className="w-4 h-4" />
               <span>批量导入</span>
             </button>
           )}
@@ -604,41 +598,28 @@ export default function Recipients() {
       {/* 搜索、筛选和批量操作 */}
       <div className="card">
         <div className="flex flex-wrap items-center gap-3">
-          <select
-            aria-label="当前绑定筛选"
-            className="input"
-            style={{ width: 'auto' }}
-            value={filterBound}
-            onChange={e => {
-              setFilterBound(e.target.value);
-              setPagination(previous => ({ ...previous, currentPage: 1 }));
-            }}
-          >
-            <option value="">全部绑定状态</option>
-            <option value="true">已绑定</option>
-            <option value="false">未绑定</option>
-          </select>
           <div className="relative flex-1 min-w-[200px]">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="搜索取机人姓名或电话..."
+              placeholder="搜索姓名、身份证号或 Apple ID..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="input pl-10 w-full"
             />
           </div>
-          <input
-            aria-label="TAG 精确筛选"
-            placeholder="输入原始 TAG 筛选"
-            value={filterTag}
-            onChange={e => {
-              setFilterTag(e.target.value);
-              setPagination(previous => ({ ...previous, currentPage: 1 }));
-            }}
-            className="input"
-            style={{ width: '180px' }}
-          />
+          <div className="w-full sm:w-[240px]">
+            <TagMultiSelect
+              options={tagOptions}
+              value={filterTags}
+              onChange={value => {
+                setFilterTags(value);
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+              ariaLabel="TAG 筛选"
+              placeholder="全部 TAG"
+            />
+          </div>
           <select
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}

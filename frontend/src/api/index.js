@@ -21,6 +21,7 @@ import {
 } from './appleIdsApi';
 import {
   getRecipients,
+  getRecipientFilterOptions,
   getRecipientDetail,
   createRecipient,
   updateRecipient,
@@ -73,6 +74,7 @@ export {
 
   // Recipients
   getRecipients,
+  getRecipientFilterOptions,
   getRecipientDetail,
   createRecipient,
   updateRecipient,

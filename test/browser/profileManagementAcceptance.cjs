@@ -43,6 +43,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       apple_id_ref: 1,
       password: 'synthetic-pass',
       notes: '原备注',
+      tag: '北京-负责人甲',
       status: '异常',
       order_count: 2,
       created_at: '2026-09-17T00:00:00Z',
@@ -118,6 +119,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           };
         else if (url.pathname === '/api/recipients' && request.method() === 'GET')
           data = { recipients: [recipient], total: 1 };
+        else if (url.pathname === '/api/recipients/filter-options')
+          data = { tags: ['北京-负责人甲', '上海-负责人乙'] };
         else if (url.pathname === '/api/apple-ids' && request.method() === 'GET')
           data = { apple_ids: [account], total: 1 };
         else if (url.pathname.endsWith('/bindings'))
@@ -186,8 +189,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           data = { updated: 1 };
         } else if (url.pathname === '/api/recipients/export') {
           await route.fulfill({
-            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            body: 'synthetic-file',
+            contentType: 'text/plain; charset=utf-8',
+            body: 'a@example.invalid,synthetic-pass,,,1,指定地址,13800000000,欧阳,明',
           });
           return;
         } else throw new Error(`未预期请求 ${url.pathname}`);
@@ -199,6 +202,73 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     });
     await page.goto('http://127.0.0.1:5173/recipients');
     await page.getByText('13900000000', { exact: true }).waitFor();
+    const defaultHeaders = (await page.locator('thead th').allTextContents())
+      .map(value => value.trim())
+      .filter(Boolean);
+    assert.deepEqual(defaultHeaders.slice(0, 8), [
+      '姓名',
+      '身份证号',
+      'TAG',
+      '绑定 Apple ID',
+      '真实联系电话',
+      '状态',
+      '订单数',
+      '备注',
+    ]);
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'columnConfig:recipients',
+        JSON.stringify({
+          version: '1.0',
+          columns: [
+            { key: 'name', visible: true, order: 1 },
+            { key: 'idCard', visible: true, order: 0 },
+          ],
+        })
+      );
+    });
+    await page.goto('http://127.0.0.1:5173/apple-ids');
+    await page.getByText('唯一备注', { exact: true }).waitFor();
+    await page.goto('http://127.0.0.1:5173/recipients');
+    await page.getByText('13900000000', { exact: true }).waitFor();
+    const restoredHeaders = (await page.locator('thead th').allTextContents())
+      .map(value => value.trim())
+      .filter(Boolean);
+    assert.deepEqual(restoredHeaders.slice(0, 2), ['身份证号', '姓名']);
+    await page.evaluate(() => localStorage.removeItem('columnConfig:recipients'));
+    await page.reload();
+    await page.getByText('13900000000', { exact: true }).waitFor();
+    assert.equal(await page.getByText('全部绑定状态', { exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'TAG 筛选' }).click();
+    await page.getByRole('option', { name: '北京-负责人甲' }).click();
+    await Promise.all([
+      page.waitForResponse(response => {
+        const params = new URL(response.url()).searchParams;
+        return (
+          params.getAll('tags[]').join(',') === '北京-负责人甲,上海-负责人乙' ||
+          params.getAll('tags').join(',') === '北京-负责人甲,上海-负责人乙'
+        );
+      }),
+      page.getByRole('option', { name: '上海-负责人乙' }).click(),
+    ]);
+    assert(
+      requests.some(
+        request => request.path === '/api/recipients' && request.query['tags[]'] === '上海-负责人乙'
+      )
+    );
+    await Promise.all([
+      page.waitForResponse(
+        response => new URL(response.url()).searchParams.get('keyword') === 'a@example.invalid'
+      ),
+      page.getByPlaceholder('搜索姓名、身份证号或 Apple ID...').fill('a@example.invalid'),
+    ]);
+    assert(
+      requests.some(
+        request =>
+          request.path === '/api/recipients' && request.query.keyword === 'a@example.invalid'
+      )
+    );
+    await page.screenshot({ path: '/tmp/profile-management-filters.png', fullPage: true });
     await page.getByRole('button', { name: '编辑取机人 1' }).click();
     assert.equal(await page.getByLabel('姓 *', { exact: true }).inputValue(), '欧阳');
     await page.getByLabel('街道地址', { exact: true }).fill('新街道9号');
@@ -260,10 +330,12 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       .last()
       .click();
     await page.locator('tbody input[type="checkbox"]').first().check();
-    await Promise.all([
+    const [, download] = await Promise.all([
       page.waitForRequest(request => request.url().includes('/api/recipients/export')),
+      page.waitForEvent('download'),
       page.getByRole('button', { name: '导出录入信息' }).click(),
     ]);
+    assert.match(download.suggestedFilename(), /^取机人录入信息_\d{4}-\d{2}-\d{2}\.txt$/);
     assert(
       requests.some(
         request =>
@@ -311,7 +383,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     }
     assert.deepEqual(errors, []);
     process.stdout.write(
-      'PASS: 完整编辑/复姓/换绑预期值、导入先预览裁定、历史关联确认、敏感勾选导出、密保回显、默认状态、桌面与375px弹窗\n'
+      'PASS: 默认列、TAG多选与Apple ID搜索、完整编辑/换绑、导入预览、历史关联、逐行TXT导出、密保回显、默认状态、桌面与375px弹窗\n'
     );
     await context.close();
   } finally {

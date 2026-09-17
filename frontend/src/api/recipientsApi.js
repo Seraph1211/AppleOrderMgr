@@ -11,13 +11,19 @@ import client from './client';
  * @param {number} params.page - 页码
  * @param {number} params.limit - 每页数量
  * @param {string} params.status - 状态
- * @param {string} params.tag - 标签
+ * @param {string[]} params.tags - TAG 精确多选值
  * @param {string} params.keyword - 搜索关键词
  * @returns {Promise<Object>} 取机人列表
  */
 export const getRecipients = (params = {}) => {
   return client.get('/recipients', { params });
 };
+
+/**
+ * 获取取机人筛选区的真实 TAG 选项
+ * @returns {Promise<Object>} TAG 选项响应
+ */
+export const getRecipientFilterOptions = () => client.get('/recipients/filter-options');
 
 /**
  * 获取取机人详情
@@ -69,7 +75,7 @@ export const deleteRecipient = id => {
 /**
  * 导出取机人数据
  * @param {Object} params - 导出筛选参数
- * @returns {Promise<Blob>} Excel 文件内容
+ * @returns {Promise<Blob>} 完整录入信息 TXT 或脱敏 Excel 文件内容
  */
 export const exportRecipients = (params = {}) => {
   return client.get('/recipients/export', {

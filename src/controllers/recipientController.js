@@ -139,8 +139,63 @@ async function getOrderStatsByRecipients(ids) {
   return out;
 }
 
+function parseTagFilters(value) {
+  if (value === undefined || value === null || value === '') return [];
+  if (!Array.isArray(value) && typeof value !== 'string') {
+    throw ApiError.badRequest('tags 必须是字符串或字符串数组');
+  }
+  const values = Array.isArray(value) ? value : value.split(',');
+  if (values.some(tag => typeof tag !== 'string')) {
+    throw ApiError.badRequest('tags 必须是字符串或字符串数组');
+  }
+  const nonEmptyValues = values.filter(tag => tag.length > 0);
+  const tags = [...new Set(nonEmptyValues)];
+  if (tags.length > 100 || tags.some(tag => tag.length > 100)) {
+    throw ApiError.badRequest('tags 最多包含 100 个 TAG，且每项不超过 100 个字符');
+  }
+  return tags;
+}
+
+function applyRecipientFilters(where, query) {
+  const tags = parseTagFilters(query.tags ?? query.tag);
+  if (tags.length === 1) where.tag = tags[0];
+  if (tags.length > 1) where.tag = { [Op.in]: tags };
+  if (query.status) {
+    if (!ACCOUNT_STATUSES.includes(query.status)) {
+      throw ApiError.badRequest(`status 非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
+        received: query.status,
+      });
+    }
+    where.status = query.status;
+  }
+  if (query.keyword) {
+    if (typeof query.keyword !== 'string') {
+      throw ApiError.badRequest('keyword 必须是字符串');
+    }
+    const keyword = query.keyword.trim();
+    if (keyword.length > 255) throw ApiError.badRequest('keyword 最长 255 个字符');
+    if (keyword) {
+      where[Op.or] = [
+        { lastName: { [Op.iLike]: `%${keyword}%` } },
+        { firstName: { [Op.iLike]: `%${keyword}%` } },
+        sequelize.where(
+          sequelize.fn('concat', sequelize.col('last_name'), sequelize.col('first_name')),
+          { [Op.iLike]: `%${keyword}%` }
+        ),
+        { appleId: { [Op.iLike]: `%${keyword}%` } },
+      ];
+      if (/^[\dXx]{4}$/.test(keyword)) where[Op.or].push({ idCardLast4: keyword.toUpperCase() });
+      if (
+        /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/.test(keyword)
+      )
+        where[Op.or].push({ idCardHash: blindIndex(keyword) });
+    }
+  }
+  return tags;
+}
+
 /**
- * GET /api/recipients?page=1&limit=20&tag=北京&keyword=李&status=active&apple_id_ref=1
+ * GET /api/recipients?page=1&limit=20&tags=北京&keyword=李&status=使用中&apple_id_ref=1
  */
 async function listRecipients(req, res) {
   try {
@@ -150,17 +205,7 @@ async function listRecipients(req, res) {
     const where = {};
     if (['true', 'false'].includes(req.query.bound))
       where.appleIdRef = req.query.bound === 'true' ? { [Op.ne]: null } : null;
-    if (req.query.tag) {
-      where.tag = req.query.tag;
-    }
-    if (req.query.status) {
-      if (!ACCOUNT_STATUSES.includes(req.query.status)) {
-        throw ApiError.badRequest(`status 非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
-          received: req.query.status,
-        });
-      }
-      where.status = req.query.status;
-    }
+    applyRecipientFilters(where, req.query);
     if (req.query.apple_id_ref) {
       const ref = parseInt(req.query.apple_id_ref, 10);
       if (Number.isNaN(ref) || ref <= 0) {
@@ -170,22 +215,6 @@ async function listRecipients(req, res) {
       }
       where.appleIdRef = ref;
     }
-    if (req.query.keyword) {
-      const kw = String(req.query.keyword).trim();
-      if (kw.length > 0) {
-        where[Op.or] = [
-          { lastName: { [Op.iLike]: `%${kw}%` } },
-          { firstName: { [Op.iLike]: `%${kw}%` } },
-          sequelize.where(
-            sequelize.fn('concat', sequelize.col('last_name'), sequelize.col('first_name')),
-            { [Op.iLike]: `%${kw}%` }
-          ),
-          { idCardLast4: kw },
-          { phone: { [Op.iLike]: `%${kw}%` } },
-        ];
-      }
-    }
-
     const { count, rows } = await Recipient.findAndCountAll({
       where,
       order: [['id', 'DESC']],
@@ -225,6 +254,31 @@ async function listRecipients(req, res) {
     }
     logger.error('查询收件人列表失败', { error: error.message });
     throw ApiError.database('查询收件人列表失败', { reason: error.message });
+  }
+}
+
+/**
+ * 返回取机人筛选区使用的真实 TAG 选项。
+ * @param {Object} _req - Express 请求
+ * @param {Object} res - Express 响应
+ * @returns {Promise<void>}
+ */
+async function getFilterOptions(_req, res) {
+  try {
+    const rows = await Recipient.findAll({
+      attributes: ['tag'],
+      where: { tag: { [Op.ne]: null } },
+      group: ['tag'],
+      order: [['tag', 'ASC']],
+      raw: true,
+    });
+    res.json({
+      success: true,
+      data: { tags: rows.map(row => row.tag).filter(tag => tag !== '') },
+    });
+  } catch (error) {
+    logger.error('获取取机人筛选项失败', { error: error.message });
+    throw ApiError.database('获取取机人筛选项失败', { reason: error.message });
   }
 }
 
@@ -667,11 +721,11 @@ function generateImportTemplate(recipient, appleIdData) {
 
 /**
  * GET /api/recipients/export
- * 导出取机人数据为Excel
+ * 导出取机人数据；完整录入信息为每行一条模板串的 TXT，脱敏资料仍为 Excel。
  */
 async function exportRecipients(req, res) {
   try {
-    const { status, tag, keyword, apple_id: appleIdFilter, ids, bound } = req.query;
+    const { status, keyword, apple_id: appleIdFilter, ids, bound } = req.query;
 
     // 构建查询条件
     const where = {};
@@ -686,30 +740,10 @@ async function exportRecipients(req, res) {
       // 未提供ID列表时，使用其他过滤条件
       if (bound === 'true') where.appleIdRef = { [Op.ne]: null };
       if (bound === 'false') where.appleIdRef = null;
-      if (status && ACCOUNT_STATUSES.includes(status)) {
-        where.status = status;
-      }
-
-      if (tag) {
-        where.tag = tag;
-      }
+      applyRecipientFilters(where, req.query);
 
       if (appleIdFilter) {
         where.appleId = appleIdFilter;
-      }
-
-      if (keyword) {
-        where[Op.or] = [
-          { firstName: { [Op.iLike]: `%${keyword}%` } },
-          { lastName: { [Op.iLike]: `%${keyword}%` } },
-          { phone: { [Op.like]: `%${keyword}%` } },
-          { email: { [Op.like]: `%${keyword}%` } },
-        ];
-        if (
-          /^[1-9]\d{5}(18|19|20)\d{2}(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])\d{3}[\dXx]$/.test(keyword)
-        ) {
-          where[Op.or].push({ idCardHash: blindIndex(keyword) });
-        }
       }
     }
 
@@ -735,6 +769,38 @@ async function exportRecipients(req, res) {
     const includeSensitive = req.query.includeSensitive === 'true';
     if (includeSensitive) assertPermission(req, PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE);
     res.set('Cache-Control', 'no-store');
+    if (includeSensitive) {
+      const lines = recipients.map(recipient =>
+        generateImportTemplate(
+          {
+            phone: recipient.phone,
+            email: recipient.email,
+            province: recipient.province,
+            city: recipient.city,
+            district: recipient.district,
+            streetAddress: recipient.streetAddress,
+            lastName: recipient.lastName,
+            firstName: recipient.firstName,
+            idCardNumber: recipient.idCardNumber,
+            tag: recipient.tag,
+          },
+          recipient.appleAccount
+        ).replace(/[\r\n]+/g, ' ')
+      );
+      const filename = `取机人录入信息_${new Date().toISOString().slice(0, 10)}.txt`;
+      res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+      res.setHeader(
+        'Content-Disposition',
+        `attachment; filename="${encodeURIComponent(filename)}"`
+      );
+      logger.info('导出取机人录入信息', {
+        count: recipients.length,
+        userId: req.user.id,
+        selected: Boolean(ids),
+      });
+      res.send(Buffer.from(lines.join('\n'), 'utf8'));
+      return;
+    }
     const excelData = recipients.map(recipient => {
       const appleIdData = recipient.appleAccount;
 
@@ -756,25 +822,7 @@ async function exportRecipients(req, res) {
           ? recipient.idCardNumber || ''
           : maskIdCard(recipient.idCardNumber) || '',
         TAG: escapeSpreadsheetFormula(recipient.tag || ''),
-        信息导入模板: includeSensitive
-          ? escapeSpreadsheetFormula(
-            generateImportTemplate(
-              {
-                phone: recipient.phone,
-                email: recipient.email,
-                province: recipient.province,
-                city: recipient.city,
-                district: recipient.district,
-                streetAddress: recipient.streetAddress,
-                lastName: recipient.lastName,
-                firstName: recipient.firstName,
-                idCardNumber: recipient.idCardNumber,
-                tag: recipient.tag,
-              },
-              appleIdData
-            )
-          )
-          : '',
+        信息导入模板: '',
         真实联系电话: includeSensitive
           ? recipient.realPhone || ''
           : maskPhone(recipient.realPhone) || '',
@@ -812,7 +860,7 @@ async function exportRecipients(req, res) {
       userId: req.user.id,
       filters: {
         hasStatus: Boolean(status),
-        hasTag: Boolean(tag),
+        hasTag: Boolean(req.query.tags || req.query.tag),
         hasKeyword: Boolean(keyword),
         hasAppleIdFilter: Boolean(appleIdFilter),
       },
@@ -887,6 +935,7 @@ async function batchBindAppleIds(req, res) {
 
 module.exports = {
   listRecipients,
+  getFilterOptions,
   getRecipientDetail,
   createRecipient,
   updateRecipient,

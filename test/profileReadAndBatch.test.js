@@ -6,7 +6,7 @@ jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),
 }));
 jest.mock('../src/models', () => ({
-  sequelize: { query: jest.fn(), fn: jest.fn(), col: jest.fn() },
+  sequelize: { query: jest.fn(), fn: jest.fn(), col: jest.fn(), where: jest.fn() },
   AppleId: { findAndCountAll: jest.fn(), findByPk: jest.fn() },
   Recipient: { findAndCountAll: jest.fn(), findByPk: jest.fn(), findAll: jest.fn() },
   Order: { findAll: jest.fn() },
@@ -20,6 +20,7 @@ const orderController = require('../src/controllers/orderController');
 const jobs = require('../src/services/crawler/refreshJobService');
 const { normalizeRecipientPhone } = require('../src/utils/recipientPhone');
 const { requirePermission } = require('../src/middleware/authMiddleware');
+const { Op } = require('sequelize');
 
 function response() {
   return { json: jest.fn(), set: jest.fn(), status: jest.fn().mockReturnThis() };
@@ -111,6 +112,81 @@ describe('基础资料读取权限与选填联系电话', () => {
     expect(normalizeRecipientPhone(' 13800000000 ')).toBe('13800000000');
     for (const value of [13800000000, {}, [], '12', '138****0000'])
       expect(() => normalizeRecipientPhone(value)).toThrow();
+  });
+
+  test('取机人筛选项返回去重排序后的真实 TAG', async () => {
+    models.Recipient.findAll.mockResolvedValue([
+      { tag: '北京-负责人甲' },
+      { tag: '上海-负责人乙' },
+      { tag: '' },
+    ]);
+    const res = response();
+    await recipientController.getFilterOptions({}, res);
+    expect(models.Recipient.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({ group: ['tag'], order: [['tag', 'ASC']], raw: true })
+    );
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: { tags: ['北京-负责人甲', '上海-负责人乙'] },
+    });
+  });
+
+  test('取机人列表支持多个 TAG、Apple ID 与身份证后四位关键词', async () => {
+    models.Recipient.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
+    const res = response();
+    await recipientController.listRecipients(
+      {
+        query: {
+          tags: ['北京-负责人甲', '上海-负责人乙'],
+          keyword: 'a@example.invalid',
+        },
+        user: { permissions: ['recipients.read'] },
+      },
+      res
+    );
+    let where = models.Recipient.findAndCountAll.mock.lastCall[0].where;
+    expect(where.tag[Op.in]).toEqual(['北京-负责人甲', '上海-负责人乙']);
+    expect(where[Op.or]).toEqual(
+      expect.arrayContaining([{ appleId: { [Op.iLike]: '%a@example.invalid%' } }])
+    );
+
+    await recipientController.listRecipients(
+      {
+        query: { keyword: '000X' },
+        user: { permissions: ['recipients.read'] },
+      },
+      response()
+    );
+    where = models.Recipient.findAndCountAll.mock.lastCall[0].where;
+    expect(where[Op.or]).toEqual(expect.arrayContaining([{ idCardLast4: '000X' }]));
+
+    await recipientController.listRecipients(
+      {
+        query: { tags: ['城市,负责人'] },
+        user: { permissions: ['recipients.read'] },
+      },
+      response()
+    );
+    expect(models.Recipient.findAndCountAll.mock.lastCall[0].where.tag).toBe('城市,负责人');
+
+    await expect(
+      recipientController.listRecipients(
+        {
+          query: { tags: { invalid: true } },
+          user: { permissions: ['recipients.read'] },
+        },
+        response()
+      )
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      recipientController.listRecipients(
+        {
+          query: { keyword: ['姓名', '账号'] },
+          user: { permissions: ['recipients.read'] },
+        },
+        response()
+      )
+    ).rejects.toMatchObject({ statusCode: 400 });
   });
 });
 

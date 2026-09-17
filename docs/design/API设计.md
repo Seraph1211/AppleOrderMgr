@@ -60,6 +60,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | PUT    | /api/apple-ids/:id                       | apple_ids.edit                                                                         |
 | DELETE | /api/apple-ids/:id                       | apple_ids.delete                                                                       |
 | GET    | /api/recipients                          | recipients.read                                                                        |
+| GET    | /api/recipients/filter-options           | recipients.read                                                                        |
 | GET    | /api/recipients/export                   | recipients.export                                                                      |
 | GET    | /api/recipients/:id                      | recipients.read                                                                        |
 | POST   | /api/recipients                          | recipients.create                                                                      |
@@ -154,11 +155,11 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 ## Apple ID 与取机人
 
 - Apple ID 列表 query 为 page、limit、status、country、keyword；新增接收 apple_id、password、notes、country、status、security_qa，更新另支持 is_modified。返回使用 snake_case。经 2026-09-17 用户确认，持有 `apple_ids.read` 的用户在所有环境均可通过列表和详情读取完整 `password`；普通请求不返回密保，详情 includeSecrets=true 另要求 secrets 权限。响应 `Cache-Control: no-store`，存储继续加密，日志不记录明文。
-- 取机人列表 query 包含 page、limit、tag、status、apple_id_ref、keyword；新增必须 lastName、firstName、idCardNumber，关联写入使用 appleIdRef。写入为 camelCase，不按列表字段直接回传。
+- 取机人列表 query 包含 page、limit、tags、status、apple_id_ref、keyword；`tags` 接受数组或兼容逗号分隔值，逐项精确匹配，同一维度按 OR 组合，兼容旧单值 `tag`。数组形式可保留 TAG 内部的逗号。`keyword` 只搜索姓名、当前 Apple ID、完整身份证号或身份证后四位；完整身份证走盲索引精确匹配，不对密文字段做模糊查询。`GET /recipients/filter-options` 返回数据库中非空原始 TAG。新增必须 lastName、firstName、idCardNumber，关联写入使用 appleIdRef。写入为 camelCase，不按列表字段直接回传。
 - 经 2026-09-17 用户确认，持有 `recipients.read` 的用户在所有环境均可通过列表和详情读取完整 `id_card_number`、`phone`，响应 `Cache-Control: no-store`。详细地址在具有 `recipients.edit` 或 `recipients.export_sensitive` 权限时返回；仍兼容本地管理员敏感显示配置，其他请求返回 `street_address=null`。订单快照及导出权限不随此变更扩大。
 - 下单手机号 `phone` 和真实联系电话 `realPhone` 非必填；新增／编辑支持省略、null、空字符串或纯空白，空值规范为 null；编辑时省略代表不修改，显式空值代表清空，非空须为合法大陆手机号。
 - 联系方式/地址批量生成接收 recipient_ids；联系方式生成会覆盖选中记录已有的电话和邮箱，电话满足 `^1[3-9]\\d{9}$`，邮箱为“电话@vvv8.net”。前端在生成意图首次确认后，若选中记录已有对应数据，必须再次确认覆盖；取消二次确认不得调用生成接口。绑定 Apple ID 使用 recipientIds，保留现状差异，不能统一猜测。
-- 取机人导出需要 export 权限；显式 includeSensitive=true 必须另有 recipients.export_sensitive 权限，否则 403。默认导出脱敏并处理公式注入。
+- 取机人导出需要 export 权限；显式 includeSensitive=true 必须另有 recipients.export_sensitive 权限，否则 403。完整导出响应为 UTF-8 TXT，只含逐条“信息导入模板”值，每条一行且无表头；默认导出仍为脱敏 Excel 并处理公式注入。
 
 来源：[Apple ID 控制器](../../src/controllers/appleIdController.js)、[取机人控制器](../../src/controllers/recipientController.js)。
 
@@ -582,7 +583,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 - Apple ID 接收／返回 notes，country 默认中国；列表支持 bound=true/false。详情 includeSecrets=true 要求 apple_ids.secrets.read，返回 security_qa。取机人新增 realPhone，返回 real_phone，phone 为下单手机号；地址在具有 recipients.edit 或 recipients.export_sensitive 权限时可读。账号密码读取仍要求 apple_ids.read。
 - PUT /recipients/:id/binding：{appleIdRef: 正整数或 null, expectedAppleIdRef: 当前值或 null}，要求 recipients.bind_apple_ids；账号被其他人占用返回 409，不自动抢占。GET /recipients/:id/bindings 和 /apple-ids/:id/bindings 返回历史，双方读取权限同时检查。绑定不改状态。
-- 导出 includeSensitive=true 要求 recipients.export_sensitive，默认脱敏。完整导出按腾讯文档信息导入模板生成，包含使用状态／真实电话／备注；空账号输出空字符串。
+- 导出 includeSensitive=true 要求 recipients.export_sensitive，默认脱敏。完整导出按腾讯文档“信息导入模板”公式生成 UTF-8 TXT，每条档案一行、无表头、不附加其他列；空账号输出空字符串。默认导出仍为脱敏 Excel。
 - POST /import/preview 支持 files（兼容 file），返回服务器会话 token、有效行／差异／来源位置／汇总；execute 提交 {type,sessionToken,decisions}，差异决策为 keep/source/skip，未裁定不能执行。跨资源写入分别检查账号导入／编辑、取机人编辑／绑定权限；执行前重验档案摘要。
 - POST /import/associations/preview 和 /execute：要求 orders.edit、orders.read、recipients.read、apple_ids.read；预览未关联订单并选中执行，只补空关联，不改快照、TAG、付款任务；无证据或歧义保持未关联。
 
