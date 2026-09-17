@@ -61,13 +61,18 @@ async function enqueueMany(orderIds, options = {}) {
   const uniqueIds = [...new Set(orderIds)];
   const results = [];
   for (const orderId of uniqueIds) {
-    const result = await enqueueOrderRefresh(orderId, options);
-    results.push({
-      orderId,
-      jobId: result.job?.id || null,
-      created: result.created,
-      reason: result.reason || null,
-    });
+    try {
+      const result = await enqueueOrderRefresh(orderId, options);
+      results.push({
+        orderId,
+        jobId: result.job?.id || null,
+        created: result.created,
+        reason: result.reason || null,
+      });
+    } catch (_error) {
+      // 单项失败不掩盖已入队结果，入队服务已记录结构化错误。
+      results.push({ orderId, jobId: null, created: false, reason: 'submission_failed' });
+    }
   }
   return {
     total: uniqueIds.length,

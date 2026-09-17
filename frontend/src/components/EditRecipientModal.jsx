@@ -6,7 +6,7 @@ export default function EditRecipientModal({ recipient, onClose, onSave }) {
   const [formData, setFormData] = useState({
     name: recipient.name || '',
     idCard: '',
-    phone: '',
+    phone: recipient.phone === '-' ? '' : recipient.phone || '',
     email: recipient.email === '-' ? '' : recipient.email || '',
     address: recipient.address === '-' ? '' : recipient.address || '',
     boundAppleId: recipient.boundAppleId === '-' ? '' : recipient.boundAppleId || '',
@@ -43,7 +43,11 @@ export default function EditRecipientModal({ recipient, onClose, onSave }) {
     }
 
     // 验证手机号（如果填写了）
-    if (formData.phone && formData.phone.trim() !== '' && !/^1[3-9]\d{9}$/.test(formData.phone)) {
+    if (
+      formData.phone &&
+      formData.phone.trim() !== '' &&
+      !/^1[3-9]\d{9}$/.test(formData.phone.trim())
+    ) {
       newErrors.phone = '手机号格式不正确';
     }
 
@@ -67,7 +71,7 @@ export default function EditRecipientModal({ recipient, onClose, onSave }) {
 
     setSaving(true);
     try {
-      await onSave(recipient.id, formData);
+      await onSave(recipient.id, { ...formData, phone: formData.phone.trim() });
       onClose();
     } catch (error) {
       alert(error.message || '保存失败');
@@ -119,13 +123,16 @@ export default function EditRecipientModal({ recipient, onClose, onSave }) {
                 {errors.idCard && <p className="mt-1 text-sm text-red-500">{errors.idCard}</p>}
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">手机号</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  联系电话（选填）
+                </label>
                 <input
                   type="tel"
                   value={formData.phone}
                   onChange={e => handleChange('phone', e.target.value)}
                   className={`input ${errors.phone ? 'border-red-500 focus:border-red-500 focus:ring-red-500' : ''}`}
-                  placeholder={`当前 ${recipient.phone || '未设置'}，留空不修改`}
+                  aria-label="联系电话（选填）"
+                  placeholder="可留空；清空后保存将删除原联系电话"
                   maxLength="11"
                 />
                 {errors.phone && <p className="mt-1 text-sm text-red-500">{errors.phone}</p>}

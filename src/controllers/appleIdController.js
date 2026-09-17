@@ -13,7 +13,6 @@ const ApiError = require('../utils/ApiError');
 const { isValidEmail } = require('../utils/helpers');
 const { ACCOUNT_STATUSES } = require('../constants/business');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
-const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
 const { PERMISSIONS } = require('../constants/business');
 
 /**
@@ -87,7 +86,8 @@ async function listAppleIds(req, res) {
     const ids = rows.map(r => r.id);
     const orderStats = await getOrderStatsByAppleIds(ids);
     const recipientCounts = await getRecipientCountsByAppleIds(ids);
-    const includePassword = canDisplayLocalSensitiveFields(req, PERMISSIONS.APPLE_IDS_SECRETS_READ);
+    const includePassword = Boolean(req.user?.permissions?.includes(PERMISSIONS.APPLE_IDS_READ));
+    res.set('Cache-Control', 'no-store');
 
     res.json(
       paginatedResponse(
@@ -183,7 +183,8 @@ async function getAppleIdDetail(req, res) {
     const orderStats = await getOrderStatsByAppleIds([id]);
     const recipientCounts = await getRecipientCountsByAppleIds([id]);
 
-    const includePassword = canDisplayLocalSensitiveFields(req, PERMISSIONS.APPLE_IDS_SECRETS_READ);
+    const includePassword = Boolean(req.user?.permissions?.includes(PERMISSIONS.APPLE_IDS_READ));
+    res.set('Cache-Control', 'no-store');
     const plain = appleId.toJSON();
     if (!includePassword) delete plain.password;
     delete plain.securityQa;

@@ -17,6 +17,7 @@ const { blindIndex } = require('../utils/fieldEncryption');
 const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
 const { PERMISSIONS } = require('../constants/business');
 const { generatePhone } = require('../utils/contactGenerator');
+const { normalizeRecipientPhone } = require('../utils/recipientPhone');
 const {
   maskIdCard,
   maskPhone,
@@ -29,9 +30,15 @@ const {
  * @param {Object} recipient - JSON 形态的 Recipient
  * @param {Object} stats - 统计数据 { orderCount, totalAmount, lastOrderDate }
  * @param {boolean} includeSensitive - 是否包含身份证号和手机号明文
+ * @param {boolean} includeAddress - 是否允许本地管理员读取详细地址
  * @returns {Object} 对外对象
  */
-function serializeRecipient(recipient, stats = {}, includeSensitive = false) {
+function serializeRecipient(
+  recipient,
+  stats = {},
+  includeSensitive = false,
+  includeAddress = false
+) {
   return {
     id: recipient.id,
     name: `${recipient.lastName || ''}${recipient.firstName || ''}`,
@@ -46,7 +53,7 @@ function serializeRecipient(recipient, stats = {}, includeSensitive = false) {
     province: recipient.province,
     city: recipient.city,
     district: recipient.district,
-    street_address: includeSensitive ? recipient.streetAddress : null,
+    street_address: includeAddress ? recipient.streetAddress : null,
     masked_address: maskAddress(recipient),
     tag: recipient.tag,
     status: recipient.status,
@@ -168,14 +175,18 @@ async function listRecipients(req, res) {
     });
 
     const orderStats = await getOrderStatsByRecipients(rows.map(r => r.id));
-    const includeSensitive = canDisplayLocalSensitiveFields(
+    const includeSensitive = Boolean(req.user?.permissions?.includes(PERMISSIONS.RECIPIENTS_READ));
+    const includeAddress = canDisplayLocalSensitiveFields(
       req,
       PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE
     );
 
+    res.set('Cache-Control', 'no-store');
     res.json(
       paginatedResponse(
-        rows.map(r => serializeRecipient(r.toJSON(), orderStats[r.id] || {}, includeSensitive)),
+        rows.map(r =>
+          serializeRecipient(r.toJSON(), orderStats[r.id] || {}, includeSensitive, includeAddress)
+        ),
         count,
         page,
         limit,
@@ -209,13 +220,20 @@ async function getRecipientDetail(req, res) {
     }
 
     const orderCounts = await getOrderCountsByRecipients([id]);
-    const includeSensitive = canDisplayLocalSensitiveFields(
+    const includeSensitive = Boolean(req.user?.permissions?.includes(PERMISSIONS.RECIPIENTS_READ));
+    const includeAddress = canDisplayLocalSensitiveFields(
       req,
       PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE
     );
+    res.set('Cache-Control', 'no-store');
     res.json({
       success: true,
-      data: serializeRecipient(recipient.toJSON(), orderCounts[id] || {}, includeSensitive),
+      data: serializeRecipient(
+        recipient.toJSON(),
+        orderCounts[id] || {},
+        includeSensitive,
+        includeAddress
+      ),
     });
   } catch (error) {
     if (error instanceof ApiError) {
@@ -271,7 +289,7 @@ async function createRecipient(req, res) {
       lastName: payload.lastName,
       firstName: payload.firstName,
       idCardNumber: payload.idCardNumber,
-      phone: payload.phone || null,
+      phone: normalizeRecipientPhone(payload.phone),
       email: payload.email || null,
       province: payload.province || null,
       city: payload.city || null,
@@ -346,6 +364,7 @@ async function updateRecipient(req, res) {
       }
     }
 
+    if (updates.phone !== undefined) updates.phone = normalizeRecipientPhone(updates.phone);
     if (updates.status !== undefined && !ACCOUNT_STATUSES.includes(updates.status)) {
       throw ApiError.badRequest(`status 非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
         received: updates.status,

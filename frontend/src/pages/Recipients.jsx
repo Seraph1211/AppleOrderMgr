@@ -183,7 +183,7 @@ export default function Recipients() {
         status: formData.status,
       };
       if (formData.idCard && !formData.idCard.includes('*')) payload.idCardNumber = formData.idCard;
-      if (formData.phone && !formData.phone.includes('*')) payload.phone = formData.phone;
+      if (!formData.phone.includes('*')) payload.phone = formData.phone.trim() || null;
       const response = await updateRecipient(id, payload);
 
       if (response.success) {
@@ -527,6 +527,7 @@ export default function Recipients() {
             {can(PERMISSIONS.RECIPIENTS_EDIT) && (
               <button
                 onClick={() => handleEdit(item)}
+                aria-label={`编辑取机人 ${item.id}`}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
               >
                 <Edit className="w-4 h-4 text-gray-400 hover:text-primary" />

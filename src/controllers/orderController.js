@@ -593,17 +593,27 @@ async function refreshOrder(req, res) {
 async function batchRefresh(req, res) {
   try {
     const where = {};
-    const hasExplicitIds = Boolean(req.body.orderIds || req.body.order_ids);
+    const hasExplicitIds = req.body.orderIds !== undefined || req.body.order_ids !== undefined;
     let explicitIds = [];
     if (hasExplicitIds) {
-      const rawIds = req.body.orderIds || req.body.order_ids;
+      const rawIds = req.body.orderIds !== undefined ? req.body.orderIds : req.body.order_ids;
       if (!Array.isArray(rawIds) || rawIds.length === 0 || rawIds.length > 100) {
         throw ApiError.badRequest('orderIds 必须是 1-100 个订单 ID 的数组');
       }
-      explicitIds = rawIds.map(id => parseInt(id, 10));
-      if (explicitIds.some(id => Number.isNaN(id) || id <= 0)) {
+      if (
+        rawIds.some(
+          id =>
+            !(
+              (typeof id === 'number' || typeof id === 'string') &&
+              /^\d+$/.test(String(id)) &&
+              Number.isSafeInteger(Number(id)) &&
+              Number(id) > 0
+            )
+        )
+      ) {
         throw ApiError.badRequest('orderIds 包含无效订单 ID');
       }
+      explicitIds = rawIds.map(Number);
       explicitIds = [...new Set(explicitIds)];
       where.id = { [Op.in]: explicitIds };
     } else if (req.body.status) {
@@ -642,7 +652,7 @@ async function batchRefresh(req, res) {
       order: [['orderDate', 'ASC']],
     });
 
-    if (orders.length === 0) {
+    if (orders.length === 0 && !hasExplicitIds) {
       return res.json({
         success: true,
         message: '没有符合条件的订单',
@@ -650,7 +660,7 @@ async function batchRefresh(req, res) {
       });
     }
 
-    const orderIds = orders.map(order => order.id);
+    const orderIds = hasExplicitIds ? explicitIds : orders.map(order => order.id);
     const result = await refreshJobService.enqueueMany(orderIds, {
       trigger: 'manual_single',
       requestedBy: req.user.id,

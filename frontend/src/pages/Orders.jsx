@@ -1,4 +1,5 @@
 import OrderDateFilter from '../components/OrderDateFilter';
+import { groupDisplayProducts } from '../utils/productDisplay';
 import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect, useRef } from 'react';
 import { Search, Filter, Download, RefreshCw, Settings, X, PauseCircle } from 'lucide-react';
@@ -10,6 +11,7 @@ import {
   refreshAllOrders,
   getRefreshBatch,
   refreshOrder,
+  batchRefreshOrders,
   getRefreshJob,
 } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
@@ -38,6 +40,9 @@ export default function Orders() {
   const [refreshBatch, setRefreshBatch] = useState(null);
   const [refreshMessage, setRefreshMessage] = useState('');
   const [rowRefresh, setRowRefresh] = useState({});
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const batchRequest = useRef(false);
   const refreshRequests = useRef(new Set());
   const loadOrdersRef = useRef(null);
 
@@ -68,6 +73,14 @@ export default function Orders() {
     productNames: [],
     stores: [],
   });
+
+  useEffect(() => {
+    setSelectedIds([]);
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filters]);
+
+  useEffect(() => {
+    setSelectedIds(previous => previous.filter(id => orders.some(order => order.id === id)));
+  }, [orders]);
 
   useEffect(() => {
     loadOrders();
@@ -222,6 +235,66 @@ export default function Orders() {
       }));
     } finally {
       refreshRequests.current.delete(order.id);
+    }
+  };
+
+  const handleSelectedRefresh = async () => {
+    if (batchRequest.current || !selectedIds.length || !can(PERMISSIONS.ORDERS_REFRESH)) return;
+    const ids = selectedIds.filter(id => orders.some(order => order.id === id));
+    if (!ids.length) return;
+    batchRequest.current = true;
+    setBatchSubmitting(true);
+    ids.forEach(id => refreshRequests.current.add(id));
+    setRowRefresh(previous => ({
+      ...previous,
+      ...Object.fromEntries(ids.map(id => [id, { status: 'submitting' }])),
+    }));
+    try {
+      const response = await batchRefreshOrders(ids);
+      if (!response.success || !Array.isArray(response.data?.results)) {
+        throw new Error('批量刷新任务提交失败');
+      }
+      const results = new Map(response.data.results.map(result => [result.orderId, result]));
+      const failedIds = ids.filter(id => !results.get(id)?.jobId);
+      setRowRefresh(previous => {
+        const next = { ...previous };
+        for (const id of ids) {
+          const result = results.get(id);
+          // 合并任务可能归其他提交人所有，仅通过有权读取的订单列表追踪，不越权查询 job。
+          if (result?.jobId && !result.created) delete next[id];
+          else
+            next[id] = result?.jobId
+              ? { jobId: result.jobId, status: 'pending' }
+              : {
+                  status: 'failed',
+                  message: '未能提交刷新任务，订单可能已删除或提交失败，可重试',
+                };
+        }
+        return next;
+      });
+      setSelectedIds(previous => previous.filter(id => failedIds.includes(id)));
+      setRefreshMessage(
+        `批量刷新：已提交或合并 ${ids.length - failedIds.length} 项，未提交 ${failedIds.length} 项。执行结果请查看各行状态。`
+      );
+      await loadOrdersRef.current?.(true);
+    } catch (error) {
+      setRowRefresh(previous => ({
+        ...previous,
+        ...Object.fromEntries(
+          ids.map(id => [
+            id,
+            {
+              status: 'failed',
+              message: '提交结果未确认，可重试；已入队任务会自动合并',
+            },
+          ])
+        ),
+      }));
+      setRefreshMessage(error.message || '批量提交失败，可重试');
+    } finally {
+      ids.forEach(id => refreshRequests.current.delete(id));
+      batchRequest.current = false;
+      setBatchSubmitting(false);
     }
   };
 
@@ -477,10 +550,10 @@ export default function Orders() {
       case 'products':
         return (
           <div className="text-sm space-y-1">
-            {order.products.map((p, i) => (
+            {groupDisplayProducts(order.products).map((p, i) => (
               <div key={i}>
                 <span>
-                  {p.name} × {p.quantity}
+                  {p.name} ×{p.quantity ?? '待核实'}
                 </span>
               </div>
             ))}
@@ -787,6 +860,19 @@ export default function Orders() {
 
       {/* 订单列表 */}
       <div className="card">
+        {can(PERMISSIONS.ORDERS_REFRESH) && (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-gray-600">已选择 {selectedIds.length} 项（当前页）</span>
+            <button
+              className="btn btn-secondary flex items-center gap-2"
+              disabled={loading || batchSubmitting || selectedIds.length === 0}
+              onClick={handleSelectedRefresh}
+            >
+              <RefreshCw className={`w-4 h-4 ${batchSubmitting ? 'animate-spin' : ''}`} />
+              {batchSubmitting ? '正在提交' : '批量刷新订单'}
+            </button>
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
@@ -803,6 +889,21 @@ export default function Orders() {
             <table className="w-full min-w-max">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
+                  {can(PERMISSIONS.ORDERS_REFRESH) && (
+                    <th className="py-3 px-3 w-10">
+                      <input
+                        type="checkbox"
+                        aria-label="全选本页订单"
+                        disabled={batchSubmitting}
+                        checked={
+                          orders.length > 0 && orders.every(order => selectedIds.includes(order.id))
+                        }
+                        onChange={event =>
+                          setSelectedIds(event.target.checked ? orders.map(order => order.id) : [])
+                        }
+                      />
+                    </th>
+                  )}
                   <th className="py-3 px-3 w-10" aria-label="订单数据冲突" />
                   {visibleColumns.map(col => (
                     <th
@@ -823,6 +924,23 @@ export default function Orders() {
                     key={order.id}
                     className="border-b border-gray-200 transition-colors hover:bg-gray-50"
                   >
+                    {can(PERMISSIONS.ORDERS_REFRESH) && (
+                      <td className="py-4 px-3">
+                        <input
+                          type="checkbox"
+                          aria-label={`选择订单 ${order.orderNumber}`}
+                          disabled={batchSubmitting}
+                          checked={selectedIds.includes(order.id)}
+                          onChange={event =>
+                            setSelectedIds(previous =>
+                              event.target.checked
+                                ? [...previous, order.id]
+                                : previous.filter(id => id !== order.id)
+                            )
+                          }
+                        />
+                      </td>
+                    )}
                     <td className="py-4 px-3">
                       <OrderConflictIndicator issues={order.validationIssues} />
                     </td>

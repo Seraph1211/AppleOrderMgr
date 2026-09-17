@@ -1,6 +1,7 @@
 import PaymentCodeButton from '../components/PaymentCodeButton';
 import AutoDismissToast from '../components/AutoDismissToast';
 import OrderDateFilter from '../components/OrderDateFilter';
+import { formatProductSummary } from '../utils/productDisplay';
 import OfficialStatusFilter from '../components/OfficialStatusFilter';
 import ProcessingStatusFilter from '../components/ProcessingStatusFilter';
 import PaymentNotesModal from '../components/PaymentNotesModal';
@@ -853,9 +854,7 @@ export default function PaymentDispatch() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         <div className="max-w-96 break-words">
-                          {task.products
-                            .map(product => `${product.name || ''} ×${product.quantity}`.trim())
-                            .join('、') || '无商品信息'}
+                          {formatProductSummary(task.products)}
                         </div>
                       </td>
                       <td className="px-4 py-3">
