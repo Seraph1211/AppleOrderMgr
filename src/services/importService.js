@@ -119,7 +119,11 @@ function parseExcelFile(filePath, type) {
         if (rowData.appleId) rowData.appleId = rowData.appleId.trim().toLowerCase();
         if (rowData.idCardNumber) rowData.idCardNumber = rowData.idCardNumber.toUpperCase();
         if (type === 'recipients') {
-          const statusMapping = { 已挂服务器: '使用中', '已进表 未挂': '未使用' };
+          const statusMapping = {
+            已挂服务器: '使用中',
+            '已挂 需下架': '使用中',
+            '已进表 未挂': '未使用',
+          };
           rowData.status = statusMapping[rowData.status] || rowData.status;
           if (rowData.name && (!rowData.lastName || !rowData.firstName))
             issues.push({ field: 'name', message: '请分别填写姓和名，系统不猜测复姓' });

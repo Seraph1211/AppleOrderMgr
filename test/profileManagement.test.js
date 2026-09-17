@@ -238,6 +238,7 @@ describe('腾讯源表位置映射', () => {
           headers,
           ['欧阳', '明', idCard, '已进表 未挂', '原TAG'],
           ['测', '试', Number('110101199001010001'), '未使用', ''],
+          ['欧阳', '明', idCard, '已挂 需下架', '原TAG'],
         ],
       },
       'recipients'
@@ -246,6 +247,8 @@ describe('腾讯源表位置映射', () => {
     expect(rows[1].data.status).toBe('未使用');
     expect(JSON.stringify(rows)).not.toContain('已挂服务器');
     expect(rows[2].issues[0].field).toBe('idCardNumber');
+    expect(rows[3].data.status).toBe('使用中');
+    expect(JSON.stringify(rows)).not.toContain('已挂 需下架');
   });
 });
 
