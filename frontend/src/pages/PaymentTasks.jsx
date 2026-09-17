@@ -848,9 +848,6 @@ export default function PaymentTasks() {
                         <span className={getOfficialStatusTagClass(task.officialOrderStatus)}>
                           {getOrderStatusBadge(task.officialOrderStatus).text}
                         </span>
-                        {task.officialPaymentDiscrepancy && (
-                          <p className="text-xs text-amber-700">人工任务尚未完成</p>
-                        )}
                       </td>
                       <td
                         data-label="付款方式"

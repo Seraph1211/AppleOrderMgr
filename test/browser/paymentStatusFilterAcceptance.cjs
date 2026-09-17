@@ -30,6 +30,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           'completed',
         ][i % 6],
         officialPaymentStatus: i % 3 === 1 ? 'paid' : 'unpaid',
+        officialPaymentDiscrepancy: i === 1,
         processingStatus: 'pending',
         version: 0,
       }));
@@ -138,6 +139,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await page.getByText('W0000000001', { exact: true }).waitFor();
 
       const paidRow = page.locator('tbody tr').filter({ hasText: 'W0000000002' }).first();
+      assert.equal(await paidRow.getByText('人工任务尚未完成', { exact: true }).count(), 0);
+      assert.equal(
+        await paidRow.getByText('官网已收款，人工任务尚未完成', { exact: true }).count(),
+        0
+      );
       badgeClasses.push(
         await paidRow.getByText('官网已收款', { exact: true }).getAttribute('class')
       );

@@ -879,11 +879,6 @@ export default function PaymentDispatch() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {task.paymentMethod || '-'}
-                        {task.officialPaymentDiscrepancy && (
-                          <p className="text-xs text-amber-700 mt-1">
-                            官网已收款，人工任务尚未完成
-                          </p>
-                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span
