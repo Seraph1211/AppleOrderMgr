@@ -1,6 +1,8 @@
 const { Op } = require('sequelize');
 
 const { Order, OrderRefreshJob, OrderRefreshBatch } = require('../../models');
+const { scopeOrderWhere, getOrderAccess, assertOrderIdsAccess } = require('../orderAccessService');
+const ApiError = require('../../utils/ApiError');
 const logger = require('../../utils/logger');
 const repository = require('./refreshJobRepository');
 const { getNextAutoRefreshAt, getRefreshPriority } = require('./refreshPolicy');
@@ -88,16 +90,24 @@ async function enqueueMany(orderIds, options = {}) {
  * @param {number|null} requestedBy - 发起用户
  * @returns {Promise<Object>} 批次提交结果
  */
-async function enqueueRefreshAll(requestedBy) {
+async function enqueueRefreshAll(requestedBy, user = { role: 'admin' }) {
   try {
     const { batch, created } = await repository.getOrCreateActiveBatch(requestedBy);
-    if (!created) return { batch, created: false };
+    if (!created) {
+      if (getOrderAccess(user).mode !== 'all') {
+        if (!Array.isArray(batch.orderIds))
+          throw ApiError.conflict('旧批次不支持当前范围，请等待完成');
+        await assertOrderIdsAccess(user, batch.orderIds);
+      }
+      return { batch, created: false };
+    }
 
     const orders = await Order.findAll({
-      where: { orderUrl: { [Op.ne]: null } },
+      where: scopeOrderWhere(user, { orderUrl: { [Op.ne]: null } }),
       attributes: ['id'],
       order: [['id', 'ASC']],
     });
+    await batch.update({ orderIds: orders.map(order => order.id) });
     let skippedCount = 0;
     for (const order of orders) {
       const result = await enqueueOrderRefresh(order.id, {

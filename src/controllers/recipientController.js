@@ -1,3 +1,4 @@
+const { scopeOrderWhere } = require('../services/orderAccessService');
 /* eslint-disable camelcase */
 /**
  * 收件人（取机人）控制器
@@ -83,16 +84,14 @@ function serializeRecipient(
  * @param {Array<number>} recipientIds - 收件人 ID 数组
  * @returns {Promise<Object>} { recipientId: { orderCount } }
  */
-async function getOrderCountsByRecipients(recipientIds) {
+async function getOrderCountsByRecipients(recipientIds, user) {
   if (!recipientIds || recipientIds.length === 0) {
     return {};
   }
 
   const results = await Order.findAll({
     attributes: ['recipientRef', [sequelize.fn('COUNT', sequelize.col('id')), 'orderCount']],
-    where: {
-      recipientRef: { [Op.in]: recipientIds },
-    },
+    where: scopeOrderWhere(user, { recipientRef: { [Op.in]: recipientIds } }),
     group: ['recipientRef'],
     raw: true,
   });
@@ -112,7 +111,7 @@ async function getOrderCountsByRecipients(recipientIds) {
  * @param {number[]} ids
  * @returns {Promise<Object>} { [id]: { orderCount, totalAmount, lastOrderDate } }
  */
-async function getOrderStatsByRecipients(ids) {
+async function getOrderStatsByRecipients(ids, user) {
   if (ids.length === 0) return {};
   const { Order } = require('../models');
 
@@ -123,7 +122,7 @@ async function getOrderStatsByRecipients(ids) {
       [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
       [sequelize.fn('MAX', sequelize.col('created_at')), 'lastOrderDate'],
     ],
-    where: { recipientRef: { [Op.in]: ids } },
+    where: scopeOrderWhere(user, { recipientRef: { [Op.in]: ids } }),
     group: ['recipientRef'],
     raw: true,
   });
@@ -223,7 +222,10 @@ async function listRecipients(req, res) {
       distinct: true,
     });
 
-    const orderStats = await getOrderStatsByRecipients(rows.map(r => r.id));
+    const orderStats = await getOrderStatsByRecipients(
+      rows.map(r => r.id),
+      req.user
+    );
     const includeSensitive = Boolean(req.user?.permissions?.includes(PERMISSIONS.RECIPIENTS_READ));
     const includeAddress =
       hasPermission(req, PERMISSIONS.RECIPIENTS_EDIT) ||
@@ -299,7 +301,7 @@ async function getRecipientDetail(req, res) {
       throw ApiError.notFound('收件人不存在', { id });
     }
 
-    const orderCounts = await getOrderCountsByRecipients([id]);
+    const orderCounts = await getOrderCountsByRecipients([id], req.user);
     const includeSensitive = Boolean(req.user?.permissions?.includes(PERMISSIONS.RECIPIENTS_READ));
     const includeAddress =
       hasPermission(req, PERMISSIONS.RECIPIENTS_EDIT) ||

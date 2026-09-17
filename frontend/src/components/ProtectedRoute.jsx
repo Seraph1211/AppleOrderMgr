@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
@@ -38,5 +39,6 @@ export default function ProtectedRoute({
       </div>
     );
   }
-  return children;
+  // 授权版本变化时卸载旧视图及详情缓存，重新加载当前范围数据。
+  return <Fragment key={`${user.id}:${user.permissionsVersion}`}>{children}</Fragment>;
 }

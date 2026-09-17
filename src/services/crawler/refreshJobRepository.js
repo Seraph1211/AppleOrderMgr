@@ -111,7 +111,7 @@ function getOrCreateActiveBatch(requestedBy) {
     const state = await ensureSystemState(transaction);
     await state.reload({ transaction, lock: transaction.LOCK.UPDATE });
     const active = await OrderRefreshBatch.findOne({
-      where: { status: { [Op.in]: ACTIVE_BATCH_STATUSES } },
+      where: { status: { [Op.in]: ACTIVE_BATCH_STATUSES }, requestedBy: requestedBy || null },
       transaction,
       lock: transaction.LOCK.UPDATE,
     });

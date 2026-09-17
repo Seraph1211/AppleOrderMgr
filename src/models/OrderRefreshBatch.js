@@ -23,6 +23,7 @@ module.exports = sequelize => {
         onDelete: 'SET NULL',
         onUpdate: 'CASCADE',
       },
+      orderIds: { type: DataTypes.JSONB, field: 'order_ids' },
       totalCount: {
         type: DataTypes.INTEGER,
         allowNull: false,

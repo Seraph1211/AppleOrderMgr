@@ -594,3 +594,13 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `POST /api/import/associations/preview` 要求 orders.read、orders.edit、recipients.read、apple_ids.read，body `{cursor?: 上批最后订单ID}`，每批最多 500 条缺关联订单；返回 token、nextCursor、records，其中 matchable 标识有唯一证据的候选。
 - `POST /api/import/associations/execute` 相同权限，body `{token,orderIds}`；令牌 5 分钟、绑定用户、一次性消费。事务内重验选中订单快照摘要及候选，只补空外键。没有足够证据的订单拒绝，不通过账号绑定倒推取机人。分页下一批不会自动执行本批。
 - 导入完整协议与计数口径见[Excel 导入规范](Excel导入规范.md)。
+
+## 用户订单 TAG 授权（2026-09-18，已批准）
+
+- 用户权限 GET/PUT 增加 `orderAccess: {mode: 'all'|'tags', tags: string[]}`。PUT 与 permissions 原子保存，共用 expectedVersion、Idempotency-Key 及审计；旧客户端省略范围时保留当前配置，不能重置为全部。
+- `GET /api/users/order-tag-options` 仅 users.permissions.manage 可用，返回 `{tags: string[]}`，来源为 orders.tag 非空去重值。允许保留暂无订单的已授权 TAG。精确区分大小写和首尾空白，不拆分 TAG；最多 500 项，每项最多 500 字符，空白值拒绝。
+- /auth/me 和登录用户信息返回 orderAccess。管理员固定全部；新普通用户默认指定 TAG 空集合，绑定 TAG 不授予读取或操作权限。
+- orders.read/edit/export/refresh/payer.edit 均受范围限制；列表、分页总数、筛选候选、导出、详情、批量动作、刷新 job/batch、渠道查询和订单统计采用同一限制。指定 ID 混合越权批次整体拒绝；不存在或不可见订单统一 404。刷新全部只提交当前范围，每位发起人复用自己的批次，撤权后不可读取超出范围的旧批次。
+- 本人付款任务展示、链接、刷新、付款人登记继续按既有任务权限与所有权执行，不受订单 TAG 限制；不能凭任务归属调用订单管理接口。
+- 渠道改名仅允许全部订单范围且有 channels.rename 权限者执行；在同一事务更新授权 TAG 与审计，目标 TAG 已存在订单或已有授权时拒绝。订单普通编辑不开放 tag 写入。
+- 仪表板、统计、基础档案内的订单聚合和历史订单关联入口均限制订单范围；基础档案自身的读取权限不改变。

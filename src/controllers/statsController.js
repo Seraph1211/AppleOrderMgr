@@ -9,6 +9,7 @@ const { formatOrderTime, parseOrderTimeBoundary } = require('../utils/orderTime'
 
 const { Op, fn, col, literal } = require('sequelize');
 const { sequelize, Order, AppleId, Recipient } = require('../models');
+const { scopeOrderWhere, getOrderTagBind } = require('../services/orderAccessService');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 
@@ -57,11 +58,12 @@ function parseDateRange(query) {
 /**
  * GET /api/stats/overview
  */
-async function getOverview(_req, res) {
+async function getOverview(req, res) {
   try {
-    const totalOrders = await Order.count();
+    const totalOrders = await Order.count({ where: scopeOrderWhere(req.user) });
     // 总产品数：聚合求和
     const productSumRow = await Order.findOne({
+      where: scopeOrderWhere(req.user),
       attributes: [
         [fn('COALESCE', fn('SUM', literal('jsonb_array_length(products)')), 0), 'totalProducts'],
       ],
@@ -74,6 +76,7 @@ async function getOverview(_req, res) {
 
     // 状态分布
     const statusRows = await Order.findAll({
+      where: scopeOrderWhere(req.user),
       attributes: ['status', [fn('COUNT', col('id')), 'count']],
       group: ['status'],
       raw: true,
@@ -91,9 +94,9 @@ async function getOverview(_req, res) {
     const monthStart = START_OF_THIS_MONTH();
 
     const [todayOrders, weekOrders, monthOrders] = await Promise.all([
-      Order.count({ where: { orderDate: { [Op.gte]: todayStart } } }),
-      Order.count({ where: { orderDate: { [Op.gte]: weekStart } } }),
-      Order.count({ where: { orderDate: { [Op.gte]: monthStart } } }),
+      Order.count({ where: scopeOrderWhere(req.user, { orderDate: { [Op.gte]: todayStart } }) }),
+      Order.count({ where: scopeOrderWhere(req.user, { orderDate: { [Op.gte]: weekStart } }) }),
+      Order.count({ where: scopeOrderWhere(req.user, { orderDate: { [Op.gte]: monthStart } }) }),
     ]);
 
     res.json({
@@ -117,14 +120,15 @@ async function getOverview(_req, res) {
 /**
  * GET /api/stats/apple-ids
  */
-async function getAppleIdStats(_req, res) {
+async function getAppleIdStats(req, res) {
   try {
     const rows = await Order.findAll({
+      where: scopeOrderWhere(req.user),
       attributes: [
         'appleIdRef',
         [fn('COUNT', col('Order.id')), 'orderCount'],
         [fn('SUM', literal('COALESCE(jsonb_array_length("Order"."products"), 0)')), 'productCount'],
-        [fn('MAX', col('Order.orderDate')), 'latestOrderDate'],
+        [fn('MAX', col('Order.order_date')), 'latestOrderDate'],
       ],
       include: [{ model: AppleId, as: 'appleAccount', attributes: ['appleId', 'nickname'] }],
       group: ['appleIdRef', 'appleAccount.id'],
@@ -153,14 +157,14 @@ async function getAppleIdStats(_req, res) {
 /**
  * GET /api/stats/recipients
  */
-async function getRecipientStats(_req, res) {
+async function getRecipientStats(req, res) {
   try {
     const rows = await Order.findAll({
       attributes: [
         'recipientRef',
         [fn('COUNT', col('Order.id')), 'orderCount'],
         [fn('SUM', literal('COALESCE(jsonb_array_length("Order"."products"), 0)')), 'productCount'],
-        [fn('MAX', col('Order.orderDate')), 'latestOrderDate'],
+        [fn('MAX', col('Order.order_date')), 'latestOrderDate'],
       ],
       include: [
         {
@@ -169,7 +173,7 @@ async function getRecipientStats(_req, res) {
           attributes: ['id', 'lastName', 'firstName', 'tag'],
         },
       ],
-      where: { recipientRef: { [Op.not]: null } },
+      where: scopeOrderWhere(req.user, { recipientRef: { [Op.not]: null } }),
       group: ['recipientRef', 'recipient.id'],
       raw: true,
       nest: true,
@@ -206,6 +210,7 @@ const PRODUCT_STATS_SQL = `
        jsonb_array_elements(o.products) AS elem
   WHERE ($1::timestamptz IS NULL OR o.order_date >= $1)
     AND ($2::timestamptz IS NULL OR o.order_date <= $2)
+    AND ($3::text[] IS NULL OR o.tag = ANY($3::text[]))
     AND elem ? 'name'
   GROUP BY elem->>'name'
   ORDER BY total_quantity DESC
@@ -252,7 +257,7 @@ async function getProductStats(req, res) {
     const { from, to } = parseDateRange(req.query);
 
     const topProducts = await sequelize.query(PRODUCT_STATS_SQL, {
-      bind: [from || null, to || null],
+      bind: [from || null, to || null, getOrderTagBind(req.user)],
       type: sequelize.QueryTypes.SELECT,
     });
 
@@ -263,11 +268,12 @@ async function getProductStats(req, res) {
            jsonb_array_elements(o.products) AS elem
       WHERE ($1::timestamptz IS NULL OR o.order_date >= $1)
         AND ($2::timestamptz IS NULL OR o.order_date <= $2)
+        AND ($3::text[] IS NULL OR o.tag = ANY($3::text[]))
         AND elem ? 'name'
     `;
 
     const detailRows = await sequelize.query(DETAIL_SQL, {
-      bind: [from || null, to || null],
+      bind: [from || null, to || null, getOrderTagBind(req.user)],
       type: sequelize.QueryTypes.SELECT,
     });
 

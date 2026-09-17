@@ -61,6 +61,7 @@ async function authenticate(req, res, next) {
         'nickname',
         'activeSessions',
         'permissionsVersion',
+        'orderAccess',
       ],
     });
 
@@ -118,6 +119,7 @@ async function authenticate(req, res, next) {
       sessionId: decoded.sessionId,
       permissions,
       permissionsVersion: user.permissionsVersion,
+      orderAccess: user.orderAccess,
     };
 
     logger.debug('用户认证成功', {

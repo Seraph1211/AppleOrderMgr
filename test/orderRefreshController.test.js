@@ -3,6 +3,7 @@ const mockGetBatch = jest.fn();
 const mockScheduleFindByPk = jest.fn();
 
 jest.mock('../src/models', () => ({
+  Order: { count: jest.fn().mockResolvedValue(1) },
   OrderRefreshSchedule: { findByPk: mockScheduleFindByPk },
 }));
 jest.mock('../src/services/crawler/refreshJobService', () => ({
@@ -46,7 +47,13 @@ describe('刷新任务与批次查询 API', () => {
     });
     const res = createResponse();
 
-    await controller.getJob({ params: { id: '8' }, user: { id: 7, role: 'operator' } }, res);
+    await controller.getJob(
+      {
+        params: { id: '8' },
+        user: { id: 7, role: 'operator', orderAccess: { mode: 'all', tags: [] } },
+      },
+      res
+    );
 
     expect(res.json.mock.calls[0][0]).toMatchObject({
       success: true,
@@ -59,7 +66,10 @@ describe('刷新任务与批次查询 API', () => {
 
     await expect(
       controller.getJob(
-        { params: { id: '8' }, user: { id: 7, role: 'operator' } },
+        {
+          params: { id: '8' },
+          user: { id: 7, role: 'operator', orderAccess: { mode: 'all', tags: [] } },
+        },
         createResponse()
       )
     ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
@@ -79,7 +89,13 @@ describe('刷新任务与批次查询 API', () => {
     });
     const res = createResponse();
 
-    await controller.getBatch({ params: { id: '3' }, user: { id: 7, role: 'operator' } }, res);
+    await controller.getBatch(
+      {
+        params: { id: '3' },
+        user: { id: 7, role: 'operator', orderAccess: { mode: 'all', tags: [] } },
+      },
+      res
+    );
 
     expect(res.json.mock.calls[0][0]).toMatchObject({
       success: true,

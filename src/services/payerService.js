@@ -1,4 +1,5 @@
 const { sequelize, Order, OrderPayerEvent } = require('../models');
+const { scopeOrderWhere, assertOrderIdsAccess } = require('./orderAccessService');
 const ApiError = require('../utils/ApiError');
 
 /**
@@ -104,6 +105,7 @@ async function assignOrderPayer(orderId, input, actorUserId, scope = {}) {
   }
 
   return await sequelize.transaction(async transaction => {
+    if (scope.orderUser) await assertOrderIdsAccess(scope.orderUser, [orderId], { transaction });
     const replay = await OrderPayerEvent.findOne({
       where: { actorUserId, idempotencyKey },
       transaction,
@@ -130,7 +132,8 @@ async function assignOrderPayer(orderId, input, actorUserId, scope = {}) {
         where: { assigneeUserId: scope.assigneeUserId },
       });
     }
-    const order = await Order.findByPk(orderId, {
+    const order = await Order.findOne({
+      where: scope.orderUser ? scopeOrderWhere(scope.orderUser, { id: orderId }) : { id: orderId },
       include: scopedTaskInclude,
       transaction,
       lock: transaction.LOCK.UPDATE,

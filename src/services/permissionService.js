@@ -1,3 +1,5 @@
+const { Op } = require('sequelize');
+const logger = require('../utils/logger');
 const {
   sequelize,
   User,
@@ -14,6 +16,8 @@ const {
   ALL_PERMISSION_CODES,
   getPermissionCatalog,
 } = require('../constants/permissionCatalog');
+
+const { getOrderAccess, validateOrderAccess } = require('./orderAccessService');
 
 const PAYMENT_ASSIGNMENT_LOCK_ID = 742091;
 
@@ -79,7 +83,7 @@ function validatePermissionSet(permissions) {
  */
 async function getUserPermissions(userId) {
   const user = await User.findByPk(userId, {
-    attributes: ['id', 'username', 'role', 'status', 'permissionsVersion'],
+    attributes: ['id', 'username', 'role', 'status', 'permissionsVersion', 'orderAccess'],
   });
   if (!user) {
     throw ApiError.notFound('用户不存在');
@@ -92,6 +96,7 @@ async function getUserPermissions(userId) {
       status: user.status,
     },
     permissions: await getEffectivePermissions(user),
+    orderAccess: getOrderAccess(user),
     version: user.permissionsVersion,
     editable: user.role !== 'admin',
   };
@@ -133,11 +138,19 @@ async function replaceUserPermissions(userId, input, actorUserId) {
       if (previousEvent.userId !== userId) {
         throw ApiError.conflict('幂等键已用于其他用户', undefined, 'IDEMPOTENCY_CONFLICT');
       }
+      if (
+        JSON.stringify(previousEvent.afterPermissions) !== JSON.stringify(normalized) ||
+        (input.orderAccess !== undefined &&
+          JSON.stringify(previousEvent.afterOrderAccess) !==
+            JSON.stringify(validateOrderAccess(input.orderAccess)))
+      ) {
+        throw ApiError.conflict('幂等键已用于不同授权内容', undefined, 'IDEMPOTENCY_CONFLICT');
+      }
       return getUserPermissions(userId);
     }
 
     const user = await User.findByPk(userId, {
-      attributes: ['id', 'username', 'role', 'status', 'permissionsVersion'],
+      attributes: ['id', 'username', 'role', 'status', 'permissionsVersion', 'orderAccess'],
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
@@ -155,6 +168,9 @@ async function replaceUserPermissions(userId, input, actorUserId) {
       );
     }
 
+    const beforeOrderAccess = getOrderAccess(user);
+    const orderAccess =
+      input.orderAccess === undefined ? beforeOrderAccess : validateOrderAccess(input.orderAccess);
     const beforePermissions = await getEffectivePermissions(user, { transaction });
     const revoked = beforePermissions.filter(code => !normalized.includes(code));
     if (revoked.some(code => PAYMENT_EXECUTION_PERMISSIONS.includes(code))) {
@@ -180,12 +196,14 @@ async function replaceUserPermissions(userId, input, actorUserId) {
       );
     }
     const afterVersion = user.permissionsVersion + 1;
-    await user.update({ permissionsVersion: afterVersion }, { transaction });
+    await user.update({ permissionsVersion: afterVersion, orderAccess }, { transaction });
     await UserPermissionEvent.create(
       {
         userId: user.id,
         actorUserId,
         beforePermissions,
+        beforeOrderAccess,
+        afterOrderAccess: orderAccess,
         afterPermissions: normalized,
         reason: input.reason ? String(input.reason).trim().slice(0, 500) : null,
         beforeVersion: expectedVersion,
@@ -198,6 +216,7 @@ async function replaceUserPermissions(userId, input, actorUserId) {
     return {
       user: { id: user.id, username: user.username, role: user.role, status: user.status },
       permissions: normalized,
+      orderAccess,
       version: afterVersion,
       editable: true,
     };
@@ -218,6 +237,8 @@ async function createUserWithPermissions(userAttributes, permissions, actorUserI
     const user = await User.create(
       {
         ...userAttributes,
+        orderAccess:
+          userAttributes.role === 'admin' ? { mode: 'all', tags: [] } : { mode: 'tags', tags: [] },
         permissionsVersion: userAttributes.role === 'admin' ? 0 : 1,
       },
       { transaction }
@@ -238,6 +259,8 @@ async function createUserWithPermissions(userAttributes, permissions, actorUserI
           userId: user.id,
           actorUserId,
           beforePermissions: [],
+          beforeOrderAccess: null,
+          afterOrderAccess: getOrderAccess(user),
           afterPermissions: normalized,
           reason: '创建用户时的初始授权',
           beforeVersion: 0,
@@ -275,7 +298,66 @@ function resolveAvailableHome(permissions) {
   return candidates.find(([permission]) => permissions.includes(permission))?.[1] || '/profile';
 }
 
+/** 渠道改名时同步所有显式授权，调用方已持有调度锁，保留审计。 */
+async function renameOrderAccessTags(oldTag, newTag, actorUserId, transaction) {
+  try {
+    const users = await User.findAll({
+      attributes: ['id', 'role', 'orderAccess', 'permissionsVersion'],
+      paranoid: false,
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+      order: [['id', 'ASC']],
+    });
+    if (users.some(user => getOrderAccess(user).tags.includes(newTag))) {
+      throw ApiError.conflict('新 TAG 已存在于用户授权中，请先调整授权，避免扩大访问范围');
+    }
+    const affectedUsers = users.filter(user => getOrderAccess(user).tags.includes(oldTag));
+    const grants = affectedUsers.length
+      ? await UserPermission.findAll({
+        where: { userId: { [Op.in]: affectedUsers.map(user => user.id) } },
+        attributes: ['userId', 'permissionCode'],
+        transaction,
+      })
+      : [];
+    const grantsByUser = new Map();
+    for (const grant of grants) {
+      if (!grantsByUser.has(grant.userId)) grantsByUser.set(grant.userId, []);
+      grantsByUser.get(grant.userId).push(grant.permissionCode);
+    }
+    for (const user of affectedUsers) {
+      const beforeOrderAccess = getOrderAccess(user);
+      if (!beforeOrderAccess.tags.includes(oldTag)) continue;
+      const orderAccess = validateOrderAccess({
+        mode: 'tags',
+        tags: beforeOrderAccess.tags.map(tag => (tag === oldTag ? newTag : tag)),
+      });
+      const beforeVersion = user.permissionsVersion;
+      const permissions = (grantsByUser.get(user.id) || []).sort();
+      await user.update({ orderAccess, permissionsVersion: beforeVersion + 1 }, { transaction });
+      await UserPermissionEvent.create(
+        {
+          userId: user.id,
+          actorUserId,
+          beforePermissions: permissions,
+          afterPermissions: permissions,
+          beforeOrderAccess,
+          afterOrderAccess: orderAccess,
+          beforeVersion,
+          afterVersion: beforeVersion + 1,
+          source: 'channel_rename',
+          reason: '渠道 TAG 改名，同步订单访问范围',
+        },
+        { transaction }
+      );
+    }
+  } catch (error) {
+    logger.warn('同步渠道 TAG 授权失败', { errorType: error.name });
+    throw error;
+  }
+}
+
 module.exports = {
+  renameOrderAccessTags,
   PAYMENT_ASSIGNMENT_LOCK_ID,
   getEffectivePermissions,
   validatePermissionSet,

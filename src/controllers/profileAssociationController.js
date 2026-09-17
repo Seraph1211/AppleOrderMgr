@@ -1,3 +1,4 @@
+const { scopeOrderWhere } = require('../services/orderAccessService');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
@@ -19,7 +20,10 @@ async function previewAssociations(req, res) {
       throw ApiError.badRequest('未完成预览过多');
     const cursor = req.body?.cursor ? profileId(req.body.cursor) : 0;
     const orders = await Order.findAll({
-      where: { id: { [Op.gt]: cursor }, [Op.or]: [{ recipientRef: null }, { appleIdRef: null }] },
+      where: scopeOrderWhere(req.user, {
+        id: { [Op.gt]: cursor },
+        [Op.or]: [{ recipientRef: null }, { appleIdRef: null }],
+      }),
       order: [['id', 'ASC']],
       limit: 500,
     });
@@ -78,7 +82,7 @@ async function executeAssociations(req, res) {
     await sequelize.transaction(async transaction => {
       await lockProfiles(transaction, req.user.id);
       const orders = await Order.findAll({
-        where: { id: ids },
+        where: scopeOrderWhere(req.user, { id: ids }),
         transaction,
         lock: transaction.LOCK.UPDATE,
         order: [['id', 'ASC']],

@@ -21,6 +21,7 @@ const {
 } = require('../models');
 const refreshJobService = require('../services/crawler/refreshJobService');
 const { getDisplayedFreshness } = require('../services/crawler/refreshPolicy');
+const { scopeOrderWhere, assertOrderIdsAccess } = require('../services/orderAccessService');
 const logger = require('../utils/logger');
 const {
   serializePublicProducts,
@@ -395,7 +396,7 @@ function buildListFilters(query) {
     const isoPickupDate = pickupDate.replaceAll('/', '-');
     const referenceDateSql =
       '(COALESCE("official_status_observed_at", "last_crawled_at") ' +
-      'AT TIME ZONE \'Asia/Shanghai\')::date';
+      "AT TIME ZONE 'Asia/Shanghai')::date";
     where[Op.and] = (where[Op.and] || []).concat({
       [Op.or]: [
         { officialFulfillmentMessage: { [Op.iLike]: `%${pickupDate}%` } },
@@ -488,7 +489,7 @@ async function listOrders(req, res) {
     const { where, page, limit } = buildListFilters(req.query);
 
     const { count, rows } = await Order.findAndCountAll({
-      where,
+      where: scopeOrderWhere(req.user, where),
       include: [
         { model: AppleId, as: 'appleAccount', attributes: ['id', 'appleId', 'nickname'] },
         {
@@ -560,7 +561,7 @@ async function getOrderDetail(req, res) {
     }
 
     const order = await Order.findOne({
-      where: { id: orderId },
+      where: scopeOrderWhere(req.user, { id: orderId }),
       include: [
         { model: AppleId, as: 'appleAccount' },
         { model: Recipient, as: 'recipient' },
@@ -607,7 +608,7 @@ async function refreshOrder(req, res) {
       throw ApiError.badRequest('订单 ID 必须是正整数', { received: req.params.id });
     }
 
-    const order = await Order.findByPk(orderId);
+    const order = await Order.findOne({ where: scopeOrderWhere(req.user, { id: orderId }) });
     if (!order) {
       throw ApiError.notFound('订单不存在', { orderId });
     }
@@ -700,7 +701,7 @@ async function batchRefresh(req, res) {
       : parsePositiveInt(req.body.limit, { defaultValue: 20, min: 1, max: 100 });
 
     const orders = await Order.findAll({
-      where,
+      where: scopeOrderWhere(req.user, where),
       attributes: ['id', 'orderNumber', 'status'],
       limit,
       order: [['orderDate', 'ASC']],
@@ -715,6 +716,7 @@ async function batchRefresh(req, res) {
     }
 
     const orderIds = hasExplicitIds ? explicitIds : orders.map(order => order.id);
+    await assertOrderIdsAccess(req.user, orderIds);
     const result = await refreshJobService.enqueueMany(orderIds, {
       trigger: 'manual_single',
       requestedBy: req.user.id,
@@ -739,13 +741,14 @@ async function batchRefresh(req, res) {
  */
 async function refreshAll(req, res) {
   try {
-    const result = await refreshJobService.enqueueRefreshAll(req.user.id);
+    const result = await refreshJobService.enqueueRefreshAll(req.user.id, req.user);
     return res.status(202).json({
       success: true,
       message: result.created ? '刷新全部批次已提交' : '已有刷新全部批次，已复用',
       data: { batchId: result.batch.id, status: result.batch.status, created: result.created },
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     logger.error('提交刷新全部批次失败', { userId: req.user.id, error: error.message });
     throw ApiError.database('提交刷新全部批次失败', { reason: error.message });
   }
@@ -764,6 +767,7 @@ async function pageOpenRefresh(req, res) {
     if (orderIds.some(id => !Number.isInteger(id) || id <= 0)) {
       throw ApiError.badRequest('order_ids 包含无效订单 ID');
     }
+    await assertOrderIdsAccess(req.user, orderIds);
     const result = await refreshJobService.enqueuePageOpenRefresh(orderIds, req.user.id);
     return res.status(202).json({ success: true, message: '页面刷新任务已提交', data: result });
   } catch (error) {
@@ -781,7 +785,7 @@ async function exportOrders(req, res) {
   try {
     const { where } = buildListFilters(req.query);
     const rows = await Order.findAll({
-      where,
+      where: scopeOrderWhere(req.user, where),
       include: [
         { model: AppleId, as: 'appleAccount', attributes: ['appleId'] },
         { model: Recipient, as: 'recipient', attributes: ['lastName', 'firstName'] },
@@ -833,9 +837,10 @@ async function exportOrders(req, res) {
  * @param {Object} res - Express response
  * @returns {Promise<void>}
  */
-async function getFilterOptions(_req, res) {
+async function getFilterOptions(req, res) {
   try {
     const rows = await Order.findAll({
+      where: scopeOrderWhere(req.user),
       attributes: ['products', 'pickupStore', 'payerName', 'recipientName'],
       order: [['updatedAt', 'DESC']],
       limit: 5000,
@@ -882,7 +887,7 @@ async function updateOrder(req, res) {
       throw ApiError.badRequest('订单 ID 必须是正整数', { received: req.params.id });
     }
 
-    const order = await Order.findByPk(orderId);
+    const order = await Order.findOne({ where: scopeOrderWhere(req.user, { id: orderId }) });
     if (!order) {
       throw ApiError.notFound('订单不存在', { orderId });
     }

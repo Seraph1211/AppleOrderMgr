@@ -13,6 +13,12 @@ const permissionController = require('../controllers/permissionController');
 
 const router = express.Router();
 
+router.get(
+  '/order-tag-options',
+  requirePermission(PERMISSIONS.USERS_PERMISSIONS_MANAGE),
+  asyncHandler(permissionController.getOrderTagOptions)
+);
+
 router.get('/', requirePermission(PERMISSIONS.USERS_READ), asyncHandler(controller.listUsers));
 router.get(
   '/permission-catalog',

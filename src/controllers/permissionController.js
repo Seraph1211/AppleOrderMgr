@@ -1,3 +1,4 @@
+const logger = require('../utils/logger');
 const permissionService = require('../services/permissionService');
 
 /**
@@ -35,6 +36,7 @@ async function replaceUserPermissions(req, res) {
     Number(req.params.id),
     {
       permissions: req.body.permissions,
+      orderAccess: req.body.orderAccess,
       expectedVersion: req.body.expectedVersion,
       reason: req.body.reason,
       idempotencyKey: req.get('Idempotency-Key') || req.body.idempotencyKey,
@@ -44,7 +46,30 @@ async function replaceUserPermissions(req, res) {
   return res.json({ success: true, data: result, message: '权限配置已更新' });
 }
 
+/** 管理员获取订单自身 TAG 候选。 */
+async function getOrderTagOptions(_req, res) {
+  try {
+    const { Order } = require('../models');
+    const { Op } = require('sequelize');
+    const rows = await Order.findAll({
+      attributes: ['tag'],
+      where: { tag: { [Op.ne]: null } },
+      group: ['tag'],
+      order: [['tag', 'ASC']],
+      raw: true,
+    });
+    return res.json({
+      success: true,
+      data: { tags: rows.map(row => row.tag).filter(tag => tag.trim()) },
+    });
+  } catch (error) {
+    logger.warn('读取授权 TAG 候选失败', { errorType: error.name });
+    throw error;
+  }
+}
+
 module.exports = {
+  getOrderTagOptions,
   getCatalog,
   getUserPermissions,
   replaceUserPermissions,

@@ -8,7 +8,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 
 export default function Channels() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [channels, setChannels] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -279,23 +279,26 @@ export default function Channels() {
                         </span>
                       </td>
                       <td className="py-4 px-4">
-                        <Link
-                          to={`/channels/${encodeURIComponent(channel.tag)}/orders`}
-                          className="text-primary hover:text-primary-dark hover:underline transition-colors"
-                        >
-                          查看明细
-                        </Link>
+                        {can(PERMISSIONS.ORDERS_READ) && (
+                          <Link
+                            to={`/channels/${encodeURIComponent(channel.tag)}/orders`}
+                            className="text-primary hover:text-primary-dark hover:underline transition-colors"
+                          >
+                            查看明细
+                          </Link>
+                        )}
                       </td>
                       <td className="py-4 px-4">
-                        {can(PERMISSIONS.CHANNELS_RENAME) && (
-                          <button
-                            onClick={() => handleEditChannel(channel)}
-                            className="text-primary hover:text-primary-dark transition-colors"
-                            title="修改渠道名称"
-                          >
-                            <Edit className="w-4 h-4" />
-                          </button>
-                        )}
+                        {can(PERMISSIONS.CHANNELS_RENAME) &&
+                          (user.role === 'admin' || user.orderAccess?.mode === 'all') && (
+                            <button
+                              onClick={() => handleEditChannel(channel)}
+                              className="text-primary hover:text-primary-dark transition-colors"
+                              title="修改渠道名称"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                          )}
                       </td>
                     </tr>
                   );

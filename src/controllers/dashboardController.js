@@ -8,29 +8,30 @@ const dashboardService = require('../services/dashboardService');
 const getStats = async (req, res) => {
   try {
     const filters = {
+      orderUser: req.user,
       startDate: req.query.startDate,
       endDate: req.query.endDate,
       status: req.query.status,
       productModel: req.query.productModel,
-      store: req.query.store
+      store: req.query.store,
     };
 
     const stats = await dashboardService.getStats(filters);
 
     res.json({
       success: true,
-      data: stats
+      data: stats,
     });
   } catch (error) {
     logger.error('获取仪表板统计数据失败', {
       error: error.message,
       stack: error.stack,
-      query: req.query
+      query: req.query,
     });
     res.status(500).json({
       success: false,
       message: '获取统计数据失败',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -42,29 +43,30 @@ const getStats = async (req, res) => {
 const getDailyTrend = async (req, res) => {
   try {
     const filters = {
+      orderUser: req.user,
       startDate: req.query.startDate,
       endDate: req.query.endDate,
       status: req.query.status,
       productModel: req.query.productModel,
-      store: req.query.store
+      store: req.query.store,
     };
 
     const trend = await dashboardService.getDailyTrend(filters);
 
     res.json({
       success: true,
-      data: trend
+      data: trend,
     });
   } catch (error) {
     logger.error('获取每日订单趋势失败', {
       error: error.message,
       stack: error.stack,
-      query: req.query
+      query: req.query,
     });
     res.status(500).json({
       success: false,
       message: '获取趋势数据失败',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -76,28 +78,29 @@ const getDailyTrend = async (req, res) => {
 const getProductDistribution = async (req, res) => {
   try {
     const filters = {
+      orderUser: req.user,
       startDate: req.query.startDate,
       endDate: req.query.endDate,
       status: req.query.status,
-      store: req.query.store
+      store: req.query.store,
     };
 
     const distribution = await dashboardService.getProductDistribution(filters);
 
     res.json({
       success: true,
-      data: distribution
+      data: distribution,
     });
   } catch (error) {
     logger.error('获取产品型号分布失败', {
       error: error.message,
       stack: error.stack,
-      query: req.query
+      query: req.query,
     });
     res.status(500).json({
       success: false,
       message: '获取产品分布数据失败',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -109,28 +112,29 @@ const getProductDistribution = async (req, res) => {
 const getStoreDistribution = async (req, res) => {
   try {
     const filters = {
+      orderUser: req.user,
       startDate: req.query.startDate,
       endDate: req.query.endDate,
       status: req.query.status,
-      productModel: req.query.productModel
+      productModel: req.query.productModel,
     };
 
     const distribution = await dashboardService.getStoreDistribution(filters);
 
     res.json({
       success: true,
-      data: distribution
+      data: distribution,
     });
   } catch (error) {
     logger.error('获取取货门店分布失败', {
       error: error.message,
       stack: error.stack,
-      query: req.query
+      query: req.query,
     });
     res.status(500).json({
       success: false,
       message: '获取门店分布数据失败',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -141,21 +145,21 @@ const getStoreDistribution = async (req, res) => {
  */
 const getFilterOptions = async (req, res) => {
   try {
-    const options = await dashboardService.getFilterOptions();
+    const options = await dashboardService.getFilterOptions({ orderUser: req.user });
 
     res.json({
       success: true,
-      data: options
+      data: options,
     });
   } catch (error) {
     logger.error('获取筛选器选项失败', {
       error: error.message,
-      stack: error.stack
+      stack: error.stack,
     });
     res.status(500).json({
       success: false,
       message: '获取筛选器选项失败',
-      error: error.message
+      error: error.message,
     });
   }
 };
@@ -165,5 +169,5 @@ module.exports = {
   getDailyTrend,
   getProductDistribution,
   getStoreDistribution,
-  getFilterOptions
+  getFilterOptions,
 };

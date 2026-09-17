@@ -7,6 +7,12 @@
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
 const { Op, fn, col, literal } = require('sequelize');
 const { Order, Recipient, AppleId, sequelize } = require('../models');
+const {
+  scopeOrderWhere,
+  assertTagAccess,
+  getOrderAccess,
+} = require('../services/orderAccessService');
+const { renameOrderAccessTags } = require('../services/permissionService');
 const logger = require('../utils/logger');
 const { serializePublicProducts } = require('../utils/orderSerialization');
 const ApiError = require('../utils/ApiError');
@@ -57,12 +63,7 @@ exports.getChannels = async (req, res, next) => {
           'missingAmountOrders',
         ],
       ],
-      where: {
-        tag: {
-          [Op.ne]: null,
-          [Op.ne]: '',
-        },
-      },
+      where: scopeOrderWhere(req.user, { tag: { [Op.notIn]: [''] } }),
       group: ['tag'],
       raw: true,
     });
@@ -102,7 +103,11 @@ exports.getChannels = async (req, res, next) => {
     });
   } catch (error) {
     logger.error('获取渠道列表失败', { error: error.message, stack: error.stack });
-    next(ApiError.internal('获取渠道列表失败', { error: error.message }));
+    next(
+      error instanceof ApiError
+        ? error
+        : ApiError.internal('获取渠道列表失败', { error: error.message })
+    );
   }
 };
 
@@ -115,6 +120,7 @@ exports.getChannels = async (req, res, next) => {
 exports.getChannelStats = async (req, res, next) => {
   try {
     const { tag } = req.params;
+    assertTagAccess(req.user, tag);
 
     if (!tag) {
       return next(ApiError.badRequest('渠道标签不能为空'));
@@ -178,7 +184,11 @@ exports.getChannelStats = async (req, res, next) => {
       error: error.message,
       stack: error.stack,
     });
-    next(ApiError.internal('获取渠道统计失败', { error: error.message }));
+    next(
+      error instanceof ApiError
+        ? error
+        : ApiError.internal('获取渠道统计失败', { error: error.message })
+    );
   }
 };
 
@@ -195,6 +205,7 @@ exports.getChannelStats = async (req, res, next) => {
 exports.getChannelOrders = async (req, res, next) => {
   try {
     const { tag } = req.params;
+    assertTagAccess(req.user, tag);
     const DEFAULT_PAGE = 1;
     const DEFAULT_PAGE_SIZE = 20;
 
@@ -288,7 +299,11 @@ exports.getChannelOrders = async (req, res, next) => {
       error: error.message,
       stack: error.stack,
     });
-    next(ApiError.internal('获取渠道订单列表失败', { error: error.message }));
+    next(
+      error instanceof ApiError
+        ? error
+        : ApiError.internal('获取渠道订单列表失败', { error: error.message })
+    );
   }
 };
 
@@ -304,7 +319,12 @@ exports.updateChannelName = async (req, res, next) => {
 
   try {
     const { tag } = req.params;
+    assertTagAccess(req.user, tag);
     const { newTag } = req.body;
+    if (getOrderAccess(req.user).mode !== 'all') {
+      throw new ApiError(403, 'FORBIDDEN', '指定 TAG 范围不能修改渠道 TAG');
+    }
+    await sequelize.query('SELECT pg_advisory_xact_lock(742091)', { transaction });
 
     if (!tag) {
       await transaction.rollback();
@@ -344,6 +364,8 @@ exports.updateChannelName = async (req, res, next) => {
       await transaction.rollback();
       return next(ApiError.badRequest('新渠道名称已存在，无法重命名'));
     }
+
+    await renameOrderAccessTags(tag, newTag, req.user.id, transaction);
 
     // 级联更新 orders 表
     const [ordersUpdated] = await Order.update(
@@ -390,6 +412,10 @@ exports.updateChannelName = async (req, res, next) => {
       error: error.message,
       stack: error.stack,
     });
-    next(ApiError.internal('修改渠道名称失败', { error: error.message }));
+    next(
+      error instanceof ApiError
+        ? error
+        : ApiError.internal('修改渠道名称失败', { error: error.message })
+    );
   }
 };

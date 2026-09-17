@@ -16,7 +16,7 @@ jest.mock('../src/models', () => ({
   },
   AppleId: { findAndCountAll: jest.fn(), findByPk: jest.fn() },
   Recipient: { findAndCountAll: jest.fn(), findByPk: jest.fn(), findAll: jest.fn() },
-  Order: { findAll: jest.fn() },
+  Order: { findAll: jest.fn(), count: jest.fn() },
   User: {},
 }));
 jest.mock('../src/services/crawler/refreshJobService', () => ({ enqueueMany: jest.fn() }));
@@ -227,26 +227,32 @@ describe('基础资料读取权限与选填联系电话', () => {
 
 describe('订单勾选批量刷新', () => {
   beforeEach(() => jest.clearAllMocks());
-  test('去重且缺失订单保留逐项结果，不扩大到其他订单', async () => {
+  test('缺失或不可见 ID 整批拒绝，不泄露逐项存在性', async () => {
     models.Order.findAll.mockResolvedValue([{ id: 1 }]);
-    jobs.enqueueMany.mockResolvedValue({
-      total: 2,
-      created: 1,
-      merged: 0,
-      missing: 1,
-      results: [
-        { orderId: 1, jobId: 7, created: true },
-        { orderId: 9, jobId: null, reason: 'order_not_found' },
-      ],
-    });
-    const res = response();
-    await orderController.batchRefresh({ body: { orderIds: [1, '1', 9] }, user: { id: 2 } }, res);
-    expect(jobs.enqueueMany).toHaveBeenCalledWith([1, 9], {
+    models.Order.count.mockResolvedValue(1);
+    await expect(
+      orderController.batchRefresh(
+        {
+          body: { orderIds: [1, '1', 9] },
+          user: { id: 2, orderAccess: { mode: 'tags', tags: ['A'] } },
+        },
+        response()
+      )
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(jobs.enqueueMany).not.toHaveBeenCalled();
+  });
+  test('完整可见集合去重后入队', async () => {
+    models.Order.findAll.mockResolvedValue([{ id: 1 }]);
+    models.Order.count.mockResolvedValue(1);
+    jobs.enqueueMany.mockResolvedValue({ total: 1, created: 1, results: [] });
+    await orderController.batchRefresh(
+      { body: { orderIds: [1, '1'] }, user: { id: 2, orderAccess: { mode: 'tags', tags: ['A'] } } },
+      response()
+    );
+    expect(jobs.enqueueMany).toHaveBeenCalledWith([1], {
       trigger: 'manual_single',
       requestedBy: 2,
     });
-    expect(res.status).toHaveBeenCalledWith(202);
-    expect(res.json.mock.calls[0][0].data.missing).toBe(1);
   });
   test.each(
     [[], [0], ['1oops'], [1.2], [true], [null], Array(101).fill(1), 0, null].map(orderIds => [

@@ -41,7 +41,10 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Routes>
-                  <Route path="/server-monitor" element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerMonitor />)} />
+                  <Route
+                    path="/server-monitor"
+                    element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerMonitor />)}
+                  />
                   <Route
                     path="/identity-verifications"
                     element={permissionRoute(PERMISSIONS.IDENTITY_READ, <IdentityVerifications />)}
@@ -81,7 +84,13 @@ function App() {
                   />
                   <Route
                     path="/channels/:tag/orders"
-                    element={permissionRoute(PERMISSIONS.CHANNELS_READ, <ChannelOrders />)}
+                    element={
+                      <ProtectedRoute
+                        requiredPermissions={[PERMISSIONS.CHANNELS_READ, PERMISSIONS.ORDERS_READ]}
+                      >
+                        <ChannelOrders />
+                      </ProtectedRoute>
+                    }
                   />
                   <Route
                     path="/payment-tasks"

@@ -5,7 +5,7 @@
  */
 
 const express = require('express');
-const { requirePermission } = require('../middleware/authMiddleware');
+const { requirePermission, requireAllPermissions } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
 const channelController = require('../controllers/channelController');
 
@@ -33,7 +33,7 @@ router.get(
  */
 router.get(
   '/:tag/orders',
-  requirePermission(PERMISSIONS.CHANNELS_READ),
+  requireAllPermissions([PERMISSIONS.CHANNELS_READ, PERMISSIONS.ORDERS_READ]),
   channelController.getChannelOrders
 );
 

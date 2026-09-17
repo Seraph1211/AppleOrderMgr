@@ -103,7 +103,11 @@ describe('统计口径契约', () => {
         },
       ],
     });
-    const req = { params: { tag: '渠道A' }, query: {} };
+    const req = {
+      params: { tag: '渠道A' },
+      query: {},
+      user: { orderAccess: { mode: 'tags', tags: ['渠道A'] } },
+    };
     const res = { json: jest.fn() };
     const next = jest.fn();
 

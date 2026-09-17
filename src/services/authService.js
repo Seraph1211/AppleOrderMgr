@@ -129,6 +129,7 @@ async function login(username, password, loginIp = null, options = {}) {
             forcePasswordChange: false,
             permissions,
             permissionsVersion: user.permissionsVersion,
+            orderAccess: require('./orderAccessService').getOrderAccess(user),
             availableHome: permissionService.resolveAvailableHome(permissions),
           },
         };
@@ -267,6 +268,7 @@ async function getUserInfo(userId) {
         'status',
         'forcePasswordChange',
         'permissionsVersion',
+        'orderAccess',
         'lastLoginAt',
         'lastLoginIp',
         'createdAt',
@@ -288,6 +290,7 @@ async function getUserInfo(userId) {
       forcePasswordChange: false,
       permissions,
       permissionsVersion: user.permissionsVersion,
+      orderAccess: require('./orderAccessService').getOrderAccess(user),
       availableHome: permissionService.resolveAvailableHome(permissions),
       lastLoginAt: user.lastLoginAt,
       lastLoginIp: user.lastLoginIp,

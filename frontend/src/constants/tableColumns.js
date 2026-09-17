@@ -177,7 +177,7 @@ export const ordersColumns = [
   // 业务字段
   {
     key: 'tag',
-    label: '标签',
+    label: '授权 TAG',
     width: '150px',
     defaultVisible: false,
     sortable: false,

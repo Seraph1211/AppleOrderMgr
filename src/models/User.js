@@ -108,6 +108,12 @@ module.exports = sequelize => {
         field: 'force_password_change',
         comment: '历史兼容字段，不再作为登录门禁',
       },
+      orderAccess: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: { mode: 'tags', tags: [] },
+        field: 'order_access',
+      },
       permissionsVersion: {
         type: DataTypes.INTEGER,
         allowNull: false,

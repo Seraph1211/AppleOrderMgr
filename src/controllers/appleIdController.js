@@ -1,3 +1,4 @@
+const { scopeOrderWhere } = require('../services/orderAccessService');
 /* eslint-disable camelcase */
 /**
  * Apple ID 控制器
@@ -106,7 +107,7 @@ async function listAppleIds(req, res) {
 
     // 聚合每个 Apple ID 的订单数、收件人数、最后下单日期（一次性 in 查询，避免 N+1）
     const ids = rows.map(r => r.id);
-    const orderStats = await getOrderStatsByAppleIds(ids);
+    const orderStats = await getOrderStatsByAppleIds(ids, req.user);
     const recipientStats = await getRecipientStatsByAppleIds(ids);
     const includePassword = Boolean(req.user?.permissions?.includes(PERMISSIONS.APPLE_IDS_READ));
     res.set('Cache-Control', 'no-store');
@@ -145,7 +146,7 @@ async function listAppleIds(req, res) {
  * @param {number[]} ids - Apple ID 列表
  * @returns {Promise<Object>} { [id]: { orderCount, lastOrderDate } }
  */
-async function getOrderStatsByAppleIds(ids) {
+async function getOrderStatsByAppleIds(ids, user) {
   if (ids.length === 0) return {};
   const { Order } = require('../models');
   const rows = await Order.findAll({
@@ -154,7 +155,7 @@ async function getOrderStatsByAppleIds(ids) {
       [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
       [sequelize.fn('MAX', sequelize.col('created_at')), 'lastOrderDate'],
     ],
-    where: { appleIdRef: { [Op.in]: ids } },
+    where: scopeOrderWhere(user, { appleIdRef: { [Op.in]: ids } }),
     group: ['appleIdRef'],
     raw: true,
   });
@@ -205,7 +206,7 @@ async function getAppleIdDetail(req, res) {
       throw ApiError.notFound('Apple ID 不存在', { id });
     }
 
-    const orderStats = await getOrderStatsByAppleIds([id]);
+    const orderStats = await getOrderStatsByAppleIds([id], req.user);
     const recipientStats = await getRecipientStatsByAppleIds([id]);
 
     const includePassword = Boolean(req.user?.permissions?.includes(PERMISSIONS.APPLE_IDS_READ));

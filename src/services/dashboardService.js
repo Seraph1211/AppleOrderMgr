@@ -2,6 +2,7 @@ const { parseOrderTimeBoundary } = require('../utils/orderTime');
 /* eslint-disable no-unused-vars, require-await, camelcase */
 const { Op, fn, col, literal } = require('sequelize');
 const { Order, AppleId, Recipient, sequelize } = require('../models');
+const { getOrderTagBind } = require('./orderAccessService');
 const logger = require('../utils/logger');
 
 /**
@@ -45,6 +46,10 @@ const buildWhereClause = filters => {
     where.pickupStore = filters.store;
   }
 
+  if (filters.orderUser) {
+    const tags = getOrderTagBind(filters.orderUser);
+    if (tags !== null) where.tag = { [Op.in]: tags };
+  }
   return where;
 };
 
@@ -361,7 +366,9 @@ const getStoreDistribution = async filters => {
  * @returns {string} SQL WHERE 子句
  */
 const buildSqlWhereClause = filters => {
-  const conditions = ['1=1']; // 默认条件
+  const conditions = [
+    '(:allowedTags IS NULL OR tag IN (SELECT jsonb_array_elements_text(CAST(:allowedTags AS jsonb))))',
+  ]; // 默认条件
 
   if (filters.startDate) {
     conditions.push('order_date >= :startDate');
@@ -393,7 +400,8 @@ const buildSqlWhereClause = filters => {
  * @returns {Object} 参数对象
  */
 const getReplacements = filters => {
-  const replacements = {};
+  const tags = filters.orderUser ? getOrderTagBind(filters.orderUser) : null;
+  const replacements = { allowedTags: tags === null ? null : JSON.stringify(tags) };
 
   if (filters.startDate) {
     replacements.startDate = parseOrderTimeBoundary(filters.startDate);
@@ -420,17 +428,17 @@ const getReplacements = filters => {
  * 获取筛选器选项
  * @returns {Promise<Object>} 筛选器选项数据
  */
-const getFilterOptions = async () => {
+const getFilterOptions = async (filters = {}) => {
   try {
     // 获取所有产品型号（从 JSONB 中提取）
     const productModels = await sequelize.query(
       `
       SELECT DISTINCT product->>'model' AS model
       FROM orders, jsonb_array_elements(products) AS product
-      WHERE product->>'model' IS NOT NULL
+      WHERE product->>'model' IS NOT NULL AND ${buildSqlWhereClause(filters)}
       ORDER BY model
       `,
-      { type: sequelize.QueryTypes.SELECT }
+      { type: sequelize.QueryTypes.SELECT, replacements: getReplacements(filters) }
     );
 
     // 获取所有取货门店（使用数据库字段名 pickup_store）
@@ -438,10 +446,10 @@ const getFilterOptions = async () => {
       `
       SELECT DISTINCT pickup_store AS store
       FROM orders
-      WHERE pickup_store IS NOT NULL
+      WHERE pickup_store IS NOT NULL AND ${buildSqlWhereClause(filters)}
       ORDER BY pickup_store
       `,
-      { type: sequelize.QueryTypes.SELECT }
+      { type: sequelize.QueryTypes.SELECT, replacements: getReplacements(filters) }
     );
 
     return {

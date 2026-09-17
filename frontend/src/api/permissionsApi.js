@@ -6,3 +6,5 @@ export const replaceUserPermissions = (userId, payload, idempotencyKey) =>
   client.put(`/users/${userId}/permissions`, payload, {
     headers: { 'Idempotency-Key': idempotencyKey },
   });
+
+export const getOrderTagOptions = () => client.get('/users/order-tag-options');

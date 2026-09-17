@@ -1,5 +1,6 @@
-const { OrderRefreshSchedule } = require('../models');
+const { OrderRefreshSchedule, OrderRefreshJob } = require('../models');
 const refreshJobService = require('../services/crawler/refreshJobService');
+const { getOrderAccess, assertOrderIdsAccess } = require('../services/orderAccessService');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 
@@ -22,6 +23,7 @@ async function getJob(req, res) {
     if (!canReadOwnedResource(job, req.user)) {
       throw new ApiError(403, 'FORBIDDEN', '无权查看该刷新任务');
     }
+    await assertOrderIdsAccess(req.user, [job.orderId]);
     const schedule = await OrderRefreshSchedule.findByPk(job.orderId);
     let refresh = null;
     if (schedule) {
@@ -64,6 +66,11 @@ async function getBatch(req, res) {
     if (!batch) throw ApiError.notFound('刷新批次不存在', { batchId });
     if (!canReadOwnedResource(batch, req.user)) {
       throw new ApiError(403, 'FORBIDDEN', '无权查看该刷新批次');
+    }
+    if (getOrderAccess(req.user).mode !== 'all') {
+      if (!Array.isArray(batch.orderIds)) throw ApiError.notFound('批次不存在或不可访问');
+      const jobs = await OrderRefreshJob.findAll({ where: { batchId }, attributes: ['orderId'] });
+      await assertOrderIdsAccess(req.user, [...batch.orderIds, ...jobs.map(job => job.orderId)]);
     }
     return res.json({
       success: true,

@@ -24,6 +24,8 @@ module.exports = sequelize => {
         defaultValue: [],
         field: 'after_permissions',
       },
+      beforeOrderAccess: { type: DataTypes.JSONB, field: 'before_order_access' },
+      afterOrderAccess: { type: DataTypes.JSONB, field: 'after_order_access' },
       reason: { type: DataTypes.STRING(500), allowNull: true },
       beforeVersion: { type: DataTypes.INTEGER, allowNull: false, field: 'before_version' },
       afterVersion: { type: DataTypes.INTEGER, allowNull: false, field: 'after_version' },

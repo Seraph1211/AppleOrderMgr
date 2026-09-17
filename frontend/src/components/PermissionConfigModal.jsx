@@ -2,12 +2,17 @@ import { useEffect, useMemo, useState } from 'react';
 import { ShieldCheck, X } from 'lucide-react';
 import {
   getPermissionCatalog,
+  getOrderTagOptions,
   getUserPermissions,
   replaceUserPermissions,
 } from '../api/permissionsApi';
 import { PAYMENT_EXECUTION_PERMISSIONS } from '../constants/permissions';
 
 export default function PermissionConfigModal({ user, onClose, onSuccess }) {
+  const [orderAccess, setOrderAccess] = useState({ mode: 'tags', tags: [] });
+  const [initialAccess, setInitialAccess] = useState(null);
+  const [tagOptions, setTagOptions] = useState([]);
+  const [tagSearch, setTagSearch] = useState('');
   const [catalog, setCatalog] = useState([]);
   const [selected, setSelected] = useState([]);
   const [version, setVersion] = useState(0);
@@ -18,8 +23,11 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([getPermissionCatalog(), getUserPermissions(user.id)])
-      .then(([catalogResponse, permissionResponse]) => {
+    Promise.all([getPermissionCatalog(), getUserPermissions(user.id), getOrderTagOptions()])
+      .then(([catalogResponse, permissionResponse, tagsResponse]) => {
+        setOrderAccess(permissionResponse.data.orderAccess);
+        setInitialAccess(permissionResponse.data.orderAccess);
+        setTagOptions(tagsResponse.data.tags);
         setCatalog(catalogResponse.data.permissions);
         setSelected(permissionResponse.data.permissions);
         setVersion(permissionResponse.data.version);
@@ -59,7 +67,7 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
     try {
       await replaceUserPermissions(
         user.id,
-        { permissions: selected, expectedVersion: version, reason },
+        { permissions: selected, orderAccess, expectedVersion: version, reason },
         crypto.randomUUID()
       );
       onSuccess();
@@ -109,6 +117,109 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
                   </button>
                 </div>
               )}
+              <section className="border border-gray-200 rounded-lg p-4 space-y-3">
+                <h3 className="font-semibold text-gray-900">订单数据范围</h3>
+                <p className="text-sm text-gray-500">
+                  按订单自身 TAG 精确匹配，限制订单查询及操作。本人付款任务的信息和操作保持不变。
+                </p>
+                <div className="flex flex-wrap gap-5">
+                  {[
+                    ['all', '全部订单'],
+                    ['tags', '指定 TAG'],
+                  ].map(([mode, label]) => (
+                    <label key={mode} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name="orderAccessMode"
+                        value={mode}
+                        checked={orderAccess.mode === mode}
+                        disabled={!editable || saving}
+                        onChange={() => setOrderAccess(current => ({ ...current, mode }))}
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                {orderAccess.mode === 'tags' && (
+                  <>
+                    <div className="flex flex-wrap gap-2">
+                      {orderAccess.tags.map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          className="badge badge-info max-w-full break-all whitespace-pre-wrap"
+                          disabled={!editable || saving}
+                          title="点击移除授权 TAG"
+                          onClick={() =>
+                            setOrderAccess(current => ({
+                              ...current,
+                              tags: current.tags.filter(value => value !== tag),
+                            }))
+                          }
+                        >
+                          {tag} ×
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      className="input"
+                      placeholder="搜索订单 TAG"
+                      aria-label="搜索订单 TAG"
+                      value={tagSearch}
+                      onChange={event => setTagSearch(event.target.value)}
+                    />
+                    <div className="max-h-40 overflow-y-auto divide-y divide-gray-100 border rounded-lg">
+                      {[...new Set([...tagOptions, ...orderAccess.tags])]
+                        .filter(tag => tag.toLowerCase().includes(tagSearch.toLowerCase()))
+                        .map(tag => (
+                          <label key={tag} className="flex items-center gap-3 px-3 py-2 text-sm">
+                            <input
+                              type="checkbox"
+                              checked={orderAccess.tags.includes(tag)}
+                              disabled={!editable || saving}
+                              onChange={event =>
+                                setOrderAccess(current => ({
+                                  ...current,
+                                  tags: event.target.checked
+                                    ? [...current.tags, tag]
+                                    : current.tags.filter(value => value !== tag),
+                                }))
+                              }
+                            />
+                            <span className="break-all whitespace-pre-wrap">{tag}</span>
+                          </label>
+                        ))}
+                    </div>
+                    {tagOptions.length === 0 && (
+                      <p className="text-sm text-gray-500">暂无订单 TAG 候选</p>
+                    )}
+                    <p className="text-sm text-gray-600">
+                      已选择 {orderAccess.tags.length} 个 TAG；不选择时无法查看任何订单，无 TAG
+                      订单不可见。
+                    </p>
+                  </>
+                )}
+                {!selected.includes('orders.read') && editable && (
+                  <p className="text-sm text-amber-700">
+                    尚未授予订单读取权限，配置 TAG 不会自动开放订单管理。
+                  </p>
+                )}
+                {editable && initialAccess && (
+                  <p className="text-sm text-gray-600 break-all">
+                    保存后范围：
+                    {orderAccess.mode === 'all'
+                      ? '全部订单'
+                      : orderAccess.tags.length
+                        ? orderAccess.tags.join('、')
+                        : '无可访问订单'}
+                    （原范围：
+                    {initialAccess.mode === 'all'
+                      ? '全部订单'
+                      : initialAccess.tags.join('、') || '无可访问订单'}
+                    ）
+                  </p>
+                )}
+              </section>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {Object.entries(grouped).map(([module, group]) => (
                   <section key={module} className="border border-gray-200 rounded-lg p-4">
@@ -156,7 +267,11 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
             取消
           </button>
           {editable && (
-            <button className="btn btn-primary" onClick={save} disabled={saving || loading}>
+            <button
+              className="btn btn-primary"
+              onClick={save}
+              disabled={saving || loading || (Boolean(error) && !initialAccess)}
+            >
               {saving ? '保存中...' : '保存权限'}
             </button>
           )}
