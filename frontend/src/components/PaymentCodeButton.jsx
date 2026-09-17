@@ -136,7 +136,7 @@ export default function PaymentCodeButton({ taskId, dispatch = false }) {
                           style={{ imageRendering: 'pixelated', WebkitTouchCallout: 'default' }}
                         />
                         <p className="text-gray-500 text-xs mt-3">
-                          可扫码付款，或长按图片保存后在微信相册识别。
+                          请对着屏幕扫码付款，不支持保存到相册后再识别付款
                         </p>
                       </div>
                     ) : (

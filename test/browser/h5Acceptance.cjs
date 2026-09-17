@@ -71,7 +71,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           recipientTagOptions: ['测试 TAG'],
           serverTime: new Date().toISOString(),
         };
-      } else if (/payment-link$/.test(path))
+      } else if (/payment-code$/.test(path))
+        data = {
+          availability: 'available',
+          orderId: 9001,
+          orderNumber: 'W1234567891',
+          products: [{ name: 'iPhone 18 Pro Max 512GB 勃艮第酒红色', quantity: 2 }],
+          amount: '8999.00',
+          paymentMethod: 'WECHAT',
+          imageDataUrl:
+            'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        };
+      else if (/payment-link$/.test(path))
         data = { paymentUrl: 'https://example.com/synthetic-order' };
       else if (/\/refresh$/.test(path)) data = { jobId: 77, status: 'pending' };
       else if (/\/refresh\/77$/.test(path)) data = { id: 77, status: 'succeeded' };
@@ -110,6 +121,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.getByRole('button', { name: '登录', exact: true }).click();
     await page.waitForURL('**/payment-tasks');
     await page.getByText('订单 ID：9001').waitFor();
+    await page.getByRole('button', { name: '查看付款码', exact: true }).first().click();
+    await page
+      .getByText('请对着屏幕扫码付款，不支持保存到相册后再识别付款', { exact: true })
+      .waitFor();
+    assert.equal(
+      await page.getByText('可扫码付款，或长按图片保存后在微信相册识别。', { exact: true }).count(),
+      0
+    );
+    await page.getByRole('button', { name: '关闭付款码', exact: true }).click();
     for (const width of [375, 430, 768]) {
       await page.setViewportSize({ width, height: 932 });
       await page.locator('header').getByRole('button', { name: '打开导航', exact: true }).click();
