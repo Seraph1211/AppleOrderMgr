@@ -14,7 +14,6 @@ const ORDER_STATUSES = Object.freeze([
   'processing',
   'shipped',
   'ready_for_pickup',
-  'completed',
   'delivered',
   'cancelled',
   'pickup_cancelled',
@@ -22,6 +21,11 @@ const ORDER_STATUSES = Object.freeze([
 ]);
 
 const USER_ROLES = Object.freeze(['admin', 'operator', 'readOnly']);
+
+/** 将未识别的存量订单状态归为 unknown，不推断其业务结果。 */
+function normalizeOrderStatus(status) {
+  return ORDER_STATUSES.includes(status) ? status : 'unknown';
+}
 
 const MIN_PASSWORD_LENGTH = 8;
 const PAYMENT_WINDOW_MINUTES = 30;
@@ -115,6 +119,7 @@ const ROLE_PERMISSIONS = Object.freeze({
 module.exports = {
   ACCOUNT_STATUSES,
   ORDER_STATUSES,
+  normalizeOrderStatus,
   USER_ROLES,
   MIN_PASSWORD_LENGTH,
   PAYMENT_WINDOW_MINUTES,

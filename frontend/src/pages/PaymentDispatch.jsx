@@ -1,6 +1,9 @@
 import PaymentCodeButton from '../components/PaymentCodeButton';
+import AutoDismissToast from '../components/AutoDismissToast';
 import OrderDateFilter from '../components/OrderDateFilter';
 import OfficialStatusFilter from '../components/OfficialStatusFilter';
+import ProcessingStatusFilter from '../components/ProcessingStatusFilter';
+import PaymentNotesModal from '../components/PaymentNotesModal';
 import { getOfficialStatusTagClass } from '../utils/officialStatusStyle';
 import { copyDeferredText } from '../utils/copyDeferredText';
 import { buildPaymentCopyText } from '../utils/paymentCopy';
@@ -16,6 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Copy,
   ListChecks,
+  Pencil,
   RefreshCw,
   RotateCcw,
   Save,
@@ -32,13 +36,13 @@ import {
   getPaymentDispatchOverview,
   getPaymentDispatchTasks,
   refreshPaymentDispatchTask,
-  reopenPaymentTask,
   runPaymentDispatchScan,
+  updatePaymentDispatchTaskNotes,
   updatePaymentDispatchSettings,
   updatePaymentStaffSettingsBatch,
 } from '../api/paymentDispatchApi';
 
-import { ORDER_STATUS_LABELS as OFFICIAL_STATUS_LABELS } from '../constants/orderStatus';
+import { getOrderStatusBadge } from '../constants/orderStatus';
 
 const STATUS_LABELS = {
   pending: '待处理',
@@ -49,7 +53,7 @@ const STATUS_LABELS = {
 
 const INITIAL_FILTERS = {
   orderNumber: '',
-  productKeyword: '',
+  productNames: [],
   recipientTags: [],
   assignee: '',
   officialOrderStatuses: [],
@@ -141,12 +145,14 @@ function formatCountdown(deadlineAt, now, task) {
 
 export default function PaymentDispatch() {
   const { can } = useAuth();
+  const canCorrectTasks = can(PERMISSIONS.PAYMENT_DISPATCH_CORRECT);
   const [pendingOverviewOpen, setPendingOverviewOpen] = useState(false);
   const [overview, setOverview] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
+  const [productNameOptions, setProductNameOptions] = useState([]);
   const [recipientTagOptions, setRecipientTagOptions] = useState([]);
   const loadRequest = useRef(0);
   const [staffDrafts, setStaffDrafts] = useState({});
@@ -171,6 +177,20 @@ export default function PaymentDispatch() {
   const [loading, setLoading] = useState(true);
   const [now, setNow] = useState(new Date());
   const [serverTimeOffsetMs, setServerTimeOffsetMs] = useState(0);
+  const [notesModalTask, setNotesModalTask] = useState(null);
+  const [notesModalSaving, setNotesModalSaving] = useState(false);
+  const [notesModalError, setNotesModalError] = useState('');
+  const [toast, setToast] = useState(null);
+
+  const showToast = useCallback((type, message) => {
+    if (message) setToast({ id: Date.now(), type, message });
+  }, []);
+  const dismissToast = useCallback(() => setToast(null), []);
+  const closeNotesModal = useCallback(() => {
+    if (notesModalSaving) return;
+    setNotesModalTask(null);
+    setNotesModalError('');
+  }, [notesModalSaving]);
 
   const load = useCallback(
     async (quiet = false) => {
@@ -183,6 +203,7 @@ export default function PaymentDispatch() {
             Array.isArray(value) ? value.length > 0 : value !== ''
           )
         );
+        if (query.productNames) query.productNames = JSON.stringify(query.productNames);
         if (query.recipientTags) query.recipientTags = JSON.stringify(query.recipientTags);
         if (query.officialOrderStatuses)
           query.officialOrderStatuses = JSON.stringify(query.officialOrderStatuses);
@@ -192,6 +213,7 @@ export default function PaymentDispatch() {
         ]);
         if (request !== loadRequest.current) return;
         setPagination(tasksResponse.data.pagination);
+        setProductNameOptions(tasksResponse.data.productNameOptions || []);
         setRecipientTagOptions(tasksResponse.data.recipientTagOptions || []);
         const lastPage = Math.max(1, tasksResponse.data.pagination.totalPages);
         if (page > lastPage) {
@@ -221,6 +243,12 @@ export default function PaymentDispatch() {
   useEffect(() => {
     load();
   }, [load]);
+  useEffect(() => {
+    if (error) showToast('error', error);
+  }, [error, showToast]);
+  useEffect(() => {
+    if (notice) showToast('success', notice);
+  }, [notice, showToast]);
   const loadCurrent = useRef(load);
   loadCurrent.current = load;
 
@@ -312,6 +340,38 @@ export default function PaymentDispatch() {
       return false;
     } finally {
       setBusyAction('');
+    }
+  };
+
+  const saveTaskNotes = async notes => {
+    if (!notesModalTask || notesModalSaving) return;
+    const task = notesModalTask;
+    const processingNotes = String(notes || '').trim();
+    if (processingNotes === (task.processingNotes || '')) {
+      showToast('info', '处理备注没有变化');
+      closeNotesModal();
+      return;
+    }
+    setNotesModalSaving(true);
+    setNotesModalError('');
+    setError('');
+    setNotice('');
+    try {
+      const response = await updatePaymentDispatchTaskNotes(
+        task.id,
+        { processingNotes, expectedVersion: task.version },
+        crypto.randomUUID()
+      );
+      setTasks(previous =>
+        previous.map(item => (item.id === task.id ? { ...item, ...response.data } : item))
+      );
+      setNotesModalTask(null);
+      setNotice('处理备注已保存');
+    } catch (saveError) {
+      setNotesModalError(saveError.message);
+      setError(saveError.message);
+    } finally {
+      setNotesModalSaving(false);
     }
   };
 
@@ -442,6 +502,7 @@ export default function PaymentDispatch() {
 
   return (
     <div className="space-y-6">
+      <AutoDismissToast toast={toast} onDismiss={dismissToast} />
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
@@ -616,7 +677,7 @@ export default function PaymentDispatch() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+          <div className="payment-filter-fields">
             <input
               className="input"
               placeholder="订单号"
@@ -628,17 +689,18 @@ export default function PaymentDispatch() {
                 }))
               }
             />
-            <input
-              className="input"
-              placeholder="商品名称或型号"
-              value={filterDrafts.productKeyword}
-              onChange={event =>
-                setFilterDrafts(previous => ({
-                  ...previous,
-                  productKeyword: event.target.value,
-                }))
-              }
-            />
+            <div className="payment-filter-product">
+              <TagMultiSelect
+                ariaLabel="商品信息筛选"
+                itemLabel="商品"
+                placeholder="全部商品"
+                options={productNameOptions}
+                value={filterDrafts.productNames}
+                onChange={productNames =>
+                  setFilterDrafts(previous => ({ ...previous, productNames }))
+                }
+              />
+            </div>
             <TagMultiSelect
               options={recipientTagOptions}
               value={filterDrafts.recipientTags}
@@ -668,32 +730,29 @@ export default function PaymentDispatch() {
             <OfficialStatusFilter
               value={filterDrafts.officialOrderStatuses}
               onChange={officialOrderStatuses =>
-                setFilterDrafts(previous => ({ ...previous, officialOrderStatuses }))
-              }
-            />
-            <select
-              className="input"
-              value={filterDrafts.processingStatus}
-              onChange={event =>
                 setFilterDrafts(previous => ({
                   ...previous,
-                  processingStatus: event.target.value,
+                  officialOrderStatuses,
                 }))
               }
-            >
-              <option value="">全部处理状态</option>
-              {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            />
+            <ProcessingStatusFilter
+              value={filterDrafts.processingStatus}
+              onChange={processingStatus =>
+                setFilterDrafts(previous => ({
+                  ...previous,
+                  processingStatus,
+                }))
+              }
+            />
+          </div>
+          <div className="payment-filter-footer">
             <OrderDateFilter
               dateFrom={filterDrafts.dateFrom}
               dateTo={filterDrafts.dateTo}
               onChange={range => setFilterDrafts(previous => ({ ...previous, ...range }))}
             />
-            <div className="col-span-full flex justify-end gap-2">
+            <div className="payment-filter-submit">
               <button
                 className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
                 onClick={() => changeFilters({ ...filterDrafts })}
@@ -716,7 +775,7 @@ export default function PaymentDispatch() {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1780px]">
+          <table className="w-full min-w-[2160px]">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-4 py-3 text-left">
@@ -737,7 +796,8 @@ export default function PaymentDispatch() {
                   />
                 </th>
                 {[
-                  '订单 / 商品',
+                  '订单',
+                  '商品信息',
                   'TAG',
                   '下单时间',
                   '官网状态',
@@ -745,7 +805,8 @@ export default function PaymentDispatch() {
                   '处理状态',
                   '负责人',
                   '付款倒计时',
-                  '最后爬数时间',
+                  '处理备注',
+                  '数据更新时间',
                   '操作',
                 ].map(title => (
                   <th
@@ -783,12 +844,17 @@ export default function PaymentDispatch() {
                         />
                       </td>
                       <td className="px-4 py-3">
+                        <div className="mb-1 text-sm font-semibold text-gray-900">
+                          订单 ID：{task.orderId ?? '-'}
+                        </div>
                         <div className="font-mono text-sm font-medium text-primary">
                           {task.orderNumber}
                         </div>
-                        <div className="text-xs text-gray-500 max-w-72 truncate">
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        <div className="max-w-96 break-words">
                           {task.products
-                            .map(product => `${product.name || ''} ${product.model || ''}`.trim())
+                            .map(product => `${product.name || ''} ×${product.quantity}`.trim())
                             .join('、') || '无商品信息'}
                         </div>
                       </td>
@@ -808,10 +874,8 @@ export default function PaymentDispatch() {
                         {formatOrderTime(task.orderDate || task.officialOrderCreatedAt)}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={getOfficialStatusTagClass(task.officialPaymentStatus)}>
-                          {OFFICIAL_STATUS_LABELS[task.officialOrderStatus] ||
-                            task.officialOrderStatus ||
-                            '未知'}
+                        <span className={getOfficialStatusTagClass(task.officialOrderStatus)}>
+                          {getOrderStatusBadge(task.officialOrderStatus).text}
                         </span>
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
@@ -848,11 +912,16 @@ export default function PaymentDispatch() {
                         )}
                       </td>
                       <td className={`px-4 py-3 ${countdown.className}`}>{countdown.text}</td>
+                      <td className="px-4 py-3">
+                        <p className="max-w-80 whitespace-pre-wrap break-words text-sm text-gray-700">
+                          {task.processingNotes || '-'}
+                        </p>
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {formatDateTime(task.lastCrawledAt)}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex flex-wrap justify-end gap-2">
+                        <div className="payment-dispatch-actions">
                           {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
                             <PaymentCodeButton taskId={task.id} dispatch />
                           )}
@@ -864,14 +933,14 @@ export default function PaymentDispatch() {
                               onClick={() => copyTasks([task])}
                             >
                               <Copy className="w-4 h-4" />
-                              {copyingIds.includes(task.id) ? '复制中...' : '复制'}
+                              {copyingIds.includes(task.id) ? '复制中...' : '复制订单信息'}
                             </button>
                           )}
                           {can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN) && (
                             <button
                               className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
                               disabled={progress[task.id]?.refreshing}
-                              aria-label={`刷新官网状态 ${task.orderNumber}`}
+                              aria-label={`刷新订单状态 ${task.orderNumber}`}
                               onClick={() => {
                                 setNotice('');
                                 refreshTask(task);
@@ -886,35 +955,22 @@ export default function PaymentDispatch() {
                                   ? '排队中'
                                   : progress[task.id]?.status === 'running'
                                     ? '刷新中...'
-                                    : '刷新'}
+                                    : '刷新订单状态'}
                             </button>
                           )}
-                          {can(PERMISSIONS.PAYMENT_DISPATCH_CORRECT) &&
-                            task.processingStatus === 'completed' && (
-                              <button
-                                className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
-                                disabled={Boolean(busyAction)}
-                                onClick={() => {
-                                  const reason = window.prompt('请输入重开原因');
-                                  if (reason)
-                                    runAction(
-                                      `reopen-${task.id}`,
-                                      () =>
-                                        reopenPaymentTask(
-                                          task.id,
-                                          {
-                                            reason,
-                                            expectedVersion: task.version,
-                                          },
-                                          crypto.randomUUID()
-                                        ),
-                                      `订单 ${task.orderNumber} 已重开为异常`
-                                    );
-                                }}
-                              >
-                                重开为异常
-                              </button>
-                            )}
+                          {canCorrectTasks && (
+                            <button
+                              className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
+                              aria-label={`修改备注 订单 ${task.orderId}`}
+                              onClick={() => {
+                                setNotesModalError('');
+                                setNotesModalTask(task);
+                              }}
+                            >
+                              <Pencil className="w-4 h-4" />
+                              修改备注
+                            </button>
+                          )}
                         </div>
                         {progress[task.id]?.message && (
                           <p
@@ -930,14 +986,14 @@ export default function PaymentDispatch() {
                 })}
               {loading && (
                 <tr>
-                  <td colSpan="11" className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan="13" className="px-4 py-12 text-center text-gray-500">
                     加载中...
                   </td>
                 </tr>
               )}
               {!loading && tasks.length === 0 && (
                 <tr>
-                  <td colSpan="11" className="px-4 py-12 text-center text-gray-500">
+                  <td colSpan="13" className="px-4 py-12 text-center text-gray-500">
                     没有符合条件的付款任务
                   </td>
                 </tr>
@@ -968,6 +1024,16 @@ export default function PaymentDispatch() {
 
       {tagRulesOpen && (
         <PaymentTagRulesModal onClose={() => setTagRulesOpen(false)} onSaved={() => load(true)} />
+      )}
+
+      {notesModalTask && (
+        <PaymentNotesModal
+          task={notesModalTask}
+          saving={notesModalSaving}
+          error={notesModalError}
+          onClose={closeNotesModal}
+          onSave={saveTaskNotes}
+        />
       )}
 
       {staffModalOpen && (

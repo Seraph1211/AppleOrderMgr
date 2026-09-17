@@ -1,4 +1,5 @@
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
+const { normalizeOrderStatus } = require('../constants/business');
 const logger = require('../utils/logger');
 const { buildOfficialStatusCondition } = require('./paymentStatusFilter');
 const { Op, Sequelize } = require('sequelize');
@@ -149,6 +150,36 @@ async function listRecipientTagOptions(taskWhere, orderWhere) {
   return rows.map(row => row.recipientTag).filter(Boolean);
 }
 
+/**
+ * 查询当前筛选范围内可用的完整商品名称，不受已选商品限制。
+ * @param {Object} taskWhere - 付款任务条件
+ * @param {Object} orderWhere - 不含商品条件的订单条件
+ * @returns {Promise<string[]>} 去重排序后的完整商品名称
+ */
+async function listProductNameOptions(taskWhere, orderWhere) {
+  const rows = await PaymentTask.findAll({
+    where: taskWhere,
+    attributes: ['id'],
+    include: [
+      {
+        model: Order,
+        as: 'order',
+        attributes: ['products'],
+        where: orderWhere,
+        required: true,
+      },
+    ],
+  });
+  const productNames = new Set();
+  for (const row of rows) {
+    for (const product of Array.isArray(row.order?.products) ? row.order.products : []) {
+      const name = String(product?.name || '').trim();
+      if (name) productNames.add(name);
+    }
+  }
+  return [...productNames].sort((left, right) => left.localeCompare(right, 'zh-CN'));
+}
+
 function serializeTask(task, serverTime = new Date()) {
   const plain = task.toJSON();
   const deadline = getOfficialDeadline(plain.order);
@@ -165,7 +196,7 @@ function serializeTask(task, serverTime = new Date()) {
     orderNumber: plain.order?.orderNumber,
     recipientTag: getOrderRecipientTag(plain.order),
     products: serializePublicProducts(plain.order?.products),
-    officialOrderStatus: plain.order?.status || null,
+    officialOrderStatus: normalizeOrderStatus(plain.order?.status),
     officialPaymentStatus: plain.order?.paymentStatus || null,
     officialPaymentConfirmed: plain.order?.paymentStatus === 'paid',
     officialPaymentDiscrepancy:
@@ -195,14 +226,52 @@ function serializeTask(task, serverTime = new Date()) {
   };
 }
 
+function parseProductNames(value) {
+  if (value === null || value === undefined || value === '') return [];
+  let values = value;
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[')) {
+      try {
+        values = JSON.parse(trimmed);
+      } catch (_error) {
+        throw ApiError.badRequest('productNames 必须是合法数组');
+      }
+    } else {
+      values = [trimmed];
+    }
+  }
+  if (!Array.isArray(values)) throw ApiError.badRequest('productNames 必须是合法数组');
+  if (values.length > 100) throw ApiError.badRequest('productNames 最多选择 100 项');
+  if (values.some(item => typeof item !== 'string')) {
+    throw ApiError.badRequest('productNames 每项必须是字符串');
+  }
+  const normalized = [...new Set(values.map(item => item.trim()).filter(Boolean))];
+  if (normalized.some(item => item.length > 500)) {
+    throw ApiError.badRequest('productNames 每项不能超过 500 字符');
+  }
+  return normalized;
+}
+
+/**
+ * 构造兼容完整商品名称多选、旧关键词和旧型号的同商品项筛选条件。
+ * @param {Object} query - 付款任务或调度列表查询参数
+ * @returns {Object|null} Sequelize 商品筛选条件
+ */
 function buildProductCondition(query) {
+  const productNames = parseProductNames(query.productNames);
   const keyword = String(query.productKeyword || '').trim();
   const model = String(query.productModel || '').trim();
   if (keyword.length > 100 || model.length > 50) {
     throw ApiError.badRequest('商品筛选条件过长');
   }
-  if (!keyword && !model) return null;
+  if (productNames.length === 0 && !keyword && !model) return null;
   const clauses = [];
+  if (productNames.length > 0) {
+    const escapedNames = productNames.map(name => sequelize.escape(name)).join(', ');
+    clauses.push(`item->>'name' IN (${escapedNames})`);
+  }
   if (keyword) {
     const pattern = sequelize.escape(`%${keyword}%`);
     clauses.push(`(item->>'name' ILIKE ${pattern} OR item->>'model' ILIKE ${pattern})`);
@@ -231,8 +300,6 @@ async function listOwnTasks(userId, query = {}) {
         throw ApiError.badRequest('processingStatus 非法');
       }
       where.processingStatus = query.processingStatus;
-    } else {
-      where.processingStatus = { [Op.in]: ACTIVE_PAYMENT_TASK_STATUSES };
     }
     const orderWhere = {};
     const orderNumber = String(query.orderNumber || '').trim();
@@ -245,20 +312,20 @@ async function listOwnTasks(userId, query = {}) {
     if (officialStatusCondition) orderWhere.status = officialStatusCondition;
     const orderDateCondition = buildOrderDateCondition(query);
     if (orderDateCondition) orderWhere.orderDate = orderDateCondition;
-    const optionOrderWhere = { ...orderWhere };
-    if (orderWhere.orderNumber) optionOrderWhere.orderNumber = orderWhere.orderNumber;
-    const baseOrderConditions = [productCondition].filter(Boolean);
-    if (baseOrderConditions.length > 0) optionOrderWhere[Op.and] = baseOrderConditions;
     const recipientTagCondition = buildRecipientTagCondition(
       query.recipientTags ?? query.recipientTag
     );
+    const tagOptionOrderWhere = { ...orderWhere };
+    if (productCondition) tagOptionOrderWhere[Op.and] = [productCondition];
+    const productOptionOrderWhere = { ...orderWhere };
+    if (recipientTagCondition) productOptionOrderWhere[Op.and] = [recipientTagCondition];
     const orderConditions = [productCondition, recipientTagCondition].filter(Boolean);
     if (orderConditions.length > 0) orderWhere[Op.and] = orderConditions;
 
     const serverTime = new Date();
     const include = includeTaskRelations();
     include[0].where = orderWhere;
-    const [{ count, rows }, recipientTagOptions] = await Promise.all([
+    const [{ count, rows }, productNameOptions, recipientTagOptions] = await Promise.all([
       PaymentTask.findAndCountAll({
         where,
         attributes: taskAttributes(),
@@ -272,10 +339,12 @@ async function listOwnTasks(userId, query = {}) {
         limit,
         offset: (page - 1) * limit,
       }),
-      listRecipientTagOptions(where, optionOrderWhere),
+      listProductNameOptions(where, productOptionOrderWhere),
+      listRecipientTagOptions(where, tagOptionOrderWhere),
     ]);
     return {
       items: rows.map(row => serializeTask(row, serverTime)),
+      productNameOptions,
       recipientTagOptions,
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
       serverTime,
@@ -416,15 +485,6 @@ async function updateOwnTask(
     }
     const nextStatus = targetStatus || task.processingStatus;
     const nextNotes = submittedNotes === undefined ? task.processingNotes : submittedNotes;
-    if (
-      updatesTask &&
-      (nextStatus === 'exception' ||
-        (task.processingStatus === 'exception' && nextStatus !== 'exception') ||
-        (nextStatus === 'completed' && order.paymentStatus !== 'paid')) &&
-      !nextNotes
-    ) {
-      throw ApiError.badRequest('异常、异常恢复或官网未确认时必须填写处理备注');
-    }
     const beforeStatus = task.processingStatus;
     const beforeNotes = task.processingNotes;
     const taskChanged = updatesTask && (beforeStatus !== nextStatus || beforeNotes !== nextNotes);
@@ -553,6 +613,8 @@ module.exports = {
   PAYMENT_TASK_STATUSES,
   ACTIVE_PAYMENT_TASK_STATUSES,
   buildRecipientTagCondition,
+  buildProductCondition,
+  listProductNameOptions,
   listRecipientTagOptions,
   serializeTask,
   listOwnTasks,

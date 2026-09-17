@@ -255,6 +255,15 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
       const oversized = await send(Buffer.alloc(10 * 1024 * 1024 + 1), 'oversized.xlsx');
       expect(oversized.status).toBe(400);
       expect((await oversized.json()).code).toBe('LIMIT_FILE_SIZE');
+      const maliciousFields = new FormData();
+      maliciousFields.append('items[4294967294]', 'synthetic');
+      const rejectedFields = await fetch(url, {
+        method: 'POST',
+        headers: { 'x-synthetic-permission': 'allowed' },
+        body: maliciousFields,
+      });
+      expect(rejectedFields.status).toBe(400);
+      expect((await rejectedFields.json()).code).toBe('LIMIT_FIELD_ARRAY_INDEX');
       const file = workbookFile([
         ['Apple ID', '密码'],
         ['sample@example.invalid', 'synthetic-value'],

@@ -342,7 +342,7 @@ function inferPaymentStatus(bodyText, orderStatus = null, rawCurrentStatus = nul
   if (/待付款|等待付款|未付款/.test(text)) {
     return 'unpaid';
   }
-  if (['ready_for_pickup', 'completed', 'delivered'].includes(orderStatus)) {
+  if (['ready_for_pickup', 'picked_up', 'delivered'].includes(orderStatus)) {
     return 'paid';
   }
   if (/退款|已退款/.test(text)) {

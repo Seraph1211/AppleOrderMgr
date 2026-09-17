@@ -2,6 +2,9 @@
 const { Op } = require('sequelize');
 
 jest.mock('../src/models', () => ({
+  sequelize: {
+    escape: value => `'${String(value).replaceAll("'", "''")}'`,
+  },
   Order: {},
   AppleId: {},
   Recipient: {},
@@ -22,11 +25,21 @@ jest.mock('../src/utils/logger', () => ({
 
 const {
   buildListFilters,
+  getFilterOptions,
   serializeOrderListItem,
   serializeOrderDetail,
 } = require('../src/controllers/orderController');
 
-describe('订单列表付款状态筛选', () => {
+describe('订单列表组合筛选', () => {
+  test('订单 completed 不再可筛选，读取归为 unknown 并可按 unknown 查到', () => {
+    expect(() => buildListFilters({ status: 'completed' })).toThrow();
+    const { where } = buildListFilters({ status: 'unknown' });
+    expect(where.status[Op.or][1][Op.notIn]).not.toContain('completed');
+    expect(where.status[Op.or][1][Op.notIn]).toContain('pending');
+    const order = { toJSON: () => ({ id: 1, status: 'completed', products: [] }) };
+    expect(serializeOrderListItem(order).status).toBe('unknown');
+    expect(serializeOrderDetail(order).status).toBe('unknown');
+  });
   test.each(['payment_due', 'payment_received', 'picked_up', 'payment_expired'])(
     '新生命周期 %s 可精确筛选',
     status => {
@@ -55,6 +68,43 @@ describe('订单列表付款状态筛选', () => {
   test('非法付款状态被拒绝', () => {
     expect(() => buildListFilters({ payment_status: 'pending' })).toThrow('payment_status 非法');
   });
+
+  test('订单状态多选同维度使用 OR', () => {
+    const statuses = ['payment_due', 'ready_for_pickup'];
+    const { where } = buildListFilters({ statuses: JSON.stringify(statuses) });
+
+    expect(where.status[Op.in]).toEqual(statuses);
+  });
+
+  test('商品信息和门店多选与取货日期组合筛选', () => {
+    const { where } = buildListFilters({
+      productNames: JSON.stringify([
+        'iPhone 18 Pro Max 512GB 勃艮第酒红色',
+        'iPhone 18 Pro 256GB 银色',
+      ]),
+      pickupStores: JSON.stringify(['Apple Store 零售店', 'Apple 成都万象城']),
+      pickupDate: '2026-09-19',
+    });
+
+    expect(where.pickupStore[Op.in]).toEqual(['Apple Store 零售店', 'Apple 成都万象城']);
+    expect(where.officialFulfillmentMessage[Op.iLike]).toBe('%2026/09/19%');
+    expect(where[Op.and][0].val).toContain("item->>'name' IN");
+    expect(where[Op.and][0].val).toContain('iPhone 18 Pro Max 512GB 勃艮第酒红色');
+  });
+
+  test.each(['2026/09/19', '2026-02-30', 'bad'])('拒绝非法取货日期 %s', pickupDate => {
+    expect(() => buildListFilters({ pickupDate })).toThrow(
+      'pickupDate 必须是有效的 YYYY-MM-DD 日期'
+    );
+  });
+
+  test('拒绝非法多选参数和状态值', () => {
+    expect(() => buildListFilters({ statuses: '[invalid' })).toThrow('statuses 必须是合法数组');
+    expect(() => buildListFilters({ statuses: '["not-a-status"]' })).toThrow('statuses 包含非法值');
+    expect(() => buildListFilters({ productNames: '[123]' })).toThrow(
+      'productNames 每项必须是字符串'
+    );
+  });
 });
 
 describe('邮件快照展示回归', () => {
@@ -80,6 +130,19 @@ describe('邮件快照展示回归', () => {
     expect(detail.recipient).toMatchObject({ id: null, name: snapshot.recipientName });
     expect(detail.recipient.phone).not.toBe(snapshot.recipientPhone);
   });
+
+  test('列表从官网履约提示派生取货时间但详情原字段不变', () => {
+    const order = {
+      toJSON: () => ({
+        ...snapshot,
+        officialFulfillmentMessage:
+          '请于 星期六 2026/09/19 的 20:30 – 20:45 之间到 Apple Store 零售店签到',
+      }),
+    };
+
+    expect(serializeOrderListItem(order).pickup_time).toBe('2026/09/19 20:30 – 20:45');
+    expect(serializeOrderDetail(order).official_fulfillment_message).toContain('星期六');
+  });
   test('关联档案优先，空标签回退订单标签', () => {
     const order = {
       toJSON: () => ({
@@ -103,6 +166,35 @@ describe('邮件快照展示回归', () => {
   });
 });
 
+describe('订单筛选候选项', () => {
+  test('商品信息候选使用完整商品名称并去重', async () => {
+    const { Order } = require('../src/models');
+    Order.findAll = jest.fn().mockResolvedValue([
+      {
+        products: [
+          { model: 'MODEL-18', name: 'iPhone 18 Pro Max 512GB 勃艮第酒红色' },
+          { model: 'MODEL-18', name: 'iPhone 18 Pro Max 512GB 勃艮第酒红色' },
+        ],
+        pickupStore: 'Apple Store 零售店',
+      },
+    ]);
+    const res = { json: jest.fn() };
+
+    await getFilterOptions({}, res);
+
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: {
+        productModels: ['MODEL-18'],
+        productNames: ['iPhone 18 Pro Max 512GB 勃艮第酒红色'],
+        stores: ['Apple Store 零售店'],
+        recipients: [],
+        payers: [],
+      },
+    });
+  });
+});
+
 describe('下单时间筛选日边界', () => {
   test('日期首尾覆盖北京时间完整一天', () => {
     const { where } = buildListFilters({ date_from: '2026-09-09', date_to: '2026-09-09' });
@@ -116,16 +208,14 @@ test('Excel 导出保留来源下单秒数并明确北京时间', async () => {
     const { Order } = require('../src/models');
     const { exportOrders } = require('../src/controllers/orderController');
     const XLSX = require('xlsx');
-    Order.findAll = jest
-      .fn()
-      .mockResolvedValue([
-        {
-          toJSON: () => ({
-            orderNumber: 'W1234567890',
-            orderDate: new Date('2026-09-09T05:24:25Z'),
-          }),
-        },
-      ]);
+    Order.findAll = jest.fn().mockResolvedValue([
+      {
+        toJSON: () => ({
+          orderNumber: 'W1234567890',
+          orderDate: new Date('2026-09-09T05:24:25Z'),
+        }),
+      },
+    ]);
     const res = { setHeader: jest.fn(), send: jest.fn() };
     await exportOrders({ query: {}, user: { id: 1 } }, res);
     const workbook = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });

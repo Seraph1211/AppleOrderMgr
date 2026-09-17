@@ -74,7 +74,7 @@ const ORDER_STATUSES = [
   'processing',
   'ready_for_pickup',
   'shipped',
-  'completed',
+  'picked_up',
   'delivered',
   'cancelled',
   'pickup_cancelled',
@@ -232,7 +232,7 @@ function buildMockDefinitions(referenceDate = new Date()) {
       paymentScreenshot: [],
       pickupStore: store.name,
       pickupStoreCode: store.code,
-      pickupStatus: status === 'completed' || status === 'delivered' ? '已取货' : '待取货',
+      pickupStatus: status === 'picked_up' || status === 'delivered' ? '已取货' : '待取货',
       pickupTimeSlot: '18:00-18:15',
       orderDate: createOrderDate(referenceDate, index % 12),
       officialOrderCreatedAt: hasPaymentTask

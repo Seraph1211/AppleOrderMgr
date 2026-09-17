@@ -74,6 +74,11 @@ router.put(
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),
   asyncHandler(controller.assignTask)
 );
+router.put(
+  '/tasks/:id/notes',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CORRECT),
+  asyncHandler(controller.updateTaskNotes)
+);
 router.post(
   '/tasks/:id/refresh',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),

@@ -28,10 +28,7 @@ exports.getChannels = async (req, res, next) => {
         'tag',
         [fn('COUNT', col('id')), 'totalOrders'],
         [fn('COUNT', literal("CASE WHEN payment_status = 'paid' THEN 1 END")), 'paidOrders'],
-        [
-          fn('COUNT', literal("CASE WHEN status IN ('completed', 'picked_up') THEN 1 END")),
-          'deliveredOrders',
-        ],
+        [fn('COUNT', literal("CASE WHEN status = 'picked_up' THEN 1 END")), 'deliveredOrders'],
         [fn('COALESCE', fn('SUM', col('official_order_amount')), 0), 'totalAmount'],
         [
           fn(
@@ -49,9 +46,7 @@ exports.getChannels = async (req, res, next) => {
             'COALESCE',
             fn(
               'SUM',
-              literal(
-                "CASE WHEN status IN ('completed', 'picked_up') THEN official_order_amount ELSE 0 END"
-              )
+              literal("CASE WHEN status = 'picked_up' THEN official_order_amount ELSE 0 END")
             ),
             0
           ),
@@ -144,10 +139,7 @@ exports.getChannelStats = async (req, res, next) => {
         ],
         [fn('COUNT', literal("CASE WHEN status = 'shipped' THEN 1 END")), 'shippedOrders'],
         [fn('COUNT', literal("CASE WHEN status = 'ready_for_pickup' THEN 1 END")), 'readyOrders'],
-        [
-          fn('COUNT', literal("CASE WHEN status IN ('completed', 'picked_up') THEN 1 END")),
-          'completedOrders',
-        ],
+        [fn('COUNT', literal("CASE WHEN status = 'picked_up' THEN 1 END")), 'completedOrders'],
         [
           fn('COUNT', literal("CASE WHEN status IN ('cancelled', 'payment_expired') THEN 1 END")),
           'cancelledOrders',

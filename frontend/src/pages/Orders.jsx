@@ -1,16 +1,7 @@
 import OrderDateFilter from '../components/OrderDateFilter';
 import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect, useRef } from 'react';
-import {
-  Search,
-  Filter,
-  Download,
-  RefreshCw,
-  Settings,
-  X,
-  AlertTriangle,
-  PauseCircle,
-} from 'lucide-react';
+import { Search, Filter, Download, RefreshCw, Settings, X, PauseCircle } from 'lucide-react';
 import {
   getOrders,
   getOrderFilterOptions,
@@ -26,11 +17,12 @@ import ColumnConfigModal from '../components/ColumnConfigModal';
 import OrderDetailModal from '../components/OrderDetailModal';
 import OrderConflictIndicator from '../components/OrderConflictIndicator';
 import {
-  ORDER_STATUS_BADGES,
+  getOrderStatusBadge,
   ORDER_STATUS_LABELS,
   PICKUP_STATUS_LABELS,
 } from '../constants/orderStatus';
 import Pagination from '../components/Pagination';
+import TagMultiSelect from '../components/TagMultiSelect';
 import { ordersColumns } from '../constants/tableColumns';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
@@ -59,12 +51,11 @@ export default function Orders() {
 
   // 筛选条件
   const [filters, setFilters] = useState({
-    status: '',
-    productModel: '',
+    statuses: [],
+    productNames: [],
     recipientName: '',
-    pickupStore: '',
-    payerName: '',
-    payment_status: '',
+    pickupStores: [],
+    pickupDate: '',
     dateFrom: '',
     dateTo: '',
   });
@@ -74,10 +65,8 @@ export default function Orders() {
 
   // 筛选选项（从后端获取或硬编码）
   const [filterOptions, setFilterOptions] = useState({
-    productModels: [],
+    productNames: [],
     stores: [],
-    recipients: [],
-    payers: [],
   });
 
   useEffect(() => {
@@ -98,12 +87,11 @@ export default function Orders() {
     }
   }, [
     searchTerm,
-    filters.status,
-    filters.productModel,
+    filters.statuses,
+    filters.productNames,
     filters.recipientName,
-    filters.pickupStore,
-    filters.payerName,
-    filters.payment_status,
+    filters.pickupStores,
+    filters.pickupDate,
     filters.dateFrom,
     filters.dateTo,
   ]);
@@ -246,6 +234,10 @@ export default function Orders() {
         keyword: searchTerm || undefined,
         ...filters,
       };
+      for (const key of ['statuses', 'productNames', 'pickupStores']) {
+        if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
+        else delete params[key];
+      }
       const res = await getOrders(params);
 
       if (res.success) {
@@ -294,6 +286,7 @@ export default function Orders() {
           pickupStoreCode: order.pickup_store_code || '-',
           pickupCode: order.pickup_code || '-',
           pickupTimeSlot: order.pickup_time_slot || '-',
+          pickupTime: order.pickup_time || '-',
           actualPickupDate: order.actual_pickup_date || '-',
           // 付款信息
           paymentMethod: order.payment_method || '-',
@@ -355,16 +348,19 @@ export default function Orders() {
       if (response.success) setFilterOptions(response.data);
     } catch (_error) {
       setFilterOptions({
-        productModels: [],
+        productNames: [],
         stores: [],
-        recipients: [],
-        payers: [],
       });
     }
   };
 
   const handleExport = async () => {
-    await exportOrders({ keyword: searchTerm || undefined, ...filters });
+    const params = { keyword: searchTerm || undefined, ...filters };
+    for (const key of ['statuses', 'productNames', 'pickupStores']) {
+      if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
+      else delete params[key];
+    }
+    await exportOrders(params);
   };
 
   const handleRefreshAll = async () => {
@@ -391,16 +387,6 @@ export default function Orders() {
     }
   };
 
-  const getValidationBadge = status => {
-    const badges = {
-      unchecked: { text: '未校验', class: 'badge-info' },
-      valid: { text: '正常', class: 'badge-success' },
-      abnormal: { text: '异常', class: 'badge-error' },
-      unavailable: { text: '无法校验', class: 'badge-warning' },
-    };
-    return badges[status] || badges.unchecked;
-  };
-
   const handleFilterChange = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     // 筛选条件变化时重置到第一页
@@ -409,12 +395,11 @@ export default function Orders() {
 
   const resetFilters = () => {
     setFilters({
-      status: '',
-      productModel: '',
+      statuses: [],
+      productNames: [],
       recipientName: '',
-      pickupStore: '',
-      payerName: '',
-      payment_status: '',
+      pickupStores: [],
+      pickupDate: '',
       dateFrom: '',
       dateTo: '',
     });
@@ -437,7 +422,7 @@ export default function Orders() {
   };
 
   const getStatusBadge = status => {
-    return ORDER_STATUS_BADGES[status] || ORDER_STATUS_BADGES.unknown;
+    return getOrderStatusBadge(status);
   };
 
   // 移除客户端过滤逻辑，现在由后端处理
@@ -480,16 +465,6 @@ export default function Orders() {
       case 'status': {
         const badge = getStatusBadge(value);
         return <span className={`badge ${badge.class}`}>{badge.text}</span>;
-      }
-
-      case 'validationStatus': {
-        const badge = getValidationBadge(value);
-        return (
-          <span className={`badge ${badge.class} inline-flex items-center gap-1`}>
-            {value === 'abnormal' && <AlertTriangle className="w-3 h-3" />}
-            {badge.text}
-          </span>
-        );
       }
 
       case 'lastOfficialUpdatedAt':
@@ -624,7 +599,9 @@ export default function Orders() {
     }
   };
 
-  const activeFiltersCount = Object.values(filters).filter(v => v !== '').length;
+  const activeFiltersCount = Object.values(filters).filter(value =>
+    Array.isArray(value) ? value.length > 0 : value !== ''
+  ).length;
 
   return (
     <div className="space-y-6">
@@ -742,53 +719,31 @@ export default function Orders() {
               setPagination(previous => ({ ...previous, currentPage: 1 }));
             }}
           />
-          {/* 订单状态 */}
+          {/* 官网状态 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">订单状态</label>
-            <select
-              value={filters.status}
-              onChange={e => handleFilterChange('status', e.target.value)}
-              className="input"
-            >
-              <option value="">全部状态</option>
-              {Object.entries(ORDER_STATUS_LABELS).map(([value, label]) => (
-                <option key={value} value={value}>
-                  {label}
-                </option>
-              ))}
-            </select>
+            <label className="block text-sm font-medium text-gray-700 mb-2">官网状态</label>
+            <TagMultiSelect
+              options={Object.keys(ORDER_STATUS_LABELS)}
+              optionLabels={ORDER_STATUS_LABELS}
+              value={filters.statuses}
+              onChange={value => handleFilterChange('statuses', value)}
+              ariaLabel="官网状态筛选"
+              placeholder="全部状态"
+              itemLabel="状态"
+            />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">支付状态</label>
-            <select
-              value={filters.payment_status}
-              onChange={event => handleFilterChange('payment_status', event.target.value)}
-              className="input"
-            >
-              <option value="">全部支付状态</option>
-              <option value="unknown">状态未知</option>
-              <option value="unpaid">未付款</option>
-              <option value="paid">已付款</option>
-              <option value="refunded">已退款</option>
-            </select>
-          </div>
-
-          {/* 产品型号 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">产品型号</label>
-            <select
-              value={filters.productModel}
-              onChange={e => handleFilterChange('productModel', e.target.value)}
-              className="input"
-            >
-              <option value="">全部型号</option>
-              {filterOptions.productModels.map(model => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
+          {/* 商品信息 */}
+          <div className="md:col-span-2">
+            <label className="block text-sm font-medium text-gray-700 mb-2">商品信息</label>
+            <TagMultiSelect
+              options={filterOptions.productNames}
+              value={filters.productNames}
+              onChange={value => handleFilterChange('productNames', value)}
+              ariaLabel="商品信息筛选"
+              placeholder="全部商品"
+              itemLabel="商品"
+            />
           </div>
 
           {/* 取件人 */}
@@ -806,28 +761,24 @@ export default function Orders() {
           {/* 取货门店 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">取货门店</label>
-            <select
-              value={filters.pickupStore}
-              onChange={e => handleFilterChange('pickupStore', e.target.value)}
-              className="input"
-            >
-              <option value="">全部门店</option>
-              {filterOptions.stores.map(store => (
-                <option key={store} value={store}>
-                  {store}
-                </option>
-              ))}
-            </select>
+            <TagMultiSelect
+              options={filterOptions.stores}
+              value={filters.pickupStores}
+              onChange={value => handleFilterChange('pickupStores', value)}
+              ariaLabel="取货门店筛选"
+              placeholder="全部门店"
+              itemLabel="门店"
+            />
           </div>
 
-          {/* 付款人 */}
+          {/* 取货日期 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">付款人</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">取货日期</label>
             <input
-              type="text"
-              placeholder="输入付款人"
-              value={filters.payerName}
-              onChange={e => handleFilterChange('payerName', e.target.value)}
+              type="date"
+              aria-label="取货日期筛选"
+              value={filters.pickupDate}
+              onChange={event => handleFilterChange('pickupDate', event.target.value)}
               className="input"
             />
           </div>
@@ -870,11 +821,7 @@ export default function Orders() {
                 {orders.map(order => (
                   <tr
                     key={order.id}
-                    className={`border-b border-gray-200 transition-colors ${
-                      order.validationStatus === 'abnormal'
-                        ? 'bg-red-50 hover:bg-red-100'
-                        : 'hover:bg-gray-50'
-                    }`}
+                    className="border-b border-gray-200 transition-colors hover:bg-gray-50"
                   >
                     <td className="py-4 px-3">
                       <OrderConflictIndicator issues={order.validationIssues} />
@@ -882,7 +829,7 @@ export default function Orders() {
                     {visibleColumns.map(col => (
                       <td
                         key={col.key}
-                        className={`py-4 px-4 ${col.key === 'actions' ? `text-right sticky right-0 ${order.validationStatus === 'abnormal' ? 'bg-red-50' : 'bg-white'}` : ''}`}
+                        className={`py-4 px-4 ${col.key === 'actions' ? 'text-right sticky right-0 bg-white' : ''}`}
                       >
                         {renderCell(order, col)}
                       </td>

@@ -15,7 +15,7 @@ export const ordersColumns = [
   },
   {
     key: 'status',
-    label: '订单状态',
+    label: '官网状态',
     width: '100px',
     defaultVisible: true,
     sortable: true,
@@ -29,23 +29,7 @@ export const ordersColumns = [
     sortable: false,
     pinned: false,
   },
-  {
-    key: 'validationStatus',
-    label: '校验状态',
-    width: '120px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
   // Apple ID 相关
-  {
-    key: 'appleId',
-    label: 'Apple ID',
-    width: '200px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
   {
     key: 'applePassword',
     label: 'Apple 密码',
@@ -149,10 +133,10 @@ export const ordersColumns = [
     pinned: false,
   },
   {
-    key: 'pickupTimeSlot',
-    label: '取货时间段',
-    width: '140px',
-    defaultVisible: false,
+    key: 'pickupTime',
+    label: '取货时间',
+    width: '220px',
+    defaultVisible: true,
     sortable: false,
     pinned: false,
   },

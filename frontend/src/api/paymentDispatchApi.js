@@ -14,6 +14,11 @@ export const assignPaymentTasks = (payload, idempotencyKey) =>
   client.put('/payment-dispatch/tasks/assignee', payload, {
     headers: { 'Idempotency-Key': idempotencyKey },
   });
+/** 修改调度任务处理备注。 */
+export const updatePaymentDispatchTaskNotes = (taskId, payload, idempotencyKey) =>
+  client.put(`/payment-dispatch/tasks/${taskId}/notes`, payload, {
+    headers: { 'Idempotency-Key': idempotencyKey },
+  });
 export const refreshPaymentDispatchTask = taskId =>
   client.post(`/payment-dispatch/tasks/${taskId}/refresh`);
 export const refreshPaymentDispatchTasks = taskIds =>

@@ -16,11 +16,22 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
       const tasks = Array.from({ length: 42 }, (_, i) => ({
-        id: i + 1, orderId: i + 100, orderNumber: `W${String(i + 1).padStart(10, '0')}`,
-        products: [{ name: '合成手机', quantity: 1 }], recipientTag: 'TAG-A',
-        officialOrderStatus: ['payment_due', 'payment_received', 'cancelled'][i % 3],
+        id: i + 1,
+        orderId: i + 100,
+        orderNumber: `W${String(i + 1).padStart(10, '0')}`,
+        products: [{ name: '合成手机', quantity: 1 }],
+        recipientTag: 'TAG-A',
+        officialOrderStatus: [
+          'payment_due',
+          'payment_received',
+          'cancelled',
+          'pending',
+          'unknown',
+          'completed',
+        ][i % 6],
         officialPaymentStatus: i % 3 === 1 ? 'paid' : 'unpaid',
-        processingStatus: 'pending', version: 0,
+        processingStatus: 'pending',
+        version: 0,
       }));
       await context.addInitScript(() => localStorage.setItem('token', 'synthetic-status'));
       await context.route('**/*', async route => {
@@ -32,10 +43,19 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
             return;
           }
           let data;
-          if (url.pathname === '/api/auth/me') data = { id: 1,
-            role: mode === 'payment-dispatch' ? 'admin' : 'operator', username: '合成验收',
-            permissions: ['payment_dispatch.read', 'payment_dispatch.assign',
-              'payment_tasks.read_own', 'payment_tasks.link.read_own'], availableHome: `/${mode}` };
+          if (url.pathname === '/api/auth/me')
+            data = {
+              id: 1,
+              role: mode === 'payment-dispatch' ? 'admin' : 'operator',
+              username: '合成验收',
+              permissions: [
+                'payment_dispatch.read',
+                'payment_dispatch.assign',
+                'payment_tasks.read_own',
+                'payment_tasks.link.read_own',
+              ],
+              availableHome: `/${mode}`,
+            };
           else if (url.pathname === '/api/payment-dispatch/overview')
             data = { settings: { enabled: true, mode: 'auto', version: 0 }, staff: [] };
           else if (['/api/payment-tasks', '/api/payment-dispatch/tasks'].includes(url.pathname)) {
@@ -43,16 +63,73 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
             const pageNo = Number(url.searchParams.get('page') || 1);
             const limit = Number(url.searchParams.get('limit') || 20);
             queries.push({ statuses, page: pageNo });
-            const filtered = tasks.filter(t => !statuses.length || statuses.includes(t.officialOrderStatus));
-            data = { items: filtered.slice((pageNo - 1) * limit, pageNo * limit),
-              pagination: { page: pageNo, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
-              recipientTagOptions: ['TAG-A', 'constructor'], serverTime: new Date().toISOString() };
+            const filtered = tasks.filter(
+              t => !statuses.length || statuses.includes(t.officialOrderStatus)
+            );
+            data = {
+              items: filtered.slice((pageNo - 1) * limit, pageNo * limit),
+              pagination: {
+                page: pageNo,
+                limit,
+                total: filtered.length,
+                totalPages: Math.ceil(filtered.length / limit),
+              },
+              recipientTagOptions: ['TAG-A', 'constructor'],
+              serverTime: new Date().toISOString(),
+            };
           } else throw new Error(`未预期请求 ${url.pathname}`);
           await route.fulfill({ json: { success: true, data } });
-        } catch (error) { errors.push(error.message); await route.abort(); }
+        } catch (error) {
+          errors.push(error.message);
+          await route.abort();
+        }
       });
       await page.goto(`http://127.0.0.1:5173/${mode}`);
       await page.getByText('W0000000001', { exact: true }).waitFor();
+      assert.equal(
+        await page.getByRole('columnheader', { name: '官网状态', exact: true }).count(),
+        1
+      );
+      assert.equal(
+        await page.getByRole('columnheader', { name: '官网付款状态', exact: true }).count(),
+        0
+      );
+      for (const [number, label] of [
+        ['W0000000004', '待处理'],
+        ['W0000000005', 'unknown'],
+        ['W0000000006', 'unknown'],
+      ]) {
+        const row = page.locator('tbody tr').filter({ hasText: number }).first();
+        assert(await row.getByText(label, { exact: true }).first().isVisible());
+        if (mode === 'payment-tasks') {
+          const badge = await row.locator('td[data-label="官网状态"] span').first().boundingBox();
+          assert(badge.height < 40, '官网状态不能因列宽丢失变为逐字竖排');
+        }
+      }
+      await page.getByRole('button', { name: '官网状态筛选', exact: true }).click();
+      assert.equal(await page.getByRole('listbox').getByRole('option').count(), 12);
+      assert.equal(
+        await page
+          .getByRole('listbox')
+          .getByRole('option', { name: '待处理', exact: true })
+          .count(),
+        1
+      );
+      assert.equal(
+        await page
+          .getByRole('listbox')
+          .getByRole('option', { name: 'unknown', exact: true })
+          .count(),
+        1
+      );
+      assert.equal(
+        await page
+          .getByRole('listbox')
+          .getByRole('option', { name: /历史|已完成/ })
+          .count(),
+        0
+      );
+      await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'TAG 筛选', exact: true }).click();
       await page.getByPlaceholder('搜索 TAG').fill('constructor');
       await page.getByRole('option', { name: 'constructor', exact: true }).click();
@@ -61,7 +138,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await page.getByText('W0000000001', { exact: true }).waitFor();
 
       const paidRow = page.locator('tbody tr').filter({ hasText: 'W0000000002' }).first();
-      badgeClasses.push(await paidRow.locator('span.rounded-md').first().getAttribute('class'));
+      badgeClasses.push(
+        await paidRow.getByText('官网已收款', { exact: true }).getAttribute('class')
+      );
       await page.getByRole('button', { name: '下一页', exact: true }).click();
       await page.getByText('W0000000021', { exact: true }).waitFor();
       const filter = page.getByRole('button', { name: '官网状态筛选', exact: true });
@@ -82,7 +161,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await page.getByRole('option', { name: '可取货', exact: true }).click();
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: '筛选', exact: true }).click();
-      await page.waitForFunction(() => document.querySelectorAll('tbody tr input[type="checkbox"]').length === 0);
+      await page.waitForFunction(
+        () => document.querySelectorAll('tbody tr input[type="checkbox"]').length === 0
+      );
       await filter.click();
       await page.getByRole('option', { name: '等待付款', exact: true }).click();
       await page.keyboard.press('Escape');
@@ -90,10 +171,15 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await page.getByText('W0000000001', { exact: true }).waitFor();
       assert.deepEqual(queries.at(-1).statuses, []);
       await filter.click();
-      await page.screenshot({ path: `${output}/${mode}-desktop.png`, fullPage: true, animations: 'disabled' });
+      await page.screenshot({
+        path: `${output}/${mode}-desktop.png`,
+        fullPage: true,
+        animations: 'disabled',
+      });
       await page.keyboard.press('Escape');
       await page.setViewportSize({ width: 375, height: 812 });
-      if (mode === 'payment-tasks') await page.getByRole('button', { name: '筛选任务', exact: true }).click();
+      if (mode === 'payment-tasks')
+        await page.getByRole('button', { name: '筛选任务', exact: true }).click();
       await filter.click();
       await page.getByRole('option', { name: '等待付款', exact: true }).click();
       await page.getByRole('option', { name: '官网已收款', exact: true }).click();
@@ -101,12 +187,26 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await page.getByRole('button', { name: '筛选', exact: true }).click();
       await page.getByText('W0000000001', { exact: true }).waitFor();
       assert.deepEqual(queries.at(-1).statuses, ['payment_due', 'payment_received']);
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-      await page.screenshot({ path: `${output}/${mode}-mobile.png`, fullPage: true, animations: 'disabled' });
+      assert.equal(
+        await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+        true
+      );
+      await page.screenshot({
+        path: `${output}/${mode}-mobile.png`,
+        fullPage: true,
+        animations: 'disabled',
+      });
       assert.deepEqual(errors, []);
       await context.close();
     }
     assert.equal(badgeClasses[0], badgeClasses[1]);
-    process.stdout.write('PASS: 两页官网状态多选、搜索、OR、分页归一、空结果后可选、清空重置、标签一致、375px操作\n');
-  } finally { await browser.close(); }
-})().catch(error => { process.stderr.write(`${error.stack}\n`); process.exitCode = 1; });
+    process.stdout.write(
+      'PASS: 两页官网状态多选、搜索、OR、分页归一、空结果后可选、清空重置、标签一致、375px操作\n'
+    );
+  } finally {
+    await browser.close();
+  }
+})().catch(error => {
+  process.stderr.write(`${error.stack}\n`);
+  process.exitCode = 1;
+});

@@ -8,8 +8,11 @@ export function getPaymentStageLabel(task) {
   if (status === 'payment_expired') return '付款已过期';
   if (task.officialPaymentStatus === 'refunded') return '已退款';
   if (['cancelled', 'pickup_cancelled'].includes(status)) return '订单已取消';
-  if (task.officialPaymentStatus === 'paid' ||
-    ['payment_received', 'processing', 'ready_for_pickup', 'picked_up', 'completed'].includes(status)) return '已付款';
+  if (
+    task.officialPaymentStatus === 'paid' ||
+    ['payment_received', 'processing', 'ready_for_pickup', 'picked_up'].includes(status)
+  )
+    return '已付款';
   if (['shipped', 'delivered'].includes(status)) return '无需付款';
   return null;
 }

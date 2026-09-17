@@ -112,27 +112,30 @@ async function createOrderInTransaction(emailData, transaction, options = {}) {
       hasTag: Boolean(emailData.recipient?.tag),
     });
 
+    const sourceFields = {};
+    if (options.source === 'aos') {
+      Object.assign(sourceFields, {
+        sourceRecipientTag: emailData.recipient?.tag || null,
+        sourceContactEmail: emailData.recipient?.email,
+        sourceLastName: emailData.sourceLastName,
+        sourceFirstName: emailData.sourceFirstName,
+        pickupStoreCode: emailData.pickupStoreCode,
+        pickupStore: emailData.pickupStore || null,
+      });
+    }
     const order = await Order.create(
       {
         orderNumber: emailData.orderNumber,
         ingestionSource: options.source || 'email',
-        ...(options.source === 'aos'
-          ? {
-            sourceRecipientTag: emailData.recipient?.tag || null,
-            sourceContactEmail: emailData.recipient?.email,
-            sourceLastName: emailData.sourceLastName,
-            sourceFirstName: emailData.sourceFirstName,
-            pickupStoreCode: emailData.pickupStoreCode,
-            pickupStore: emailData.pickupStore || null,
-          }
-          : {}),
+        ...sourceFields,
         // Apple ID 信息
         ...appleData,
         // 收件人信息（快照）
         ...recipientData,
         // 订单信息
         products: emailData.products, // JSONB 数组
-        status: emailData.orderStatus || 'pending',
+        // 来源状态不代表已确认的官网观测；首次异步抓取后再更新。
+        status: 'pending',
         orderUrl: emailData.orderUrl,
         paymentMethod: emailData.paymentMethod || null,
         orderDate: emailData.orderDate,

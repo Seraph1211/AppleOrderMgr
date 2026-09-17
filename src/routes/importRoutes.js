@@ -62,6 +62,8 @@ const upload = multer({
   },
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB
+    // 导入仅接收平面字段，避免异常下标分配超大稀疏数组。
+    fieldArrayIndexLimit: 0,
   },
 });
 

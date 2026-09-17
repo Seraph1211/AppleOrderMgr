@@ -60,7 +60,9 @@ const STATUS_MAP = {
   处理中: 'processing',
   已发货: 'shipped',
   可取货: 'ready_for_pickup',
-  已完成: 'completed',
+  已送达: 'delivered',
+  取货已取消: 'pickup_cancelled',
+  unknown: 'unknown',
   已取消: 'cancelled',
 };
 

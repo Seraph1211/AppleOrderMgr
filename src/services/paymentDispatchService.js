@@ -23,7 +23,9 @@ const { PAYMENT_ASSIGNMENT_LOCK_ID, getEffectivePermissions } = require('./permi
 const refreshJobService = require('./crawler/refreshJobService');
 const {
   ACTIVE_PAYMENT_TASK_STATUSES,
+  buildProductCondition,
   buildRecipientTagCondition,
+  listProductNameOptions,
   listRecipientTagOptions,
   serializeTask,
 } = require('./paymentTaskService');
@@ -42,6 +44,13 @@ function validateIdempotencyKey(value) {
     throw ApiError.badRequest('idempotencyKey 长度必须在 1-100 之间');
   }
   return key;
+}
+
+function validateProcessingNotes(value) {
+  if (value === null || value === undefined) return null;
+  const notes = String(value).trim();
+  if (notes.length > 2000) throw ApiError.badRequest('processingNotes 不能超过 2000 字');
+  return notes || null;
 }
 
 async function lockDispatch(transaction) {
@@ -664,6 +673,105 @@ async function assignTask(taskId, input, actorUserId) {
 }
 
 /**
+ * 管理员修改付款任务处理备注，不改变任务状态或负责人。
+ * @param {number} taskId - 付款任务 ID
+ * @param {Object} input - 备注、版本和幂等键
+ * @param {number} actorUserId - 管理员 ID
+ * @returns {Promise<Object>} 更新后的调度任务
+ */
+async function updateTaskNotes(taskId, input, actorUserId) {
+  const normalizedTaskId = Number(taskId);
+  if (!Number.isSafeInteger(normalizedTaskId) || normalizedTaskId <= 0) {
+    throw ApiError.badRequest('任务 ID 非法');
+  }
+  const expectedVersion = validateExpectedVersion(input.expectedVersion);
+  const idempotencyKey = validateIdempotencyKey(input.idempotencyKey);
+  const processingNotes = validateProcessingNotes(input.processingNotes);
+
+  await sequelize.transaction(async transaction => {
+    await lockDispatch(transaction);
+    const task = await PaymentTask.findByPk(normalizedTaskId, {
+      transaction,
+      lock: transaction.LOCK.UPDATE,
+    });
+    if (!task) throw ApiError.notFound('付款任务不存在');
+
+    const replay = await PaymentTaskEvent.findOne({
+      where: { actorUserId, idempotencyKey },
+      transaction,
+    });
+    if (replay) {
+      if (
+        Number(replay.paymentTaskId) !== normalizedTaskId ||
+        replay.eventType !== 'notes_updated' ||
+        replay.details?.afterNotes !== processingNotes
+      ) {
+        throw ApiError.conflict('幂等键已用于其他操作', undefined, 'IDEMPOTENCY_CONFLICT');
+      }
+      return;
+    }
+
+    if (task.version !== expectedVersion) {
+      throw ApiError.conflict(
+        '任务已被更新',
+        { currentVersion: task.version },
+        'CONCURRENT_MODIFICATION'
+      );
+    }
+    if (task.processingNotes === processingNotes) return;
+
+    const beforeNotes = task.processingNotes;
+    task.processingNotes = processingNotes;
+    task.version += 1;
+    await task.save({ transaction });
+    await PaymentTaskEvent.create(
+      {
+        paymentTaskId: task.id,
+        eventType: 'notes_updated',
+        actorUserId,
+        beforeStatus: task.processingStatus,
+        afterStatus: task.processingStatus,
+        details: { beforeNotes, afterNotes: processingNotes },
+        idempotencyKey,
+      },
+      { transaction }
+    );
+  });
+
+  const task = await PaymentTask.findByPk(normalizedTaskId, {
+    include: [
+      {
+        model: Order,
+        as: 'order',
+        attributes: [
+          'id',
+          'orderNumber',
+          'ingestionSource',
+          'sourceRecipientTag',
+          'tag',
+          'products',
+          'status',
+          'paymentStatus',
+          'paymentMethod',
+          'officialOrderAmount',
+          'officialOrderAmountCurrency',
+          'payerName',
+          'payerVersion',
+          'orderDate',
+          'officialOrderCreatedAt',
+          'officialPaymentExpiresAt',
+          'lastCrawledAt',
+          'updatedAt',
+        ],
+      },
+      { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
+    ],
+  });
+  if (!task) throw ApiError.notFound('付款任务不存在');
+  return serializeTask(task);
+}
+
+/**
  * 重开已完成任务为异常，保留原负责人。
  * @param {number} taskId - 任务 ID
  * @param {Object} input - 重开参数
@@ -674,8 +782,7 @@ async function reopenTask(taskId, input, actorUserId) {
   const expectedVersion = validateExpectedVersion(input.expectedVersion);
   const idempotencyKey = validateIdempotencyKey(input.idempotencyKey);
   const reason = String(input.reason || '').trim();
-  if (!reason || reason.length > 500)
-    throw ApiError.badRequest('重开 reason 长度必须在 1-500 之间');
+  if (reason.length > 500) throw ApiError.badRequest('重开 reason 长度不能超过 500 字');
   return await sequelize.transaction(async transaction => {
     await lockDispatch(transaction);
     const task = await PaymentTask.findByPk(taskId, { transaction, lock: transaction.LOCK.UPDATE });
@@ -692,7 +799,6 @@ async function reopenTask(taskId, input, actorUserId) {
     }
     const beforeNotes = task.processingNotes;
     task.processingStatus = 'exception';
-    task.processingNotes = reason;
     task.completedAt = null;
     task.version += 1;
     await task.save({ transaction });
@@ -736,29 +842,20 @@ async function listDispatchTasks(query = {}) {
       if (orderNumber.length > 20) throw ApiError.badRequest('orderNumber 过长');
       orderWhere.orderNumber = { [Op.iLike]: `%${orderNumber}%` };
     }
-    const productKeyword = String(query.productKeyword || '').trim();
-    if (productKeyword) {
-      if (productKeyword.length > 100) throw ApiError.badRequest('productKeyword 过长');
-      const pattern = sequelize.escape(`%${productKeyword}%`);
-      orderWhere[Op.and] = [
-        Sequelize.literal(
-          'EXISTS (SELECT 1 FROM jsonb_array_elements("order"."products") AS item ' +
-            `WHERE item->>'name' ILIKE ${pattern} OR item->>'model' ILIKE ${pattern})`
-        ),
-      ];
-    }
+    const productCondition = buildProductCondition(query);
     const officialStatusCondition = buildOfficialStatusCondition(query);
     if (officialStatusCondition) orderWhere.status = officialStatusCondition;
     const orderDateCondition = buildOrderDateCondition(query);
     if (orderDateCondition) orderWhere.orderDate = orderDateCondition;
-    const optionOrderWhere = { ...orderWhere };
-    if (orderWhere[Op.and]) optionOrderWhere[Op.and] = [...orderWhere[Op.and]];
     const recipientTagCondition = buildRecipientTagCondition(
       query.recipientTags ?? query.recipientTag
     );
-    if (recipientTagCondition) {
-      orderWhere[Op.and] = [...(orderWhere[Op.and] || []), recipientTagCondition];
-    }
+    const tagOptionOrderWhere = { ...orderWhere };
+    if (productCondition) tagOptionOrderWhere[Op.and] = [productCondition];
+    const productOptionOrderWhere = { ...orderWhere };
+    if (recipientTagCondition) productOptionOrderWhere[Op.and] = [recipientTagCondition];
+    const orderConditions = [productCondition, recipientTagCondition].filter(Boolean);
+    if (orderConditions.length > 0) orderWhere[Op.and] = orderConditions;
     const page = query.page === undefined ? 1 : Number(query.page);
     if (!Number.isInteger(page) || page <= 0 || page > 100000) {
       throw ApiError.badRequest('page 必须是 1-100000 之间的整数');
@@ -767,53 +864,55 @@ async function listDispatchTasks(query = {}) {
     if (!Number.isInteger(limit) || limit <= 0 || limit > 200) {
       throw ApiError.badRequest('limit 必须是 1-200 之间的整数');
     }
-    const [{ count, rows }, recipientTagOptions, rules, overview] = await Promise.all([
-      PaymentTask.findAndCountAll({
-        where,
-        include: [
-          {
-            model: Order,
-            as: 'order',
-            attributes: [
-              'id',
-              'orderNumber',
-              'ingestionSource',
-              'sourceRecipientTag',
-              'tag',
-              'products',
-              'status',
-              'paymentStatus',
-              'paymentMethod',
-              'officialOrderAmount',
-              'officialOrderAmountCurrency',
-              'payerName',
-              'payerVersion',
-              'orderDate',
-              'officialOrderCreatedAt',
-              'officialPaymentExpiresAt',
-              'officialStatusNeedsReview',
-              'officialAllItemsTerminal',
-              'validationIssues',
-              'lastCrawledAt',
-              'updatedAt',
-            ],
-            where: orderWhere,
-          },
-          { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
-        ],
-        order: [
-          [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
-          [Sequelize.literal('"order"."order_date"'), 'DESC'],
-          ['id', 'DESC'],
-        ],
-        distinct: true,
-        limit,
-        offset: (page - 1) * limit,
-      }),
-      listRecipientTagOptions(where, optionOrderWhere),
-      PaymentTagRule.findAll({ where: { enabled: true } }),
-      getDispatchOverview(),
-    ]);
+    const [{ count, rows }, productNameOptions, recipientTagOptions, rules, overview] =
+      await Promise.all([
+        PaymentTask.findAndCountAll({
+          where,
+          include: [
+            {
+              model: Order,
+              as: 'order',
+              attributes: [
+                'id',
+                'orderNumber',
+                'ingestionSource',
+                'sourceRecipientTag',
+                'tag',
+                'products',
+                'status',
+                'paymentStatus',
+                'paymentMethod',
+                'officialOrderAmount',
+                'officialOrderAmountCurrency',
+                'payerName',
+                'payerVersion',
+                'orderDate',
+                'officialOrderCreatedAt',
+                'officialPaymentExpiresAt',
+                'officialStatusNeedsReview',
+                'officialAllItemsTerminal',
+                'validationIssues',
+                'lastCrawledAt',
+                'updatedAt',
+              ],
+              where: orderWhere,
+            },
+            { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
+          ],
+          order: [
+            [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
+            [Sequelize.literal('"order"."order_date"'), 'DESC'],
+            ['id', 'DESC'],
+          ],
+          distinct: true,
+          limit,
+          offset: (page - 1) * limit,
+        }),
+        listProductNameOptions(where, productOptionOrderWhere),
+        listRecipientTagOptions(where, tagOptionOrderWhere),
+        PaymentTagRule.findAll({ where: { enabled: true } }),
+        getDispatchOverview(),
+      ]);
     const serverTime = new Date();
     const ruleIndex = buildRuleIndex(rules);
     return {
@@ -826,6 +925,7 @@ async function listDispatchTasks(query = {}) {
           serverTime
         ),
       })),
+      productNameOptions,
       recipientTagOptions,
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
       serverTime,
@@ -1021,20 +1121,22 @@ async function runDispatchScan(limit = 500) {
         let cursor = null;
         // 规则内无人可用时继续跨批次查找，避免队首等待任务阻塞其他 TAG。
         while (candidates.some(row => row.activeCount < row.setting.maxActiveTasks)) {
+          let cursorWhere = {};
+          if (cursor) {
+            cursorWhere = {
+              [Op.or]: [
+                { deadlineAt: { [Op.gt]: cursor.deadlineAt } },
+                { deadlineAt: cursor.deadlineAt, id: { [Op.gt]: cursor.id } },
+              ],
+            };
+          }
           const tasks = await PaymentTask.findAll({
             where: {
               assigneeUserId: null,
               processingStatus: 'pending',
               deadlineAt: { [Op.gt]: new Date() },
               paymentLinkSource: 'order_url',
-              ...(cursor
-                ? {
-                  [Op.or]: [
-                    { deadlineAt: { [Op.gt]: cursor.deadlineAt } },
-                    { deadlineAt: cursor.deadlineAt, id: { [Op.gt]: cursor.id } },
-                  ],
-                }
-                : {}),
+              ...cursorWhere,
             },
             include: [
               {
@@ -1087,6 +1189,16 @@ async function runDispatchScan(limit = 500) {
             candidate.activeCount += 1;
             candidate.setting.lastAssignedAt = now;
             await candidate.setting.save({ transaction });
+            let tagRuleDetails = null;
+            if (rule) {
+              tagRuleDetails = {
+                id: rule.id,
+                name: rule.name,
+                version: rule.version,
+                recipientTags: rule.recipientTags,
+                assigneeUserIds: rule.assigneeUserIds,
+              };
+            }
             await PaymentTaskEvent.create(
               {
                 paymentTaskId: task.id,
@@ -1096,15 +1208,7 @@ async function runDispatchScan(limit = 500) {
                 afterStatus: 'pending',
                 details: {
                   loadAfterAssignment: candidate.activeCount,
-                  tagRule: rule
-                    ? {
-                      id: rule.id,
-                      name: rule.name,
-                      version: rule.version,
-                      recipientTags: rule.recipientTags,
-                      assigneeUserIds: rule.assigneeUserIds,
-                    }
-                    : null,
+                  tagRule: tagRuleDetails,
                 },
               },
               { transaction }
@@ -1141,6 +1245,7 @@ module.exports = {
   updateStaffSettingsBatch,
   assignTasks,
   assignTask,
+  updateTaskNotes,
   refreshTasks,
   refreshTask,
   reopenTask,

@@ -173,6 +173,41 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     expect(
       ownMultipleTags.items.every(item => ['TAG-1', 'TAG-2'].includes(item.recipientTag))
     ).toBe(true);
+    const multipleProducts = await dispatchService.listDispatchTasks({
+      productNames: JSON.stringify(['测试商品 1', '测试商品 2']),
+      limit: 100,
+    });
+    expect(multipleProducts.pagination.total).toBe(44);
+    expect(
+      multipleProducts.items.every(item =>
+        item.products.some(product => ['测试商品 1', '测试商品 2'].includes(product.name))
+      )
+    ).toBe(true);
+    expect(multipleProducts.productNameOptions).toHaveLength(7);
+    expect(multipleProducts.productNameOptions).toEqual(
+      expect.arrayContaining(['测试商品 0', '测试商品 6'])
+    );
+    const productAndTag = await dispatchService.listDispatchTasks({
+      productNames: JSON.stringify(['测试商品 1']),
+      recipientTags: JSON.stringify(['TAG-1']),
+      limit: 100,
+    });
+    expect(productAndTag.items.length).toBeGreaterThan(0);
+    expect(productAndTag.items.every(item => item.recipientTag === 'TAG-1')).toBe(true);
+    expect(productAndTag.productNameOptions).toHaveLength(7);
+    const ownProducts = await paymentTaskService.listOwnTasks(staffOne.id, {
+      productNames: JSON.stringify(['测试商品 1', '测试商品 2']),
+      limit: 100,
+    });
+    expect(ownProducts.items.length).toBeGreaterThan(0);
+    expect(
+      ownProducts.items.every(item =>
+        item.products.some(product => ['测试商品 1', '测试商品 2'].includes(product.name))
+      )
+    ).toBe(true);
+    expect(ownProducts.productNameOptions).toEqual(
+      expect.arrayContaining(['测试商品 0', '测试商品 6'])
+    );
     await expect(
       dispatchService.listDispatchTasks({ recipientTag: 'T'.repeat(501) })
     ).rejects.toMatchObject({ statusCode: 400 });
@@ -182,6 +217,16 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     await expect(
       paymentTaskService.listOwnTasks(staffOne.id, { recipientTag: 'T'.repeat(501) })
     ).rejects.toMatchObject({ statusCode: 400 });
+    for (const productNames of [
+      '[invalid',
+      JSON.stringify(Array(101).fill('测试商品')),
+      JSON.stringify([123]),
+      JSON.stringify(['商'.repeat(501)]),
+    ]) {
+      await expect(dispatchService.listDispatchTasks({ productNames })).rejects.toMatchObject({
+        statusCode: 400,
+      });
+    }
     const filter = { productKeyword: 'MODEL-1', processingStatus: 'pending' };
     const first = await dispatchService.listDispatchTasks({ ...filter, page: 1, limit: 20 });
     const second = await dispatchService.listDispatchTasks({ ...filter, page: 2, limit: 20 });
@@ -507,7 +552,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     expect(completed.processingStatus).toBe('completed');
     const unrestrictedOrderUrl = 'https://example.invalid/synthetic-order-link';
     await models.Order.update(
-      { orderUrl: unrestrictedOrderUrl, paymentStatus: 'paid', status: 'completed' },
+      { orderUrl: unrestrictedOrderUrl, paymentStatus: 'paid', status: 'picked_up' },
       { where: { id: task.orderId } }
     );
     await models.PaymentTask.update(
@@ -607,7 +652,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       paymentTaskService.updateOwnTask(
         task.id,
         {
-          processingStatus: 'exception',
+          processingStatus: 'invalid-status',
           processingNotes: '',
           expectedVersion: task.version,
           payerName: '不应写入的付款人',
@@ -625,6 +670,149 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         where: { orderId: order.id, idempotencyKey: 'integration-row-save-rollback' },
       })
     ).toBe(0);
+  });
+
+  test.each([
+    ['pending', 'exception'],
+    ['pending', 'completed'],
+    ['processing', 'exception'],
+    ['processing', 'completed'],
+    ['exception', 'processing'],
+    ['exception', 'completed'],
+  ])('空备注允许人工 %s → %s，官网字段不变', async (from, to) => {
+    const order = await models.Order.create({
+      orderNumber: `W70000000${['pending', 'processing', 'exception'].indexOf(from)}${['exception', 'processing', 'completed'].indexOf(to)}`,
+      products: [{ name: '合成状态测试商品', model: 'TEST-STATUS', quantity: 1 }],
+      status: 'payment_due',
+      paymentStatus: 'unpaid',
+    });
+    const task = await models.PaymentTask.create({
+      orderId: order.id,
+      assigneeUserId: staffTwo.id,
+      processingStatus: from,
+      processingNotes: null,
+    });
+    const result = await paymentTaskService.updateOwnTask(
+      task.id,
+      {
+        processingStatus: to,
+        expectedVersion: task.version,
+        idempotencyKey: `empty-notes-${from}-${to}`,
+      },
+      staffTwo.id,
+      { canHandle: true, canEditPayer: false }
+    );
+    expect(result).toMatchObject({
+      processingStatus: to,
+      processingNotes: null,
+      officialOrderStatus: 'payment_due',
+      officialPaymentStatus: 'unpaid',
+    });
+    await order.reload();
+    expect(order.status).toBe('payment_due');
+    expect(order.paymentStatus).toBe('unpaid');
+    const cleared = await paymentTaskService.updateOwnTask(
+      task.id,
+      {
+        processingNotes: '',
+        expectedVersion: result.version,
+        idempotencyKey: `clear-notes-${from}-${to}`,
+      },
+      staffTwo.id,
+      { canHandle: true, canEditPayer: false }
+    );
+    expect(cleared.processingNotes).toBeNull();
+    expect(cleared.processingStatus).toBe(to);
+  });
+
+  test('两付款页 unknown 筛选包含非法存量订单，分页与默认 pending 一致', async () => {
+    const orders = await models.Order.bulkCreate(
+      ['pending', 'unknown', 'pending'].map((status, index) => ({
+        orderNumber: `W711111111${index}`,
+        status,
+        products: [{ name: '合成兜底商品', model: 'TEST-FALLBACK', quantity: 1 }],
+      })),
+      { validate: true }
+    );
+    await models.sequelize.query("UPDATE orders SET status = 'completed' WHERE id = :id", {
+      replacements: { id: orders[2].id },
+    });
+    await models.PaymentTask.bulkCreate(
+      orders.map(order => ({
+        orderId: order.id,
+        assigneeUserId: staffTwo.id,
+        processingStatus: 'pending',
+      }))
+    );
+    for (const query of [
+      q => paymentTaskService.listOwnTasks(staffTwo.id, q),
+      q => dispatchService.listDispatchTasks(q),
+    ]) {
+      const result = await query({
+        orderNumber: 'W711111111',
+        officialOrderStatuses: ['unknown'],
+        limit: 1,
+      });
+      expect(result.pagination.total).toBe(2);
+      expect(result.items).toHaveLength(1);
+      expect(result.items[0].officialOrderStatus).toBe('unknown');
+      const pending = await query({
+        orderNumber: 'W711111111',
+        officialOrderStatuses: ['pending'],
+      });
+      expect(pending.pagination.total).toBe(1);
+      expect(pending.items[0].officialOrderStatus).toBe('pending');
+    }
+    await expect(
+      models.Order.create({
+        orderNumber: 'W7111111119',
+        status: 'completed',
+        products: [{ name: '测试', quantity: 1 }],
+      })
+    ).rejects.toThrow('订单状态必须是有效值');
+  });
+
+  test('公共入库先写 pending，同事务登记首次官网刷新与付款任务', async () => {
+    const { createOrderInTransaction } = require('../src/services/orderIngestionCore');
+    const order = await models.sequelize.transaction(transaction =>
+      createOrderInTransaction(
+        {
+          orderNumber: 'W7333333333',
+          appleId: 'synthetic-status@example.test',
+          products: [{ name: '合成入库商品', model: 'TEST-INGESTION', quantity: 1 }],
+          orderStatus: 'processing',
+          orderDate: new Date(),
+          orderUrl: 'https://www.apple.com.cn/xc/cn/vieworder/W7333333333/synthetic',
+        },
+        transaction
+      )
+    );
+    expect(order.status).toBe('pending');
+    expect(
+      await models.OrderRefreshJob.count({
+        where: { orderId: order.id, trigger: 'initial', status: 'pending' },
+      })
+    ).toBe(1);
+    expect(
+      await models.PaymentTask.count({ where: { orderId: order.id, processingStatus: 'pending' } })
+    ).toBe(1);
+  });
+
+  test('管理员空原因重开保留原备注，原因不再覆盖备注', async () => {
+    const task = await models.PaymentTask.findOne({
+      where: { assigneeUserId: staffTwo.id, processingStatus: 'completed' },
+    });
+    await task.update({ processingNotes: '原备注保留' });
+    const reopened = await dispatchService.reopenTask(
+      task.id,
+      {
+        expectedVersion: task.version,
+        idempotencyKey: 'empty-reopen-reason',
+      },
+      admin.id
+    );
+    expect(reopened.processingStatus).toBe('exception');
+    expect(reopened.processingNotes).toBe('原备注保留');
   });
 
   test('只修改付款人不增加任务版本，且按实际字段检查权限', async () => {
@@ -785,6 +973,56 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       admin.id
     );
     expect(reopened.processingStatus).toBe('exception');
+
+    await expect(
+      dispatchService.updateTaskNotes(
+        task.id,
+        {
+          processingNotes: '超'.repeat(2001),
+          expectedVersion: reopened.version,
+          idempotencyKey: 'integration-admin-notes-too-long',
+        },
+        admin.id
+      )
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    const notesUpdated = await dispatchService.updateTaskNotes(
+      task.id,
+      {
+        processingNotes: '管理员复核后的处理备注',
+        expectedVersion: reopened.version,
+        idempotencyKey: 'integration-admin-notes',
+      },
+      admin.id
+    );
+    expect(notesUpdated.processingNotes).toBe('管理员复核后的处理备注');
+    expect(notesUpdated.version).toBe(reopened.version + 1);
+    const replayed = await dispatchService.updateTaskNotes(
+      task.id,
+      {
+        processingNotes: '管理员复核后的处理备注',
+        expectedVersion: reopened.version,
+        idempotencyKey: 'integration-admin-notes',
+      },
+      admin.id
+    );
+    expect(replayed.version).toBe(notesUpdated.version);
+    await expect(
+      dispatchService.updateTaskNotes(
+        task.id,
+        {
+          processingNotes: '旧版本覆盖',
+          expectedVersion: reopened.version,
+          idempotencyKey: 'integration-admin-notes-stale',
+        },
+        admin.id
+      )
+    ).rejects.toMatchObject({ statusCode: 409, code: 'CONCURRENT_MODIFICATION' });
+    expect(
+      await models.PaymentTaskEvent.count({
+        where: { paymentTaskId: task.id, eventType: 'notes_updated' },
+      })
+    ).toBe(1);
   });
 
   test('权限读取、幂等重试和原子创建普通用户使用数据库显式集合', async () => {

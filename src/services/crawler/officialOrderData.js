@@ -1,4 +1,4 @@
-const { PAYMENT_WINDOW_MS } = require('../../constants/business');
+const { PAYMENT_WINDOW_MS, normalizeOrderStatus } = require('../../constants/business');
 const { normalizeText: normalize, equivalentOrderValue } = require('./orderComparison');
 
 const APPLE_CURRENT_STATUS_MAP = Object.freeze({
@@ -19,14 +19,12 @@ const TERMINAL_STATUSES = new Set([
   'cancelled',
   'pickup_cancelled',
   'delivered',
-  'completed',
 ]);
 const PAID_LIFECYCLE_STATUSES = new Set([
   'payment_received',
   'processing',
   'ready_for_pickup',
   'picked_up',
-  'completed',
 ]);
 const hasOwn = (object, key) => Object.prototype.hasOwnProperty.call(object || {}, key);
 
@@ -63,7 +61,7 @@ function isPaymentBlocked(order = {}) {
     TERMINAL_STATUSES.has(order.status) ||
     order.officialAllItemsTerminal === true ||
     order.officialStatusNeedsReview === true ||
-    order.status === 'unknown' ||
+    normalizeOrderStatus(order.status) === 'unknown' ||
     (order.validationIssues || []).some(issue => issue.type === 'order_identity')
   );
 }
@@ -80,7 +78,7 @@ function pickupForStatus(status, deliveryType) {
   if (['shipped', 'delivered', 'cancelled', 'payment_expired'].includes(status))
     return 'not_applicable';
   if (status === 'pickup_cancelled') return 'pickup_cancelled';
-  if (status === 'picked_up' || status === 'completed') return 'picked_up';
+  if (status === 'picked_up') return 'picked_up';
   if (status === 'ready_for_pickup') return 'ready_for_pickup';
   if (['payment_due', 'payment_received', 'processing'].includes(status)) {
     return deliveryType && deliveryType !== 'RETAIL_STORE' ? 'not_applicable' : 'not_ready';

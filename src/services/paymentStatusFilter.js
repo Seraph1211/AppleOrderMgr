@@ -1,4 +1,4 @@
-const { Op } = require('sequelize');
+const { buildOrderStatusCondition } = require('../utils/orderStatusFilter');
 const { ORDER_STATUSES } = require('../constants/business');
 const ApiError = require('../utils/ApiError');
 
@@ -26,7 +26,7 @@ function buildOfficialStatusCondition(query) {
   ) {
     throw ApiError.badRequest('officialOrderStatuses 包含非法状态或数量超限');
   }
-  return statuses.length ? { [Op.in]: [...new Set(statuses)] } : null;
+  return buildOrderStatusCondition(statuses);
 }
 
 module.exports = { buildOfficialStatusCondition };

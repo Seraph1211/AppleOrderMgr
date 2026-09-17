@@ -9,10 +9,16 @@ export const ORDER_STATUS_BADGES = {
   delivered: { text: '已送达', class: 'badge-success' },
   cancelled: { text: '已取消', class: 'badge-error' },
   pickup_cancelled: { text: '取货已取消', class: 'badge-error' },
-  unknown: { text: '状态待核对', class: 'badge-warning' },
-  pending: { text: '待处理（历史）', class: 'badge-warning' },
-  completed: { text: '已完成（历史）', class: 'badge-success' },
+  unknown: { text: 'unknown', class: 'badge-warning' },
+  pending: { text: '待处理', class: 'badge-warning' },
 };
+
+/** 获取官网状态展示；无效存量值统一展示 unknown。 */
+export function getOrderStatusBadge(status) {
+  return Object.hasOwn(ORDER_STATUS_BADGES, status)
+    ? ORDER_STATUS_BADGES[status]
+    : ORDER_STATUS_BADGES.unknown;
+}
 
 export const ORDER_STATUS_LABELS = Object.fromEntries(
   Object.entries(ORDER_STATUS_BADGES).map(([key, badge]) => [key, badge.text])

@@ -11,7 +11,7 @@ async function main() {
     if (!process.env.ORDERS_BROWSER_WS) throw new Error('需要专用临时浏览器地址');
     const { chromium } = require('playwright-core');
     browser = await chromium.connectOverCDP(process.env.ORDERS_BROWSER_WS, {
-      headers: { Host: '127.0.0.1' },
+      headers: { Host: process.env.ORDERS_BROWSER_HOST_HEADER || '127.0.0.1' },
       timeout: 15000,
     });
     context = await browser.newContext({
@@ -26,6 +26,7 @@ async function main() {
     let polls = 0;
     let outcome = 'succeeded';
     let timestamp = '2026-09-09T00:00:00Z';
+    let latestOrderQuery = new URLSearchParams();
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/*', async route => {
       try {
@@ -45,9 +46,16 @@ async function main() {
             availableHome: '/orders',
           };
         else if (url.pathname === '/api/orders/filter-options')
-          data = { productModels: [], stores: [], recipients: [], payers: [] };
+          data = {
+            productNames: ['iPhone 18 Pro Max 512GB 勃艮第酒红色'],
+            productModels: ['MODEL-18'],
+            stores: ['Apple Store 零售店'],
+            recipients: [],
+            payers: [],
+          };
         else if (url.pathname === '/api/system/auto-refresh') data = { isRunning: false };
-        else if (url.pathname === '/api/orders')
+        else if (url.pathname === '/api/orders') {
+          latestOrderQuery = new URLSearchParams(url.searchParams);
           data = {
             total: 1,
             orders: [
@@ -59,14 +67,20 @@ async function main() {
                 recipient_tag: '测试标签',
                 recipient_phone: '13800138000',
                 status: 'payment_due',
-                products: [{ name: '测试手机', quantity: 2 }],
+                products: [{ name: 'iPhone 18 Pro Max 512GB 勃艮第酒红色', quantity: 2 }],
+                pickup_store: 'Apple Store 零售店',
+                official_fulfillment_message:
+                  '请于 星期六 2026/09/19 的 20:30 – 20:45 之间到 Apple Store 零售店签到',
+                pickup_time: '2026/09/19 20:30 – 20:45',
+                validation_status: 'abnormal',
+                validation_issues: [{ message: '合成商品信息需要核对' }],
                 last_crawled_at: timestamp,
                 updated_at: '2030-01-01T00:00:00Z',
                 refresh: { freshness_status: 'fresh' },
               },
             ],
           };
-        else if (url.pathname === '/api/orders/1/refresh') {
+        } else if (url.pathname === '/api/orders/1/refresh') {
           submits += 1;
           polls = 0;
           data = { jobId: submits, status: 'pending' };
@@ -102,13 +116,54 @@ async function main() {
     await page.getByRole('columnheader', { name: '最后更新时间' }).waitFor();
     assert.equal(await page.getByRole('columnheader', { name: '刷新状态' }).count(), 0);
     assert.equal(await page.getByRole('columnheader', { name: '联系电话' }).count(), 0);
+    assert.equal(await page.getByRole('columnheader', { name: '校验状态' }).count(), 0);
+    assert.equal(await page.getByRole('columnheader', { name: 'Apple ID' }).count(), 0);
+    await page.getByRole('columnheader', { name: '取货时间' }).waitFor();
     await page.getByRole('columnheader', { name: '取机人标签' }).waitFor();
     const row = page.locator('tbody tr').first();
-    assert.match(await row.innerText(), /snapshot@example.test/);
+    assert.doesNotMatch(await row.innerText(), /snapshot@example.test/);
     assert.match(await row.innerText(), /邮件取机人/);
     assert.match(await row.innerText(), /测试标签/);
     assert.doesNotMatch(await row.innerText(), /2030|13800138000/);
-    assert.equal(await row.getByText('测试手机 × 2', { exact: true }).count(), 1);
+    assert.equal(
+      await row.getByText('iPhone 18 Pro Max 512GB 勃艮第酒红色 × 2', { exact: true }).count(),
+      1
+    );
+    assert.match(await row.innerText(), /2026\/09\/19 20:30 – 20:45/);
+    assert.equal(await row.getByRole('button', { name: '查看 1 项订单冲突' }).count(), 1);
+    assert.equal((await row.getAttribute('class')).includes('bg-red'), false);
+
+    await page.getByRole('button', { name: '官网状态筛选' }).click();
+    await page.getByRole('option', { name: '等待付款' }).click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '商品信息筛选' }).click();
+    const productOption = page.getByRole('option', {
+      name: 'iPhone 18 Pro Max 512GB 勃艮第酒红色',
+    });
+    const productOptionLabel = productOption.locator('span').last();
+    assert.equal(
+      await productOptionLabel.evaluate(element => element.scrollWidth <= element.clientWidth),
+      true
+    );
+    await productOption.click();
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: '取货门店筛选' }).click();
+    await page.getByRole('option', { name: 'Apple Store 零售店' }).click();
+    await page.keyboard.press('Escape');
+    await page.locator('input[aria-label="取货日期筛选"]').fill('2026-09-19');
+    await page.waitForFunction(() => document.querySelector('tbody tr'));
+    assert.deepEqual(JSON.parse(latestOrderQuery.get('statuses')), ['payment_due']);
+    assert.deepEqual(JSON.parse(latestOrderQuery.get('productNames')), [
+      'iPhone 18 Pro Max 512GB 勃艮第酒红色',
+    ]);
+    assert.deepEqual(JSON.parse(latestOrderQuery.get('pickupStores')), ['Apple Store 零售店']);
+    assert.equal(latestOrderQuery.get('pickupDate'), '2026-09-19');
+
+    await row.getByRole('button', { name: '查看', exact: true }).click();
+    await page.getByRole('heading', { name: '订单详情' }).waitFor();
+    assert.equal(await page.getByText('Apple ID', { exact: true }).count(), 1);
+    assert.equal(await page.getByText('snapshot@example.test', { exact: true }).count(), 1);
+    await page.getByRole('button', { name: '取消', exact: true }).click();
     const initialTime = await row.locator('td').nth(3).innerText();
     await row.getByRole('button', { name: '手动刷新 W1234567890' }).click();
     assert.equal(await row.getByRole('button', { name: '排队中 W1234567890' }).isDisabled(), true);
@@ -145,6 +200,11 @@ async function main() {
         '旧列配置迁移',
         '邮件信息',
         '商品数量',
+        '状态商品门店多选和取货日期筛选',
+        '取货时间提取展示',
+        '校验与 Apple ID 主表移除',
+        '异常图标保留且行不标红',
+        '详情内容保留',
         '官网更新时间',
         '排队执行成功',
         '失败可重试',

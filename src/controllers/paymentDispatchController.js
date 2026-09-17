@@ -82,6 +82,16 @@ async function assignTasks(req, res) {
   return res.json({ success: true, data });
 }
 
+/** 管理员修改付款任务处理备注。 */
+async function updateTaskNotes(req, res) {
+  const data = await paymentDispatchService.updateTaskNotes(
+    Number(req.params.id),
+    { ...req.body, idempotencyKey: req.get('Idempotency-Key') || req.body.idempotencyKey },
+    req.user.id
+  );
+  return res.json({ success: true, data });
+}
+
 /** 提交单个任务官网刷新。 */
 async function refreshTask(req, res) {
   const data = await paymentDispatchService.refreshTask(Number(req.params.id), req.user.id);
@@ -120,6 +130,7 @@ module.exports = {
   updateStaffSettingsBatch,
   assignTasks,
   assignTask,
+  updateTaskNotes,
   refreshTasks,
   refreshTask,
   reopenTask,

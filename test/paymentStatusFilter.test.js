@@ -22,9 +22,10 @@ test.each([
   '"payment_due"',
   '[1]',
   '["bad"]',
+  '["completed"]',
   null,
   42,
-  Array(14).fill('payment_due'),
+  Array(13).fill('payment_due'),
 ])('拒绝非法多选 %j', officialOrderStatuses => {
   expect(() => buildOfficialStatusCondition({ officialOrderStatuses })).toThrow();
 });

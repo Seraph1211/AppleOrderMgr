@@ -8,7 +8,7 @@ const { formatOrderTime } = require('../utils/orderTime');
  * @see docs/design/API设计.md
  */
 
-const { Op } = require('sequelize');
+const { Op, Sequelize } = require('sequelize');
 const XLSX = require('xlsx');
 const {
   Order,
@@ -17,6 +17,7 @@ const {
   EmailLog,
   OrderRefreshSchedule,
   OrderRefreshJob,
+  sequelize,
 } = require('../models');
 const refreshJobService = require('../services/crawler/refreshJobService');
 const { getDisplayedFreshness } = require('../services/crawler/refreshPolicy');
@@ -28,9 +29,14 @@ const {
 } = require('../utils/orderSerialization');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
-const { ORDER_STATUSES, PERMISSIONS } = require('../constants/business');
+const { ORDER_STATUSES, PERMISSIONS, normalizeOrderStatus } = require('../constants/business');
+const { buildOrderStatusCondition } = require('../utils/orderStatusFilter');
 const { maskIdCard, maskPhone, escapeSpreadsheetFormula } = require('../utils/masking');
 const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
+const { formatPickupTime, normalizePickupDate } = require('../utils/orderPickupTime');
+
+const MAX_MULTI_SELECT_ITEMS = 100;
+const MAX_FILTER_VALUE_LENGTH = 255;
 
 /**
  * 把 Order（含 appleAccount/recipient）序列化为对外列表项
@@ -90,7 +96,7 @@ function serializeOrderListItem(
         : plain.recipient?.tag || plain.tag || null,
     products: serializePublicProducts(plain.products),
     ...serializeOfficialFields(plain),
-    status: plain.status,
+    status: normalizeOrderStatus(plain.status),
     payment_status: plain.paymentStatus,
     pickup_status: plain.pickupStatus,
     official_order_amount: plain.officialOrderAmount,
@@ -113,6 +119,7 @@ function serializeOrderListItem(
     pickup_store_code: plain.pickupStoreCode,
     pickup_code: plain.pickupCode,
     pickup_time_slot: plain.pickupTimeSlot,
+    pickup_time: formatPickupTime(plain.officialFulfillmentMessage),
     actual_pickup_date: plain.actualPickupDate,
     payment_method: plain.paymentMethod,
     payer_name: plain.payerName,
@@ -193,7 +200,7 @@ function serializeOrderDetail(
         : plain.recipient?.tag || plain.tag || null,
     products: serializePublicProducts(plain.products),
     ...serializeOfficialFields(plain),
-    status: plain.status,
+    status: normalizeOrderStatus(plain.status),
     payment_status: plain.paymentStatus,
     pickup_status: plain.pickupStatus,
     official_order_amount: plain.officialOrderAmount,
@@ -229,7 +236,64 @@ function serializeOrderDetail(
 }
 
 /**
- * 解析并校验 query 中的筛选条件
+ * 解析并校验查询中的单值或 JSON 数组多选参数。
+ * @param {unknown} rawValue - 原始查询参数
+ * @param {string} fieldName - 错误信息中的字段名
+ * @param {Object} options - 白名单、数量和长度限制
+ * @returns {string[]} 去重并去除首尾空白的值
+ */
+function parseMultiSelectFilter(
+  rawValue,
+  fieldName,
+  {
+    allowedValues = null,
+    maxItems = MAX_MULTI_SELECT_ITEMS,
+    maxLength = MAX_FILTER_VALUE_LENGTH,
+  } = {}
+) {
+  if (rawValue === undefined || rawValue === null || rawValue === '') return [];
+  let values = rawValue;
+  if (typeof rawValue === 'string') {
+    const trimmed = rawValue.trim();
+    if (!trimmed) return [];
+    if (trimmed.startsWith('[')) {
+      try {
+        values = JSON.parse(trimmed);
+      } catch (_error) {
+        throw ApiError.badRequest(`${fieldName} 必须是合法数组`);
+      }
+    } else {
+      values = [trimmed];
+    }
+  }
+  if (!Array.isArray(values)) throw ApiError.badRequest(`${fieldName} 必须是合法数组`);
+  if (values.length > maxItems) throw ApiError.badRequest(`${fieldName} 最多选择 ${maxItems} 项`);
+  if (values.some(value => typeof value !== 'string')) {
+    throw ApiError.badRequest(`${fieldName} 每项必须是字符串`);
+  }
+  const normalized = [...new Set(values.map(value => value.trim()).filter(Boolean))];
+  if (normalized.some(value => value.length > maxLength)) {
+    throw ApiError.badRequest(`${fieldName} 每项不能超过 ${maxLength} 字符`);
+  }
+  if (allowedValues && normalized.some(value => !allowedValues.includes(value))) {
+    throw ApiError.badRequest(`${fieldName} 包含非法值`);
+  }
+  return normalized;
+}
+
+/** 构造商品完整名称多选条件。 */
+function buildProductNamesCondition(productNames) {
+  if (productNames.length === 0) return null;
+  const escapedNames = productNames.map(name => sequelize.escape(name)).join(', ');
+  return Sequelize.literal(`EXISTS (
+    SELECT 1
+    FROM jsonb_array_elements("products") AS item
+    WHERE item->>'name' IN (${escapedNames})
+  )`);
+}
+
+/**
+ * 解析并校验 query 中的筛选条件。
  * @param {Object} query - req.query
  * @returns {Object} { where, page, limit }
  */
@@ -239,13 +303,15 @@ function buildListFilters(query) {
 
   const where = {};
 
-  if (query.status) {
-    if (!ORDER_STATUSES.includes(query.status)) {
-      throw ApiError.badRequest(`订单状态非法，可选值: ${ORDER_STATUSES.join(', ')}`, {
-        received: query.status,
-      });
-    }
-    where.status = query.status;
+  const statuses = parseMultiSelectFilter(query.statuses ?? query.status, 'statuses', {
+    allowedValues: ORDER_STATUSES,
+    maxLength: 50,
+  });
+  if (statuses.length > 0) {
+    where.status =
+      statuses.length === 1 && statuses[0] !== 'unknown'
+        ? statuses[0]
+        : buildOrderStatusCondition(statuses);
   }
 
   if (query.payment_status) {
@@ -277,16 +343,26 @@ function buildListFilters(query) {
     where.recipientRef = recipientInt;
   }
 
-  if (query.pickupStore)
+  const pickupStores = parseMultiSelectFilter(query.pickupStores, 'pickupStores');
+  if (pickupStores.length > 0) where.pickupStore = { [Op.in]: pickupStores };
+  else if (query.pickupStore)
     where.pickupStore = { [Op.iLike]: `%${String(query.pickupStore).trim()}%` };
   if (query.payerName) where.payerName = { [Op.iLike]: `%${String(query.payerName).trim()}%` };
-  if (query.productModel) {
+  const productNames = parseMultiSelectFilter(query.productNames, 'productNames');
+  const productNamesCondition = buildProductNamesCondition(productNames);
+  if (productNamesCondition) {
+    where[Op.and] = (where[Op.and] || []).concat(productNamesCondition);
+  } else if (query.productModel) {
     where[Op.and] = (where[Op.and] || []).concat(
       sequelizeJsonbTextSearch('products', String(query.productModel).trim())
     );
   }
+  if (query.pickupDate !== undefined && query.pickupDate !== '') {
+    const pickupDate = normalizePickupDate(query.pickupDate);
+    if (!pickupDate) throw ApiError.badRequest('pickupDate 必须是有效的 YYYY-MM-DD 日期');
+    where.officialFulfillmentMessage = { [Op.iLike]: `%${pickupDate}%` };
+  }
   if (query.recipientName) {
-    const { Sequelize } = require('sequelize');
     const recipientName = String(query.recipientName).trim();
     const currentAnd = where[Op.and] || [];
     where[Op.and] = currentAnd.concat({
@@ -702,12 +778,14 @@ async function getFilterOptions(_req, res) {
       raw: true,
     });
     const productModels = new Set();
+    const productNames = new Set();
     const stores = new Set();
     const recipients = new Set();
     const payers = new Set();
     rows.forEach(row => {
       (row.products || []).forEach(product => {
         if (product.model || product.modelId) productModels.add(product.model || product.modelId);
+        if (product.name) productNames.add(product.name);
       });
       if (row.pickupStore) stores.add(row.pickupStore);
       if (row.recipientName) recipients.add(row.recipientName);
@@ -717,6 +795,7 @@ async function getFilterOptions(_req, res) {
       success: true,
       data: {
         productModels: [...productModels].sort(),
+        productNames: [...productNames].sort((left, right) => left.localeCompare(right, 'zh-CN')),
         stores: [...stores].sort(),
         recipients: [...recipients].sort(),
         payers: [...payers].sort(),
@@ -788,6 +867,7 @@ async function updateOrder(req, res) {
 module.exports = {
   serializeOrderListItem,
   serializeOrderDetail,
+  parseMultiSelectFilter,
   buildListFilters,
   listOrders,
   getOrderDetail,

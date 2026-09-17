@@ -55,7 +55,7 @@
     "https-proxy-agent": "^9.1.0",
     "jsonwebtoken": "^9.0.3",
     "mailparser": "^3.7.1",
-    "multer": "^2.2.0",
+    "multer": "2.3.0",
     "node-cron": "^3.0.3",
     "node-imap": "^0.9.6",
     "nodemailer": "^10.0.10",
