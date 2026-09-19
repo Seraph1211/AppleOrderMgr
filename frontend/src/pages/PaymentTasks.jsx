@@ -895,7 +895,7 @@ export default function PaymentTasks() {
                       <td data-label="操作" className="px-4 py-4">
                         <div className="payment-task-actions">
                           {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) && (
-                            <PaymentCodeButton taskId={task.id} />
+                            <PaymentCodeButton taskId={task.id} orderDate={task.orderDate} />
                           )}
                           {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) && (
                             <button

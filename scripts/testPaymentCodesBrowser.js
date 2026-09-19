@@ -21,6 +21,7 @@ async function main() {
     let permitted = true;
     let state = 'available';
     let status = 'payment_due';
+    let orderDate = '2026-09-20T13:02:00Z';
     const requests = [];
     const errors = [];
     const task = id => ({
@@ -34,7 +35,7 @@ async function main() {
       processingStatus: 'pending',
       version: 0,
       payerVersion: 0,
-      orderDate: '2026-09-13T08:00:00Z',
+      orderDate,
       officialOrderAmount: '15998.00',
     });
     page.on('pageerror', e => errors.push(e.message));
@@ -86,13 +87,14 @@ async function main() {
             id === 2
               ? { availability: 'unsupported', message: '支付宝暂无法获取付款码' }
               : {
-                ...task(id),
-                availability: state,
-                message: state === 'missing' ? '暂未采集到付款码，请稍后重试' : null,
-                amount: '15998.00',
-                officialOrderStatus: status,
-                imageDataUrl: state === 'available' ? makePng() : null,
-              };
+                  ...task(id),
+                  deadlineAt: '2026-09-20T15:00:00Z',
+                  availability: state,
+                  message: state === 'missing' ? '暂未采集到付款码，请稍后重试' : null,
+                  amount: '15998.00',
+                  officialOrderStatus: status,
+                  imageDataUrl: state === 'available' ? makePng() : null,
+                };
         } else throw new Error('未配置合成接口 ' + url.pathname);
         await route.fulfill({
           contentType: 'application/json',
@@ -119,6 +121,9 @@ async function main() {
         assert.match(await dialog.innerText(), /W0000000001/);
         assert.match(await dialog.innerText(), /15998/);
         assert.match(await dialog.innerText(), /合成手机/);
+        assert.equal(await dialog.locator('dt').last().innerText(), '付款截止时间');
+        assert.equal(await dialog.locator('dt').nth(4).innerText(), '支付方式');
+        assert.equal(await dialog.locator('dd').last().innerText(), '21:32');
         assert.equal(
           await dialog.getByRole('img').evaluate(img => img.complete && img.naturalWidth > 0),
           true
@@ -144,8 +149,12 @@ async function main() {
           await page.keyboard.press('Escape');
         }
         state = 'missing';
+        orderDate = null;
+        await page.reload();
         await buttons.first().click();
         await page.getByText('暂未采集到付款码，请稍后重试').waitFor();
+        assert.equal(await dialog.locator('dd').last().innerText(), '-');
+        orderDate = '2026-09-20T13:02:00Z';
         await page.keyboard.press('Escape');
         state = 'error';
         await buttons.first().click();

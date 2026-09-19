@@ -35,7 +35,8 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       recipientTag: '明威 TAG',
       version: 0,
       lastCrawledAt: '2026-09-13T00:00:00Z',
-      deadlineAt: new Date(Date.now() + 600000).toISOString(),
+      orderDate: i === 1 ? null : '2026-09-20T13:02:00Z',
+      deadlineAt: '2026-09-20T15:00:00Z',
       autoAssignment: { ruleName: '明威规则', reason: '指定账号容量不足，等待释放容量' },
     }));
     const staff = [
@@ -215,7 +216,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.getByTestId('center-toast').waitFor({ state: 'hidden', timeout: 5000 });
     assert.equal(
       await page.evaluate(() => window.__copy),
-      '9001 || iPhone 18 Pro Max 512GB 勃艮第酒红色 x 2 || 微信 || https://example.com/order/1'
+      '9001 || iPhone 18 Pro Max 512GB 勃艮第酒红色 x 2 || 微信 || 21:32 || https://example.com/order/1'
     );
     for (let i = 1; i <= 7; i++)
       await page.getByRole('checkbox', { name: `选择订单 W000000000${i}`, exact: true }).check();
@@ -226,7 +227,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       .waitFor();
     const copied = await page.evaluate(() => window.__copy);
     assert.equal(copied.split('\n\n').length, 7);
-    assert.equal(copied.split('\n\n')[1], '9002 || - || - || https://example.com/order/2');
+    assert.equal(copied.split('\n\n')[1], '9002 || - || - || - || https://example.com/order/2');
     assert.ok(copied.endsWith('/7'));
     assert.ok(maxLinks <= 5);
     failLink = true;

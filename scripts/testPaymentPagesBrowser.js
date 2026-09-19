@@ -210,13 +210,13 @@ async function main() {
         await rows.first().getByText('订单信息已复制', { exact: true }).waitFor();
         assert.equal(
           await page.evaluate(() => window.__copiedPaymentText),
-          '1 || 合成手机 白色 256G x 1、MODEL-B x 2 || 微信 || https://www.apple.com.cn/xc/cn/vieworder/W0000000001/synthetic-1'
+          '1 || 合成手机 白色 256G x 1、MODEL-B x 2 || 微信 || 09:32 || https://www.apple.com.cn/xc/cn/vieworder/W0000000001/synthetic-1'
         );
         await rows.nth(1).getByRole('button', { name: '复制订单信息', exact: true }).click();
         await rows.nth(1).getByText('订单信息已复制', { exact: true }).waitFor();
         assert.equal(
           await page.evaluate(() => window.__copiedPaymentText),
-          '2 || - || - || https://www.apple.com.cn/xc/cn/vieworder/W0000000002/synthetic-2'
+          '2 || - || - || - || https://www.apple.com.cn/xc/cn/vieworder/W0000000002/synthetic-2'
         );
         await page.getByRole('checkbox', { name: '选择订单 W0000000001', exact: true }).check();
         await page.getByRole('checkbox', { name: '选择订单 W0000000002', exact: true }).check();
@@ -224,7 +224,7 @@ async function main() {
         await page.getByText('已复制 2 条订单信息', { exact: true }).waitFor();
         assert.equal(
           await page.evaluate(() => window.__copiedPaymentText),
-          '1 || 合成手机 白色 256G x 1、MODEL-B x 2 || 微信 || https://www.apple.com.cn/xc/cn/vieworder/W0000000001/synthetic-1\n\n2 || - || - || https://www.apple.com.cn/xc/cn/vieworder/W0000000002/synthetic-2'
+          '1 || 合成手机 白色 256G x 1、MODEL-B x 2 || 微信 || 09:32 || https://www.apple.com.cn/xc/cn/vieworder/W0000000001/synthetic-1\n\n2 || - || - || - || https://www.apple.com.cn/xc/cn/vieworder/W0000000002/synthetic-2'
         );
         assert.deepEqual(paymentLinkRequests.slice(-2), [1, 2]);
         await page.getByRole('checkbox', { name: '选择订单 W0000000001', exact: true }).uncheck();

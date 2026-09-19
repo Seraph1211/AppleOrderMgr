@@ -1,3 +1,5 @@
+import { formatPaymentDeadline } from './paymentDeadline.js';
+
 /** 格式化两张付款页面共用的订单复制内容。 */
 export function buildPaymentCopyText(task, paymentUrl) {
   const grouped = new Map();
@@ -25,5 +27,5 @@ export function buildPaymentCopyText(task, paymentUrl) {
       alipay: '支付宝',
     }[normalizedPaymentMethod] || rawPaymentMethod;
 
-  return `${task.orderId ?? '-'} || ${productInfo || '-'} || ${paymentMethod || '-'} || ${paymentUrl}`;
+  return `${task.orderId ?? '-'} || ${productInfo || '-'} || ${paymentMethod || '-'} || ${formatPaymentDeadline(task.orderDate)} || ${paymentUrl}`;
 }

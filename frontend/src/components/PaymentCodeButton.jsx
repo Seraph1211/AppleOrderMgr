@@ -3,9 +3,10 @@ import { createPortal } from 'react-dom';
 import { QrCode, X } from 'lucide-react';
 import client from '../api/client';
 import { getPaymentStageLabel } from '../utils/paymentStage';
+import { formatPaymentDeadline } from '../utils/paymentDeadline';
 
 /** 按服务端当前任务权限读取付款码；支付宝只显示明确提示。 */
-export default function PaymentCodeButton({ taskId, dispatch = false }) {
+export default function PaymentCodeButton({ taskId, orderDate, dispatch = false }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
@@ -120,6 +121,7 @@ export default function PaymentCodeButton({ taskId, dispatch = false }) {
                         ],
                         ['金额', data.amount == null ? '待获取' : `¥${data.amount}`],
                         ['支付方式', data.paymentMethod || '—'],
+                        ['付款截止时间', formatPaymentDeadline(orderDate)],
                       ].map(([label, value]) => (
                         <div key={label} className="flex gap-3 py-2">
                           <dt className="text-gray-500 w-32 shrink-0">{label}</dt>

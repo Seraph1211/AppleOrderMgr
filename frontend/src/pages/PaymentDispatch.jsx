@@ -917,7 +917,11 @@ export default function PaymentDispatch() {
                       <td className="px-4 py-3 text-right">
                         <div className="payment-dispatch-actions">
                           {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
-                            <PaymentCodeButton taskId={task.id} dispatch />
+                            <PaymentCodeButton
+                              taskId={task.id}
+                              orderDate={task.orderDate}
+                              dispatch
+                            />
                           )}
                           {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
                             <button
