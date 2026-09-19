@@ -59,6 +59,11 @@ router.put(
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE),
   asyncHandler(controller.updateStaffSettings)
 );
+router.post(
+  '/tasks/assignment-preview',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),
+  asyncHandler(controller.previewAssignment)
+);
 router.put(
   '/tasks/assignee',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),

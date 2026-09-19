@@ -1,3 +1,4 @@
+const { getPaymentDeadline } = require('./paymentEligibility');
 /**
  * 订单爬虫服务模块
  * 功能：爬取 Apple 官网订单详情，提取订单状态、商品信息、取机门店等数据
@@ -28,7 +29,6 @@ const {
   safeText,
   parseOfficialFields,
   mergeOfficialOrder,
-  getOfficialDeadline,
 } = require('./crawler/officialOrderData');
 const { config } = require('../utils/config');
 const { sendTelegramAlert } = require('../utils/telegramNotifier');
@@ -1268,21 +1268,31 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       lastCrawledAt: new Date(),
       crawlFailCount: 0,
     });
-    const previousDeadline = getOfficialDeadline(order);
-    const nextDeadline = getOfficialDeadline({ ...order.toJSON(), ...updateData });
+    const nextDeadline = getPaymentDeadline({ ...order.toJSON(), ...updateData });
     await order.update(updateData, { transaction });
-    if (nextDeadline && nextDeadline.getTime() !== previousDeadline?.getTime()) {
+    if (nextDeadline) {
       await PaymentTask.update(
         {
           deadlineAt: nextDeadline,
-          deadlineSource: 'official',
+          deadlineSource: 'source_order',
           eligibilityVerifiedAt: null,
           eligibilityValidUntil: null,
           eligibilityVerifiedBy: null,
           paymentLinkSource: order.orderUrl ? 'order_url' : null,
           version: sequelize.literal('version + 1'),
         },
-        { where: { orderId: order.id }, transaction }
+        {
+          where: {
+            orderId: order.id,
+            [Op.or]: [
+              { deadlineAt: null },
+              { deadlineAt: { [Op.ne]: nextDeadline } },
+              { deadlineSource: null },
+              { deadlineSource: { [Op.ne]: 'source_order' } },
+            ],
+          },
+          transaction,
+        }
       );
     }
 

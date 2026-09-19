@@ -16,7 +16,12 @@ const {
 const ApiError = require('../utils/ApiError');
 const { buildRuleIndex, matchRule } = require('./paymentTagRuleService');
 const { describeAutoAssignment, selectCandidate } = require('./paymentAssignmentPolicy');
-const { getOfficialDeadline, isPaymentBlocked } = require('./crawler/officialOrderData');
+const {
+  getPaymentDeadline,
+  isAssignmentBlocked,
+  validatePaymentOrderUrl,
+  assessAssignment,
+} = require('./paymentEligibility');
 const { buildOfficialStatusCondition } = require('./paymentStatusFilter');
 const { PAYMENT_EXECUTION_PERMISSIONS } = require('../constants/permissionCatalog');
 const { PAYMENT_ASSIGNMENT_LOCK_ID, getEffectivePermissions } = require('./permissionService');
@@ -69,44 +74,7 @@ async function getOrCreateSettings(transaction) {
   return settings;
 }
 
-const isOrderExcluded = isPaymentBlocked;
-
-// 手动分配用于过期任务交接，仅豁免付款过期，不放宽其他官网风险状态。
-function isManualAssignmentBlocked(order) {
-  if (order.status !== 'payment_expired') return isOrderExcluded(order);
-  return isOrderExcluded({
-    status: 'payment_due',
-    paymentStatus: order.paymentStatus,
-    officialStatusNeedsReview: order.officialStatusNeedsReview,
-    validationIssues: order.validationIssues,
-    officialAllItemsTerminal: false,
-  });
-}
-
-function validatePaymentOrderUrl(orderUrl, orderNumber) {
-  try {
-    const parsed = new URL(orderUrl);
-    const pathParts = parsed.pathname.split('/').filter(Boolean);
-    const validPath =
-      pathParts[0] === 'xc' &&
-      pathParts[1] === 'cn' &&
-      pathParts[2] === 'vieworder' &&
-      pathParts[3]?.toUpperCase() === String(orderNumber).toUpperCase() &&
-      Boolean(pathParts[4]);
-    if (
-      parsed.protocol !== 'https:' ||
-      parsed.hostname !== 'www.apple.com.cn' ||
-      parsed.port ||
-      parsed.username ||
-      parsed.password ||
-      !validPath
-    ) {
-      throw new Error('invalid');
-    }
-  } catch (_error) {
-    throw ApiError.conflict('订单付款链接无效', undefined, 'PAYMENT_LINK_INVALID');
-  }
-}
+const isOrderExcluded = isAssignmentBlocked;
 
 /**
  * 在订单入库事务内按当前调度范围幂等登记付款任务。
@@ -123,20 +91,20 @@ async function enrollOrderInTransaction(order, transaction) {
     defaults: {
       orderId: order.id,
       processingStatus: 'pending',
-      deadlineAt: getOfficialDeadline(order),
-      deadlineSource: getOfficialDeadline(order) ? 'official' : null,
+      deadlineAt: getPaymentDeadline(order),
+      deadlineSource: getPaymentDeadline(order) ? 'source_order' : null,
       paymentLinkSource: order.orderUrl ? 'order_url' : null,
     },
     transaction,
   });
-  const officialDeadline = getOfficialDeadline(order);
+  const sourceDeadline = getPaymentDeadline(order);
   if (
     !created &&
-    officialDeadline &&
-    (!task.deadlineAt || new Date(task.deadlineAt).getTime() !== officialDeadline.getTime())
+    sourceDeadline &&
+    (!task.deadlineAt || new Date(task.deadlineAt).getTime() !== sourceDeadline.getTime())
   ) {
-    task.deadlineAt = officialDeadline;
-    task.deadlineSource = 'official';
+    task.deadlineAt = sourceDeadline;
+    task.deadlineSource = 'source_order';
     task.eligibilityVerifiedAt = null;
     task.eligibilityValidUntil = null;
     task.eligibilityVerifiedBy = null;
@@ -151,7 +119,7 @@ async function enrollOrderInTransaction(order, transaction) {
         eventType: 'enrolled',
         beforeStatus: null,
         afterStatus: 'pending',
-        details: { officialTime: 'pending' },
+        details: { deadlineSource: getPaymentDeadline(order) ? 'source_order' : null },
       },
       { transaction }
     );
@@ -333,7 +301,10 @@ async function updateStaffSettings(userId, input, actorUserId, transaction = nul
     }
     const apply = async transaction => {
       try {
-        const user = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
+        const user = await User.findByPk(userId, {
+          transaction,
+          ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}),
+        });
         if (!user) throw ApiError.badRequest('付款执行人员不存在');
         const permissions = await getEffectivePermissions(user, { transaction });
         const hasFullSet = PAYMENT_EXECUTION_PERMISSIONS.every(code => permissions.includes(code));
@@ -423,7 +394,10 @@ async function updateStaffSettingsBatch(staff, actorUserId) {
 }
 
 async function assertAssignableUser(userId, transaction, requireAuto = false) {
-  const user = await User.findByPk(userId, { transaction, lock: transaction.LOCK.UPDATE });
+  const user = await User.findByPk(userId, {
+    transaction,
+    ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}),
+  });
   if (!user || user.status !== 'active') {
     throw ApiError.badRequest('目标执行人员账号不可用');
   }
@@ -434,7 +408,7 @@ async function assertAssignableUser(userId, transaction, requireAuto = false) {
   const setting = await PaymentStaffSetting.findOne({
     where: { userId },
     transaction,
-    lock: transaction.LOCK.UPDATE,
+    ...(transaction ? { lock: transaction.LOCK.UPDATE } : {}),
   });
   if (!setting || setting.maxActiveTasks <= 0 || (requireAuto && !setting.autoAssignEnabled)) {
     throw ApiError.badRequest('目标用户未开启有效的接单容量');
@@ -443,13 +417,6 @@ async function assertAssignableUser(userId, transaction, requireAuto = false) {
     where: { assigneeUserId: userId, processingStatus: { [Op.in]: ACTIVE_PAYMENT_TASK_STATUSES } },
     transaction,
   });
-  if (activeCount >= setting.maxActiveTasks) {
-    throw ApiError.conflict(
-      '目标用户接单容量已满',
-      { activeCount, maxActiveTasks: setting.maxActiveTasks },
-      'CAPACITY_EXCEEDED'
-    );
-  }
   return { user, setting, activeCount };
 }
 
@@ -474,13 +441,143 @@ function buildAssignmentEventKey(idempotencyKey, taskId) {
   return `${idempotencyKey.slice(0, 70)}:${taskId}`;
 }
 
+/** 只读预检；返回逐条阻塞原因，实际提交仍在事务中重新验证。 */
+async function previewAssignment(input) {
+  try {
+    const assignments = normalizeAssignmentTasks(input.tasks);
+    const userId =
+      input.assigneeUserId == null || input.assigneeUserId === ''
+        ? null
+        : Number(input.assigneeUserId);
+    if (userId !== null && (!Number.isInteger(userId) || userId <= 0))
+      throw ApiError.badRequest('负责人 ID 无效');
+    const tasks = await PaymentTask.findAll({
+      where: { id: { [Op.in]: assignments.map(row => row.id) } },
+      include: [
+        {
+          model: Order,
+          as: 'order',
+          attributes: [
+            'orderNumber',
+            'orderUrl',
+            'orderDate',
+            'status',
+            'paymentStatus',
+            'lastCrawledAt',
+            'officialStatusNeedsReview',
+            'officialAllItemsTerminal',
+            'validationIssues',
+          ],
+        },
+      ],
+    });
+    const byId = new Map(tasks.map(task => [Number(task.id), task]));
+    let recipient = null;
+    let recipientError = null;
+    if (userId) {
+      try {
+        const { setting, activeCount } = await assertAssignableUser(userId);
+        recipient = {
+          id: userId,
+          activeCount,
+          maxActiveTasks: setting.maxActiveTasks,
+          remainingCapacity: Math.max(0, setting.maxActiveTasks - activeCount),
+        };
+      } catch (error) {
+        if (!(error instanceof ApiError)) throw error;
+        recipientError = error;
+      }
+    }
+    let available = recipient?.remainingCapacity || 0;
+    const items = assignments.map(row => {
+      const task = byId.get(row.id);
+      const item = {
+        ...assessAssignment(task, row.expectedVersion),
+        id: row.id,
+        hasTransfer: Boolean(
+          userId && task?.assigneeUserId && Number(task.assigneeUserId) !== userId
+        ),
+      };
+      if (!item.eligible || !userId) return item;
+      if (recipientError)
+        return {
+          ...item,
+          eligible: false,
+          code: recipientError.code,
+          reason: recipientError.message,
+          solution: '选择可用且有完整付款权限和容量的负责人',
+        };
+      if (Number(task.assigneeUserId) !== userId) {
+        if (available <= 0)
+          return {
+            ...item,
+            eligible: false,
+            code: 'CAPACITY_EXCEEDED',
+            reason: '接收人剩余容量不足',
+            solution: '减少本次任务数量、调整容量或选择其他负责人',
+          };
+        available -= 1;
+      }
+      return item;
+    });
+    return {
+      items,
+      eligibleCount: items.filter(row => row.eligible).length,
+      blockedCount: items.filter(row => !row.eligible).length,
+      recipient,
+    };
+  } catch (error) {
+    logger.warn('付款分配预检失败', { errorCode: error.code || 'PREVIEW_FAILED' });
+    throw error;
+  }
+}
+
+/** 执行原子分配；失败审计在业务回滚后独立追加，不保存敏感请求原文。 */
+async function assignTasks(input, actorUserId, context = {}) {
+  try {
+    return await executeAssignment(input, actorUserId);
+  } catch (error) {
+    const details = {
+      requestId: context.requestId || null,
+      assigneeUserId: Number.isSafeInteger(Number(input.assigneeUserId))
+        ? Number(input.assigneeUserId)
+        : null,
+      taskIds: Array.isArray(input.tasks)
+        ? input.tasks
+          .slice(0, 100)
+          .map(row => Number(row?.id))
+          .filter(Number.isSafeInteger)
+        : [],
+      reason: error instanceof ApiError ? error.message : '分配服务暂不可用',
+      items: error instanceof ApiError ? error.details?.items || [] : [],
+    };
+    try {
+      await PaymentDispatchEvent.create({
+        eventType: 'assignment_failed',
+        actorUserId,
+        errorCode: error.code || 'ASSIGNMENT_FAILED',
+        details,
+      });
+    } catch (_auditError) {
+      logger.error('付款分配失败审计写入失败', {
+        actorUserId,
+        errorCode: error.code || 'ASSIGNMENT_FAILED',
+        ...details,
+      });
+    }
+    if (error instanceof ApiError)
+      error.details = { ...error.details, requestId: details.requestId };
+    throw error;
+  }
+}
+
 /**
  * 原子批量分配或转派付款任务。
  * @param {Object} input - 批量分配参数
  * @param {number} actorUserId - 管理员 ID
  * @returns {Promise<Object>} 分配结果
  */
-async function assignTasks(input, actorUserId) {
+async function executeAssignment(input, actorUserId) {
   const assignments = normalizeAssignmentTasks(input.tasks);
   const idempotencyKey = validateIdempotencyKey(input.idempotencyKey);
   const assigneeUserId = Number(input.assigneeUserId);
@@ -521,6 +618,7 @@ async function assignTasks(input, actorUserId) {
             'status',
             'paymentStatus',
             'orderDate',
+            'lastCrawledAt',
             'officialOrderCreatedAt',
             'officialPaymentExpiresAt',
             'officialStatusNeedsReview',
@@ -538,25 +636,11 @@ async function assignTasks(input, actorUserId) {
     const versionById = new Map(assignments.map(item => [item.id, item.expectedVersion]));
     const now = new Date();
     for (const task of tasks) {
-      if (task.version !== versionById.get(Number(task.id))) {
-        throw ApiError.conflict(
-          '批量任务中存在已更新记录',
-          { taskId: task.id, currentVersion: task.version },
-          'CONCURRENT_MODIFICATION'
-        );
+      const assessment = assessAssignment(task, versionById.get(Number(task.id)), now);
+      if (!assessment.eligible) {
+        const items = tasks.map(row => assessAssignment(row, versionById.get(Number(row.id)), now));
+        throw ApiError.conflict(assessment.reason, { items }, assessment.code);
       }
-      if (task.processingStatus === 'completed') {
-        throw ApiError.conflict('已完成任务必须先重开才能转派', undefined, 'INVALID_STATE');
-      }
-      const deadlineAt = getOfficialDeadline(task.order);
-      if (!deadlineAt || isManualAssignmentBlocked(task.order)) {
-        throw ApiError.conflict(
-          '批量任务中存在付款截止时间未知，或已付款、取消、状态待核实等不允许分配的订单',
-          { taskId: task.id },
-          'PAYMENT_NOT_ELIGIBLE'
-        );
-      }
-      validatePaymentOrderUrl(task.order.orderUrl, task.order.orderNumber);
     }
 
     const hasTransfer = tasks.some(
@@ -582,8 +666,8 @@ async function assignTasks(input, actorUserId) {
       if (changed) {
         task.assigneeUserId = assigneeUserId;
         task.assignedAt = now;
-        task.deadlineAt = getOfficialDeadline(task.order);
-        task.deadlineSource = 'official';
+        task.deadlineAt = getPaymentDeadline(task.order);
+        task.deadlineSource = 'source_order';
         task.eligibilityVerifiedAt = null;
         task.eligibilityValidUntil = null;
         task.eligibilityVerifiedBy = null;
@@ -604,7 +688,7 @@ async function assignTasks(input, actorUserId) {
             reason: reason || null,
             batchSize: tasks.length,
             expiredAtAssignment:
-              task.order.status === 'payment_expired' || getOfficialDeadline(task.order) <= now,
+              task.order.status === 'payment_expired' || getPaymentDeadline(task.order) <= now,
           },
           idempotencyKey: buildAssignmentEventKey(idempotencyKey, task.id),
         },
@@ -661,13 +745,14 @@ async function assignTasks(input, actorUserId) {
  * @param {number} actorUserId - 管理员 ID
  * @returns {Promise<Object>} 分配后任务
  */
-async function assignTask(taskId, input, actorUserId) {
+async function assignTask(taskId, input, actorUserId, context) {
   const result = await assignTasks(
     {
       ...input,
       tasks: [{ id: taskId, expectedVersion: input.expectedVersion }],
     },
-    actorUserId
+    actorUserId,
+    context
   );
   return result.items[0];
 }
@@ -875,6 +960,7 @@ async function listDispatchTasks(query = {}) {
               attributes: [
                 'id',
                 'orderNumber',
+                'orderUrl',
                 'ingestionSource',
                 'sourceRecipientTag',
                 'tag',
@@ -949,7 +1035,7 @@ async function getPaymentLink(taskId, actorUserId) {
       throw ApiError.badRequest('任务 ID 必须是有效正整数');
     }
     const task = await PaymentTask.findByPk(taskId, {
-      include: [{ model: Order, as: 'order', attributes: ['orderUrl'] }],
+      include: [{ model: Order, as: 'order', attributes: ['orderUrl', 'orderDate'] }],
     });
     if (!task) throw ApiError.notFound('付款任务不存在');
     if (!task.order?.orderUrl) throw ApiError.notFound('订单链接不存在');
@@ -962,7 +1048,11 @@ async function getPaymentLink(taskId, actorUserId) {
       afterStatus: task.processingStatus,
       details: { accessedAt: now.toISOString(), source: 'payment_dispatch' },
     });
-    return { paymentUrl: task.order.orderUrl, serverTime: now, deadlineAt: task.deadlineAt };
+    return {
+      paymentUrl: task.order.orderUrl,
+      serverTime: now,
+      deadlineAt: getPaymentDeadline(task.order),
+    };
   } catch (error) {
     logger.error('读取调度付款链接失败', { taskId, actorUserId, error: error.message });
     throw error;
@@ -1125,8 +1215,8 @@ async function runDispatchScan(limit = 500) {
           if (cursor) {
             cursorWhere = {
               [Op.or]: [
-                { deadlineAt: { [Op.gt]: cursor.deadlineAt } },
-                { deadlineAt: cursor.deadlineAt, id: { [Op.gt]: cursor.id } },
+                { '$order.order_date$': { [Op.gt]: cursor.orderDate } },
+                { '$order.order_date$': cursor.orderDate, id: { [Op.gt]: cursor.id } },
               ],
             };
           }
@@ -1134,8 +1224,6 @@ async function runDispatchScan(limit = 500) {
             where: {
               assigneeUserId: null,
               processingStatus: 'pending',
-              deadlineAt: { [Op.gt]: new Date() },
-              paymentLinkSource: 'order_url',
               ...cursorWhere,
             },
             include: [
@@ -1143,6 +1231,8 @@ async function runDispatchScan(limit = 500) {
                 model: Order,
                 as: 'order',
                 attributes: [
+                  'orderNumber',
+                  'orderUrl',
                   'ingestionSource',
                   'sourceRecipientTag',
                   'tag',
@@ -1156,15 +1246,12 @@ async function runDispatchScan(limit = 500) {
                   'validationIssues',
                 ],
                 where: {
-                  [Op.or]: [
-                    { officialPaymentExpiresAt: { [Op.ne]: null } },
-                    { officialOrderCreatedAt: { [Op.ne]: null } },
-                  ],
+                  orderDate: { [Op.gt]: new Date(Date.now() - 30 * 60 * 1000) },
                 },
               },
             ],
             order: [
-              ['deadlineAt', 'ASC'],
+              [{ model: Order, as: 'order' }, 'orderDate', 'ASC'],
               ['id', 'ASC'],
             ],
             limit,
@@ -1175,13 +1262,21 @@ async function runDispatchScan(limit = 500) {
           if (!tasks.length) break;
           for (const task of tasks) {
             scannedTasks += 1;
-            const currentDeadline = getOfficialDeadline(task.order);
+            const currentDeadline = getPaymentDeadline(task.order);
             if (isOrderExcluded(task.order) || !currentDeadline || currentDeadline <= new Date())
               continue;
+            try {
+              validatePaymentOrderUrl(task.order.orderUrl, task.order.orderNumber);
+            } catch (_error) {
+              continue;
+            }
             const rule = matchRule(task.order, ruleIndex);
             const candidate = selectCandidate(candidates, rule, exclusiveUserIds);
             if (!candidate) continue;
             const now = new Date();
+            task.deadlineAt = currentDeadline;
+            task.deadlineSource = 'source_order';
+            task.paymentLinkSource = 'order_url';
             task.assigneeUserId = candidate.setting.userId;
             task.assignedAt = now;
             task.version += 1;
@@ -1216,7 +1311,7 @@ async function runDispatchScan(limit = 500) {
             assigned += 1;
           }
           const lastTask = tasks[tasks.length - 1];
-          cursor = { deadlineAt: lastTask.deadlineAt, id: lastTask.id };
+          cursor = { orderDate: lastTask.order.orderDate, id: lastTask.id };
           if (tasks.length < limit) break;
         }
         settings.lastScanAt = new Date();
@@ -1236,6 +1331,7 @@ async function runDispatchScan(limit = 500) {
 }
 
 module.exports = {
+  previewAssignment,
   getPaymentLink,
   getPendingOverview,
   enrollOrderInTransaction,

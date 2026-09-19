@@ -1,3 +1,4 @@
+/* eslint-disable camelcase -- 日期筛选契约使用 snake_case */
 const RUN_INTEGRATION = process.env.RUN_TAG_RULE_INTEGRATION === 'true';
 const describeIntegration = RUN_INTEGRATION ? describe : describe.skip;
 
@@ -298,19 +299,19 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     expect(
       await m.Order.count({
         where: controller.buildListFilters({
-          'date_from': '2026-09-13',
-          'date_to': '2026-09-13',
+          date_from: '2026-09-13',
+          date_to: '2026-09-13',
         }).where,
       })
     ).toBe(2);
     const channel = require('../src/controllers/channelController');
     const next = jest.fn();
     const res = { json: jest.fn() };
-    await channel.getChannelOrders({ params: { tag: 'DATE' }, query }, res, next);
+    await channel.getChannelOrders({ params: { tag: 'DATE' }, query, user: admin }, res, next);
     expect(next).not.toHaveBeenCalled();
     expect(res.json.mock.calls[0][0].data.total).toBe(2);
     res.json.mockClear();
-    await channel.getChannelStats({ params: { tag: 'DATE' }, query }, res, next);
+    await channel.getChannelStats({ params: { tag: 'DATE' }, query, user: admin }, res, next);
     expect(res.json.mock.calls[0][0].data.totalOrders).toBe(2);
     expect(
       (await dispatch.listDispatchTasks({ ...query, dateFrom: '2026-09-20', dateTo: '' }))
@@ -501,8 +502,8 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     await createRule(['A'], [people[0].id]);
     const due = await makeTask('A');
     const paid = await makeTask('A', { paymentStatus: 'paid' });
-    const expired = await makeTask('A', { officialOrderCreatedAt: new Date(Date.now() - 3600000) });
-    const unknown = await makeTask('A', { officialOrderCreatedAt: null });
+    const expired = await makeTask('A', { orderDate: new Date(Date.now() - 3600000) });
+    const unknown = await makeTask('A', { orderDate: null });
     await m.PaymentDispatchSetting.update({ mode: 'manual' }, { where: { id: 1 } });
     expect((await dispatch.runDispatchScan()).assigned).toBe(0);
     await m.PaymentDispatchSetting.update({ enabled: false }, { where: { id: 1 } });

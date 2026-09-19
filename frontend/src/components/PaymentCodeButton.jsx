@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { QrCode, X } from 'lucide-react';
 import client from '../api/client';
 import { getPaymentStageLabel } from '../utils/paymentStage';
-import { formatPaymentDeadline } from '../utils/paymentDeadline';
+import { formatPaymentDeadline, getPaymentDeadlineTime } from '../utils/paymentDeadline';
 
 /** 按服务端当前任务权限读取付款码；支付宝只显示明确提示。 */
 export default function PaymentCodeButton({ taskId, orderDate, dispatch = false }) {
@@ -40,7 +40,7 @@ export default function PaymentCodeButton({ taskId, orderDate, dispatch = false 
     };
   }, [open, taskId, dispatch]);
   const stage = data && getPaymentStageLabel(data);
-  const expired = !stage && data?.deadlineAt && Date.parse(data.deadlineAt) <= Date.now();
+  const expired = !stage && getPaymentDeadlineTime(orderDate) <= Date.now();
   const warning = stage || (expired ? '付款已过期' : null);
   return (
     <>

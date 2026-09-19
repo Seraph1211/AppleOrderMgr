@@ -96,7 +96,9 @@ const task = {
   order: {
     status: 'payment_due',
     paymentStatus: 'unpaid',
-    officialOrderCreatedAt: now,
+    orderDate: now,
+    orderNumber: 'W12345',
+    orderUrl: 'https://www.apple.com.cn/xc/cn/vieworder/W12345/synthetic',
   },
 };
 const overview = {
@@ -124,9 +126,9 @@ test.each([
 test.each([
   [{ processingStatus: 'exception' }, 'NOT_PENDING'],
   [{ order: { ...task.order, paymentStatus: 'paid' } }, 'ORDER_BLOCKED'],
-  [{ order: { ...task.order, officialOrderCreatedAt: null } }, 'UNKNOWN_DEADLINE'],
-  [{ order: { ...task.order, officialOrderCreatedAt: new Date(now - 3600000) } }, 'EXPIRED'],
-  [{ paymentLinkSource: null }, 'MISSING_LINK'],
+  [{ order: { ...task.order, orderDate: null } }, 'UNKNOWN_DEADLINE'],
+  [{ order: { ...task.order, orderDate: new Date(now - 3600000) } }, 'EXPIRED'],
+  [{ order: { ...task.order, orderUrl: null } }, 'MISSING_LINK'],
 ])('既有订单资格优先于规则等待原因 %j', (patch, code) => {
   expect(describeAutoAssignment({ ...task, ...patch }, input, overview, now).reasonCode).toBe(code);
 });

@@ -51,3 +51,7 @@ export const getPendingPaymentOverview = () => client.get('/payment-dispatch/pen
 /** 读取调度任务的付款链接。 */
 export const getPaymentDispatchLink = taskId =>
   client.get(`/payment-dispatch/tasks/${taskId}/payment-link`);
+
+/** 只读预检选中任务与接收人的分配条件。 */
+export const previewPaymentAssignment = payload =>
+  client.post('/payment-dispatch/tasks/assignment-preview', payload);

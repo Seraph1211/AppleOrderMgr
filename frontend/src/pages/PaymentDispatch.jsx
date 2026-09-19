@@ -1,3 +1,4 @@
+import PaymentAssignmentModal from '../components/PaymentAssignmentModal';
 import PaymentCodeButton from '../components/PaymentCodeButton';
 import AutoDismissToast from '../components/AutoDismissToast';
 import OrderDateFilter from '../components/OrderDateFilter';
@@ -15,7 +16,7 @@ import { getRefreshJob } from '../api/ordersApi';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
 import usePaymentRefresh from '../hooks/usePaymentRefresh';
-import { getPaymentStageLabel } from '../utils/paymentStage';
+import { formatPaymentCountdown } from '../utils/paymentCountdown';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Copy,
@@ -33,7 +34,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
   getPaymentDispatchLink,
-  assignPaymentTasks,
   getPaymentDispatchOverview,
   getPaymentDispatchTasks,
   refreshPaymentDispatchTask,
@@ -125,25 +125,6 @@ function formatDateTime(value) {
   )}:${part(date.getMinutes())}:${part(date.getSeconds())}`;
 }
 
-function formatCountdown(deadlineAt, now, task) {
-  const stage = getPaymentStageLabel(task);
-  if (stage) return { text: stage, className: 'text-gray-600' };
-  if (!deadlineAt) return { text: '等待官网时间', className: 'text-gray-500' };
-  const seconds = Math.floor((new Date(deadlineAt).getTime() - now.getTime()) / 1000);
-  if (seconds <= 0) {
-    return {
-      text: `已超时 ${Math.max(1, Math.ceil(Math.abs(seconds) / 60))} 分钟`,
-      className: 'text-red-500 font-medium',
-    };
-  }
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  return {
-    text: `${minutes} 分 ${String(remainingSeconds).padStart(2, '0')} 秒`,
-    className: seconds <= 5 * 60 ? 'text-red-600 font-medium' : 'text-gray-700',
-  };
-}
-
 export default function PaymentDispatch() {
   const { can } = useAuth();
   const canCorrectTasks = can(PERMISSIONS.PAYMENT_DISPATCH_CORRECT);
@@ -164,11 +145,6 @@ export default function PaymentDispatch() {
   const [filterDrafts, setFilterDrafts] = useState(INITIAL_FILTERS);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
-  const [assignmentDraft, setAssignmentDraft] = useState({
-    assigneeUserId: '',
-    handoffConfirmed: false,
-    reason: '',
-  });
   const [assignModalOpen, setAssignModalOpen] = useState(false);
   const [copyingIds, setCopyingIds] = useState([]);
   const copyLock = useRef(false);
@@ -275,11 +251,6 @@ export default function PaymentDispatch() {
     () => tasks.filter(task => selectedTaskIds.includes(task.id)),
     [selectedTaskIds, tasks]
   );
-  const assignmentHasTransfer = useMemo(() => {
-    const assigneeUserId = Number(assignmentDraft.assigneeUserId);
-    if (!assigneeUserId) return false;
-    return selectedTasks.some(task => task.assignee && Number(task.assignee.id) !== assigneeUserId);
-  }, [assignmentDraft.assigneeUserId, selectedTasks]);
   const copyTasks = async items => {
     if (!items.length || copyLock.current) return;
     copyLock.current = true;
@@ -320,11 +291,6 @@ export default function PaymentDispatch() {
     }
   };
 
-  const expiredAssignmentCount = selectedTasks.filter(
-    task =>
-      task.officialOrderStatus === 'payment_expired' ||
-      (task.deadlineAt && new Date(task.deadlineAt) <= now)
-  ).length;
   const allVisibleSelected = tasks.length > 0 && selectedTaskIds.length === tasks.length;
 
   const runAction = async (actionKey, action, successMessage) => {
@@ -383,47 +349,7 @@ export default function PaymentDispatch() {
   };
 
   const openAssignmentModal = () => {
-    if (selectedTaskIds.length === 0) return;
-    setError('');
-    setAssignmentDraft({
-      assigneeUserId: '',
-      handoffConfirmed: false,
-      reason: '',
-    });
-    setAssignModalOpen(true);
-  };
-
-  const confirmAssignment = async () => {
-    const assigneeUserId = Number(assignmentDraft.assigneeUserId);
-    if (!assigneeUserId) {
-      setError('请选择负责人');
-      return;
-    }
-    if (assignmentHasTransfer && !assignmentDraft.handoffConfirmed) {
-      setError('批量中包含转派任务，请确认原负责人已停止处理');
-      return;
-    }
-    const succeeded = await runAction(
-      'assign-selected',
-      () =>
-        assignPaymentTasks(
-          {
-            tasks: selectedTasks.map(task => ({
-              id: task.id,
-              expectedVersion: task.version,
-            })),
-            assigneeUserId,
-            handoffConfirmed: assignmentHasTransfer ? assignmentDraft.handoffConfirmed : false,
-            reason: assignmentHasTransfer ? assignmentDraft.reason.trim() : undefined,
-          },
-          crypto.randomUUID()
-        ),
-      `已分配 ${selectedTasks.length} 个付款任务`
-    );
-    if (succeeded) {
-      setSelectedTaskIds([]);
-      setAssignModalOpen(false);
-    }
+    if (selectedTaskIds.length) setAssignModalOpen(true);
   };
 
   const changedStaff = staffRows.filter(person => hasStaffChanges(person, staffDrafts[person.id]));
@@ -829,7 +755,7 @@ export default function PaymentDispatch() {
             <tbody>
               {!loading &&
                 tasks.map(task => {
-                  const countdown = formatCountdown(task.deadlineAt, now, task);
+                  const countdown = formatPaymentCountdown(task, now);
                   return (
                     <tr
                       key={task.id}
@@ -1198,121 +1124,22 @@ export default function PaymentDispatch() {
       )}
 
       {assignModalOpen && (
-        <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
-          <div className="w-full rounded-xl bg-white shadow-xl" style={{ maxWidth: '28rem' }}>
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-gray-900">批量分配付款任务</h2>
-                <p className="text-sm text-gray-500 mt-1">共选择 {selectedTasks.length} 个订单</p>
-              </div>
-              <button
-                className={`btn btn-secondary p-2 ${BUTTON_LAYOUT_CLASS}`}
-                aria-label="关闭批量分配弹窗"
-                onClick={() => setAssignModalOpen(false)}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              {expiredAssignmentCount > 0 && (
-                <div
-                  role="note"
-                  className="rounded-lg bg-amber-50 text-amber-800 px-4 py-3 text-sm"
-                >
-                  所选订单中有 {expiredAssignmentCount}{' '}
-                  个已过期。此次分配仅调整负责人，不恢复付款资格，也不延长付款时间。
-                </div>
-              )}
-              {error && (
-                <div role="alert" className="rounded-lg border border-red-100 bg-red-50 px-4 py-3">
-                  <p className="text-sm leading-6 text-red-700 break-words">{error}</p>
-                  <div className="mt-3 flex justify-end">
-                    <button
-                      type="button"
-                      className={`btn btn-secondary text-sm whitespace-nowrap shrink-0 ${BUTTON_LAYOUT_CLASS}`}
-                      onClick={() => load()}
-                    >
-                      <RefreshCw className="w-4 h-4" aria-hidden="true" />
-                      重新加载
-                    </button>
-                  </div>
-                </div>
-              )}
-              <label className="block">
-                <span className="block text-sm font-medium text-gray-700 mb-2">负责人</span>
-                <select
-                  className="input w-full"
-                  value={assignmentDraft.assigneeUserId}
-                  onChange={event =>
-                    setAssignmentDraft(previous => ({
-                      ...previous,
-                      assigneeUserId: event.target.value,
-                    }))
-                  }
-                >
-                  <option value="">请选择负责人</option>
-                  {overview?.staff
-                    .filter(person => person.hasExecutionPermissions)
-                    .map(person => (
-                      <option key={person.id} value={person.id}>
-                        {person.nickname || person.username}（{person.username}
-                        ）（剩余容量 {person.remainingCapacity}）
-                      </option>
-                    ))}
-                </select>
-              </label>
-              {assignmentHasTransfer && (
-                <>
-                  <label className="block">
-                    <span className="block text-sm font-medium text-gray-700 mb-2">
-                      转派原因（选填）
-                    </span>
-                    <textarea
-                      className="input w-full min-h-24"
-                      maxLength="500"
-                      value={assignmentDraft.reason}
-                      onChange={event =>
-                        setAssignmentDraft(previous => ({
-                          ...previous,
-                          reason: event.target.value,
-                        }))
-                      }
-                    />
-                  </label>
-                  <label className="flex items-start gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      className={`${CHECKBOX_CLASS} mt-1`}
-                      checked={assignmentDraft.handoffConfirmed}
-                      onChange={event =>
-                        setAssignmentDraft(previous => ({
-                          ...previous,
-                          handoffConfirmed: event.target.checked,
-                        }))
-                      }
-                    />
-                    已确认原负责人停止处理所选转派订单
-                  </label>
-                </>
-              )}
-            </div>
-            <div className="px-5 py-4 border-t border-gray-200 flex justify-end gap-2">
-              <button
-                className={`btn btn-secondary ${BUTTON_LAYOUT_CLASS}`}
-                onClick={() => setAssignModalOpen(false)}
-              >
-                取消
-              </button>
-              <button
-                className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
-                disabled={busyAction === 'assign-selected'}
-                onClick={confirmAssignment}
-              >
-                {busyAction === 'assign-selected' ? '分配中...' : '确认分配'}
-              </button>
-            </div>
-          </div>
-        </div>
+        <PaymentAssignmentModal
+          tasks={selectedTasks}
+          staff={overview?.staff || []}
+          onClose={() => {
+            setAssignModalOpen(false);
+            setSelectedTaskIds([]);
+          }}
+          onReload={() => loadCurrent.current()}
+          onAssigned={async () => {
+            try {
+              await loadCurrent.current();
+            } catch (failure) {
+              setError(failure.message);
+            }
+          }}
+        />
       )}
     </div>
   );

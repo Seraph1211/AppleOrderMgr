@@ -63,23 +63,60 @@ async function updateStaffSettingsBatch(req, res) {
   }
 }
 
-/** 手动分配或转派任务。 */
+/** 只读检查选中任务与接收人，保留权限边界。 */
+async function previewAssignment(req, res) {
+  try {
+    return res.json({
+      success: true,
+      data: await paymentDispatchService.previewAssignment(req.body),
+    });
+  } catch (error) {
+    logger.warn('付款分配请求未完成', {
+      actorUserId: req.user.id,
+      requestId: req.requestId,
+      errorCode: error.code || 'ASSIGNMENT_FAILED',
+    });
+    throw error;
+  }
+}
+
+/** 手动分配或转派任务，传递可信请求编号用于失败追溯。 */
 async function assignTask(req, res) {
-  const data = await paymentDispatchService.assignTask(
-    Number(req.params.id),
-    { ...req.body, idempotencyKey: req.get('Idempotency-Key') || req.body.idempotencyKey },
-    req.user.id
-  );
-  return res.json({ success: true, data });
+  try {
+    const data = await paymentDispatchService.assignTask(
+      Number(req.params.id),
+      { ...req.body, idempotencyKey: req.get('Idempotency-Key') || req.body.idempotencyKey },
+      req.user.id,
+      { requestId: req.requestId }
+    );
+    return res.json({ success: true, data });
+  } catch (error) {
+    logger.warn('付款分配请求未完成', {
+      actorUserId: req.user.id,
+      requestId: req.requestId,
+      errorCode: error.code || 'ASSIGNMENT_FAILED',
+    });
+    throw error;
+  }
 }
 
 /** 原子批量分配或转派任务。 */
 async function assignTasks(req, res) {
-  const data = await paymentDispatchService.assignTasks(
-    { ...req.body, idempotencyKey: req.get('Idempotency-Key') || req.body.idempotencyKey },
-    req.user.id
-  );
-  return res.json({ success: true, data });
+  try {
+    const data = await paymentDispatchService.assignTasks(
+      { ...req.body, idempotencyKey: req.get('Idempotency-Key') || req.body.idempotencyKey },
+      req.user.id,
+      { requestId: req.requestId }
+    );
+    return res.json({ success: true, data });
+  } catch (error) {
+    logger.warn('付款分配请求未完成', {
+      actorUserId: req.user.id,
+      requestId: req.requestId,
+      errorCode: error.code || 'ASSIGNMENT_FAILED',
+    });
+    throw error;
+  }
 }
 
 /** 管理员修改付款任务处理备注。 */
@@ -121,6 +158,7 @@ async function runScan(req, res) {
 }
 
 module.exports = {
+  previewAssignment,
   getPaymentLink,
   getPendingOverview,
   getOverview,

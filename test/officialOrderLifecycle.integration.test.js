@@ -114,6 +114,7 @@ const axios = require('axios');
   });
 
   test('切换失败后重启恢复代理，新单抓取截止后自动分配', async () => {
+    await order.update({ orderDate: new Date() });
     const proxy = require('../src/utils/proxyManager');
     const worker = require('../src/services/crawler/refreshWorkerService');
     const refreshJobs = require('../src/services/crawler/refreshJobService');
@@ -169,7 +170,7 @@ const axios = require('axios');
       const task = await models.PaymentTask.findOne({ where: { orderId: order.id } });
       expect(order.status).toBe('payment_due');
       expect(order.officialPaymentExpiresAt).toBeTruthy();
-      expect(task.deadlineAt).toEqual(order.officialPaymentExpiresAt);
+      expect(task.deadlineAt).toEqual(new Date(order.orderDate.getTime() + 1800000));
       expect(task.assigneeUserId).toBe(admin.id);
       await state.reload();
       expect(state.workerProxyReady).toBe(true);
@@ -304,6 +305,7 @@ const axios = require('axios');
   });
 
   test('五阶段落库、来源快照幂等、准确截止同步，不篡改人工付款任务四态', async () => {
+    await order.update({ orderDate: new Date() });
     const task = await models.PaymentTask.create({
       orderId: order.id,
       processingStatus: 'processing',
@@ -317,7 +319,7 @@ const axios = require('axios');
     expect(order.officialOrderCreatedAt).toBeNull();
     expect(order.autoRefreshEnabled).toBe(true);
     await task.reload();
-    expect(task.deadlineAt).toEqual(expiry);
+    expect(task.deadlineAt).toEqual(new Date(order.orderDate.getTime() + 1800000));
     expect(task.version).toBe(1);
     for (const status of ['PAYMENT_RECEIVED', 'PROCESSING', 'READY_FOR_PICKUP', 'PICKED_UP']) {
       page(status);
@@ -445,7 +447,8 @@ const axios = require('axios');
     expect(axios.get).toHaveBeenCalledTimes(1);
   });
 
-  test('错单仅记录安全异常，不跨单覆盖，禁止新付款分配', async () => {
+  test('错单不跨单覆盖，身份异常提示不阻止付款分配', async () => {
+    await order.update({ orderDate: new Date() });
     page('PAYMENT_RECEIVED', json => {
       json.orderDetail.orderHeader.d.orderNumber = 'W9999999999';
     });
@@ -474,7 +477,7 @@ const axios = require('axios');
         },
         admin.id
       )
-    ).rejects.toMatchObject({ code: 'PAYMENT_NOT_ELIGIBLE' });
+    ).resolves.toMatchObject({ assignee: { id: admin.id } });
   });
 
   test('官网结果晚于并发编辑时拒绝覆盖', async () => {
@@ -517,7 +520,8 @@ const axios = require('axios');
     }
   });
 
-  test('只有准确截止、没有精确创建时间仍可分配；付款后不可新分配', async () => {
+  test('有来源下单时间且缺少官网创建时间仍可分配；付款后不可新分配', async () => {
+    await order.update({ orderDate: new Date() });
     await order.update({
       status: 'payment_due',
       officialPaymentExpiresAt: new Date(Date.now() + 600000),
@@ -551,7 +555,8 @@ const axios = require('axios');
     ).rejects.toMatchObject({ code: 'PAYMENT_NOT_ELIGIBLE' });
   });
 
-  test('混合商品阶段禁止新分配', async () => {
+  test('混合商品阶段待核实不阻止新分配', async () => {
+    await order.update({ orderDate: new Date() });
     await order.update({
       status: 'unknown',
       officialStatusNeedsReview: true,
@@ -571,7 +576,7 @@ const axios = require('axios');
         },
         admin.id
       )
-    ).rejects.toMatchObject({ code: 'PAYMENT_NOT_ELIGIBLE' });
+    ).resolves.toMatchObject({ assignee: { id: admin.id } });
   });
 
   test('跳过任务不改变刷新成功时间或清除已有错误', async () => {

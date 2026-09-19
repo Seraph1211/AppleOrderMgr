@@ -1,3 +1,4 @@
+const { getPaymentDeadline } = require('./paymentEligibility');
 const crypto = require('crypto');
 const { Order, OrderPaymentCode, PaymentTask, PaymentTaskEvent, sequelize } = require('../models');
 const repo = require('./ingestionRepository');
@@ -189,7 +190,7 @@ async function getPaymentCode(id, userId, own = true) {
           paymentMethod: order.paymentMethod,
           officialOrderStatus: order.status,
           officialPaymentStatus: order.paymentStatus,
-          deadlineAt: task.deadlineAt,
+          deadlineAt: getPaymentDeadline(order),
           imageDataUrl: row?.payload.imageDataUrl || null,
           sourceTime: row?.sourceTime || null,
         };

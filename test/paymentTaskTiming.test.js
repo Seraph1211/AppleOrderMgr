@@ -1,7 +1,7 @@
 const { serializeTask } = require('../src/services/paymentTaskService');
 
 describe('付款窗口时间契约', () => {
-  test('付款截止固定取官网订单创建时间加 30 分钟', () => {
+  test('付款截止固定取来源下单时间加 30 分钟并忽略官网时间', () => {
     const task = {
       toJSON: () => ({
         id: 1,
@@ -20,7 +20,8 @@ describe('付款窗口时间契约', () => {
           status: 'pending',
           paymentStatus: 'unpaid',
           paymentMethod: '支付宝',
-          officialOrderCreatedAt: new Date('2026-09-08T10:00:00.000Z'),
+          orderDate: new Date('2026-09-08T10:00:00.000Z'),
+          officialOrderCreatedAt: new Date('2026-09-08T09:00:00.000Z'),
           lastCrawledAt: new Date('2026-09-08T10:04:30.000Z'),
           updatedAt: new Date('2026-09-08T10:01:00.000Z'),
         },
@@ -30,13 +31,13 @@ describe('付款窗口时间契约', () => {
     const result = serializeTask(task, new Date('2026-09-08T10:05:00.000Z'));
 
     expect(result.deadlineAt.toISOString()).toBe('2026-09-08T10:30:00.000Z');
-    expect(result.deadlineSource).toBe('official');
+    expect(result.deadlineSource).toBe('source_order');
     expect(result.remainingSeconds).toBe(25 * 60);
     expect(result.lastCrawledAt.toISOString()).toBe('2026-09-08T10:04:30.000Z');
     expect(result.paymentMethod).toBe('支付宝');
   });
 
-  test('官网只有日期或没有精确时间时不生成倒计时', () => {
+  test('缺少来源下单时间不生成倒计时', () => {
     const task = {
       toJSON: () => ({
         id: 1,

@@ -1,4 +1,17 @@
-const { getOfficialDeadline, isPaymentBlocked } = require('./crawler/officialOrderData');
+const {
+  getPaymentDeadline,
+  isAssignmentBlocked,
+  validatePaymentOrderUrl,
+} = require('./paymentEligibility');
+
+function hasValidLink(order) {
+  try {
+    validatePaymentOrderUrl(order?.orderUrl, order?.orderNumber);
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
 
 /**
  * 派生未分配任务的当前等待原因。
@@ -12,7 +25,7 @@ function describeAutoAssignment(task, rule, overview, now = new Date()) {
   if (task.assigneeUserId) return null;
   let reasonCode = 'WAITING_SCAN';
   let reason = '等待自动分配';
-  const deadline = getOfficialDeadline(task.order);
+  const deadline = getPaymentDeadline(task.order);
   const staff = overview.staff.filter(person =>
     rule ? rule.assigneeUserIds.includes(person.id) : person.assignmentMode !== 'tag_only'
   );
@@ -29,16 +42,16 @@ function describeAutoAssignment(task, rule, overview, now = new Date()) {
   } else if (task.processingStatus !== 'pending') {
     reasonCode = 'NOT_PENDING';
     reason = '仅待处理任务参与自动分配';
-  } else if (isPaymentBlocked(task.order)) {
+  } else if (isAssignmentBlocked(task.order)) {
     reasonCode = 'ORDER_BLOCKED';
     reason = '订单当前状态不允许自动分配';
   } else if (!deadline) {
     reasonCode = 'UNKNOWN_DEADLINE';
-    reason = '等待官网付款截止时间';
+    reason = '来源下单时间未知';
   } else if (deadline <= now) {
     reasonCode = 'EXPIRED';
     reason = '已过付款截止时间';
-  } else if (task.paymentLinkSource !== 'order_url') {
+  } else if (!hasValidLink(task.order)) {
     reasonCode = 'MISSING_LINK';
     reason = '等待付款入口';
   } else if (!eligible.length) {

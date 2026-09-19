@@ -264,7 +264,9 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       { orderNumber: withoutOfficialTime.orderNumber }
     );
     expect(ownDateOnlyTask.items[0].orderDate).toEqual(withoutOfficialTime.orderDate);
-    expect(ownDateOnlyTask.items[0].deadlineAt).toBeNull();
+    expect(ownDateOnlyTask.items[0].deadlineAt).toEqual(
+      new Date(withoutOfficialTime.orderDate.getTime() + 1800000)
+    );
     await withoutOfficialTime.update({ officialOrderCreatedAt: originalOfficialTime });
     const own = await paymentTaskService.listOwnTasks(staffOne.id, { page: 2, limit: 20 });
     expect(own.pagination).toEqual({ page: 2, limit: 20, total: 75, totalPages: 4 });
@@ -1139,9 +1141,6 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       { paymentStatus: 'paid' },
       { paymentStatus: 'refunded' },
       { status: 'cancelled' },
-      { officialStatusNeedsReview: true },
-      { officialOrderCreatedAt: null },
-      { validationIssues: [{ type: 'order_identity' }] },
     ]) {
       await order.update({
         status: 'payment_expired',

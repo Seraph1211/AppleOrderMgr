@@ -87,14 +87,14 @@ async function main() {
             id === 2
               ? { availability: 'unsupported', message: '支付宝暂无法获取付款码' }
               : {
-                  ...task(id),
-                  deadlineAt: '2026-09-20T15:00:00Z',
-                  availability: state,
-                  message: state === 'missing' ? '暂未采集到付款码，请稍后重试' : null,
-                  amount: '15998.00',
-                  officialOrderStatus: status,
-                  imageDataUrl: state === 'available' ? makePng() : null,
-                };
+                ...task(id),
+                deadlineAt: '2026-09-20T15:00:00Z',
+                availability: state,
+                message: state === 'missing' ? '暂未采集到付款码，请稍后重试' : null,
+                amount: '15998.00',
+                officialOrderStatus: status,
+                imageDataUrl: state === 'available' ? makePng() : null,
+              };
         } else throw new Error('未配置合成接口 ' + url.pathname);
         await route.fulfill({
           contentType: 'application/json',

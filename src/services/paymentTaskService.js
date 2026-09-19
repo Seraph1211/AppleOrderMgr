@@ -14,7 +14,7 @@ const {
 } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { serializePublicProducts } = require('../utils/orderSerialization');
-const { getOfficialDeadline } = require('./crawler/officialOrderData');
+const { getPaymentDeadline } = require('./paymentEligibility');
 const refreshJobService = require('./crawler/refreshJobService');
 const { normalizePayerName, updateLockedOrderPayer } = require('./payerService');
 
@@ -182,7 +182,7 @@ async function listProductNameOptions(taskWhere, orderWhere) {
 
 function serializeTask(task, serverTime = new Date()) {
   const plain = task.toJSON();
-  const deadline = getOfficialDeadline(plain.order);
+  const deadline = getPaymentDeadline(plain.order);
   const remainingSeconds = deadline
     ? Math.floor((deadline.getTime() - serverTime.getTime()) / 1000)
     : null;
@@ -213,7 +213,7 @@ function serializeTask(task, serverTime = new Date()) {
     payerName: plain.order?.payerName || null,
     payerVersion: plain.order?.payerVersion || 0,
     deadlineAt: deadline,
-    deadlineSource: deadline ? 'official' : null,
+    deadlineSource: deadline ? 'source_order' : null,
     remainingSeconds,
     eligibilityVerifiedAt: plain.eligibilityVerifiedAt,
     eligibilityValidUntil: plain.eligibilityValidUntil,
@@ -538,7 +538,7 @@ async function getOwnPaymentLink(taskId, userId) {
       {
         model: Order,
         as: 'order',
-        attributes: ['orderUrl'],
+        attributes: ['orderUrl', 'orderDate'],
       },
     ],
   });
@@ -554,7 +554,7 @@ async function getOwnPaymentLink(taskId, userId) {
     afterStatus: task.processingStatus,
     details: { accessedAt: now.toISOString() },
   });
-  return { paymentUrl, serverTime: now, deadlineAt: task.deadlineAt };
+  return { paymentUrl, serverTime: now, deadlineAt: getPaymentDeadline(task.order) };
 }
 
 /**

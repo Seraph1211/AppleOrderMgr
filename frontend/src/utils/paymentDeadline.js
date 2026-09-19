@@ -10,20 +10,23 @@ const DEADLINE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   hourCycle: 'h23',
 });
 
+/** 返回来源下单时间加 30 分钟的毫秒时间，缺失时为 NaN。 */
+export function getPaymentDeadlineTime(orderDate) {
+  if (!PRECISE_TIME.test(orderDate || '')) return NaN;
+  const timestamp = Date.parse(orderDate);
+  return Number.isFinite(timestamp) ? timestamp + PAYMENT_WINDOW_MS : NaN;
+}
+
 /**
  * 以来源下单时间加 30 分钟生成北京时间 YY/MM/DD HH:mm，不依赖官网时间。
  * @param {string|null|undefined} orderDate 任务列表的来源下单时间
  * @returns {string} 截止时间，来源时间缺失、不完整或无效时为 -
  */
 export function formatPaymentDeadline(orderDate) {
-  if (!PRECISE_TIME.test(orderDate || '')) return '-';
-  const timestamp = Date.parse(orderDate);
+  const timestamp = getPaymentDeadlineTime(orderDate);
   if (!Number.isFinite(timestamp)) return '-';
   const parts = Object.fromEntries(
-    DEADLINE_FORMATTER.formatToParts(new Date(timestamp + PAYMENT_WINDOW_MS)).map(part => [
-      part.type,
-      part.value,
-    ])
+    DEADLINE_FORMATTER.formatToParts(new Date(timestamp)).map(part => [part.type, part.value])
   );
   return `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`;
 }

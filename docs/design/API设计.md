@@ -201,11 +201,11 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - 单项和当前页勾选批量复制订单信息均通过既有链接接口逐单校验 `payment_tasks.link.read_own` 和当前任务归属，接口直接返回该任务关联订单的 `orders.orderUrl`；前端结合本人任务 DTO 生成 `orders.id || 商品信息 || 支付方式 || 付款截止时间 || 订单链接`，批量结果按当前列表顺序每单一行。商品名称优先、型号兜底，每项按 `名称 x 数量` 展示，多商品使用 `、` 连接；`WECHAT`／`WECHAT PAY`／`微信支付` 显示为 `微信`，`ALIPAY` 显示为 `支付宝`，其他非空值保留原文，商品或支付方式缺失时使用 `-`，付款截止时间仅由任务 DTO 的来源下单时间 `orderDate + 30 分钟` 计算，固定北京时间 `YY/MM/DD HH:mm`；来源时间缺失、不含时分／时区或无效时使用 `-`，不回退官网时间；链接保持普通 URL。接口不按核实、截止时间、人工处理状态或官网支付／订单状态限制复制；链接为空时返回资源不存在，响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
 - 本人任务刷新提交返回 HTTP `202`、`jobId`、是否新建或合并；`GET /api/payment-tasks/:id/refresh/:jobId` 仅允许当前负责人查询同一关联订单的刷新任务，返回 pending、running、succeeded、failed、skipped、错误摘要和订单最新抓取时间。入队不表示官网已更新；前端应展示提交中、排队／运行、成功／失败，终态后重新加载当前列表，Worker 未运行时明确保持“等待后台处理”。
 - 本人任务列表和详情返回关联订单已有的 `paymentMethod` 和派生的 `recipientTag`；两个付款列表额外返回当前权限及其他筛选条件范围内的 `productNameOptions` 和 `recipientTagOptions`，分别不受已选商品、已选 TAG 限制，供可搜索下拉多选使用，不能只从当前页计算。这些字段只用于展示和筛选，不作为任务处理结果或可编辑选项。本人任务和管理员调度列表均按关联订单 `orderDate DESC` 稳定分页，时间相同时按任务 ID 倒序；`updatedAt` 仍取付款任务与关联订单更新时间中的较新值，但两张付款页面的“数据更新时间”只展示最后一次成功官网抓取时间 `lastCrawledAt`。
-- 付款倒计时优先使用 `officialPaymentExpiresAt`，回退 `officialOrderCreatedAt + 30 分钟`。官网创建时间必须包含时分，仅有日期时保持未知；服务端返回 `serverTime`、`deadlineAt` 和 `remainingSeconds`，客户端不得用本机时间决定是否超时。管理员人工截止时间核实接口已取消。
+- 付款截止、倒计时、复制、付款码弹窗和分配资格统一使用来源 `orderDate + 30 分钟`，`deadlineSource=source_order`；缺失或不完整来源时间返回 null，不回退官网时间。客户端按 `serverTime` 校准，未知显示“时间未知”，到期显示“已超时”，明确已付／取消等终态优先。官网字段保持独立；历史任务截止缓存不决定分配资格。
 - `GET /api/payment-dispatch/tasks` 新增 `page`（默认 1，1–100000）和 `pagination: { page, limit, total, totalPages }`；`limit` 保持默认 100、上限 200，页面使用 10/20/50/100。两个付款列表新增返回 `orderDate`（关联订单已有的下单时间，与订单管理一致），`officialOrderCreatedAt` 继续供官网时间和截止规则使用；下单时间展示优先 `orderDate`、缺失时回退已确认的 `officialOrderCreatedAt`，都缺失保持未知。支持 `orderNumber`、`productNames`、`recipientTags`、`assignee`、`officialOrderStatus` 和 `processingStatus` 组合筛选；商品名称和 TAG 各自组内 OR、跨维度 AND，均在数据库分页前执行，并兼容旧商品查询参数和单值 `recipientTag`。每项返回关联订单已有的 `paymentMethod`、派生的 `recipientTag`、`officialOrderStatus`、`lastCrawledAt` 和派生的 `deadlineAt`，列表级返回 `productNameOptions`、`recipientTagOptions`，其中页面“数据更新时间”只使用最后一次成功官网抓取时间 `lastCrawledAt`。
 - `PUT /api/payment-dispatch/tasks/:id/notes` 允许具有 `payment_dispatch.correct` 的管理员修改任意现有付款任务的处理备注。body 为 `{ processingNotes: string | null, expectedVersion }`，备注去除首尾空格后最长 2000 字，空字符串保存为 `null`；`Idempotency-Key` 必填。接口使用任务版本防覆盖，只修改备注并递增任务版本，不改变人工状态、负责人或官网状态；写入 `notes_updated` 任务事件并返回更新后的任务 DTO。任务不存在返回 404，旧版本返回 `CONCURRENT_MODIFICATION`。
 - 批量分配 body 为 `{ tasks: [{ id, expectedVersion }], assigneeUserId, handoffConfirmed?, reason? }`，一次最多 100 项，在同一事务内校验版本、状态、付款窗口、目标权限和容量后全部提交或全部回滚。管理员单项刷新返回 HTTP `202` 和 `{ jobId, status, created, merged }`；批量刷新 body 为 `{ taskIds }`，返回 `{ total, created, merged, missing, results }` 汇总。两者都只把对应订单提交持久化刷新队列，HTTP `202` 不代表官网已更新。
-- payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、上限有余量、合法付款链接以及官网付款窗口仍有效。官网已付款、退款、终态、身份异常和待核对状态禁止新分配；active_count 为 pending＋processing＋exception，completed 释放容量，官网收款不自动修改人工四态。
+- payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、上限有余量、合法付款链接及有效来源下单时间；自动分配额外要求来源下单时间加 30 分钟尚未到期，手动允许超时。已付款、退款、取消等明确终态禁止新分配；身份异常、状态待核实及抓取失败仅提示，不阻止分配；active_count 为 pending＋processing＋exception，completed 释放容量，官网收款不自动修改人工四态。
 
 ### 生命周期与来源冲突响应
 
@@ -246,7 +246,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ### 下单时间精度与时区（2026-09-09 修复）
 
-`orderDate` / `order_date` 保留邮件或人工录入的来源下单时间，官网只有日期时禁止覆盖，官网精确时间独立保存在 `officialOrderCreatedAt`。日期冲突提示核对，不用官网日期补造时分秒。页面和导出统一北京时间（Asia/Shanghai）；日期筛选包含北京时间的完整起止日。仅有日期时仅展示日期，未知时间不使用入库时间或付款截止倒推。人工录入必须包含时分；无时区输入按北京时间解释。付款截止仍只使用官网截止或精确官网时间。历史修复只恢复可核验来源快照，不将来源时间宣称为官网精确时间。
+`orderDate` / `order_date` 保留邮件或人工录入的来源下单时间，官网只有日期时禁止覆盖，官网精确时间独立保存在 `officialOrderCreatedAt`。日期冲突提示核对，不用官网日期补造时分秒。页面和导出统一北京时间（Asia/Shanghai）；日期筛选包含北京时间的完整起止日。仅有日期时仅展示日期，未知时间不使用入库时间或付款截止倒推。人工录入必须包含时分；无时区输入按北京时间解释。服务端分配资格和两个付款页面统一使用完整来源下单时间加 30 分钟，超时仅显示“已超时”。历史修复只恢复可核验来源快照，不将来源时间宣称为官网精确时间。
 
 ## 账号与操作记录补充契约（2026-09-09）
 
@@ -265,7 +265,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ### 过期任务手动分配（2026-09-09）
 
-`PUT /api/payment-dispatch/tasks/assignee` 及单项兼容入口允许管理员手动分配／转派已过期的现有任务，`reason` 选填、最多 500 字；存在转派仍要求 `handoffConfirmed=true`。仅解除过期拦截，不放宽已付、退款、取消、状态待核实、未知付款截止和链接身份校验；容量、版本及整批原子性保持。自动分配不纳入过期订单。审计记录可空原因和 `expiredAtAssignment`，不修改订单官网状态或付款时间。
+`PUT /api/payment-dispatch/tasks/assignee` 及单项兼容入口允许管理员手动分配／转派已过期的现有任务，`reason` 选填、最多 500 字；存在转派仍要求 `handoffConfirmed=true`。仅解除过期拦截，保留已付、退款、取消、未知来源下单时间和链接格式／订单号匹配校验，移除身份异常与状态待核实拦截；容量、版本及整批原子性保持。自动分配不纳入过期订单。审计记录可空原因和 `expiredAtAssignment`，不修改订单官网状态或付款时间。
 
 ## 人员批量配置与账号软删除（2026-09-09）
 
@@ -604,3 +604,9 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - 本人付款任务展示、链接、刷新、付款人登记继续按既有任务权限与所有权执行，不受订单 TAG 限制；不能凭任务归属调用订单管理接口。
 - 渠道改名仅允许全部订单范围且有 channels.rename 权限者执行；在同一事务更新授权 TAG 与审计，目标 TAG 已存在订单或已有授权时拒绝。订单普通编辑不开放 tag 写入。
 - 仪表板、统计、基础档案内的订单聚合和历史订单关联入口均限制订单范围；基础档案自身的读取权限不改变。
+
+### 付款分配预检与失败明细（2026-09-20）
+
+`POST /api/payment-dispatch/tasks/assignment-preview`：admin 与 `payment_dispatch.assign`，只读预检。请求 `{ tasks: [{id, expectedVersion}], assigneeUserId? }`，1–100 条。返回 `{items:[{id,orderId,eligible,code,reason,solution,expired,warnings,hasTransfer}],eligibleCount,blockedCount,recipient}`；接收人选定后按任务 ID 升序核算容量，原负责人不重复占容量。预检不会写入任务，也不锁定资格。身份异常、状态待核实、未抓取只产生 warnings。
+
+正式分配保留版本、容量与交接确认校验及整批事务。界面默认整批提交，有阻塞时可明确选择仅提交预检合格子集；子集也原子执行，数据变化则返回 409 与 `details.items`，重新预检后再确认，不静默跳过。界面保留成功与未分配明细。失败事件保存错误码、逐条规则原因、任务 ID、目标负责人和 requestId，写在业务事务回滚后；审计失败另写脱敏应急日志。

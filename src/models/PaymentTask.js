@@ -2,7 +2,7 @@ const { DataTypes } = require('sequelize');
 const { encrypt, decrypt } = require('../utils/fieldEncryption');
 
 const PAYMENT_TASK_STATUSES = ['pending', 'processing', 'completed', 'exception'];
-const DEADLINE_SOURCES = ['official', 'manual_verified'];
+const DEADLINE_SOURCES = ['official', 'manual_verified', 'source_order'];
 
 /**
  * 定义付款任务模型。

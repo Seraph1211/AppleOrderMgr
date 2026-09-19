@@ -13,7 +13,7 @@ import { formatOrderTime } from '../utils/orderTime';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
 import usePaymentRefresh from '../hooks/usePaymentRefresh';
-import { getPaymentStageLabel } from '../utils/paymentStage';
+import { formatPaymentCountdown } from '../utils/paymentCountdown';
 import { getOrderStatusBadge } from '../constants/orderStatus';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, CreditCard, Pencil, RefreshCw, RotateCcw, Save, Search } from 'lucide-react';
@@ -59,16 +59,6 @@ const INITIAL_FILTERS = {
 };
 
 const COPY_LINK_CONCURRENCY = 5;
-
-function formatCountdown(deadlineAt, now, task) {
-  const stage = getPaymentStageLabel(task);
-  if (stage) return stage;
-  if (!deadlineAt) return '待核实';
-  const seconds = Math.floor((new Date(deadlineAt).getTime() - now) / 1000);
-  if (seconds <= 0) return `已超时 ${Math.ceil(Math.abs(seconds) / 60)} 分钟`;
-  const minutes = Math.floor(seconds / 60);
-  return `${minutes} 分 ${seconds % 60} 秒`;
-}
 
 function formatDateTime(value) {
   if (!value) return '尚未获取';
@@ -859,9 +849,9 @@ export default function PaymentTasks() {
                       <td
                         data-label="倒计时"
                         data-secondary="true"
-                        className={`px-4 py-4 text-sm ${task.remainingSeconds !== null && task.remainingSeconds <= 300 ? 'text-red-600 font-medium' : 'text-gray-700'}`}
+                        className={`px-4 py-4 text-sm ${formatPaymentCountdown(task, now).className}`}
                       >
-                        {formatCountdown(task.deadlineAt, now, task)}
+                        {formatPaymentCountdown(task, now, '时间未知').text}
                       </td>
                       <td data-label="人工处理状态" className="px-4 py-4">
                         <select
@@ -992,7 +982,7 @@ export default function PaymentTasks() {
                           </div>
                           <div className="min-[1200px]:hidden">
                             <p className="mb-1 text-gray-600">倒计时</p>
-                            {formatCountdown(task.deadlineAt, now, task)}
+                            {formatPaymentCountdown(task, now, '时间未知').text}
                           </div>
                         </div>
                       </td>
