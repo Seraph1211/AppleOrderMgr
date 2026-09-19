@@ -52,12 +52,12 @@ test('来源下单时间加30分钟，UTC和带时区时间一致，跨日补零
   for (const orderDate of ['2026-09-20T13:02:59Z', '2026-09-20T21:02:59+08:00']) {
     assert.equal(
       buildPaymentCopyText({ ...task, orderDate }, 'https://example.com/order/272'),
-      '272 || iPhone 18 Pro Max 勃艮第酒红色 512G x 2 || 支付宝 || 21:32 || https://example.com/order/272'
+      '272 || iPhone 18 Pro Max 勃艮第酒红色 512G x 2 || 支付宝 || 26/09/20 21:32 || https://example.com/order/272'
     );
   }
   assert.match(
     buildPaymentCopyText({ ...task, orderDate: '2026-09-20T15:35:00Z' }, 'url'),
-    /支付宝 \|\| 00:05 \|\| url$/
+    /支付宝 \|\| 26\/09\/21 00:05 \|\| url$/
   );
 });
 
@@ -95,7 +95,14 @@ test('来源时间缺失或不完整时不回退官网，官网失败和终态�
         },
         'url'
       ),
-      '1 || - || - || 22:28 || url'
+      '1 || - || - || 26/09/19 22:28 || url'
     );
   }
+});
+
+test('截止时间跨年后使用新日期，月日和时分补零', () => {
+  assert.equal(
+    buildPaymentCopyText({ orderId: 1, orderDate: '2026-12-31T23:38:00+08:00' }, 'url'),
+    '1 || - || - || 27/01/01 00:08 || url'
+  );
 });

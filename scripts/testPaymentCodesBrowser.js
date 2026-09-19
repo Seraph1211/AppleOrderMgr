@@ -123,7 +123,7 @@ async function main() {
         assert.match(await dialog.innerText(), /合成手机/);
         assert.equal(await dialog.locator('dt').last().innerText(), '付款截止时间');
         assert.equal(await dialog.locator('dt').nth(4).innerText(), '支付方式');
-        assert.equal(await dialog.locator('dd').last().innerText(), '21:32');
+        assert.equal(await dialog.locator('dd').last().innerText(), '26/09/20 21:32');
         assert.equal(
           await dialog.getByRole('img').evaluate(img => img.complete && img.naturalWidth > 0),
           true

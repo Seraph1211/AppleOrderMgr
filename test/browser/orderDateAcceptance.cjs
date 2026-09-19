@@ -98,7 +98,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       if (payment) {
         await page.getByRole('button', { name: mode === 'payment-tasks' ? '复制订单信息' : '复制订单信息 W0000000001', exact: true }).click();
         await page.waitForFunction(() => window.__copy.length > 0);
-        assert.equal(await page.evaluate(() => window.__copy), `183 || ${productName} x 2 || 微信 || 21:32 || https://example.com/order/1`);
+        assert.equal(await page.evaluate(() => window.__copy), `183 || ${productName} x 2 || 微信 || 26/09/20 21:32 || https://example.com/order/1`);
       }
       await page.screenshot({ path: `${output}/${mode.replaceAll('/', '-')}-desktop.png`, fullPage: true, animations: 'disabled' });
       await page.getByRole('button', { name: '清空日期', exact: true }).click();
@@ -110,7 +110,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         await page.getByRole('button', { name: '批量复制订单信息', exact: true }).click();
         await page.waitForFunction(() => window.__copy.includes('\n\n'));
         const copied = await page.evaluate(() => window.__copy);
-        assert.equal(copied, `183 || ${productName} x 2 || 微信 || 21:32 || https://example.com/order/1\n\n184 || ${productName} x 2 || 微信 || - || https://example.com/order/2`);
+        assert.equal(copied, `183 || ${productName} x 2 || 微信 || 26/09/20 21:32 || https://example.com/order/1\n\n184 || ${productName} x 2 || 微信 || - || https://example.com/order/2`);
       }
       await page.setViewportSize({ width: 375, height: 812 });
       if (mode === 'payment-tasks') await page.getByRole('button', { name: '筛选任务', exact: true }).click();

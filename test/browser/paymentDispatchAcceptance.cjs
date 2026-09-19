@@ -216,7 +216,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.getByTestId('center-toast').waitFor({ state: 'hidden', timeout: 5000 });
     assert.equal(
       await page.evaluate(() => window.__copy),
-      '9001 || iPhone 18 Pro Max 512GB 勃艮第酒红色 x 2 || 微信 || 21:32 || https://example.com/order/1'
+      '9001 || iPhone 18 Pro Max 512GB 勃艮第酒红色 x 2 || 微信 || 26/09/20 21:32 || https://example.com/order/1'
     );
     for (let i = 1; i <= 7; i++)
       await page.getByRole('checkbox', { name: `选择订单 W000000000${i}`, exact: true }).check();
