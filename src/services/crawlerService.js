@@ -5,7 +5,7 @@ const { getPaymentDeadline } = require('./paymentEligibility');
  *
  * 代理使用策略：
  * - 所有爬虫功能必须使用代理（防止 IP 被 Apple 风控）
- * - 隧道代理在单次抓取及重定向期间固定出口，重试通过新 sid 换出口
+ * - 隧道代理在单次抓取期间使用同一会话，网帆重试租用下一健康槽位
  * - 私密代理兼容模式保留失败计数和 HTTP 541 废弃 IP 规则
  *
  * 作者：Seraph
@@ -35,6 +35,10 @@ const { sendTelegramAlert } = require('../utils/telegramNotifier');
 const crawlerRateLimiter = require('./crawler/crawlerRateLimiter');
 const refreshJobRepository = require('./crawler/refreshJobRepository');
 const { classifyRefreshError, sanitizeRefreshError } = require('./crawler/refreshErrors');
+const { describeOrderPage } = require('./crawler/orderPageDiagnostics');
+const { createRefreshBudget, waitForRefresh } = require('./crawler/refreshBudget');
+const { acquireBrowserOrderData } = require('./crawler/browserAcquisition');
+const { mergeBrowserOrder } = require('./crawler/browserOrderMerge');
 const { isAutoRefreshEligible, isInitialRefreshEligible } = require('./crawler/refreshPolicy');
 const { PAYMENT_ASSIGNMENT_LOCK_ID } = require('./permissionService');
 
@@ -147,7 +151,13 @@ function validateOrderUrl(orderUrl, expectedOrderNumber) {
  * @throws {Error} 身份缺失或不匹配时抛出异常
  */
 function validateCrawledOrderIdentity(crawledData, expectedOrderNumber) {
-  if (!crawledData.orderNumber || crawledData.orderNumber !== expectedOrderNumber) {
+  if (typeof crawledData?.orderNumber !== 'string' || !/^W\d{10}$/.test(crawledData.orderNumber)) {
+    const error = new Error('官网尚未返回有效订单详情，请稍后重试');
+    error.eventType = 'parse';
+    error.parseReason = 'missing_order_identity';
+    throw error;
+  }
+  if (crawledData.orderNumber !== expectedOrderNumber) {
     const error = new Error('官网返回的订单身份与本地订单不一致');
     error.eventType = 'order_identity';
     error.skipFailureIncrement = true;
@@ -661,10 +671,11 @@ function getAutoRefreshStatus() {
  * 获取订单页面 HTML
  * @param {string} orderUrl - 订单详情页 URL
  * @param {Object|null} proxy - 代理配置对象
- * @returns {Promise<string>} HTML 内容
+ * @param {Object} options - 内部诊断选项
+ * @returns {Promise<string|Object>} HTML 或含内存响应元数据的对象
  * @throws {Error} 当请求失败时抛出异常
  */
-async function fetchOrderPage(orderUrl, proxy = null) {
+async function fetchOrderPage(orderUrl, proxy = null, options = {}) {
   const requestConfig = {
     headers: {
       'User-Agent': config.crawler.userAgent,
@@ -675,6 +686,7 @@ async function fetchOrderPage(orderUrl, proxy = null) {
       'Accept-Encoding': 'gzip',
     },
     timeout: config.crawler.timeout,
+    ...(options.signal ? { signal: options.signal } : {}),
   };
 
   // 使用代理
@@ -698,6 +710,13 @@ async function fetchOrderPage(orderUrl, proxy = null) {
 
   try {
     const response = await axios.get(orderUrl, requestConfig);
+    if (options.includeMetadata) {
+      return {
+        html: response.data,
+        httpStatus: response.status,
+        finalUrl: response.request?.res?.responseUrl,
+      };
+    }
     return response.data;
   } catch (error) {
     // 记录详细错误信息
@@ -705,8 +724,15 @@ async function fetchOrderPage(orderUrl, proxy = null) {
       urlSummary: summarizeOrderUrl(orderUrl),
       statusCode: error.response?.status,
       statusText: error.response?.statusText,
-      message: error.message,
+      message: sanitizeRefreshError(error),
     };
+
+    if (typeof error.response?.data === 'string') {
+      error.pageDiagnostics = describeOrderPage(error.response.data, null, {
+        httpStatus: error.response.status,
+        finalUrl: error.response.request?.res?.responseUrl,
+      });
+    }
 
     logger.error('请求订单页面失败', errorInfo);
     throw error;
@@ -967,200 +993,244 @@ function parseOrderData(orderJson, html) {
  * @returns {Promise<Object>} 爬取结果
  * @throws {Error} 当所有重试都失败时抛出异常
  */
-async function fetchWithRetry(orderUrl, maxRetries = 3) {
-  // 检查代理是否启用
+async function fetchWithRetry(orderUrl, maxRetries = 3, options = {}) {
   if (!config.proxy.enabled) {
     const error = new Error('爬虫服务必须启用代理池（请设置 PROXY_ENABLED=true）');
     error.eventType = 'proxy';
     throw error;
   }
 
-  let lastError;
-  let currentProxy = null;
-  let windControlAttemptCount = 0;
+  const startedAt = Date.now();
+  const budget = createRefreshBudget(config.crawler.taskTimeoutMs || 120000, options.signal);
+  const { signal } = budget;
   const requestedAttempts = Number.parseInt(maxRetries, 10);
   const attemptLimit = Number.isFinite(requestedAttempts)
     ? Math.min(Math.max(requestedAttempts, 1), MAX_CRAWL_ATTEMPTS)
     : MAX_CRAWL_ATTEMPTS;
+  let lastError;
+  let requestAttempts = 0;
+  let windControlAttemptCount = 0;
+  const attemptDiagnostics = [];
 
-  if (!proxyManager.getStatus().isInitialized) {
-    await proxyManager.initialize();
-  }
-
-  for (let attempt = 1; attempt <= attemptLimit; attempt++) {
-    try {
-      // 获取代理
-      currentProxy = proxyManager.getNextProxy();
-
-      if (!currentProxy) {
-        // ✅ 只有在代理池耗尽时才刷新
-        logger.warn('代理池已耗尽，尝试刷新获取新代理');
-        try {
-          await proxyManager.refresh();
-        } catch (refreshError) {
-          logger.error('刷新代理池失败', { error: refreshError.message });
-          const proxyError = new Error('无可用代理且刷新失败');
-          proxyError.eventType = 'proxy';
-          proxyError.urlSummary = summarizeOrderUrl(orderUrl);
-          await pauseAutoRefreshForProxyFailure('代理池耗尽或代理 API 失败', {
-            urlSummary: proxyError.urlSummary,
-            attempt,
-            refreshError: refreshError.message,
-            proxyStatus: proxyManager.getStatus(),
-          });
-          throw proxyError;
-        }
-
-        currentProxy = proxyManager.getNextProxy();
-
+  try {
+    if (!proxyManager.getStatus().isInitialized) await proxyManager.initialize();
+    for (let attempt = 1; attempt <= attemptLimit; attempt++) {
+      let currentProxy = null;
+      let pageDiagnostics = null;
+      const timing = { sessionWaitMs: 0, rateLimitWaitMs: 0, requestMs: 0, parseMs: 0 };
+      let stage = 'sessionWait';
+      let stageStartedAt = Date.now();
+      let stop = false;
+      try {
+        budget.check();
+        currentProxy = await proxyManager.acquireProxy({ signal });
         if (!currentProxy) {
-          const noProxyError = new Error('刷新代理池后仍无可用代理');
-          noProxyError.eventType = 'proxy';
-          noProxyError.urlSummary = summarizeOrderUrl(orderUrl);
-          await pauseAutoRefreshForProxyFailure('代理池耗尽', {
-            urlSummary: noProxyError.urlSummary,
-            attempt,
-            proxyStatus: proxyManager.getStatus(),
-          });
-          throw noProxyError;
-        }
-      }
-
-      logger.info('开始爬取订单', {
-        urlSummary: summarizeOrderUrl(orderUrl),
-        attempt,
-        maxRetries: attemptLimit,
-        proxy: `${currentProxy.host}:${currentProxy.port}`,
-      });
-
-      // 发送请求
-      await crawlerRateLimiter.acquire();
-      const html = await fetchOrderPage(orderUrl, currentProxy);
-
-      // 提取 JSON 数据
-      const orderJson = extractOrderJson(html);
-
-      if (!orderJson) {
-        const parseError = new Error('无法提取订单 JSON 数据');
-        parseError.eventType = 'parse';
-        throw parseError;
-      }
-
-      // 解析订单数据
-      const orderData = parseOrderData(orderJson, html);
-
-      // ✅ 成功：记录成功（不重置失败计数）
-      proxyManager.recordProxySuccess(currentProxy);
-      schedulerState.consecutiveWindControlCount = 0;
-
-      logger.info('订单爬取成功', {
-        orderNumber: orderData.orderNumber,
-        status: orderData.orderStatus,
-        productCount: orderData.products.length,
-        proxy: `${currentProxy.host}:${currentProxy.port}`,
-      });
-
-      return {
-        success: true,
-        data: orderData,
-        proxy: `${currentProxy.host}:${currentProxy.port}`,
-      };
-    } catch (error) {
-      lastError = error;
-      error.httpStatus = error.httpStatus || error.response?.status;
-      error.proxyProvider = currentProxy?.provider || proxyManager.getStatus().activeProvider;
-
-      if ([407, 441, 517].includes(error.httpStatus)) {
-        error.eventType = 'proxy';
-      }
-      error.refreshErrorCode = classifyRefreshError(error);
-
-      logger.warn('订单爬取失败', {
-        attempt,
-        maxRetries: attemptLimit,
-        error: error.message,
-        statusCode: error.response?.status,
-        proxy: currentProxy ? `${currentProxy.host}:${currentProxy.port}` : 'none',
-      });
-
-      const isKdlProvider = String(currentProxy?.provider || '').startsWith('kdl_');
-      if (
-        currentProxy &&
-        error.httpStatus !== 407 &&
-        !(error.httpStatus === 441 && isKdlProvider)
-      ) {
-        // HTTP 541: 私密代理废弃 IP；隧道 Provider 在下次重试生成新 sid
-        if (error.response?.status === 541) {
-          logger.warn('检测到 Apple 风控（HTTP 541），下次重试切换代理出口');
-          proxyManager.markProxyAsBad(currentProxy);
-          windControlAttemptCount++;
-          error.isWindControl = true;
-          error.httpStatus = 541;
-          error.proxyIp = `${currentProxy.host}:${currentProxy.port}`;
-          error.eventType = 'wind_control';
-          // 不在这里刷新固定入口；重试时从 Provider 获取下一代理会话
-        }
-        // 其他错误：累计失败次数
-        else {
-          const isDiscarded = proxyManager.recordProxyFailure(currentProxy);
-
-          if (isDiscarded) {
-            logger.info('代理已永久废弃，下次重试将获取新代理', {
-              discardedProxy: `${currentProxy.host}:${currentProxy.port}`,
+          try {
+            await proxyManager.refresh();
+            budget.check();
+            currentProxy = await proxyManager.acquireProxy({ signal });
+          } catch (error) {
+            budget.check();
+            await pauseAutoRefreshForProxyFailure('代理池耗尽或代理 API 失败', {
+              urlSummary: summarizeOrderUrl(orderUrl),
+              attempt,
             });
+            const proxyError = new Error('无可用代理且刷新失败');
+            proxyError.eventType = 'proxy';
+            throw proxyError;
+          }
+          if (!currentProxy) {
+            await pauseAutoRefreshForProxyFailure('代理池耗尽', {
+              urlSummary: summarizeOrderUrl(orderUrl),
+              attempt,
+            });
+            const error = new Error('无可用代理');
+            error.eventType = 'proxy';
+            throw error;
           }
         }
-      }
-
-      if (error.httpStatus === 407) {
-        await pauseAutoRefreshForProxyFailure('代理鉴权失败（HTTP 407）', {
+        timing.sessionWaitMs = Date.now() - stageStartedAt;
+        stage = 'rateLimit';
+        stageStartedAt = Date.now();
+        await crawlerRateLimiter.acquire({ signal });
+        budget.check();
+        timing.rateLimitWaitMs = Date.now() - stageStartedAt;
+        stage = 'request';
+        stageStartedAt = Date.now();
+        requestAttempts++;
+        logger.info('开始爬取订单', {
           urlSummary: summarizeOrderUrl(orderUrl),
+          attempt: requestAttempts,
+          maxRetries: attemptLimit,
           proxy: `${currentProxy.host}:${currentProxy.port}`,
+          sessionSlot: currentProxy.sessionSlot || null,
         });
-        break;
+        const page = await fetchOrderPage(orderUrl, currentProxy, {
+          includeMetadata: true,
+          signal,
+        });
+        budget.check();
+        timing.requestMs = Date.now() - stageStartedAt;
+        stage = 'parse';
+        stageStartedAt = Date.now();
+        const orderJson = extractOrderJson(page.html);
+        pageDiagnostics = describeOrderPage(page.html, orderJson, page);
+        if (!orderJson) {
+          const error = new Error('无法提取订单 JSON 数据');
+          error.eventType = 'parse';
+          throw error;
+        }
+        if (orderJson.guestOrderSpinner && !orderJson.orderDetail) {
+          const error = new Error('官网订单仍在加载或校验中，暂未返回订单详情，请稍后重试');
+          error.eventType = 'parse';
+          error.parseReason = 'guest_order_loading';
+          throw error;
+        }
+        const orderData = parseOrderData(orderJson, page.html);
+        validateCrawledOrderIdentity(orderData, summarizeOrderUrl(orderUrl).orderNumber);
+        budget.check();
+        timing.parseMs = Date.now() - stageStartedAt;
+        proxyManager.recordProxySuccess(currentProxy);
+        schedulerState.consecutiveWindControlCount = 0;
+        attemptDiagnostics.push({
+          attempt: requestAttempts,
+          ...timing,
+          errorCode: null,
+          sessionSlot: currentProxy.sessionSlot || null,
+        });
+        logger.info('订单爬取成功', {
+          orderNumber: orderData.orderNumber,
+          status: orderData.orderStatus,
+          productCount: orderData.products.length,
+          pageDiagnostics,
+          requestAttempts,
+          attemptDiagnostics,
+          elapsedMs: Date.now() - startedAt,
+        });
+        return {
+          success: true,
+          data: orderData,
+          proxy: `${currentProxy.host}:${currentProxy.port}`,
+          requestAttempts,
+          attemptDiagnostics,
+        };
+      } catch (rawError) {
+        const error = signal.aborted ? signal.reason : rawError;
+        lastError = error;
+        const timingKey = {
+          sessionWait: 'sessionWaitMs',
+          rateLimit: 'rateLimitWaitMs',
+          request: 'requestMs',
+          parse: 'parseMs',
+        }[stage];
+        timing[timingKey] = Date.now() - stageStartedAt;
+        error.pageDiagnostics = pageDiagnostics || error.pageDiagnostics || null;
+        error.httpStatus =
+          error.httpStatus || error.response?.status || pageDiagnostics?.httpStatus;
+        error.proxyProvider = currentProxy?.provider || proxyManager.getStatus().activeProvider;
+        error.proxyIp = currentProxy ? `${currentProxy.host}:${currentProxy.port}` : null;
+        if ([407, 441, 517].includes(error.httpStatus)) error.eventType = 'proxy';
+        error.refreshErrorCode = classifyRefreshError(error);
+        error.requestAttempts = requestAttempts;
+        attemptDiagnostics.push({
+          attempt: requestAttempts,
+          ...timing,
+          errorCode: error.refreshErrorCode,
+          stage,
+          sessionSlot: currentProxy?.sessionSlot || null,
+        });
+        error.attemptDiagnostics = attemptDiagnostics;
+        logger.warn('订单爬取失败', {
+          attempt: requestAttempts,
+          maxRetries: attemptLimit,
+          error: sanitizeRefreshError(error),
+          errorCode: error.refreshErrorCode,
+          parseReason: error.parseReason || null,
+          pageDiagnostics: error.pageDiagnostics,
+          statusCode: error.httpStatus,
+          stage,
+          timing,
+          sessionSlot: currentProxy?.sessionSlot || null,
+        });
+        if (error.eventType === 'order_identity') throw error;
+        // 只有已发出的网络失败才反馈线路健康，加载／解析错误单独计数。
+        if (currentProxy && !signal.aborted) {
+          const isKdl = String(currentProxy.provider || '').startsWith('kdl_');
+          if (error.httpStatus === 541) {
+            proxyManager.markProxyAsBad(currentProxy);
+            windControlAttemptCount++;
+            error.isWindControl = true;
+            error.eventType = 'wind_control';
+          } else if (
+            error.httpStatus !== 407 &&
+            !(error.httpStatus === 441 && isKdl) &&
+            (stage === 'request' || currentProxy.provider === 'fanproxy_tunnel') &&
+            ['request', 'parse'].includes(stage)
+          ) {
+            proxyManager.recordProxyFailure(currentProxy, { errorCode: error.refreshErrorCode });
+          }
+        }
+        if (error.httpStatus === 407) {
+          await pauseAutoRefreshForProxyFailure('代理鉴权失败（HTTP 407）', {
+            urlSummary: summarizeOrderUrl(orderUrl),
+          });
+        }
+        stop =
+          signal.aborted ||
+          error.httpStatus === 407 ||
+          !currentProxy ||
+          ['REQUEST_CANCELLED', 'TASK_TIMEOUT', 'DATABASE'].includes(error.refreshErrorCode);
+      } finally {
+        if (currentProxy) proxyManager.releaseProxy(currentProxy);
       }
-
-      // 如果还有重试机会，延时后重试
+      if (stop) break;
       if (attempt < attemptLimit) {
         const retryMin = config.crawler.retryDelayMinMs || 1000;
         const retryMax = config.crawler.retryDelayMaxMs || 5000;
         const delay = Math.min(retryMax, retryMin * attempt) + Math.floor(Math.random() * 250);
-        logger.info('等待后重试', {
-          delaySeconds: (delay / 1000).toFixed(1),
-          nextAttempt: attempt + 1,
-        });
-        await sleep(delay);
+        try {
+          await waitForRefresh(delay, signal);
+        } catch (error) {
+          lastError = error;
+          break;
+        }
       }
     }
-  }
-
-  if (windControlAttemptCount === attemptLimit) {
-    schedulerState.consecutiveWindControlCount++;
-    if (schedulerState.consecutiveWindControlCount >= config.crawler.windControlPauseThreshold) {
-      await pauseAutoRefresh('连续订单耗尽重试并触发 Apple 风控', {
-        urlSummary: summarizeOrderUrl(orderUrl),
-        proxyIp: lastError.proxyIp,
-        consecutiveWindControlCount: schedulerState.consecutiveWindControlCount,
-        threshold: config.crawler.windControlPauseThreshold,
-      });
+    if (windControlAttemptCount === attemptLimit) {
+      schedulerState.consecutiveWindControlCount++;
+      if (schedulerState.consecutiveWindControlCount >= config.crawler.windControlPauseThreshold) {
+        await pauseAutoRefresh('连续订单耗尽重试并触发 Apple 风控', {
+          urlSummary: summarizeOrderUrl(orderUrl),
+          consecutiveWindControlCount: schedulerState.consecutiveWindControlCount,
+          threshold: config.crawler.windControlPauseThreshold,
+        });
+      }
     }
+    const retryError = new Error(
+      `爬取订单失败，已尝试 ${requestAttempts} 次：${sanitizeRefreshError(lastError)}`
+    );
+    retryError.isWindControl = Boolean(lastError?.isWindControl);
+    retryError.httpStatus = lastError?.httpStatus || lastError?.response?.status;
+    retryError.proxyIp = lastError?.proxyIp || null;
+    retryError.eventType = lastError?.eventType || 'crawler';
+    retryError.proxyProvider = lastError?.proxyProvider || null;
+    retryError.refreshErrorCode = classifyRefreshError(lastError);
+    retryError.pageDiagnostics = lastError?.pageDiagnostics || null;
+    retryError.parseReason = lastError?.parseReason || null;
+    retryError.requestAttempts = requestAttempts;
+    retryError.attemptDiagnostics = attemptDiagnostics;
+    throw retryError;
+  } finally {
+    budget.dispose();
   }
-
-  // 所有重试都失败
-  const retryError = new Error(`爬取订单失败，已重试 ${attemptLimit} 次: ${lastError.message}`);
-  retryError.isWindControl = Boolean(lastError.isWindControl);
-  retryError.httpStatus = lastError.httpStatus || lastError.response?.status;
-  retryError.proxyIp =
-    lastError.proxyIp || (currentProxy ? `${currentProxy.host}:${currentProxy.port}` : null);
-  retryError.eventType = lastError.eventType || 'crawler';
-  retryError.proxyProvider = lastError.proxyProvider || null;
-  retryError.refreshErrorCode = lastError.refreshErrorCode || classifyRefreshError(lastError);
-  throw retryError;
 }
 
 /**
  * 爬取订单并更新数据库
  * @param {number} orderId - 订单 ID
+ * @param {Object} [options] - 内部刷新选项
+ * @param {Function} [options.acquireOrderPage] - 受信任浏览器采集实现，不来自请求体
+ * @param {AbortSignal} [options.signal] - 取数取消信号
  * @returns {Promise<Object>} 更新结果
  * @throws {Error} 当爬取或更新失败时抛出异常
  */
@@ -1210,6 +1280,15 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     }
     const expectedOrderNumber = order.orderNumber;
     const initialUpdatedAt = order.updatedAt ? new Date(order.updatedAt).getTime() : null;
+    if (
+      options.expectedUpdatedAt !== undefined &&
+      new Date(options.expectedUpdatedAt).getTime() !== initialUpdatedAt
+    ) {
+      const staleError = new Error('订单在浏览器采集期间已变化，本次结果已放弃');
+      staleError.eventType = 'concurrency';
+      staleError.skipFailureIncrement = true;
+      throw staleError;
+    }
 
     logger.info('开始爬取订单数据', {
       orderId: order.id,
@@ -1219,7 +1298,22 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     });
 
     // 3. 爬取订单数据（带重试）
-    const crawlResult = await fetchWithRetry(orderUrl, config.crawler.maxRetry);
+    let crawlResult;
+    if (typeof options.acquireOrderPage === 'function') {
+      crawlResult = await acquireBrowserOrderData({
+        acquireOrderPage: options.acquireOrderPage,
+        orderUrl,
+        orderNumber: expectedOrderNumber,
+        timeoutMs: config.crawler.taskTimeoutMs || 120000,
+        signal: options.signal,
+        parseOrderData,
+        validateIdentity: validateCrawledOrderIdentity,
+      });
+    } else {
+      crawlResult = await fetchWithRetry(orderUrl, config.crawler.maxRetry, {
+        signal: options.signal,
+      });
+    }
     const { data: crawledData, proxy } = crawlResult;
     validateCrawledOrderIdentity(crawledData, expectedOrderNumber);
     // 网络请求结束后才开启短事务，并在写入前锁定目标行。
@@ -1252,7 +1346,26 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     }
     order = lockedOrder;
 
-    const updateData = mergeOfficialOrder(order, crawledData);
+    if (options.browserTicketId) {
+      const consumed = await CrawlLog.findOne({
+        where: {
+          orderId: order.id,
+          success: true,
+          context: { [Op.contains]: { browserTicketId: options.browserTicketId } },
+        },
+        transaction,
+      });
+      if (consumed) {
+        const replayError = new Error('浏览器刷新任务已经完成，请重新发起');
+        replayError.eventType = 'concurrency';
+        replayError.skipFailureIncrement = true;
+        throw replayError;
+      }
+    }
+    const browserRefresh = crawlResult.acquisitionMethod === 'browser';
+    const updateData = browserRefresh
+      ? mergeBrowserOrder(order, crawledData)
+      : mergeOfficialOrder(order, crawledData);
     const autoRefreshStopReason = getAutoRefreshStopReason({ ...order.toJSON(), ...updateData });
     const validationResult = {
       status: updateData.validationStatus,
@@ -1270,7 +1383,7 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     });
     const nextDeadline = getPaymentDeadline({ ...order.toJSON(), ...updateData });
     await order.update(updateData, { transaction });
-    if (nextDeadline) {
+    if (nextDeadline && !browserRefresh) {
       await PaymentTask.update(
         {
           deadlineAt: nextDeadline,
@@ -1316,10 +1429,15 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
         crawledData: null,
         context: {
           orderNumber: order.orderNumber,
+          acquisitionMethod: crawlResult.acquisitionMethod || 'http',
+          refreshScope: browserRefresh ? 'status_products' : 'full',
+          ...(options.browserTicketId ? { browserTicketId: options.browserTicketId } : {}),
           officialProductCount: crawledData.products.length,
+          requestAttempts: crawlResult.requestAttempts,
+          attemptDiagnostics: crawlResult.attemptDiagnostics,
           validationStatus: validationResult.status,
           issueTypes: validationResult.issues.map(issue => issue.type),
-          amountParseError: crawledData.officialOrderAmountParseError,
+          amountParseError: browserRefresh ? undefined : crawledData.officialOrderAmountParseError,
           autoRefreshStopReason,
         },
         result: validationResult.status,
@@ -1330,7 +1448,7 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
     await transaction.commit();
     transaction = null;
 
-    if (crawledData.officialOrderAmountParseError) {
+    if (!browserRefresh && crawledData.officialOrderAmountParseError) {
       await createCrawlLog({
         orderId: order.id,
         source: logSource,
@@ -1361,9 +1479,9 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       orderNumber: order.orderNumber,
       status: crawledData.orderStatus,
       productCount: crawledData.products.length,
-      pickupStore: crawledData.pickupStore,
-      paymentStatus: crawledData.paymentStatus,
-      pickupStatus: crawledData.pickupStatus,
+      pickupStore: order.pickupStore,
+      paymentStatus: order.paymentStatus,
+      pickupStatus: order.pickupStatus,
       officialOrderAmount: order.officialOrderAmount,
       officialOrderAmountCurrency: order.officialOrderAmountCurrency,
       validationStatus: validationResult.status,
@@ -1430,6 +1548,13 @@ async function crawlAndUpdateOrder(orderId, options = {}) {
       isWindControl: Boolean(error.isWindControl),
       context: {
         manual: Boolean(options.manual),
+        acquisitionMethod: typeof options.acquireOrderPage === 'function' ? 'browser' : 'http',
+        ...(error.pageDiagnostics ? { pageDiagnostics: error.pageDiagnostics } : {}),
+        ...(error.parseReason ? { parseReason: error.parseReason } : {}),
+        ...(Number.isInteger(error.requestAttempts)
+          ? { requestAttempts: error.requestAttempts }
+          : {}),
+        ...(error.attemptDiagnostics ? { attemptDiagnostics: error.attemptDiagnostics } : {}),
       },
       result: 'failed',
     });

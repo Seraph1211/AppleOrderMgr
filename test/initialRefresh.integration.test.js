@@ -9,7 +9,8 @@ jest.mock('../src/utils/telegramNotifier', () => ({ sendTelegramAlert: jest.fn()
 jest.mock('../src/services/crawler/crawlerRateLimiter', () => ({ acquire: jest.fn() }));
 jest.mock('../src/utils/proxyManager', () => ({
   getStatus: () => ({ isInitialized: true }),
-  getNextProxy: () => ({ host: '127.0.0.1', port: 1234 }),
+  acquireProxy: () => Promise.resolve({ host: '127.0.0.1', port: 1234 }),
+  releaseProxy: jest.fn(),
   recordProxySuccess: jest.fn(),
   recordProxyFailure: jest.fn(),
 }));

@@ -23,6 +23,7 @@ function getPaymentDeadline(order) {
 /** 身份异常及状态待核实不拦截；保留明确已付、退款和终态限制。 */
 function isAssignmentBlocked(order = {}, manual = false) {
   return (
+    order.emailPaymentStatus === 'paid' ||
     ['paid', 'refunded'].includes(order.paymentStatus) ||
     BLOCKED_STATUSES.has(order.status) ||
     (order.officialAllItemsTerminal === true && !(manual && order.status === 'payment_expired')) ||

@@ -18,6 +18,7 @@ import SystemLogs from './pages/SystemLogs';
 import EmailProcessing from './pages/EmailProcessing';
 import OrderIngestion from './pages/OrderIngestion';
 import ServerMonitor from './pages/ServerMonitor';
+import WecomNotifications from './pages/WecomNotifications';
 import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
 import IdentityVerifications from './pages/IdentityVerifications';
@@ -41,6 +42,10 @@ function App() {
             <ProtectedRoute>
               <Layout>
                 <Routes>
+                  <Route
+                    path="/wecom-notifications"
+                    element={permissionRoute(PERMISSIONS.WECOM_READ, <WecomNotifications />)}
+                  />
                   <Route
                     path="/server-monitor"
                     element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerMonitor />)}

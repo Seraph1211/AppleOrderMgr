@@ -10,7 +10,8 @@ jest.mock('../src/utils/telegramNotifier', () => ({ sendTelegramAlert: jest.fn()
 jest.mock('../src/services/crawler/crawlerRateLimiter', () => ({ acquire: jest.fn() }));
 jest.mock('../src/utils/proxyManager', () => ({
   getStatus: () => ({ isInitialized: true }),
-  getNextProxy: () => ({ host: '127.0.0.1', port: 1234 }),
+  acquireProxy: () => Promise.resolve({ host: '127.0.0.1', port: 1234 }),
+  releaseProxy: jest.fn(),
   recordProxySuccess: jest.fn(),
   recordProxyFailure: jest.fn(),
   switchProvider: jest.fn(),
@@ -311,7 +312,7 @@ const axios = require('axios');
       processingStatus: 'processing',
     });
     page('PAYMENT_DUE_STORED_ORDER');
-    await crawler.crawlAndUpdateOrder(order.id);
+    await crawler.crawlAndUpdateOrder(order.id, { manual: true });
     await order.reload();
     const source = order.sourceSnapshot;
     const expiry = order.officialPaymentExpiresAt;
@@ -478,6 +479,115 @@ const axios = require('axios');
         admin.id
       )
     ).resolves.toMatchObject({ assignee: { id: admin.id } });
+  });
+
+  test('加载页耗尽重试保留订单与既有冲突，成功同步后才清除旧身份误标', async () => {
+    await order.update({
+      status: 'ready_for_pickup',
+      paymentStatus: 'paid',
+      validationStatus: 'abnormal',
+      validationIssues: [{ type: 'order_identity', field: 'orderNumber', message: '历史误标' }],
+      autoRefreshEnabled: false,
+      autoRefreshStopReason: 'order_identity',
+      lastCrawledAt: new Date('2026-09-18T00:00:00Z'),
+    });
+    const original = order.toJSON();
+    axios.get.mockResolvedValue({
+      data: '<script id="init_data">{"meta":{},"guestOrderSpinner":{"d":{}}}</script>',
+      status: 200,
+    });
+    await expect(crawler.crawlAndUpdateOrder(order.id, { manual: true })).rejects.toMatchObject({
+      eventType: 'parse',
+      parseReason: 'guest_order_loading',
+    });
+    expect(axios.get).toHaveBeenCalledTimes(3);
+    await order.reload();
+    for (const field of [
+      'status',
+      'paymentStatus',
+      'products',
+      'validationStatus',
+      'validationIssues',
+      'autoRefreshEnabled',
+      'autoRefreshStopReason',
+      'lastCrawledAt',
+    ]) {
+      expect(order[field]).toEqual(original[field]);
+    }
+    const log = await models.CrawlLog.findOne({
+      where: { orderId: order.id },
+      order: [['id', 'DESC']],
+    });
+    expect(log.eventType).toBe('parse');
+    expect(log.context).toMatchObject({
+      requestAttempts: 3,
+      parseReason: 'guest_order_loading',
+      pageDiagnostics: { hasGuestOrderSpinner: true, hasOrderDetail: false },
+    });
+    page('PICKED_UP');
+    await crawler.crawlAndUpdateOrder(order.id, { manual: true });
+    await order.reload();
+    expect(order.status).toBe('picked_up');
+    expect(order.paymentStatus).toBe('paid');
+    expect(order.validationIssues.some(issue => issue.type === 'order_identity')).toBe(false);
+    expect(order.autoRefreshEnabled).toBe(false);
+    expect(order.autoRefreshStopReason).not.toBe('order_identity');
+    expect(order.lastCrawledAt.getTime()).toBeGreaterThan(original.lastCrawledAt.getTime());
+  });
+
+  test.each([
+    ['ECONNABORTED', 'REQUEST_TIMEOUT'],
+    ['ERR_BAD_RESPONSE', 'RESPONSE_STREAM'],
+  ])('任务持久化保留 %s 错误分类、旧数据及后续成功恢复', async (code, expected) => {
+    const worker = require('../src/services/crawler/refreshWorkerService');
+    const config = require('../src/utils/config').config;
+    const previousRetry = config.crawler.maxRetry;
+    config.crawler.maxRetry = 1;
+    const lastSuccess = new Date('2026-09-18T00:00:00Z');
+    await order.update({ lastCrawledAt: lastSuccess });
+    const original = order.toJSON();
+    try {
+      axios.get.mockRejectedValue(
+        Object.assign(new Error('synthetic transport failure'), { code })
+      );
+      const submitted = await repository.enqueueJob(order.id, {
+        trigger: 'manual_single',
+        priority: 100,
+        scheduledAt: new Date(),
+      });
+      const jobs = await repository.claimDueJobs('reliability-test', 100, 300000);
+      const job = jobs.find(item => item.id === submitted.job.id);
+      expect(job).toBeDefined();
+      await worker.processJob(job);
+      await submitted.job.reload();
+      expect(submitted.job.status).toBe('failed');
+      expect(submitted.job.lastErrorCode).toBe(expected);
+      expect(submitted.job.lastErrorMessage).toContain('已尝试 1 次');
+      await order.reload();
+      for (const key of ['lastCrawledAt', 'status', 'products', 'validationIssues']) {
+        expect(order[key]).toEqual(original[key]);
+      }
+      const schedule = await models.OrderRefreshSchedule.findByPk(order.id);
+      expect(schedule.lastErrorCode).toBe(expected);
+      page('PICKED_UP');
+      const recovered = await repository.enqueueJob(order.id, {
+        trigger: 'manual_single',
+        priority: 100,
+        scheduledAt: new Date(),
+      });
+      const nextJobs = await repository.claimDueJobs('reliability-test', 100, 300000);
+      await worker.processJob(nextJobs.find(item => item.id === recovered.job.id));
+      await recovered.job.reload();
+      await schedule.reload();
+      expect(recovered.job.status).toBe('succeeded');
+      expect(schedule.lastErrorCode).toBeNull();
+      expect(schedule.lastErrorMessage).toBeNull();
+      expect(schedule.lastSuccessAt.getTime()).toBeGreaterThanOrEqual(
+        schedule.lastFailureAt.getTime()
+      );
+    } finally {
+      config.crawler.maxRetry = previousRetry;
+    }
   });
 
   test('官网结果晚于并发编辑时拒绝覆盖', async () => {

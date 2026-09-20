@@ -33,6 +33,9 @@ describe('模型安全与关联契约', () => {
       PaymentDispatchSetting: require('../src/models/PaymentDispatchSetting')(sequelize),
       PaymentStaffSetting: require('../src/models/PaymentStaffSetting')(sequelize),
       PaymentDispatchEvent: require('../src/models/PaymentDispatchEvent')(sequelize),
+      OrderMailMessage: require('../src/models/OrderMailMessage')(sequelize),
+      OrderMailProcessingJob: require('../src/models/OrderMailProcessingJob')(sequelize),
+      OrderMailEvent: require('../src/models/OrderMailEvent')(sequelize),
     };
 
     Object.values(models).forEach(model => {

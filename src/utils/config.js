@@ -107,6 +107,10 @@ const config = {
     },
     maxRetry: parseInt(process.env.CRAWLER_MAX_RETRY, 10) || 3,
     timeout: parseInt(process.env.CRAWLER_TIMEOUT, 10) || 30000,
+    taskTimeoutMs: Math.max(
+      1,
+      Math.min(parseInt(process.env.CRAWLER_TASK_TIMEOUT_MS, 10) || 120000, 300000)
+    ),
     requestsPerSecond: parseInt(process.env.CRAWLER_REQUESTS_PER_SECOND, 10) || 5,
     workerConcurrency: parseInt(process.env.CRAWLER_WORKER_CONCURRENCY, 10) || 8,
     schedulerTickMs: parseInt(process.env.CRAWLER_SCHEDULER_TICK_MS, 10) || 5000,
@@ -167,9 +171,12 @@ const config = {
       region: process.env.FANPROXY_TUNNEL_REGION || null,
       sessionPoolSize: parseInt(process.env.FANPROXY_TUNNEL_SESSION_POOL_SIZE, 10) || 5,
       sessionMode: process.env.FANPROXY_TUNNEL_SESSION_MODE || 'sticky_pool',
+      cooldownMs: Math.max(60000, parseInt(process.env.FANPROXY_TUNNEL_COOLDOWN_MS, 10) || 60000),
     },
     yiyouHttp: {
       apiUrl: process.env.YIYOU_HTTP_PROXY_API_URL,
+      staticProxiesJson: process.env.YIYOU_HTTP_STATIC_PROXIES_JSON,
+      staticExpiresAt: process.env.YIYOU_HTTP_STATIC_EXPIRES_AT,
       poolTtlMs: parseInt(process.env.YIYOU_HTTP_PROXY_TTL_MS, 10) || 240000,
       badProxyTimeout: parseInt(process.env.PROXY_BAD_TIMEOUT, 10) || 3600000,
       maxFailCount: parseInt(process.env.PROXY_MAX_FAIL_COUNT, 10) || 2,
@@ -229,7 +236,11 @@ const validateConfig = ({ requireImap = true } = {}) => {
         'FANPROXY_TUNNEL_PASSWORD'
       );
     } else if (config.proxy.provider === 'yiyou_http') {
-      requiredVars.push('YIYOU_HTTP_PROXY_API_URL');
+      requiredVars.push(
+        config.proxy.yiyouHttp.staticProxiesJson
+          ? 'YIYOU_HTTP_STATIC_EXPIRES_AT'
+          : 'YIYOU_HTTP_PROXY_API_URL'
+      );
     } else {
       requiredVars.push('PROXY_API_URL');
     }

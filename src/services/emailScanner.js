@@ -148,14 +148,23 @@ function createEmailScanner(options) {
         if (failed || !isCurrent(session)) return;
         pendingBodies += 1;
         let uid = null;
+        let byteCount = 0;
+        let tooLarge = false;
         const chunks = [];
         buffers.add(chunks);
+        let receivedAt = null;
         msg.on('attributes', attrs => {
           uid = Number(attrs.uid);
+          receivedAt = attrs.date instanceof Date ? attrs.date : null;
         });
         msg.on('body', stream => {
           stream.on('data', chunk => {
-            if (!failed && isCurrent(session)) chunks.push(Buffer.from(chunk));
+            byteCount += chunk.length;
+            if (options.maxMessageBytes && byteCount > options.maxMessageBytes) {
+              tooLarge = true;
+              chunks.length = 0;
+            }
+            if (!tooLarge && !failed && isCurrent(session)) chunks.push(Buffer.from(chunk));
           });
           stream.on('error', fail);
         });
@@ -166,7 +175,7 @@ function createEmailScanner(options) {
             fail();
             return;
           }
-          messages.set(uid, { emailUid: uid, rawBuffer: Buffer.concat(chunks) });
+          messages.set(uid, { emailUid: uid, rawBuffer: Buffer.concat(chunks), receivedAt });
           buffers.delete(chunks);
           complete();
         });
@@ -298,7 +307,7 @@ function createEmailScanner(options) {
         );
       }
       const box = await operation(session, 'open', done =>
-        session.connection.openBox(options.imapConfig.mailbox, false, done)
+        session.connection.openBox(options.imapConfig.mailbox, Boolean(options.readOnly), done)
       );
       const validity = Number(box.uidvalidity);
       if (!Number.isInteger(validity) || validity < 1 || validity > MAX_UID)

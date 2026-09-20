@@ -1,10 +1,24 @@
+import OrderAmount from '../components/OrderAmount';
+import OrderMailDrawer from '../components/OrderMailDrawer';
+import AutoDismissToast from '../components/AutoDismissToast';
+import OrderExportModal from '../components/OrderExportModal';
 import OrderDateFilter from '../components/OrderDateFilter';
-import { groupDisplayProducts } from '../utils/productDisplay';
+import ProductFilter from '../components/ProductFilter';
+import ProductSummary from '../components/ProductSummary';
+import BrowserRefreshButton from '../components/BrowserRefreshButton';
 import { formatOrderTime } from '../utils/orderTime';
-import { useState, useEffect, useRef } from 'react';
-import { Search, Filter, Download, RefreshCw, Settings, X, PauseCircle } from 'lucide-react';
+import {
+  reconcileRowRefresh,
+  applyRefreshJobResult,
+  getOrderRefreshFeedback,
+  getRefreshObservation,
+} from '../utils/orderRefresh';
+import { copyDeferredText } from '../utils/copyDeferredText';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, Filter, Download, RefreshCw, Settings, X, PauseCircle, Mail } from 'lucide-react';
 import {
   getOrders,
+  getOrderLink,
   getOrderFilterOptions,
   exportOrders,
   getAutoRefreshStatus,
@@ -26,11 +40,25 @@ import {
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
 import { ordersColumns } from '../constants/tableColumns';
+import { getDefaultOrderExportFields } from '../constants/orderExportFields';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
+import { replayOrderMailLifecycle, replayOrderMailLifecycleBatch } from '../api/orderMailApi';
 
+const EMAIL_ORDER_STATUS_LABELS = {
+  unknown: '待确认',
+  confirmed: '订单已确认',
+  processing: '处理中',
+  ready_for_pickup: '可取货',
+};
 export default function Orders() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const canRefreshOrders = can(PERMISSIONS.ORDERS_REFRESH);
+  const canRefreshMailStatus = can(PERMISSIONS.ORDER_MAIL_MANAGE);
+  const canExportOrders = can(PERMISSIONS.ORDERS_EXPORT);
+  const canSelectOrders = canRefreshOrders || canRefreshMailStatus || canExportOrders;
+  const [browserRefreshOrderId, setBrowserRefreshOrderId] = useState(null);
+  const [mailOrder, setMailOrder] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -42,9 +70,20 @@ export default function Orders() {
   const [rowRefresh, setRowRefresh] = useState({});
   const [selectedIds, setSelectedIds] = useState([]);
   const [batchSubmitting, setBatchSubmitting] = useState(false);
+  const [mailBatchSubmitting, setMailBatchSubmitting] = useState(false);
+  const [mailRefreshingIds, setMailRefreshingIds] = useState([]);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportingSelected, setExportingSelected] = useState(false);
+  const [copyingOrderId, setCopyingOrderId] = useState(null);
+  const [toast, setToast] = useState(null);
   const batchRequest = useRef(false);
   const refreshRequests = useRef(new Set());
   const loadOrdersRef = useRef(null);
+  const ordersRequestSequence = useRef(0);
+  const showToast = useCallback((type, message) => {
+    if (message) setToast({ id: Date.now(), type, message });
+  }, []);
+  const dismissToast = useCallback(() => setToast(null), []);
 
   // 分页状态
   const [pagination, setPagination] = useState({
@@ -57,8 +96,10 @@ export default function Orders() {
   // 筛选条件
   const [filters, setFilters] = useState({
     statuses: [],
-    productNames: [],
+    emailOrderStatuses: [],
+    productKeys: [],
     recipientName: '',
+    recipientTags: [],
     pickupStores: [],
     pickupDate: '',
     dateFrom: '',
@@ -70,8 +111,9 @@ export default function Orders() {
 
   // 筛选选项（从后端获取或硬编码）
   const [filterOptions, setFilterOptions] = useState({
-    productNames: [],
+    productOptions: [],
     stores: [],
+    recipientTags: [],
   });
 
   useEffect(() => {
@@ -87,7 +129,6 @@ export default function Orders() {
   }, [pagination.currentPage, pagination.pageSize]);
 
   useEffect(() => {
-    loadFilterOptions();
     loadAutoRefreshStatus();
   }, []);
 
@@ -101,13 +142,29 @@ export default function Orders() {
   }, [
     searchTerm,
     filters.statuses,
-    filters.productNames,
+    filters.emailOrderStatuses,
+    filters.productKeys,
     filters.recipientName,
+    filters.recipientTags,
     filters.pickupStores,
     filters.pickupDate,
     filters.dateFrom,
     filters.dateTo,
   ]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') loadOrdersRef.current?.(true);
+    }, 15000);
+    const refreshVisible = () => {
+      if (document.visibilityState === 'visible') loadOrdersRef.current?.(true);
+    };
+    document.addEventListener('visibilitychange', refreshVisible);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', refreshVisible);
+    };
+  }, []);
 
   useEffect(() => {
     if (!refreshBatch?.id || refreshBatch.status === 'completed') return undefined;
@@ -164,16 +221,7 @@ export default function Orders() {
           }
           const terminal = !['pending', 'running'].includes(result.status);
           completed ||= terminal;
-          setRowRefresh(previous => ({
-            ...previous,
-            [result.orderId]: {
-              jobId: result.jobId,
-              status: result.status,
-              message:
-                result.lastErrorMessage ||
-                (result.status === 'succeeded' ? '刷新成功' : terminal ? '刷新未完成，可重试' : ''),
-            },
-          }));
+          setRowRefresh(previous => applyRefreshJobResult(previous, result));
         }
         if (completed) await loadOrdersRef.current?.(true);
       } catch (error) {
@@ -218,6 +266,15 @@ export default function Orders() {
     try {
       const response = await refreshOrder(order.id);
       if (!response.success || !response.data?.jobId) throw new Error('刷新任务提交失败');
+      if (response.data.created === false) {
+        setRowRefresh(previous => {
+          const next = { ...previous };
+          delete next[order.id];
+          return next;
+        });
+        await loadOrdersRef.current?.(true);
+        return;
+      }
       setRowRefresh(previous => ({
         ...previous,
         [order.id]: {
@@ -231,6 +288,7 @@ export default function Orders() {
         [order.id]: {
           status: 'failed',
           message: error.message || '刷新失败，请重试',
+          observedBeforeSubmit: getRefreshObservation(order),
         },
       }));
     } finally {
@@ -240,7 +298,9 @@ export default function Orders() {
 
   const handleSelectedRefresh = async () => {
     if (batchRequest.current || !selectedIds.length || !can(PERMISSIONS.ORDERS_REFRESH)) return;
-    const ids = selectedIds.filter(id => orders.some(order => order.id === id));
+    const ids = selectedIds.filter(
+      id => orders.some(order => order.id === id) && !refreshRequests.current.has(id)
+    );
     if (!ids.length) return;
     batchRequest.current = true;
     setBatchSubmitting(true);
@@ -268,6 +328,9 @@ export default function Orders() {
               : {
                   status: 'failed',
                   message: '未能提交刷新任务，订单可能已删除或提交失败，可重试',
+                  observedBeforeSubmit: getRefreshObservation(
+                    orders.find(order => order.id === id)
+                  ),
                 };
         }
         return next;
@@ -286,6 +349,7 @@ export default function Orders() {
             {
               status: 'failed',
               message: '提交结果未确认，可重试；已入队任务会自动合并',
+              observedBeforeSubmit: getRefreshObservation(orders.find(order => order.id === id)),
             },
           ])
         ),
@@ -298,7 +362,55 @@ export default function Orders() {
     }
   };
 
+  const mailReplayMessage = (totals, mode) => {
+    if (totals.messages === 0) return '所选订单没有关联的订单邮件';
+    const queued = totals.enqueued + totals.active;
+    const modeHint =
+      mode === 'shadow'
+        ? '当前为影子模式，解析结果不会写入订单状态。'
+        : '解析完成后将按生产开关更新订单状态。';
+    return `已为 ${totals.orders} 个订单提交 ${queued} 封邮件，${totals.withoutMail} 个订单无关联邮件。${modeHint}`;
+  };
+
+  const handleMailStatusRefresh = async order => {
+    if (mailRefreshingIds.includes(order.id)) return;
+    setMailRefreshingIds(previous => [...previous, order.id]);
+    try {
+      const response = await replayOrderMailLifecycle(order.id);
+      if (!response.success || !response.data?.totals) {
+        throw new Error('邮件状态刷新任务提交失败');
+      }
+      const type = response.data.totals.messages === 0 ? 'warning' : 'success';
+      showToast(type, mailReplayMessage(response.data.totals, response.data.mode));
+      window.setTimeout(() => loadOrdersRef.current?.(true), 3000);
+    } catch (error) {
+      showToast('error', error.message || '邮件状态刷新任务提交失败');
+    } finally {
+      setMailRefreshingIds(previous => previous.filter(id => id !== order.id));
+    }
+  };
+
+  const handleSelectedMailStatusRefresh = async () => {
+    if (mailBatchSubmitting || selectedIds.length === 0 || !canRefreshMailStatus) return;
+    setMailBatchSubmitting(true);
+    try {
+      const response = await replayOrderMailLifecycleBatch(selectedIds);
+      if (!response.success || !response.data?.totals) {
+        throw new Error('批量邮件状态刷新任务提交失败');
+      }
+      const type = response.data.totals.messages === 0 ? 'warning' : 'success';
+      showToast(type, mailReplayMessage(response.data.totals, response.data.mode));
+      setSelectedIds([]);
+      window.setTimeout(() => loadOrdersRef.current?.(true), 3000);
+    } catch (error) {
+      showToast('error', error.message || '批量邮件状态刷新任务提交失败');
+    } finally {
+      setMailBatchSubmitting(false);
+    }
+  };
+
   const loadOrders = async (quiet = false) => {
+    const requestSequence = ++ordersRequestSequence.current;
     if (!quiet) setLoading(true);
     try {
       const params = {
@@ -307,13 +419,24 @@ export default function Orders() {
         keyword: searchTerm || undefined,
         ...filters,
       };
-      for (const key of ['statuses', 'productNames', 'pickupStores']) {
+      for (const key of [
+        'statuses',
+        'emailOrderStatuses',
+        'productKeys',
+        'pickupStores',
+        'recipientTags',
+      ]) {
         if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
         else delete params[key];
       }
-      const res = await getOrders(params);
+      const [res, optionResponse] = await Promise.all([
+        getOrders(params),
+        getOrderFilterOptions(params),
+      ]);
+      if (requestSequence !== ordersRequestSequence.current) return;
 
       if (res.success) {
+        if (optionResponse.success) setFilterOptions(optionResponse.data);
         const mappedOrders = res.data.orders.map(order => ({
           id: order.id,
           orderNumber: order.order_number,
@@ -323,6 +446,12 @@ export default function Orders() {
           recipientTagConflict: order.recipient_tag_conflict,
           recipientLinked: order.recipient_linked,
           status: order.status,
+          emailOrderStatus: order.email_order_status || 'unknown',
+          emailStatusNeedsReview: Boolean(order.email_status_needs_review),
+          emailStatusReviewReasons: order.email_status_review_reasons || [],
+          emailStatusEvidenceAt: order.email_status_evidence_at || null,
+          emailStatusVersion: order.email_status_version || 0,
+          emailPickupInfo: order.email_pickup_info || null,
           officialRawStatus: order.official_raw_status,
           officialStatusObservedAt: order.official_status_observed_at,
           officialPaymentExpiresAt: order.official_payment_expires_at,
@@ -335,6 +464,7 @@ export default function Orders() {
           autoRefreshStoppedAt: order.auto_refresh_stopped_at || null,
           paymentStatus: order.payment_status || '-',
           pickupStatus: order.pickup_status || '-',
+          orderAmount: order.order_amount ?? null,
           officialOrderAmount: order.official_order_amount ?? null,
           officialOrderAmountCurrency: order.official_order_amount_currency || null,
           officialOrderAmountParseError: order.official_order_amount_parse_error || null,
@@ -379,6 +509,8 @@ export default function Orders() {
                 ? 'refreshing'
                 : order.refresh?.freshness_status || 'stale',
           refreshJob: order.refresh?.job || null,
+          refreshLastSuccessAt: order.refresh?.last_success_at || order.last_crawled_at || null,
+          refreshLastFailureAt: order.refresh?.last_failure_at || null,
           refreshErrorCode: order.refresh?.last_error_code || null,
           refreshErrorMessage: order.refresh?.last_error_message || null,
           // 业务字段
@@ -389,6 +521,7 @@ export default function Orders() {
           updatedAt: order.updated_at,
         }));
         setOrders(mappedOrders);
+        setRowRefresh(previous => reconcileRowRefresh(previous, mappedOrders));
 
         // 更新分页信息
         setPagination(prev => ({
@@ -398,9 +531,12 @@ export default function Orders() {
         }));
       }
     } catch (error) {
-      setRefreshMessage(error.message || '加载订单失败');
+      if (requestSequence === ordersRequestSequence.current) {
+        setRefreshMessage(error.message || '加载订单失败');
+        if (!quiet) setOrders([]);
+      }
     } finally {
-      setLoading(false);
+      if (requestSequence === ordersRequestSequence.current) setLoading(false);
     }
   };
 
@@ -417,25 +553,51 @@ export default function Orders() {
 
   loadOrdersRef.current = loadOrders;
 
-  const loadFilterOptions = async () => {
-    try {
-      const response = await getOrderFilterOptions();
-      if (response.success) setFilterOptions(response.data);
-    } catch (_error) {
-      setFilterOptions({
-        productNames: [],
-        stores: [],
-      });
-    }
-  };
-
   const handleExport = async () => {
     const params = { keyword: searchTerm || undefined, ...filters };
-    for (const key of ['statuses', 'productNames', 'pickupStores']) {
+    for (const key of [
+      'statuses',
+      'emailOrderStatuses',
+      'productKeys',
+      'pickupStores',
+      'recipientTags',
+    ]) {
       if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
       else delete params[key];
     }
     await exportOrders(params);
+  };
+
+  const handleSelectedExport = async fields => {
+    if (!canExportOrders || selectedIds.length === 0 || exportingSelected) return;
+    setExportingSelected(true);
+    try {
+      await exportOrders({ orderIds: selectedIds, fields });
+      showToast('success', `已导出 ${selectedIds.length} 个订单`);
+    } catch (error) {
+      showToast('error', error.message || '导出失败，请稍后重试');
+      throw error;
+    } finally {
+      setExportingSelected(false);
+    }
+  };
+
+  const handleCopyOrderLink = async order => {
+    if (copyingOrderId !== null) return;
+    setCopyingOrderId(order.id);
+    try {
+      await copyDeferredText(async () => {
+        const response = await getOrderLink(order.id);
+        const orderUrl = response.data?.orderUrl;
+        if (!response.success || !orderUrl) throw new Error('订单链接不存在');
+        return orderUrl;
+      });
+      showToast('success', '订单链接已复制');
+    } catch (error) {
+      showToast('error', error.message || '复制失败，请检查剪贴板权限');
+    } finally {
+      setCopyingOrderId(null);
+    }
   };
 
   const handleRefreshAll = async () => {
@@ -471,8 +633,10 @@ export default function Orders() {
   const resetFilters = () => {
     setFilters({
       statuses: [],
-      productNames: [],
+      emailOrderStatuses: [],
+      productKeys: [],
       recipientName: '',
+      recipientTags: [],
       pickupStores: [],
       pickupDate: '',
       dateFrom: '',
@@ -512,7 +676,19 @@ export default function Orders() {
       case 'orderNumber':
         return (
           <div>
-            <span className="font-mono text-sm text-primary">{value}</span>
+            <div className="mb-1 text-sm font-semibold text-gray-900">
+              订单 ID：{order.id ?? '-'}
+            </div>
+            <button
+              type="button"
+              className="font-mono text-sm text-primary hover:underline disabled:cursor-wait disabled:opacity-60"
+              disabled={copyingOrderId !== null}
+              aria-label={`复制订单链接 ${value}`}
+              title="点击复制订单链接"
+              onClick={() => handleCopyOrderLink(order)}
+            >
+              {copyingOrderId === order.id ? '复制中...' : value}
+            </button>
             <p className="mt-1 text-xs text-gray-500">
               {order.ingestionSource === 'aos'
                 ? 'AOS 文件'
@@ -542,6 +718,45 @@ export default function Orders() {
         return <span className={`badge ${badge.class}`}>{badge.text}</span>;
       }
 
+      case 'emailOrderStatus':
+        return (
+          <div className="text-sm">
+            <span className="badge badge-info">
+              {EMAIL_ORDER_STATUS_LABELS[value] || EMAIL_ORDER_STATUS_LABELS.unknown}
+            </span>
+            {order.emailStatusNeedsReview && (
+              <p
+                className="mt-1 text-xs text-amber-700"
+                title={order.emailStatusReviewReasons.join('、')}
+              >
+                待核对
+              </p>
+            )}
+            {order.emailStatusEvidenceAt && (
+              <p className="mt-1 text-xs text-gray-500">
+                证据 {formatOrderTime(order.emailStatusEvidenceAt)}
+              </p>
+            )}
+          </div>
+        );
+
+      case 'emailPickupInfo': {
+        const pickup = value;
+        if (!pickup) return <span className="text-gray-400">-</span>;
+        const schedule =
+          pickup.appointmentMode === 'business_hours'
+            ? '营业时间内到店'
+            : [pickup.pickupDate, [pickup.startTime, pickup.endTime].filter(Boolean).join('–')]
+                .filter(Boolean)
+                .join(' ');
+        return (
+          <div className="text-sm text-gray-700">
+            <p className="font-medium text-gray-900">{pickup.storeName || '门店待确认'}</p>
+            <p>{schedule || '时间待确认'}</p>
+          </div>
+        );
+      }
+
       case 'lastOfficialUpdatedAt':
         return (
           <span className="text-sm text-gray-600" title="最后一次成功从官网更新订单数据的时间">
@@ -552,13 +767,8 @@ export default function Orders() {
       case 'products':
         return (
           <div className="text-sm space-y-1">
-            {groupDisplayProducts(order.products).map((p, i) => (
-              <div key={i}>
-                <span>
-                  {p.name} ×{p.quantity ?? '待核实'}
-                </span>
-              </div>
-            ))}
+            <ProductSummary products={order.products} selectedKeys={filters.productKeys} />
+            <OrderAmount amount={order.orderAmount} compact />
           </div>
         );
 
@@ -624,14 +834,13 @@ export default function Orders() {
         );
 
       case 'actions': {
-        const progress = rowRefresh[order.id];
-        const state = progress?.status || order.refreshJob?.status;
-        const busy = ['submitting', 'pending', 'running'].includes(state);
+        const feedback = getOrderRefreshFeedback(order, rowRefresh[order.id]);
+        const { status: state, busy } = feedback;
         const label =
-          { submitting: '提交中', pending: '排队中', running: '刷新中' }[state] || '手动刷新';
+          { submitting: '提交中', pending: '排队中', running: '刷新中' }[state] || '刷新官网';
         return (
           <div className="space-y-1">
-            <div className="flex items-center justify-end gap-2">
+            <div className="flex flex-wrap items-center justify-end gap-2">
               <button
                 onClick={event => {
                   event.stopPropagation();
@@ -642,13 +851,26 @@ export default function Orders() {
               >
                 查看
               </button>
+              {can(PERMISSIONS.ORDER_MAIL_MANAGE) && (
+                <button
+                  onClick={event => {
+                    event.stopPropagation();
+                    setMailOrder(order);
+                  }}
+                  className="btn btn-secondary text-sm inline-flex items-center gap-1"
+                  aria-label={'订单邮件 ' + order.orderNumber}
+                >
+                  <Mail className="w-4 h-4" />
+                  邮件
+                </button>
+              )}
               {can(PERMISSIONS.ORDERS_REFRESH) && (
                 <button
                   onClick={event => {
                     event.stopPropagation();
                     handleRowRefresh(order);
                   }}
-                  disabled={busy}
+                  disabled={busy || browserRefreshOrderId === order.id}
                   aria-label={`${label} ${order.orderNumber}`}
                   className="btn btn-secondary text-sm inline-flex items-center gap-1 disabled:opacity-50"
                 >
@@ -656,13 +878,72 @@ export default function Orders() {
                   {label}
                 </button>
               )}
+              {canRefreshMailStatus && (
+                <button
+                  onClick={event => {
+                    event.stopPropagation();
+                    handleMailStatusRefresh(order);
+                  }}
+                  disabled={mailRefreshingIds.includes(order.id)}
+                  aria-label={`刷新邮件状态 ${order.orderNumber}`}
+                  className="btn btn-secondary text-sm inline-flex items-center gap-1 disabled:opacity-50"
+                >
+                  <RefreshCw
+                    className={`w-4 h-4 ${
+                      mailRefreshingIds.includes(order.id) ? 'animate-spin' : ''
+                    }`}
+                  />
+                  {mailRefreshingIds.includes(order.id) ? '提交中' : '刷新邮件状态'}
+                </button>
+              )}
             </div>
-            {progress?.message && (
+            {user?.role === 'admin' && can(PERMISSIONS.ORDERS_REFRESH) && (
+              <BrowserRefreshButton
+                order={order}
+                disabled={
+                  busy || (browserRefreshOrderId !== null && browserRefreshOrderId !== order.id)
+                }
+                onBusyChange={value => setBrowserRefreshOrderId(value ? order.id : null)}
+                onUpdated={async () => {
+                  setRowRefresh(previous => {
+                    const next = { ...previous };
+                    delete next[order.id];
+                    return next;
+                  });
+                  await loadOrdersRef.current?.(true);
+                }}
+              />
+            )}
+            {state === 'failed' && (
+              <div className="text-xs max-w-56 ml-auto text-right">
+                <details onClick={event => event.stopPropagation()}>
+                  <summary
+                    className={`cursor-pointer ${feedback.isIdentityError ? 'text-red-700' : 'text-yellow-700'}`}
+                  >
+                    {feedback.label}
+                  </summary>
+                  <p className="mt-1 text-gray-600 break-words">{feedback.message}</p>
+                  {feedback.failedAt && (
+                    <p className="text-gray-500">失败时间：{formatOrderTime(feedback.failedAt)}</p>
+                  )}
+                </details>
+                <p className="mt-1 text-gray-500">
+                  {feedback.lastSuccessAt && feedback.lastSuccessAt !== '-'
+                    ? '本次未更新，保留上次数据'
+                    : '本次未更新，尚无官网同步数据'}
+                </p>
+                <p className="text-gray-500">
+                  上次成功：
+                  {formatOrderTime(feedback.lastSuccessAt, '尚未成功同步')}
+                </p>
+              </div>
+            )}
+            {['succeeded', 'skipped'].includes(state) && (
               <p
                 role="status"
-                className={`text-xs max-w-56 ml-auto ${state === 'succeeded' ? 'text-green-700' : 'text-red-600'}`}
+                className={`text-xs text-right ${state === 'succeeded' ? 'text-green-700' : 'text-gray-500'}`}
               >
-                {progress.message}
+                {feedback.label}
               </p>
             )}
           </div>
@@ -680,6 +961,7 @@ export default function Orders() {
 
   return (
     <div className="space-y-6">
+      <AutoDismissToast toast={toast} onDismiss={dismissToast} />
       {/* 页面标题 */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -697,7 +979,7 @@ export default function Orders() {
               className="btn btn-primary flex items-center space-x-2"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>刷新全部</span>
+              <span>刷新全部官网</span>
             </button>
           )}
         </div>
@@ -735,7 +1017,7 @@ export default function Orders() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="搜索订单号、Apple ID 或取机人..."
+              placeholder="搜索系统订单 ID、官网订单号、Apple ID 或取机人..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="input pl-10"
@@ -785,7 +1067,7 @@ export default function Orders() {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
+        <div className="order-filter-fields">
           <OrderDateFilter
             dateFrom={filters.dateFrom}
             dateTo={filters.dateTo}
@@ -795,6 +1077,18 @@ export default function Orders() {
             }}
           />
           {/* 官网状态 */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">订单状态（邮件）</label>
+            <TagMultiSelect
+              options={Object.keys(EMAIL_ORDER_STATUS_LABELS)}
+              optionLabels={EMAIL_ORDER_STATUS_LABELS}
+              value={filters.emailOrderStatuses}
+              onChange={value => handleFilterChange('emailOrderStatuses', value)}
+              ariaLabel="邮件订单状态筛选"
+              placeholder="全部状态"
+              itemLabel="状态"
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">官网状态</label>
             <TagMultiSelect
@@ -809,15 +1103,12 @@ export default function Orders() {
           </div>
 
           {/* 商品信息 */}
-          <div className="md:col-span-2">
+          <div className="order-filter-product">
             <label className="block text-sm font-medium text-gray-700 mb-2">商品信息</label>
-            <TagMultiSelect
-              options={filterOptions.productNames}
-              value={filters.productNames}
-              onChange={value => handleFilterChange('productNames', value)}
-              ariaLabel="商品信息筛选"
-              placeholder="全部商品"
-              itemLabel="商品"
+            <ProductFilter
+              options={filterOptions.productOptions || []}
+              value={filters.productKeys}
+              onChange={value => handleFilterChange('productKeys', value)}
             />
           </div>
 
@@ -830,6 +1121,18 @@ export default function Orders() {
               value={filters.recipientName}
               onChange={e => handleFilterChange('recipientName', e.target.value)}
               className="input"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">取机人 TAG</label>
+            <TagMultiSelect
+              options={filterOptions.recipientTags || []}
+              value={filters.recipientTags}
+              onChange={value => handleFilterChange('recipientTags', value)}
+              ariaLabel="取机人 TAG 筛选"
+              placeholder="全部 TAG"
+              itemLabel="TAG"
             />
           </div>
 
@@ -862,17 +1165,41 @@ export default function Orders() {
 
       {/* 订单列表 */}
       <div className="card">
-        {can(PERMISSIONS.ORDERS_REFRESH) && (
+        {canSelectOrders && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-gray-600">已选择 {selectedIds.length} 项（当前页）</span>
-            <button
-              className="btn btn-secondary flex items-center gap-2"
-              disabled={loading || batchSubmitting || selectedIds.length === 0}
-              onClick={handleSelectedRefresh}
-            >
-              <RefreshCw className={`w-4 h-4 ${batchSubmitting ? 'animate-spin' : ''}`} />
-              {batchSubmitting ? '正在提交' : '批量刷新订单'}
-            </button>
+            <div className="flex flex-wrap items-center gap-2">
+              {canExportOrders && (
+                <button
+                  className="btn btn-secondary flex items-center gap-2"
+                  disabled={loading || exportingSelected || selectedIds.length === 0}
+                  onClick={() => setShowExportModal(true)}
+                >
+                  <Download className="w-4 h-4" />
+                  导出选中订单
+                </button>
+              )}
+              {canRefreshOrders && (
+                <button
+                  className="btn btn-secondary flex items-center gap-2"
+                  disabled={loading || batchSubmitting || selectedIds.length === 0}
+                  onClick={handleSelectedRefresh}
+                >
+                  <RefreshCw className={`w-4 h-4 ${batchSubmitting ? 'animate-spin' : ''}`} />
+                  {batchSubmitting ? '正在提交' : '批量刷新官网'}
+                </button>
+              )}
+              {canRefreshMailStatus && (
+                <button
+                  className="btn btn-secondary flex items-center gap-2"
+                  disabled={loading || mailBatchSubmitting || selectedIds.length === 0}
+                  onClick={handleSelectedMailStatusRefresh}
+                >
+                  <RefreshCw className={`w-4 h-4 ${mailBatchSubmitting ? 'animate-spin' : ''}`} />
+                  {mailBatchSubmitting ? '正在提交' : '批量刷新邮件状态'}
+                </button>
+              )}
+            </div>
           </div>
         )}
         {loading ? (
@@ -891,12 +1218,12 @@ export default function Orders() {
             <table className="w-full min-w-max">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  {can(PERMISSIONS.ORDERS_REFRESH) && (
+                  {canSelectOrders && (
                     <th className="py-3 px-3 w-10">
                       <input
                         type="checkbox"
                         aria-label="全选本页订单"
-                        disabled={batchSubmitting}
+                        disabled={batchSubmitting || mailBatchSubmitting || exportingSelected}
                         checked={
                           orders.length > 0 && orders.every(order => selectedIds.includes(order.id))
                         }
@@ -926,12 +1253,12 @@ export default function Orders() {
                     key={order.id}
                     className="border-b border-gray-200 transition-colors hover:bg-gray-50"
                   >
-                    {can(PERMISSIONS.ORDERS_REFRESH) && (
+                    {canSelectOrders && (
                       <td className="py-4 px-3">
                         <input
                           type="checkbox"
                           aria-label={`选择订单 ${order.orderNumber}`}
-                          disabled={batchSubmitting}
+                          disabled={batchSubmitting || mailBatchSubmitting || exportingSelected}
                           checked={selectedIds.includes(order.id)}
                           onChange={event =>
                             setSelectedIds(previous =>
@@ -962,6 +1289,15 @@ export default function Orders() {
         )}
       </div>
 
+      {showExportModal && canExportOrders && (
+        <OrderExportModal
+          count={selectedIds.length}
+          defaultFields={getDefaultOrderExportFields(columns)}
+          onClose={() => setShowExportModal(false)}
+          onExport={handleSelectedExport}
+        />
+      )}
+
       {/* 列配置弹窗 */}
       {showColumnConfig && (
         <ColumnConfigModal
@@ -970,6 +1306,10 @@ export default function Orders() {
           onReset={resetConfig}
           onClose={() => setShowColumnConfig(false)}
         />
+      )}
+
+      {mailOrder && can(PERMISSIONS.ORDER_MAIL_MANAGE) && (
+        <OrderMailDrawer key={mailOrder.id} order={mailOrder} onClose={() => setMailOrder(null)} />
       )}
 
       {/* 订单详情弹窗 */}

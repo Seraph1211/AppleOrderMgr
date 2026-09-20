@@ -5,10 +5,12 @@ const logger = require('../../../utils/logger');
 const YIYOU_API_HOST = 'api.yiyouip.com';
 const DEFAULT_POOL_TTL_MS = 240000;
 
-/** 亦优 HTTP 短效直连代理 Provider。 */
+/** 亦优 HTTP 短效提取及静态直连代理 Provider。 */
 class YiyouHttpProvider {
   constructor(options) {
     this.apiUrl = options.apiUrl;
+    this.staticProxiesJson = options.staticProxiesJson;
+    this.staticExpiresAt = options.staticExpiresAt;
     this.maxFailCount = options.maxFailCount || 2;
     this.badProxyTimeout = options.badProxyTimeout || DEFAULT_POOL_TTL_MS;
     this.poolTtlMs = options.poolTtlMs || DEFAULT_POOL_TTL_MS;
@@ -27,6 +29,35 @@ class YiyouHttpProvider {
 
   /** @returns {Promise<void>} 从亦优 API 全量刷新短效代理。 */
   async refresh() {
+    if (this.staticProxiesJson) {
+      try {
+        const rows = JSON.parse(this.staticProxiesJson);
+        const expiresAt = Date.parse(this.staticExpiresAt);
+        if (!Array.isArray(rows) || rows.length === 0 || rows.length > 100) {
+          throw new Error('invalid');
+        }
+        if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) {
+          throw new Error('expired');
+        }
+        const proxies = rows.map(row => {
+          if (typeof row !== 'string') throw new Error('invalid');
+          return this.parseProxyLine(row);
+        });
+        const endpoints = new Set(proxies.map(proxy => `${proxy.host}:${proxy.port}`));
+        if (endpoints.size !== proxies.length) throw new Error('duplicate');
+        this.proxies = proxies;
+        this.expiresAt = expiresAt;
+        this.pruneBadProxies();
+        this.isInitialized = true;
+        logger.info('亦优静态代理列表已加载', { count: proxies.length });
+        return;
+      } catch (_error) {
+        this.proxies = [];
+        this.expiresAt = 0;
+        this.isInitialized = false;
+        throw new Error('亦优静态代理配置无效或已到期');
+      }
+    }
     this.validateApiUrl();
     const response = await axios.get(this.apiUrl, {
       timeout: 10000,

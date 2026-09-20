@@ -109,7 +109,7 @@ const getStats = async filters => {
       }),
     ]);
 
-    // 计算官网解析的订单总额
+    // 计算映射价格的订单总额
     const totalAmount = await calculateTotalAmount(where);
     const previousAmount = await calculateTotalAmount(buildPreviousPeriodWhere(filters));
 
@@ -123,6 +123,8 @@ const getStats = async filters => {
     return {
       totalOrders: totalOrders || 0,
       totalAmount: totalAmount || 0,
+      amountSource: 'catalog',
+      missingAmountOrders: await Order.count({ where: { ...where, orderAmount: null } }),
       pendingOrders: pendingOrders || 0,
       availableRecipients: availableRecipients || 0,
       orderGrowth,
@@ -139,14 +141,14 @@ const getStats = async filters => {
 };
 
 /**
- * 计算官网订单总额
+ * 计算映射订单总额
  * @param {Object} where - 查询条件
  * @returns {Promise<number>} 订单总额
  */
 const calculateTotalAmount = async where => {
   try {
-    // products 不包含可靠的单价字段，金额必须使用爬虫解析后的官网订单总额。
-    const total = await Order.sum('officialOrderAmount', { where });
+    // 映射金额在订单保存和正式迁移中维护；未知商品不混入总额。
+    const total = await Order.sum('orderAmount', { where });
     return Number(total || 0);
   } catch (error) {
     logger.error('计算订单总额失败', {

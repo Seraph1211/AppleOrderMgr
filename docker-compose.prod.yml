@@ -73,6 +73,31 @@ services:
     cpus: 0.75
     pids_limit: 192
 
+  wecom-worker:
+    <<: *service-defaults
+    profiles: ['wecom']
+    command: ['node', 'src/workers/wecomNotificationWorker.js']
+    environment:
+      NODE_ENV: production
+      LOG_TO_FILES: 'false'
+      DB_POOL_MAX: '2'
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+
+  order-mail-worker:
+    <<: *service-defaults
+    profiles: ['order-mail']
+    command: ['node', 'src/workers/orderMailWorker.js']
+    environment:
+      NODE_ENV: production
+      LOG_TO_FILES: 'false'
+      DB_POOL_MAX: '3'
+    stop_grace_period: 90s
+    mem_limit: 512m
+    cpus: 0.75
+    pids_limit: 192
+
   crawler-worker:
     <<: *service-defaults
     stop_grace_period: 120s

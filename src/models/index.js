@@ -24,6 +24,13 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  WecomNotificationSetting: require('./WecomNotificationSetting')(sequelize),
+  WecomNotificationDelivery: require('./WecomNotificationDelivery')(sequelize),
+  OrderMailMessage: require('./OrderMailMessage')(sequelize),
+  OrderMailDelivery: require('./OrderMailDelivery')(sequelize),
+  OrderMailState: require('./OrderMailState')(sequelize),
+  OrderMailProcessingJob: require('./OrderMailProcessingJob')(sequelize),
+  OrderMailEvent: require('./OrderMailEvent')(sequelize),
   MonitorRule: require('./MonitorRule')(sequelize),
   MonitorInstance: require('./MonitorInstance')(sequelize),
   MonitorTraffic: require('./MonitorTraffic')(sequelize),

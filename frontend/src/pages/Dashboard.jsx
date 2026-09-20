@@ -328,6 +328,9 @@ const Dashboard = () => {
           <div className="flex items-start justify-between">
             <div className="flex-1">
               <p className="text-sm font-medium text-gray-500 mb-2">订单总额</p>
+              <p className="text-xs text-gray-500 mb-2">
+                按官方售价计算 · {stats.missingAmountOrders || 0} 笔待确认
+              </p>
               <div className="flex items-baseline gap-3 mb-2">
                 <h3 className="text-3xl font-bold text-gray-900">
                   {formatAmount(stats.totalAmount)}

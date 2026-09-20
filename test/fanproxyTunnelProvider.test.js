@@ -146,3 +146,85 @@ describe('网帆隧道代理 Provider', () => {
     expect(payload).toContain('authConfigured');
   });
 });
+
+describe('网帆有界槽位租用及健康恢复', () => {
+  let clockMs;
+  let provider;
+  beforeEach(async () => {
+    clockMs = 1000;
+    let sequence = 0;
+    provider = new FanProxyTunnelProvider({
+      host: 'proxy.example',
+      port: 9000,
+      account: 'testaccount',
+      password: 'secret',
+      sessionPoolSize: 2,
+      now: () => clockMs,
+      sessionIdFactory: () => `sid${++sequence}`,
+    });
+    await provider.initialize();
+  });
+  afterEach(() => jest.useRealTimers());
+
+  test('并发租用互斥、取消等待不会占槽、旧释放不能解除新租用', async () => {
+    const first = await provider.acquireProxy();
+    const second = await provider.acquireProxy();
+    expect(first.sessionSlot).not.toBe(second.sessionSlot);
+    expect(provider.getStatus()).toMatchObject({ total: 2, leased: 2, available: 0 });
+    const controller = new AbortController();
+    const waiting = provider.acquireProxy({ signal: controller.signal });
+    controller.abort(new Error('已取消'));
+    await expect(waiting).rejects.toThrow('已取消');
+    provider.releaseProxy(first);
+    const third = await provider.acquireProxy();
+    provider.releaseProxy(first);
+    provider.markProxyAsBad(first);
+    expect(provider.getStatus().leased).toBe(2);
+    expect(provider.getStatus().bad).toBe(0);
+    provider.releaseProxy(third);
+    provider.releaseProxy(second);
+    expect(provider.getStatus().available).toBe(2);
+  });
+
+  test('加载页单独计数不拉黑，成功重置连续失败，两次传输失败才冷却', async () => {
+    const proxy = await provider.acquireProxy();
+    provider.recordProxyFailure(proxy, { errorCode: 'PAGE_LOADING' });
+    provider.recordProxyFailure(proxy, { errorCode: 'PARSE' });
+    expect(provider.getStatus()).toMatchObject({ bad: 0, loadingCount: 1 });
+    expect(provider.recordProxyFailure(proxy, { errorCode: 'REQUEST_TIMEOUT' })).toBe(false);
+    provider.recordProxySuccess(proxy);
+    expect(provider.recordProxyFailure(proxy, { errorCode: 'RESPONSE_STREAM' })).toBe(false);
+    expect(provider.recordProxyFailure(proxy, { errorCode: 'HTTP_631' })).toBe(true);
+    provider.releaseProxy(proxy);
+    expect(provider.getStatus()).toMatchObject({ bad: 1, available: 1 });
+    await provider.refresh();
+    expect(provider.getStatus().bad).toBe(1);
+    clockMs += 60001;
+    const other = await provider.acquireProxy();
+    const recovered = await provider.acquireProxy();
+    expect(recovered.sessionSlot).toBe(proxy.sessionSlot);
+    expect(recovered.auth.username).not.toBe(proxy.auth.username);
+    provider.markProxyAsBad(proxy);
+    expect(provider.getStatus()).toMatchObject({ total: 2, bad: 0 });
+    provider.releaseProxy(recovered);
+    provider.releaseProxy(other);
+  });
+
+  test('541 隔离当前槽位，池全冷却时等待到恢复再租用', async () => {
+    jest.useFakeTimers();
+    const first = await provider.acquireProxy();
+    const second = await provider.acquireProxy();
+    for (const proxy of [first, second]) {
+      provider.markProxyAsBad(proxy);
+      provider.releaseProxy(proxy);
+    }
+    expect(provider.getNextProxy()).toBeNull();
+    const waiting = provider.acquireProxy();
+    clockMs += 60001;
+    await jest.advanceTimersByTimeAsync(100);
+    const recovered = await waiting;
+    expect(recovered).not.toBeNull();
+    expect(provider.getStatus().total).toBe(2);
+    provider.releaseProxy(recovered);
+  });
+});

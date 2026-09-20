@@ -1,5 +1,5 @@
 /* eslint-disable camelcase -- 合成 API 数据遵循响应契约 */
-/* global localStorage, document */
+/* global localStorage, document, navigator */
 const assert = require('node:assert/strict');
 const logger = require('../src/utils/logger');
 
@@ -21,12 +21,14 @@ async function main() {
     const page = await context.newPage();
     page.setDefaultTimeout(15000);
     const errors = [];
-    let permitted = true;
+    let permissionMode = 'refresh';
     let submits = 0;
+    let mailSubmits = 0;
     let polls = 0;
     let outcome = 'succeeded';
     let timestamp = '2026-09-09T00:00:00Z';
     let latestOrderQuery = new URLSearchParams();
+    let latestExportQuery = new URLSearchParams();
     page.on('pageerror', error => errors.push(error.message));
     await page.route('**/*', async route => {
       try {
@@ -42,19 +44,41 @@ async function main() {
             id: 1,
             username: 'synthetic',
             role: 'readOnly',
-            permissions: permitted ? ['orders.read', 'orders.refresh'] : ['orders.read'],
+            permissions:
+              permissionMode === 'refresh'
+                ? ['orders.read', 'orders.refresh', 'order_mail.manage']
+                : permissionMode === 'export'
+                  ? ['orders.read', 'orders.export']
+                  : ['orders.read'],
             availableHome: '/orders',
           };
         else if (url.pathname === '/api/orders/filter-options')
           data = {
             productNames: ['iPhone 18 Pro Max 512GB 勃艮第酒红色'],
+            productOptions: [
+              {
+                value:
+                  'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478',
+                label: 'iPhone 18 Pro Max 512GB 勃艮第酒红色',
+                aliases: [],
+                count: 1,
+              },
+            ],
             productModels: ['MODEL-18'],
             stores: ['Apple Store 零售店'],
             recipients: [],
             payers: [],
           };
         else if (url.pathname === '/api/system/auto-refresh') data = { isRunning: false };
-        else if (url.pathname === '/api/orders') {
+        else if (url.pathname === '/api/orders/export') {
+          latestExportQuery = new URLSearchParams(url.searchParams);
+          await route.fulfill({
+            contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            headers: { 'Content-Disposition': 'attachment; filename="orders.xlsx"' },
+            body: Buffer.from('synthetic-xlsx'),
+          });
+          return;
+        } else if (url.pathname === '/api/orders') {
           latestOrderQuery = new URLSearchParams(url.searchParams);
           data = {
             total: 1,
@@ -91,10 +115,49 @@ async function main() {
               },
             ],
           };
+        } else if (url.pathname === '/api/orders/1/link') {
+          data = {
+            id: 1,
+            orderNumber: 'W1234567890',
+            orderUrl: 'https://secure.example.invalid/order/W1234567890',
+          };
         } else if (url.pathname === '/api/orders/1/refresh') {
           submits += 1;
           polls = 0;
           data = { jobId: submits, status: 'pending' };
+        } else if (url.pathname === '/api/orders/1/email-lifecycle/replay') {
+          mailSubmits += 1;
+          data = {
+            mode: 'shadow',
+            results: [
+              { orderId: 1, messageCount: 3, enqueued: 3, active: 0, expired: 0 },
+            ],
+            totals: {
+              orders: 1,
+              messages: 3,
+              enqueued: 3,
+              active: 0,
+              expired: 0,
+              withoutMail: 0,
+            },
+          };
+        } else if (url.pathname === '/api/orders/email-lifecycle/replay') {
+          mailSubmits += 1;
+          assert.deepEqual(JSON.parse(route.request().postData()).orderIds, [1]);
+          data = {
+            mode: 'shadow',
+            results: [
+              { orderId: 1, messageCount: 3, enqueued: 3, active: 0, expired: 0 },
+            ],
+            totals: {
+              orders: 1,
+              messages: 3,
+              enqueued: 3,
+              active: 0,
+              expired: 0,
+              withoutMail: 0,
+            },
+          };
         } else if (url.pathname === '/api/orders/1' && route.request().method() === 'GET') {
           data = {
             id: 1,
@@ -155,6 +218,9 @@ async function main() {
         })
       );
     });
+    await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
+      origin: 'http://127.0.0.1:5173',
+    });
     await page.goto('http://127.0.0.1:5173/orders', { waitUntil: 'networkidle' });
     await page.getByRole('columnheader', { name: '最后更新时间' }).waitFor();
     assert.equal(await page.getByRole('columnheader', { name: '刷新状态' }).count(), 0);
@@ -163,6 +229,8 @@ async function main() {
     assert.equal(await page.getByRole('columnheader', { name: 'Apple ID' }).count(), 0);
     await page.getByRole('columnheader', { name: '取货时间' }).waitFor();
     await page.getByRole('columnheader', { name: '取机人标签' }).waitFor();
+    assert.equal(await page.getByRole('columnheader', { name: '付款状态' }).count(), 0);
+    assert.equal(await page.getByText('付款状态（邮件）', { exact: true }).count(), 0);
     const row = page.locator('tbody tr').first();
     assert.doesNotMatch(await row.innerText(), /snapshot@example.test/);
     assert.match(await row.innerText(), /邮件取机人/);
@@ -177,6 +245,22 @@ async function main() {
     assert.match(await row.innerText(), /2026\/09\/19 19:15 – 19:30/);
     assert.equal(await row.getByRole('button', { name: '查看 1 项订单冲突' }).count(), 1);
     assert.equal((await row.getAttribute('class')).includes('bg-red'), false);
+
+    const search = page.getByPlaceholder('搜索系统订单 ID、官网订单号、Apple ID 或取机人...');
+    const systemIdRequest = page.waitForRequest(request => {
+      const url = new URL(request.url());
+      return url.pathname === '/api/orders' && url.searchParams.get('keyword') === '1';
+    });
+    await search.fill('1');
+    const searchRequest = await systemIdRequest;
+    assert.equal(new URL(searchRequest.url()).searchParams.get('keyword'), '1');
+    await search.fill('');
+    await row.getByRole('button', { name: '复制订单链接 W1234567890' }).click();
+    await page.getByText('订单链接已复制', { exact: true }).waitFor();
+    assert.equal(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      'https://secure.example.invalid/order/W1234567890'
+    );
 
     await page.getByRole('button', { name: '官网状态筛选' }).click();
     await page.getByRole('option', { name: '等待付款' }).click();
@@ -198,8 +282,8 @@ async function main() {
     await page.locator('input[aria-label="取货日期筛选"]').fill('2026-09-19');
     await page.waitForFunction(() => document.querySelector('tbody tr'));
     assert.deepEqual(JSON.parse(latestOrderQuery.get('statuses')), ['payment_due']);
-    assert.deepEqual(JSON.parse(latestOrderQuery.get('productNames')), [
-      'iPhone 18 Pro Max 512GB 勃艮第酒红色',
+    assert.deepEqual(JSON.parse(latestOrderQuery.get('productKeys')), [
+      'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478',
     ]);
     assert.deepEqual(JSON.parse(latestOrderQuery.get('pickupStores')), ['Apple Store 零售店']);
     assert.equal(latestOrderQuery.get('pickupDate'), '2026-09-19');
@@ -219,7 +303,7 @@ async function main() {
     const lastUpdatedColumn = headers.indexOf('最后更新时间');
     assert.ok(lastUpdatedColumn >= 0);
     const initialTime = await row.locator('td').nth(lastUpdatedColumn).innerText();
-    await row.getByRole('button', { name: '手动刷新 W1234567890' }).click();
+    await row.getByRole('button', { name: '刷新官网 W1234567890' }).click();
     assert.equal(await row.getByRole('button', { name: '排队中 W1234567890' }).isDisabled(), true);
     await row.getByRole('button', { name: '刷新中 W1234567890' }).waitFor();
     await row.getByText('刷新成功', { exact: true }).waitFor();
@@ -231,22 +315,47 @@ async function main() {
     await page.screenshot({ path: '/tmp/orders-browser-desktop.png', fullPage: true });
     outcome = 'failed';
     const successTime = await row.locator('td').nth(lastUpdatedColumn).innerText();
-    await row.getByRole('button', { name: '手动刷新 W1234567890' }).click();
+    await row.getByRole('button', { name: '刷新官网 W1234567890' }).click();
+    await row.locator('summary').waitFor();
+    await row.locator('summary').click();
     await row.getByText('合成官网超时，可重试').waitFor();
     assert.equal(await row.locator('td').nth(lastUpdatedColumn).innerText(), successTime);
-    assert.equal(await row.getByRole('button', { name: '手动刷新 W1234567890' }).isEnabled(), true);
+    assert.equal(await row.getByRole('button', { name: '刷新官网 W1234567890' }).isEnabled(), true);
+    await row.getByRole('button', { name: '刷新邮件状态 W1234567890' }).click();
+    await page.getByText(/当前为影子模式，解析结果不会写入订单状态/).waitFor();
+    const mailSelection = page.getByRole('checkbox', { name: '选择订单 W1234567890' });
+    await mailSelection.check();
+    await page.getByRole('button', { name: '批量刷新邮件状态' }).click();
+    await page.getByText(/已为 1 个订单提交 3 封邮件/).waitFor();
+    assert.equal(mailSubmits, 2);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.waitForFunction(
       () => document.querySelector('aside').getBoundingClientRect().right <= 0
     );
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= 390));
-    const button = row.getByRole('button', { name: '手动刷新 W1234567890' });
+    const button = row.getByRole('button', { name: '刷新官网 W1234567890' });
     const bounds = await button.boundingBox();
     assert.ok(bounds.x >= 0 && bounds.x + bounds.width <= 390);
     await page.screenshot({ path: '/tmp/orders-browser-mobile.png', fullPage: true });
-    permitted = false;
+    permissionMode = 'export';
     await page.reload({ waitUntil: 'networkidle' });
-    assert.equal(await page.getByRole('button', { name: /手动刷新/ }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: /刷新官网 W/ }).count(), 0);
+    const selection = page.getByRole('checkbox', { name: '选择订单 W1234567890' });
+    await selection.check();
+    await page.getByRole('button', { name: '导出选中订单' }).click();
+    await page.getByRole('heading', { name: '导出选中订单' }).waitFor();
+    const download = page.waitForEvent('download');
+    await page.getByRole('button', { name: '导出 Excel' }).click();
+    await download;
+    assert.deepEqual(JSON.parse(latestExportQuery.get('orderIds')), [1]);
+    assert.ok(JSON.parse(latestExportQuery.get('fields')).includes('systemOrderId'));
+    assert.equal(await page.getByRole('button', { name: '批量刷新官网' }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: '批量刷新邮件状态' }).count(), 0);
+
+    permissionMode = 'read';
+    await page.reload({ waitUntil: 'networkidle' });
+    assert.equal(await page.getByRole('checkbox', { name: '选择订单 W1234567890' }).count(), 0);
+    assert.equal(await page.getByRole('button', { name: '导出选中订单' }).count(), 0);
     await page.goto('http://127.0.0.1:5173/orders/1', { waitUntil: 'networkidle' });
     try {
       await page.getByRole('heading', { name: '订单详情' }).waitFor();
@@ -276,9 +385,13 @@ async function main() {
         '排队执行成功',
         '失败可重试',
         '窄屏固定操作',
+        '系统订单 ID 搜索',
+        '官网订单号复制链接',
+        '导出权限独立于刷新权限',
         '只读权限',
       ],
       submits,
+      mailSubmits,
     });
   } catch (error) {
     logger.error('订单列表浏览器验证失败', { error: error.message, stack: error.stack });

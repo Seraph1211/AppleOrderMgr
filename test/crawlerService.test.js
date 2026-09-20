@@ -6,6 +6,10 @@ jest.mock('axios', () => ({
 function loadCrawlerService(overrides = {}) {
   jest.resetModules();
 
+  jest.doMock('../src/services/crawler/crawlerRateLimiter', () => ({
+    acquire: jest.fn().mockResolvedValue(undefined),
+  }));
+
   jest.doMock('../src/utils/logger', () => ({
     debug: jest.fn(),
     info: jest.fn(),
@@ -21,6 +25,7 @@ function loadCrawlerService(overrides = {}) {
     },
     CrawlLog: {
       create: jest.fn().mockResolvedValue({ id: 1 }),
+      findOne: jest.fn().mockResolvedValue(null),
     },
     sequelize: {
       transaction: jest.fn().mockResolvedValue({
@@ -32,7 +37,8 @@ function loadCrawlerService(overrides = {}) {
 
   const proxySequence = overrides.proxies ? [...overrides.proxies] : null;
   jest.doMock('../src/utils/proxyManager', () => ({
-    getNextProxy: jest.fn(() => proxySequence?.shift() || overrides.proxy || null),
+    acquireProxy: jest.fn(() => Promise.resolve(proxySequence?.shift() || overrides.proxy || null)),
+    releaseProxy: jest.fn(),
     refresh: overrides.refreshReject
       ? jest.fn().mockRejectedValue(new Error(overrides.refreshReject))
       : jest.fn(),
@@ -49,6 +55,7 @@ function loadCrawlerService(overrides = {}) {
       proxy: { enabled: overrides.proxyEnabled === true },
       crawler: {
         timeout: 1000,
+        taskTimeoutMs: overrides.taskTimeoutMs || 120000,
         userAgent: 'jest',
         maxRetry: 3,
         requestDelay: { min: 5000, max: 10000 },
@@ -73,6 +80,134 @@ function loadCrawlerService(overrides = {}) {
 
   return require('../src/services/crawlerService');
 }
+
+describe('浏览器取数复用订单事务', () => {
+  function prepare() {
+    const crawler = loadCrawlerService();
+    const models = require('../src/models');
+    const { buildLifecycleJson } = require('./fixtures/officialOrderLifecycle');
+    const transaction = { commit: jest.fn(), rollback: jest.fn(), LOCK: { UPDATE: true } };
+    models.sequelize.transaction.mockResolvedValue(transaction);
+    models.sequelize.query = jest.fn().mockResolvedValue([]);
+    models.sequelize.literal = value => value;
+    models.PaymentTask = { update: jest.fn() };
+    const order = {
+      id: 1,
+      orderNumber: 'W1234567890',
+      orderUrl: 'https://www.apple.com.cn/xc/cn/vieworder/W1234567890/test%40example.com',
+      updatedAt: new Date('2026-09-20T00:00:00Z'),
+      status: 'pending',
+      paymentStatus: 'unknown',
+      products: [{ name: '测试手机 256GB 蓝色', quantity: 1 }],
+      validationIssues: [],
+      officialOrderAmount: '8999.00',
+      officialOrderAmountCurrency: 'CNY',
+      toJSON() {
+        return { ...this };
+      },
+      update: jest.fn().mockResolvedValue(undefined),
+    };
+    models.Order.findByPk.mockResolvedValue(order);
+    const acquireOrderPage = jest.fn().mockResolvedValue({
+      pageUrl: 'https://secure8.www.apple.com.cn/shop/order/guest/W1234567890/test-token',
+      orderJson: buildLifecycleJson('PROCESSING'),
+    });
+    return { crawler, models, transaction, order, acquireOrderPage };
+  }
+
+  test('服务端解析浏览器详情后提交原订单事务、保留缺失金额并写来源审计', async () => {
+    const { crawler, models, transaction, order, acquireOrderPage } = prepare();
+    await expect(
+      crawler.crawlAndUpdateOrder(1, { manual: true, acquireOrderPage })
+    ).resolves.toMatchObject({ success: true, status: 'processing', paymentStatus: 'unknown' });
+    const [updateData, updateOptions] = order.update.mock.calls[0];
+    expect(updateData).toMatchObject({
+      status: 'processing',
+      lastCrawledAt: expect.any(Date),
+      crawlFailCount: 0,
+    });
+    expect(updateData).not.toHaveProperty('officialOrderAmount');
+    expect(updateData).not.toHaveProperty('paymentStatus');
+    expect(models.PaymentTask.update).not.toHaveBeenCalled();
+    expect(updateOptions.transaction).toBe(transaction);
+    expect(transaction.commit).toHaveBeenCalledTimes(1);
+    expect(models.CrawlLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        success: true,
+        context: expect.objectContaining({ acquisitionMethod: 'browser' }),
+        crawledData: null,
+      }),
+      { transaction }
+    );
+    expect(require('../src/utils/proxyManager').acquireProxy).not.toHaveBeenCalled();
+  });
+
+  test('采集期间订单被更新时拒绝旧结果且不递增抓取失败数', async () => {
+    const { crawler, models, transaction, order, acquireOrderPage } = prepare();
+    models.Order.findByPk
+      .mockResolvedValueOnce(order)
+      .mockResolvedValueOnce({ ...order, updatedAt: new Date('2026-09-20T00:01:00Z') });
+    await expect(
+      crawler.crawlAndUpdateOrder(1, { manual: true, acquireOrderPage })
+    ).rejects.toMatchObject({ eventType: 'concurrency' });
+    expect(order.update).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
+    expect(transaction.commit).not.toHaveBeenCalled();
+    expect(models.Order.increment).not.toHaveBeenCalled();
+  });
+
+  test('采集期间订单身份改变时不写新身份的订单', async () => {
+    const { crawler, models, transaction, order, acquireOrderPage } = prepare();
+    models.Order.findByPk
+      .mockResolvedValueOnce(order)
+      .mockResolvedValueOnce({ ...order, orderNumber: 'W9999999999' });
+    await expect(
+      crawler.crawlAndUpdateOrder(1, { manual: true, acquireOrderPage })
+    ).rejects.toMatchObject({ eventType: 'concurrency' });
+    expect(order.update).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalledTimes(1);
+  });
+
+  test('浏览器异常不会触发业务更新事务', async () => {
+    const { crawler, models, order, acquireOrderPage } = prepare();
+    acquireOrderPage.mockResolvedValue({ pageUrl: 'https://example.com/', orderJson: {} });
+    await expect(
+      crawler.crawlAndUpdateOrder(1, { manual: true, acquireOrderPage })
+    ).rejects.toMatchObject({ refreshErrorCode: 'PARSE' });
+    expect(order.update).not.toHaveBeenCalled();
+    expect(models.sequelize.transaction).not.toHaveBeenCalled();
+  });
+
+  test('浏览器任务开始版本已经过期时，采集结果不会进入解析或写入', async () => {
+    const { crawler, models, order, acquireOrderPage } = prepare();
+    await expect(
+      crawler.crawlAndUpdateOrder(1, {
+        manual: true,
+        acquireOrderPage,
+        expectedUpdatedAt: '2026-09-19T00:00:00Z',
+      })
+    ).rejects.toMatchObject({ eventType: 'concurrency' });
+    expect(acquireOrderPage).not.toHaveBeenCalled();
+    expect(order.update).not.toHaveBeenCalled();
+    expect(models.sequelize.transaction).not.toHaveBeenCalled();
+  });
+
+  test('同一毫秒版本下，已消费票据仍被事务内审计检查拒绝', async () => {
+    const { crawler, models, transaction, order, acquireOrderPage } = prepare();
+    models.CrawlLog.findOne.mockResolvedValue({ id: 1 });
+    await expect(
+      crawler.crawlAndUpdateOrder(1, {
+        manual: true,
+        acquireOrderPage,
+        expectedUpdatedAt: order.updatedAt.toISOString(),
+        browserTicketId: 'test-ticket-id',
+      })
+    ).rejects.toMatchObject({ eventType: 'concurrency' });
+    expect(order.update).not.toHaveBeenCalled();
+    expect(transaction.rollback).toHaveBeenCalled();
+    expect(models.Order.increment).not.toHaveBeenCalled();
+  });
+});
 
 describe('crawlerService product validation and scheduler rules', () => {
   test('marks quantity mismatch as abnormal', () => {
@@ -439,6 +574,247 @@ describe('crawlerService order identity validation', () => {
 });
 
 describe('crawlerService proxy and wind control', () => {
+  const orderUrl = 'https://www.apple.com.cn/xc/cn/vieworder/W1234567890/contact@example.com';
+  test.each([
+    ['ECONNABORTED', 'REQUEST_TIMEOUT'],
+    ['ERR_BAD_RESPONSE', 'RESPONSE_STREAM'],
+  ])('耗尽三次后保留 %s 分类、次数并释放租用', async (code, expected) => {
+    const crawler = loadCrawlerService({
+      proxyEnabled: true,
+      proxy: { host: 'proxy.example', port: 80 },
+    });
+    const axios = require('axios');
+    axios.get.mockReset().mockRejectedValue(Object.assign(new Error('transport failed'), { code }));
+    await expect(crawler.fetchWithRetry(orderUrl)).rejects.toMatchObject({
+      refreshErrorCode: expected,
+      requestAttempts: 3,
+    });
+    expect(require('../src/utils/proxyManager').releaseProxy).toHaveBeenCalledTimes(3);
+  });
+
+  test('407 提前结束报告实际一次并释放槽位', async () => {
+    const crawler = loadCrawlerService({
+      proxyEnabled: true,
+      proxy: { host: 'proxy.example', port: 80 },
+    });
+    require('axios')
+      .get.mockReset()
+      .mockRejectedValue({ message: 'auth failed', response: { status: 407 } });
+    await expect(crawler.fetchWithRetry(orderUrl)).rejects.toMatchObject({
+      refreshErrorCode: 'PROXY_407',
+      requestAttempts: 1,
+      message: expect.stringContaining('已尝试 1 次'),
+    });
+    expect(require('../src/utils/proxyManager').releaseProxy).toHaveBeenCalledTimes(1);
+  });
+
+  test('总时限中止在途请求，不再重试，释放槽位且不把取消当线路故障', async () => {
+    const crawler = loadCrawlerService({
+      proxyEnabled: true,
+      taskTimeoutMs: 20,
+      proxy: { host: 'proxy.example', port: 80 },
+    });
+    const axios = require('axios');
+    axios.get.mockReset().mockImplementation(
+      (_url, { signal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => reject(Object.assign(new Error('canceled'), { code: 'ERR_CANCELED' })),
+            { once: true }
+          );
+        })
+    );
+    await expect(crawler.fetchWithRetry(orderUrl)).rejects.toMatchObject({
+      refreshErrorCode: 'TASK_TIMEOUT',
+      requestAttempts: 1,
+    });
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    const proxy = require('../src/utils/proxyManager');
+    expect(proxy.releaseProxy).toHaveBeenCalledTimes(1);
+    expect(proxy.recordProxyFailure).not.toHaveBeenCalled();
+  });
+
+  test('代理等待耗尽预算时报告零次，不触发全局暂停', async () => {
+    const crawler = loadCrawlerService({ proxyEnabled: true, taskTimeoutMs: 20 });
+    const proxy = require('../src/utils/proxyManager');
+    proxy.acquireProxy.mockImplementation(
+      ({ signal }) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        })
+    );
+    const axios = require('axios');
+    axios.get.mockReset();
+    await expect(crawler.fetchWithRetry(orderUrl)).rejects.toMatchObject({
+      refreshErrorCode: 'TASK_TIMEOUT',
+      requestAttempts: 0,
+    });
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(crawler.getAutoRefreshStatus().isPaused).toBe(false);
+  });
+  const loadingHtml =
+    '<title>访客订单 - Apple (中国大陆)</title><script id="init_data">{"meta":{},"guestOrderSpinner":{"d":{}}}</script>';
+  const orderHtml = orderNumber =>
+    `<script id="init_data">${JSON.stringify({
+      orderDetail: {
+        orderHeader: { d: { orderNumber } },
+        orderItems: {
+          'orderItem-1': {
+            orderItemDetails: { d: { productName: '合成商品', quantity: 1 } },
+            orderItemStatusTracker: { d: { currentStatus: 'PICKED_UP' } },
+          },
+        },
+      },
+    })}</script>`;
+
+  test('真实加载页结构先失败换会话重试，详情到达后才记录成功', async () => {
+    const crawler = loadCrawlerService({
+      proxyEnabled: true,
+      proxies: [
+        { host: 'proxy-one.example', port: 8080 },
+        { host: 'proxy-two.example', port: 8080 },
+      ],
+    });
+    const axios = require('axios');
+    axios.get.mockReset();
+    axios.get
+      .mockResolvedValueOnce({ data: loadingHtml, status: 200 })
+      .mockResolvedValueOnce({ data: orderHtml('W1234567890'), status: 200 });
+    await expect(crawler.fetchWithRetry(orderUrl)).resolves.toMatchObject({
+      success: true,
+      data: { orderNumber: 'W1234567890', orderStatus: 'picked_up' },
+    });
+    expect(axios.get).toHaveBeenCalledTimes(2);
+    expect(axios.get.mock.calls.map(call => call[1].proxy.host)).toEqual([
+      'proxy-one.example',
+      'proxy-two.example',
+    ]);
+    const logger = require('../src/utils/logger');
+    expect(logger.warn).toHaveBeenCalledWith(
+      '订单爬取失败',
+      expect.objectContaining({
+        attempt: 1,
+        parseReason: 'guest_order_loading',
+        pageDiagnostics: expect.objectContaining({
+          hasGuestOrderSpinner: true,
+          hasOrderDetail: false,
+        }),
+      })
+    );
+    expect(logger.info.mock.calls.filter(call => call[0] === '订单爬取成功')).toHaveLength(1);
+    expect(require('../src/utils/proxyManager').recordProxySuccess).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([null, '', ' ', 'invalid', 123, {}, ['W1234567890']])(
+    '缺失或非法身份 %j 属于解析失败，不伪造身份冲突',
+    orderNumber => {
+      const crawler = loadCrawlerService();
+      let caught;
+      try {
+        crawler.validateCrawledOrderIdentity({ orderNumber }, 'W1234567890');
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toMatchObject({ eventType: 'parse', parseReason: 'missing_order_identity' });
+    }
+  );
+
+  test('连续加载页最多三次后保留旧状态与校验，不写身份暂停', async () => {
+    const crawler = loadCrawlerService({
+      proxyEnabled: true,
+      proxy: { host: 'proxy.example', port: 8080 },
+    });
+    const axios = require('axios');
+    axios.get.mockReset();
+    axios.get.mockResolvedValue({ data: loadingHtml, status: 200 });
+    const { Order, CrawlLog, sequelize } = require('../src/models');
+    Order.update = jest.fn();
+    const order = {
+      id: 1,
+      orderNumber: 'W1234567890',
+      orderUrl,
+      status: 'ready_for_pickup',
+      paymentStatus: 'paid',
+      validationStatus: 'valid',
+      validationIssues: [],
+      autoRefreshEnabled: false,
+      autoRefreshStopReason: 'payment_status:paid',
+    };
+    Order.findByPk.mockResolvedValue(order);
+    await expect(crawler.crawlAndUpdateOrder(1, { manual: true })).rejects.toMatchObject({
+      eventType: 'parse',
+      refreshErrorCode: 'PAGE_LOADING',
+      parseReason: 'guest_order_loading',
+    });
+    expect(axios.get).toHaveBeenCalledTimes(3);
+    expect(Order.update).not.toHaveBeenCalled();
+    expect(sequelize.transaction).not.toHaveBeenCalled();
+    expect(order).toMatchObject({
+      status: 'ready_for_pickup',
+      validationStatus: 'valid',
+      validationIssues: [],
+    });
+    expect(CrawlLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'parse',
+        httpStatus: 200,
+        context: expect.objectContaining({
+          parseReason: 'guest_order_loading',
+          pageDiagnostics: expect.objectContaining({ hasGuestOrderSpinner: true }),
+        }),
+      })
+    );
+  });
+
+  test('有效但不同的订单号立即拒绝，不重试且不记录成功', async () => {
+    const crawler = loadCrawlerService({
+      proxyEnabled: true,
+      proxy: { host: 'proxy.example', port: 8080 },
+    });
+    const axios = require('axios');
+    axios.get.mockReset();
+    axios.get.mockResolvedValue({ data: orderHtml('W9999999999'), status: 200 });
+    await expect(crawler.fetchWithRetry(orderUrl)).rejects.toMatchObject({
+      eventType: 'order_identity',
+      skipFailureIncrement: true,
+    });
+    expect(axios.get).toHaveBeenCalledTimes(1);
+    expect(require('../src/utils/proxyManager').recordProxySuccess).not.toHaveBeenCalled();
+    expect(JSON.stringify(require('../src/utils/logger').warn.mock.calls)).not.toContain(
+      'W9999999999'
+    );
+  });
+
+  test('损坏 init_data 不回退到其他脚本，三次仍按解析失败结束', async () => {
+    const crawler = loadCrawlerService({
+      proxyEnabled: true,
+      proxy: { host: 'proxy.example', port: 8080 },
+    });
+    const axios = require('axios');
+    axios.get.mockReset();
+    axios.get.mockResolvedValue({
+      data: '<script id="init_data">{broken</script>' + orderHtml('W1234567890'),
+      status: 200,
+    });
+    await expect(crawler.fetchWithRetry(orderUrl)).rejects.toMatchObject({ eventType: 'parse' });
+    expect(axios.get).toHaveBeenCalledTimes(3);
+  });
+
+  test('非加载页的空身份同样在重试内处理', async () => {
+    const crawler = loadCrawlerService({
+      proxyEnabled: true,
+      proxy: { host: 'proxy.example', port: 8080 },
+    });
+    const axios = require('axios');
+    axios.get.mockReset();
+    axios.get
+      .mockResolvedValueOnce({ data: orderHtml(null), status: 200 })
+      .mockResolvedValueOnce({ data: orderHtml('W1234567890'), status: 200 });
+    await expect(crawler.fetchWithRetry(orderUrl)).resolves.toMatchObject({ success: true });
+    expect(axios.get).toHaveBeenCalledTimes(2);
+  });
+
   test('隧道代理关闭连接复用且不注入会破坏 CONNECT 的自定义 Agent', async () => {
     const crawlerService = loadCrawlerService({ proxyEnabled: true });
     const mockedAxios = require('axios');
@@ -552,7 +928,7 @@ describe('crawlerService proxy and wind control', () => {
 
     await expect(
       crawlerService.fetchWithRetry('https://www.apple.com.cn/order', 99)
-    ).rejects.toThrow('已重试 3 次');
+    ).rejects.toThrow('已尝试 3 次');
     expect(mockedAxios.get).toHaveBeenCalledTimes(3);
   });
 
@@ -584,6 +960,32 @@ describe('crawlerService proxy and wind control', () => {
 });
 
 describe('非标准上游状态的日志保存', () => {
+  test('HTTP 541 失败页记录安全诊断，不记录动态跳转或正文', async () => {
+    const crawler = loadCrawlerService({
+      proxyEnabled: true,
+      proxy: { host: 'proxy.example', port: 8080 },
+    });
+    const axios = require('axios');
+    axios.get.mockReset();
+    axios.get.mockRejectedValue({
+      message: 'HTTP 541',
+      response: {
+        status: 541,
+        data: '<title>Page Not Found - Apple</title><body>secret@example.com</body>',
+        request: {
+          res: {
+            responseUrl:
+              'https://secure7.www.apple.com.cn/shop/order/guest/W1234567890/secret-token?e=secret',
+          },
+        },
+      },
+    });
+    await expect(crawler.fetchWithRetry('https://www.apple.com.cn/order', 1)).rejects.toMatchObject(
+      { httpStatus: 541, pageDiagnostics: { titleKind: 'not_found', routeKind: 'guest_order' } }
+    );
+    expect(JSON.stringify(require('../src/utils/logger').warn.mock.calls)).not.toMatch(/secret/);
+  });
+
   test.each([
     [403, 403],
     [541, 541],

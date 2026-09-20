@@ -1,3 +1,5 @@
+const { parseProductKeys, productKeySql } = require('../utils/productFilterQuery');
+const { collectProductOptions } = require('../utils/productFilter');
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
 const { normalizeOrderStatus } = require('../constants/business');
 const logger = require('../utils/logger');
@@ -13,7 +15,7 @@ const {
   User,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
-const { serializePublicProducts } = require('../utils/orderSerialization');
+const { serializePublicProducts, serializeOrderPricing } = require('../utils/orderSerialization');
 const { getPaymentDeadline } = require('./paymentEligibility');
 const refreshJobService = require('./crawler/refreshJobService');
 const { normalizePayerName, updateLockedOrderPayer } = require('./payerService');
@@ -79,9 +81,17 @@ function includeTaskRelations() {
         'sourceRecipientTag',
         'tag',
         'products',
+        'productFilterItems',
         'status',
         'paymentStatus',
+        'emailOrderStatus',
+        'emailPaymentStatus',
+        'emailStatusNeedsReview',
+        'emailStatusEvidenceAt',
+        'emailPickupInfo',
         'paymentMethod',
+        'orderAmount',
+        'orderAmountPriceVersion',
         'officialOrderAmount',
         'officialOrderAmountCurrency',
         'payerName',
@@ -154,30 +164,42 @@ async function listRecipientTagOptions(taskWhere, orderWhere) {
  * 查询当前筛选范围内可用的完整商品名称，不受已选商品限制。
  * @param {Object} taskWhere - 付款任务条件
  * @param {Object} orderWhere - 不含商品条件的订单条件
- * @returns {Promise<string[]>} 去重排序后的完整商品名称
+ * @param {boolean} detailed 是否同时返回稳定候选及旧名称
+ * @returns {Promise<Array|Object>} 权限范围内的候选
  */
-async function listProductNameOptions(taskWhere, orderWhere) {
-  const rows = await PaymentTask.findAll({
-    where: taskWhere,
-    attributes: ['id'],
-    include: [
-      {
-        model: Order,
-        as: 'order',
-        attributes: ['products'],
-        where: orderWhere,
-        required: true,
-      },
-    ],
-  });
-  const productNames = new Set();
-  for (const row of rows) {
-    for (const product of Array.isArray(row.order?.products) ? row.order.products : []) {
-      const name = String(product?.name || '').trim();
-      if (name) productNames.add(name);
+async function listProductNameOptions(taskWhere, orderWhere, detailed = false) {
+  try {
+    const rows = await PaymentTask.findAll({
+      where: taskWhere,
+      attributes: ['id'],
+      include: [
+        {
+          model: Order,
+          as: 'order',
+          attributes: ['products', 'productFilterItems'],
+          where: orderWhere,
+          required: true,
+        },
+      ],
+    });
+    const productNames = new Set();
+    for (const row of rows) {
+      for (const product of Array.isArray(row.order?.products) ? row.order.products : []) {
+        const name = String(product?.name || '').trim();
+        if (name) productNames.add(name);
+      }
     }
+    const names = [...productNames].sort((left, right) => left.localeCompare(right, 'zh-CN'));
+    if (detailed)
+      return {
+        productOptions: collectProductOptions(rows.map(row => row.order)),
+        productNameOptions: names,
+      };
+    return names;
+  } catch (error) {
+    logger.error('查询商品筛选候选失败', { error: error.message });
+    throw error;
   }
-  return [...productNames].sort((left, right) => left.localeCompare(right, 'zh-CN'));
 }
 
 function serializeTask(task, serverTime = new Date()) {
@@ -195,13 +217,20 @@ function serializeTask(task, serverTime = new Date()) {
     orderId: plain.orderId,
     orderNumber: plain.order?.orderNumber,
     recipientTag: getOrderRecipientTag(plain.order),
-    products: serializePublicProducts(plain.order?.products),
+    products: serializePublicProducts(plain.order?.products, plain.order?.productFilterItems),
     officialOrderStatus: normalizeOrderStatus(plain.order?.status),
     officialPaymentStatus: plain.order?.paymentStatus || null,
     officialPaymentConfirmed: plain.order?.paymentStatus === 'paid',
     officialPaymentDiscrepancy:
       plain.order?.paymentStatus === 'paid' && plain.processingStatus !== 'completed',
+    emailOrderStatus: plain.order?.emailOrderStatus || 'unknown',
+    emailPaymentStatus: plain.order?.emailPaymentStatus || 'unknown',
+    emailPaymentConfirmed: plain.order?.emailPaymentStatus === 'paid',
+    emailStatusNeedsReview: Boolean(plain.order?.emailStatusNeedsReview),
+    emailStatusEvidenceAt: plain.order?.emailStatusEvidenceAt || null,
+    emailPickupInfo: plain.order?.emailPickupInfo || null,
     paymentMethod: plain.order?.paymentMethod || null,
+    ...serializeOrderPricing(plain.order),
     officialOrderAmount: plain.order?.officialOrderAmount ?? null,
     officialOrderAmountCurrency: plain.order?.officialOrderAmountCurrency || null,
     lastCrawledAt: plain.order?.lastCrawledAt || null,
@@ -260,14 +289,24 @@ function parseProductNames(value) {
  * @returns {Object|null} Sequelize 商品筛选条件
  */
 function buildProductCondition(query) {
+  const keys = parseProductKeys(query.productKeys);
   const productNames = parseProductNames(query.productNames);
   const keyword = String(query.productKeyword || '').trim();
   const model = String(query.productModel || '').trim();
   if (keyword.length > 100 || model.length > 50) {
     throw ApiError.badRequest('商品筛选条件过长');
   }
-  if (productNames.length === 0 && !keyword && !model) return null;
+  if (keys.length === 0 && productNames.length === 0 && !keyword && !model) return null;
   const clauses = [];
+  if (keys.length)
+    clauses.push(
+      productKeySql(
+        keys,
+        '"order"."product_filter_items"',
+        value => sequelize.escape(value),
+        'ordinality - 1'
+      )
+    );
   if (productNames.length > 0) {
     const escapedNames = productNames.map(name => sequelize.escape(name)).join(', ');
     clauses.push(`item->>'name' IN (${escapedNames})`);
@@ -280,7 +319,7 @@ function buildProductCondition(query) {
     clauses.push(`item->>'model' = ${sequelize.escape(model)}`);
   }
   return Sequelize.literal(
-    `EXISTS (SELECT 1 FROM jsonb_array_elements("order"."products") AS item WHERE ${clauses.join(' AND ')})`
+    `EXISTS (SELECT 1 FROM jsonb_array_elements("order"."products") WITH ORDINALITY AS p(item, ordinality) WHERE ${clauses.join(' AND ')})`
   );
 }
 
@@ -325,7 +364,7 @@ async function listOwnTasks(userId, query = {}) {
     const serverTime = new Date();
     const include = includeTaskRelations();
     include[0].where = orderWhere;
-    const [{ count, rows }, productNameOptions, recipientTagOptions] = await Promise.all([
+    const [{ count, rows }, productCandidates, recipientTagOptions] = await Promise.all([
       PaymentTask.findAndCountAll({
         where,
         attributes: taskAttributes(),
@@ -339,12 +378,12 @@ async function listOwnTasks(userId, query = {}) {
         limit,
         offset: (page - 1) * limit,
       }),
-      listProductNameOptions(where, productOptionOrderWhere),
+      listProductNameOptions(where, productOptionOrderWhere, true),
       listRecipientTagOptions(where, tagOptionOrderWhere),
     ]);
     return {
       items: rows.map(row => serializeTask(row, serverTime)),
-      productNameOptions,
+      ...productCandidates,
       recipientTagOptions,
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
       serverTime,

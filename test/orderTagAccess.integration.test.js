@@ -230,6 +230,45 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
     expect(rows).toHaveLength(1);
     expect(JSON.stringify(rows)).toContain(orders[0].orderNumber);
   });
+  test('展示 TAG 多选在分页和导出前过滤，来源与档案回退一致', async () => {
+    const tags = encodeURIComponent(JSON.stringify(['PROFILE-DIFFERENT', 'TAG-A']));
+    const result = await request(`/orders?recipientTags=${tags}&limit=1`, { token: adminToken });
+    expect(result.status).toBe(200);
+    expect(result.body.data.total).toBe(2);
+    expect(result.body.data.orders).toHaveLength(1);
+    const next = await request(`/orders?recipientTags=${tags}&limit=1&page=2`, {
+      token: adminToken,
+    });
+    expect(
+      new Set([...result.body.data.orders, ...next.body.data.orders].map(row => row.id))
+    ).toEqual(new Set([orders[0].id, orders[1].id]));
+    const exported = await request(`/orders/export?recipientTags=${tags}`, { token: adminToken });
+    const xlsx = require('xlsx');
+    const book = xlsx.read(exported.body, { type: 'buffer' });
+    expect(xlsx.utils.sheet_to_json(book.Sheets[book.SheetNames[0]])).toHaveLength(2);
+    const exact = await request(
+      `/orders?recipientTags=${encodeURIComponent(JSON.stringify([' TAG-A ']))}`,
+      { token: adminToken }
+    );
+    expect(exact.body.data.orders.map(row => row.id)).toEqual([orders[5].id]);
+  });
+
+  test('TAG 候选使用展示值，筛选仍受访问范围约束', async () => {
+    const options = await request('/orders/filter-options');
+    expect(options.body.data.recipientTags).toEqual(['PROFILE-DIFFERENT']);
+    const visible = await request(
+      `/orders?recipientTags=${encodeURIComponent('["PROFILE-DIFFERENT","TAG-A"]')}`
+    );
+    expect(visible.body.data.orders.map(row => row.id)).toEqual([orders[0].id]);
+    const hidden = await request(`/orders?recipientTags=${encodeURIComponent('["TAG-A"]')}`);
+    expect(hidden.body.data.total).toBe(0);
+    const all = await request('/orders/filter-options', { token: adminToken });
+    expect(all.body.data.recipientTags).toEqual(
+      expect.arrayContaining(['PROFILE-DIFFERENT', 'TAG-A', 'TAG-A-1', 'tag-a', ' TAG-A '])
+    );
+    expect(all.body.data.recipientTags).not.toContain('TAG-B');
+  });
+
   test('显式混合批量刷新与页面刷新整体拒绝，不创建任务', async () => {
     const before = await models.OrderRefreshJob.count();
     for (const [path, body] of [

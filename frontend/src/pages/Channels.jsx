@@ -102,6 +102,7 @@ export default function Channels() {
       totalOrders: acc.totalOrders + channel.totalOrders,
       paidOrders: acc.paidOrders + channel.paidOrders,
       deliveredOrders: acc.deliveredOrders + channel.deliveredOrders,
+      missingAmountOrders: acc.missingAmountOrders + (channel.missingAmountOrders || 0),
       totalAmount: acc.totalAmount + (channel.totalAmount || 0),
       paidAmount: acc.paidAmount + (channel.paidAmount || 0),
       deliveredAmount: acc.deliveredAmount + (channel.deliveredAmount || 0),
@@ -110,6 +111,7 @@ export default function Channels() {
       totalOrders: 0,
       paidOrders: 0,
       deliveredOrders: 0,
+      missingAmountOrders: 0,
       totalAmount: 0,
       paidAmount: 0,
       deliveredAmount: 0,
@@ -172,9 +174,12 @@ export default function Channels() {
         <div className="card">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">官网订单金额（已解析）</p>
+              <p className="text-sm text-gray-500">订单金额（按官方售价计算）</p>
               <p className="text-2xl font-bold text-gray-900 mt-2">
                 {formatAmount(totals.totalAmount)}
+                <span className="block text-xs font-normal text-gray-500">
+                  {totals.missingAmountOrders} 笔待确认
+                </span>
               </p>
             </div>
             <div className="w-12 h-12 bg-orange-50 rounded-lg flex items-center justify-center">
@@ -222,13 +227,13 @@ export default function Channels() {
                     总订单数
                   </th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                    官网订单金额
+                    订单金额
                   </th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
                     官网已支付订单
                   </th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                    官网已支付金额
+                    已付款订单金额
                   </th>
                   <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
                     已取货订单
@@ -260,6 +265,9 @@ export default function Channels() {
                       <td className="py-4 px-4">
                         <span className="text-gray-900 font-medium">
                           {formatAmount(channel.totalAmount || 0)}
+                          <span className="block text-xs font-normal text-gray-500">
+                            {channel.missingAmountOrders || 0} 笔待确认
+                          </span>
                         </span>
                       </td>
                       <td className="py-4 px-4">

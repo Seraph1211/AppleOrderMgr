@@ -1,6 +1,7 @@
 const enabled = process.env.RUN_PAYMENT_CODE_DB === 'true';
 const crypto = require('crypto');
 const { makePng } = require('./fixtures/paymentCode');
+const { buildAosLine } = require('./fixtures/aosRecords');
 (enabled ? describe : describe.skip)('付款码独立数据库回归', () => {
   const models = require('../src/models');
   const { sequelize, User, AosDevice, IngestionSetting, Order, PaymentTask, OrderPaymentCode } =
@@ -69,6 +70,65 @@ const { makePng } = require('./fixtures/paymentCode');
       ...overrides,
     };
   }
+  test('订单原文第17列直接读取，保留加密、权限、审计且不回填业务数据', async () => {
+    const date = new Date(new Date(order.orderDate).getTime() + 8 * 3600000)
+      .toISOString()
+      .replace('T', ' ')
+      .replace('Z', '');
+    const rawLine = buildAosLine({
+      0: order.orderNumber,
+      13: order.orderUrl,
+      14: date,
+      16: makePng(4),
+    });
+    const source = await models.AosRecord.create({
+      id: crypto.randomUUID(),
+      deviceId: device.id,
+      eventId: crypto.randomUUID(),
+      payloadHash: 'a'.repeat(64),
+      payload: { rawLine },
+      fileName: 'AOS订单记录-0918(test).txt',
+      lineNumber: 1,
+      receivedAt: new Date(),
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      orderDate: order.orderDate,
+      status: 'succeeded',
+      eligibility: 'allowed',
+    });
+    try {
+      const before = (await Order.findByPk(order.id)).toJSON();
+      const sourceBefore = (await models.AosRecord.findByPk(source.id)).toJSON();
+      const events = await models.PaymentTaskEvent.count();
+      const result = await service.getPaymentCode(Number(task.id), actor.id);
+      expect(result).toMatchObject({
+        availability: 'available',
+        imageDataUrl: makePng(4),
+        sourceTime: new Date(order.orderDate).toISOString(),
+      });
+      await expect(service.getPaymentCode(Number(task.id), other.id)).rejects.toThrow(
+        '付款任务不存在或已转派'
+      );
+      expect(await models.PaymentTaskEvent.count()).toBe(events + 1);
+      expect(await OrderPaymentCode.count()).toBe(0);
+      expect((await Order.findByPk(order.id)).toJSON()).toEqual(before);
+      expect((await models.AosRecord.findByPk(source.id)).toJSON()).toEqual(sourceBefore);
+      const [raw] = await sequelize.query('SELECT payload::text FROM aos_records WHERE id=:id', {
+        replacements: { id: source.id },
+      });
+      expect(raw[0].payload).not.toContain('base64');
+      await source.update({ status: 'duplicate' });
+      expect((await service.getPaymentCode(Number(task.id), actor.id)).availability).toBe(
+        'available'
+      );
+      await source.update({ status: 'manual_review' });
+      expect((await service.getPaymentCode(Number(task.id), actor.id)).availability).toBe(
+        'missing'
+      );
+    } finally {
+      await source.destroy();
+    }
+  });
   test('存量补码不修改订单，重复事件幂等且载荷不可变', async () => {
     const before = (await Order.findByPk(order.id)).toJSON();
     const row = record();

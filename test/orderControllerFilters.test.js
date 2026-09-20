@@ -26,6 +26,7 @@ jest.mock('../src/utils/logger', () => ({
 const {
   buildListFilters,
   getFilterOptions,
+  getOrderLink,
   serializeOrderListItem,
   serializeOrderDetail,
 } = require('../src/controllers/orderController');
@@ -65,9 +66,41 @@ describe('订单列表组合筛选', () => {
     expect(where).toEqual({ paymentStatus: 'paid' });
   });
 
+  test('邮件订单与付款状态使用独立受控多选', () => {
+    const { where } = buildListFilters({
+      emailOrderStatuses: JSON.stringify(['processing', 'ready_for_pickup']),
+      emailPaymentStatuses: JSON.stringify(['paid']),
+    });
+    expect(where.emailOrderStatus[Op.in]).toEqual(['processing', 'ready_for_pickup']);
+    expect(where.emailPaymentStatus[Op.in]).toEqual(['paid']);
+    expect(() => buildListFilters({ emailOrderStatuses: JSON.stringify(['picked_up']) })).toThrow(
+      'emailOrderStatuses 包含非法值'
+    );
+  });
+
   test('非法付款状态被拒绝', () => {
     expect(() => buildListFilters({ payment_status: 'pending' })).toThrow('payment_status 非法');
   });
+
+  test('TAG 精确多选保留逗号、引号和空格，并与状态组合', () => {
+    const tags = ['重庆 邓超', "A,B'O", ' TAG-A '];
+    const { where } = buildListFilters({
+      recipientTags: JSON.stringify(tags),
+      status: 'picked_up',
+    });
+    expect(where[Op.and][0].logic[Op.in]).toEqual(tags);
+    expect(where[Op.and][0].attribute.val).toContain('source_recipient_tag');
+    expect(where.status).toBe('picked_up');
+  });
+
+  test.each([
+    '[invalid',
+    '[1]',
+    JSON.stringify(Array(101).fill('A')),
+    JSON.stringify(['A'.repeat(501)]),
+  ])('拒绝非法 TAG 多选参数 %s', recipientTags =>
+    expect(() => buildListFilters({ recipientTags })).toThrow()
+  );
 
   test('订单状态多选同维度使用 OR', () => {
     const statuses = ['payment_due', 'ready_for_pickup'];
@@ -203,6 +236,50 @@ describe('邮件快照展示回归', () => {
     expect(byKeyword[Op.or]).toContainEqual({ appleId: { [Op.iLike]: '%测试%' } });
     expect(byKeyword[Op.or]).toContainEqual({ recipientName: { [Op.iLike]: '%测试%' } });
   });
+
+  test('纯数字关键词精确匹配系统订单 ID 并保留既有文本搜索', () => {
+    const { where } = buildListFilters({ keyword: '123' });
+    expect(where[Op.or]).toContainEqual({ id: 123 });
+    expect(where[Op.or]).toContainEqual({ orderNumber: { [Op.iLike]: '%123%' } });
+    expect(buildListFilters({ keyword: 'W1234567890' }).where[Op.or]).not.toContainEqual({
+      id: expect.any(Number),
+    });
+  });
+});
+
+test('订单链接按订单范围单独读取且禁止缓存', async () => {
+  const { Order } = require('../src/models');
+  Order.findOne = jest.fn().mockResolvedValue({
+    id: 123,
+    orderNumber: 'W1234567890',
+    orderUrl: 'https://secure.example.invalid/order/W1234567890',
+  });
+  const res = { set: jest.fn(), json: jest.fn() };
+  const req = { params: { id: '123' }, user: { id: 1, role: 'admin' } };
+
+  await getOrderLink(req, res);
+
+  expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
+  expect(res.json).toHaveBeenCalledWith({
+    success: true,
+    data: {
+      id: 123,
+      orderNumber: 'W1234567890',
+      orderUrl: 'https://secure.example.invalid/order/W1234567890',
+    },
+  });
+  expect(req.auditTarget).toBe('订单；目标编号 123');
+});
+
+test('订单链接拒绝夹带其他字符的订单 ID', async () => {
+  const { Order } = require('../src/models');
+  Order.findOne.mockClear();
+  const req = { params: { id: '123abc' }, user: { id: 1, role: 'admin' } };
+
+  await expect(getOrderLink(req, { set: jest.fn(), json: jest.fn() })).rejects.toMatchObject({
+    statusCode: 400,
+  });
+  expect(Order.findOne).not.toHaveBeenCalled();
 });
 
 describe('订单筛选候选项', () => {
@@ -224,7 +301,11 @@ describe('订单筛选候选项', () => {
     expect(res.json).toHaveBeenCalledWith({
       success: true,
       data: {
+        recipientTags: [],
         productModels: ['MODEL-18'],
+        productOptions: expect.arrayContaining([
+          expect.objectContaining({ count: 1, needsReview: true }),
+        ]),
         productNames: ['iPhone 18 Pro Max 512GB 勃艮第酒红色'],
         stores: ['Apple Store 零售店'],
         recipients: [],

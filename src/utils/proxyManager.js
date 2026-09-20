@@ -1,4 +1,5 @@
 const { config } = require('./config');
+const logger = require('./logger');
 const {
   createProxyProvider,
   isSupportedProxyProvider,
@@ -36,6 +37,7 @@ class ProxyManager {
     this.activeProvider = proxyConfig.enabled ? null : createDisabledProvider();
     this.activeProviderName = proxyConfig.enabled ? null : 'disabled';
     this.switchQueue = Promise.resolve();
+    this.proxyOwners = new WeakMap();
   }
 
   /** @returns {Promise<Object>} 初始化环境默认 Provider。 */
@@ -106,19 +108,44 @@ class ProxyManager {
     return this.activeProvider?.getNextProxy() || null;
   }
 
+  /** @param {Object} options - 取消信号 @returns {Promise<Object|null>} 租用代理。 */
+  async acquireProxy(options = {}) {
+    try {
+      options.signal?.throwIfAborted();
+      const provider = this.activeProvider;
+      const proxy = provider?.acquireProxy
+        ? await provider.acquireProxy(options)
+        : provider?.getNextProxy();
+      if (proxy) this.proxyOwners.set(proxy, provider);
+      return proxy || null;
+    } catch (error) {
+      logger.debug('代理租用未完成', { errorCode: error.refreshErrorCode || 'PROXY_TRANSPORT' });
+      throw error;
+    }
+  }
+
+  /** @param {Object} proxy - 已租用代理 @returns {void} 释放所属 Provider 的租用。 */
+  releaseProxy(proxy) {
+    this.proxyOwners.get(proxy)?.releaseProxy?.(proxy);
+    this.proxyOwners.delete(proxy);
+  }
+
   /** @param {Object} proxy - 失败代理 @returns {boolean} 是否废弃。 */
-  recordProxyFailure(proxy) {
-    return this.activeProvider?.recordProxyFailure(proxy) || false;
+  recordProxyFailure(proxy, options = {}) {
+    return (
+      (this.proxyOwners.get(proxy) || this.activeProvider)?.recordProxyFailure(proxy, options) ||
+      false
+    );
   }
 
   /** @param {Object} proxy - 成功代理 @returns {void} */
   recordProxySuccess(proxy) {
-    this.activeProvider?.recordProxySuccess(proxy);
+    (this.proxyOwners.get(proxy) || this.activeProvider)?.recordProxySuccess(proxy);
   }
 
   /** @param {Object} proxy - 需要隔离的代理 @returns {void} */
   markProxyAsBad(proxy) {
-    this.activeProvider?.markProxyAsBad(proxy);
+    (this.proxyOwners.get(proxy) || this.activeProvider)?.markProxyAsBad(proxy);
   }
 
   /** @returns {Object} 当前 Provider 脱敏状态。 */

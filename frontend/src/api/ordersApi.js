@@ -27,11 +27,18 @@ export const getOrderDetail = id => {
   return client.get(`/orders/${id}`);
 };
 
-export const getOrderFilterOptions = () => client.get('/orders/filter-options');
+/** 按权限读取单个官网订单链接，仅在用户点击复制时请求。 */
+export const getOrderLink = id => client.get(`/orders/${id}/link`);
+
+export const getOrderFilterOptions = params => client.get('/orders/filter-options', { params });
 
 export const exportOrders = async (params = {}) => {
+  const query = { ...params };
+  for (const key of ['orderIds', 'fields']) {
+    if (Array.isArray(query[key])) query[key] = JSON.stringify(query[key]);
+  }
   const blob = await client.get('/orders/export', {
-    params,
+    params: query,
     responseType: 'blob',
   });
   const objectUrl = URL.createObjectURL(blob);

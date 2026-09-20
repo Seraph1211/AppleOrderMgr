@@ -1,3 +1,4 @@
+import OrderAmount from '../components/OrderAmount';
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
@@ -29,21 +30,6 @@ function formatDate(value) {
   if (!value) return '-';
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN');
-}
-
-function formatAmount(value, currency = 'CNY') {
-  if (value === null || value === undefined || value === '') return '待官网解析';
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return String(value);
-  const normalizedCurrency = currency || 'CNY';
-  try {
-    return new Intl.NumberFormat('zh-CN', {
-      style: 'currency',
-      currency: normalizedCurrency,
-    }).format(amount);
-  } catch {
-    return `${normalizedCurrency} ${amount.toFixed(2)}`;
-  }
 }
 
 export default function OrderDetail() {
@@ -189,6 +175,58 @@ export default function OrderDetail() {
       </div>
 
       <OfficialOrderSummary order={order} />
+      <div className="card border-blue-100 bg-blue-50/40">
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">官方订单邮件状态</h2>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <p className="text-sm text-gray-500">订单状态</p>
+            <p className="mt-1 font-medium text-gray-900">
+              {{
+                unknown: '待确认',
+                confirmed: '订单已确认',
+                processing: '处理中',
+                ready_for_pickup: '可取货',
+              }[order.email_order_status] || '待确认'}
+            </p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">邮件证据时间</p>
+            <p className="mt-1 text-gray-900">
+              {order.email_status_evidence_at ? formatDate(order.email_status_evidence_at) : '-'}
+            </p>
+          </div>
+        </div>
+        {order.email_status_needs_review && (
+          <p className="mt-3 text-sm text-amber-700">
+            邮件结论待核对，请查看关联邮件。
+            {!!order.email_status_review_reasons?.length && (
+              <span className="block text-xs break-all">
+                {order.email_status_review_reasons.join('、')}
+              </span>
+            )}
+          </p>
+        )}
+        {order.email_pickup_info && (
+          <div className="mt-4 border-t border-blue-100 pt-4 text-sm text-gray-700">
+            <p className="font-medium text-gray-900">
+              {order.email_pickup_info.storeName || '门店待确认'}
+            </p>
+            <p>{order.email_pickup_info.storeAddress || ''}</p>
+            <p className="mt-1">
+              {order.email_pickup_info.appointmentMode === 'business_hours'
+                ? '营业时间内到店'
+                : [
+                    order.email_pickup_info.pickupDate,
+                    [order.email_pickup_info.startTime, order.email_pickup_info.endTime]
+                      .filter(Boolean)
+                      .join('–'),
+                  ]
+                    .filter(Boolean)
+                    .join(' ') || '时间待确认'}
+            </p>
+          </div>
+        )}
+      </div>
       {validationIssues.length > 0 && (
         <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
           <div className="flex items-center gap-2 font-medium">
@@ -253,9 +291,9 @@ export default function OrderDetail() {
               </table>
             </div>
             <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-6 py-4">
-              <span className="text-sm font-medium text-gray-600">官网订单金额</span>
+              <span className="text-sm font-medium text-gray-600">订单金额</span>
               <span className="text-xl font-bold text-primary">
-                {formatAmount(order.official_order_amount, order.official_order_amount_currency)}
+                <OrderAmount amount={order.order_amount} />
               </span>
             </div>
           </div>
@@ -392,7 +430,6 @@ export default function OrderDetail() {
               付款信息
             </h2>
             <p className="text-sm text-gray-900">{order.payment_method || '-'}</p>
-            <p className="mt-2 text-sm text-gray-500">付款状态：{order.payment_status || '-'}</p>
           </div>
         </div>
       </div>

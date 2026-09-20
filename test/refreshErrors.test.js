@@ -8,10 +8,26 @@ describe('订单刷新错误分类与脱敏', () => {
     [{ response: { status: 424 }, code: 'ERR_BAD_RESPONSE' }, 'HTTP_424'],
     [{ response: { status: 200 }, code: 'ERR_BAD_RESPONSE' }, 'RESPONSE_STREAM'],
     [{ eventType: 'parse' }, 'PARSE'],
+    [{ eventType: 'parse', parseReason: 'guest_order_loading' }, 'PAGE_LOADING'],
+    [{ code: 'ECONNABORTED' }, 'REQUEST_TIMEOUT'],
+    [{ code: 'ETIMEDOUT' }, 'REQUEST_TIMEOUT'],
+    [{ code: 'ERR_CANCELED' }, 'REQUEST_CANCELLED'],
+    [{ response: { status: 631 } }, 'HTTP_631'],
     [{ eventType: 'order_identity' }, 'IDENTITY'],
     [{ eventType: 'concurrency' }, 'CONCURRENCY'],
   ])('HTTP、响应中断、解析和身份错误分开记录 %j', (error, expected) => {
     expect(classifyRefreshError(error)).toBe(expected);
+  });
+  test.each([
+    'REQUEST_TIMEOUT',
+    'RESPONSE_STREAM',
+    'PAGE_LOADING',
+    'TASK_TIMEOUT',
+    'REQUEST_CANCELLED',
+  ])('重试包装后保留 %s，拒绝未知外部错误码', code => {
+    const wrapped = Object.assign(new Error('已尝试 3 次'), { refreshErrorCode: code });
+    expect(classifyRefreshError(wrapped)).toBe(code);
+    expect(classifyRefreshError({ refreshErrorCode: 'ARBITRARY_EXTERNAL_VALUE' })).toBe('UNKNOWN');
   });
   test.each([
     [541, 'APPLE_541'],

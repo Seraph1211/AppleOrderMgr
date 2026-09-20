@@ -336,6 +336,8 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
           tag: '=1+1',
           status: 'payment_received',
           paymentStatus: 'paid',
+          orderAmount: '21998.00',
+          orderAmountPriceVersion: 'cn-iphone18-20260921',
           officialOrderAmount: '8999.00',
           officialOrderAmountCurrency: 'CNY',
           applePassword: 'synthetic-secret',
@@ -349,9 +351,72 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     const sheet = book.Sheets['订单'];
     const data = XLSX.utils.sheet_to_json(sheet);
     expect(data[0]['标签']).toBe("'=1+1");
-    expect(data[0]['官网金额']).toBe('8999.00');
+    expect(data[0]['订单金额']).toBe('21998.00');
+    expect(data[0]['金额来源']).toBe('按官方售价计算');
+    expect(data[0]).not.toHaveProperty('官网金额');
     expect(JSON.stringify(data)).not.toMatch(/synthetic-secret|private/);
     expect(Object.values(sheet).filter(cell => cell?.f)).toHaveLength(0);
+  });
+
+  test('选中订单按字段白名单导出且不包含未选择或敏感字段', async () => {
+    Order.findAll.mockResolvedValue([
+      {
+        toJSON: () => ({
+          id: 41,
+          orderNumber: 'W1234567890',
+          products: [{ name: '=HYPERLINK("bad")', quantity: 2 }],
+          applePassword: 'synthetic-secret',
+          orderUrl: 'https://example.invalid/private',
+        }),
+      },
+    ]);
+    const res = response();
+
+    await exportOrders(
+      {
+        query: {
+          orderIds: JSON.stringify([41]),
+          fields: JSON.stringify(['systemOrderId', 'orderNumber', 'products']),
+        },
+        user: { id: 1, role: 'admin' },
+      },
+      res
+    );
+
+    const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
+    const data = XLSX.utils.sheet_to_json(book.Sheets['订单']);
+    expect(data).toEqual([
+      {
+        '系统订单 ID': 41,
+        官网订单号: 'W1234567890',
+        商品信息: '\'=HYPERLINK("bad") ×2',
+      },
+    ]);
+    expect(JSON.stringify(data)).not.toMatch(/synthetic-secret|private|Apple ID/);
+  });
+
+  test('选中订单导出拒绝空字段、未知字段和不可见 ID 集合', async () => {
+    const baseRequest = { user: { id: 1, role: 'admin' } };
+    await expect(
+      exportOrders({ ...baseRequest, query: { orderIds: '[1]', fields: '[]' } }, response())
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      exportOrders(
+        { ...baseRequest, query: { orderIds: '[1]', fields: '["orderUrl"]' } },
+        response()
+      )
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    Order.findAll.mockResolvedValue([]);
+    await expect(
+      exportOrders(
+        {
+          ...baseRequest,
+          query: { orderIds: '[1]', fields: '["systemOrderId"]' },
+        },
+        response()
+      )
+    ).rejects.toMatchObject({ statusCode: 404 });
   });
 
   test('非管理员导出不能用 includeSensitive 绕过脱敏', async () => {

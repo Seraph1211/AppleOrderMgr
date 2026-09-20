@@ -138,6 +138,7 @@ async function getPendingOverview() {
         `SELECT t.assignee_user_id AS "userId", COUNT(*)::int AS count
          FROM orders o LEFT JOIN payment_tasks t ON t.order_id = o.id
          WHERE o.status = 'payment_due'
+           AND o.email_payment_status <> 'paid'
            AND (o.payment_status IS NULL OR o.payment_status NOT IN ('paid', 'refunded'))
          GROUP BY t.assignee_user_id`,
         { type: Sequelize.QueryTypes.SELECT }
@@ -463,6 +464,7 @@ async function previewAssignment(input) {
             'orderDate',
             'status',
             'paymentStatus',
+            'emailPaymentStatus',
             'lastCrawledAt',
             'officialStatusNeedsReview',
             'officialAllItemsTerminal',
@@ -617,6 +619,7 @@ async function executeAssignment(input, actorUserId) {
             'orderUrl',
             'status',
             'paymentStatus',
+            'emailPaymentStatus',
             'orderDate',
             'lastCrawledAt',
             'officialOrderCreatedAt',
@@ -716,7 +719,14 @@ async function executeAssignment(input, actorUserId) {
           'products',
           'status',
           'paymentStatus',
+          'emailOrderStatus',
+          'emailPaymentStatus',
+          'emailStatusNeedsReview',
+          'emailStatusEvidenceAt',
+          'emailPickupInfo',
           'paymentMethod',
+          'orderAmount',
+          'orderAmountPriceVersion',
           'officialOrderAmount',
           'officialOrderAmountCurrency',
           'payerName',
@@ -837,7 +847,14 @@ async function updateTaskNotes(taskId, input, actorUserId) {
           'products',
           'status',
           'paymentStatus',
+          'emailOrderStatus',
+          'emailPaymentStatus',
+          'emailStatusNeedsReview',
+          'emailStatusEvidenceAt',
+          'emailPickupInfo',
           'paymentMethod',
+          'orderAmount',
+          'orderAmountPriceVersion',
           'officialOrderAmount',
           'officialOrderAmountCurrency',
           'payerName',
@@ -949,7 +966,7 @@ async function listDispatchTasks(query = {}) {
     if (!Number.isInteger(limit) || limit <= 0 || limit > 200) {
       throw ApiError.badRequest('limit 必须是 1-200 之间的整数');
     }
-    const [{ count, rows }, productNameOptions, recipientTagOptions, rules, overview] =
+    const [{ count, rows }, productCandidates, recipientTagOptions, rules, overview] =
       await Promise.all([
         PaymentTask.findAndCountAll({
           where,
@@ -965,9 +982,17 @@ async function listDispatchTasks(query = {}) {
                 'sourceRecipientTag',
                 'tag',
                 'products',
+                'productFilterItems',
                 'status',
                 'paymentStatus',
+                'emailOrderStatus',
+                'emailPaymentStatus',
+                'emailStatusNeedsReview',
+                'emailStatusEvidenceAt',
+                'emailPickupInfo',
                 'paymentMethod',
+                'orderAmount',
+                'orderAmountPriceVersion',
                 'officialOrderAmount',
                 'officialOrderAmountCurrency',
                 'payerName',
@@ -994,7 +1019,7 @@ async function listDispatchTasks(query = {}) {
           limit,
           offset: (page - 1) * limit,
         }),
-        listProductNameOptions(where, productOptionOrderWhere),
+        listProductNameOptions(where, productOptionOrderWhere, true),
         listRecipientTagOptions(where, tagOptionOrderWhere),
         PaymentTagRule.findAll({ where: { enabled: true } }),
         getDispatchOverview(),
@@ -1011,7 +1036,7 @@ async function listDispatchTasks(query = {}) {
           serverTime
         ),
       })),
-      productNameOptions,
+      ...productCandidates,
       recipientTagOptions,
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
       serverTime,
@@ -1135,6 +1160,7 @@ async function runDispatchScan(limit = 500) {
             'createdAt',
             'status',
             'paymentStatus',
+            'emailPaymentStatus',
             'orderUrl',
             'orderDate',
             'officialOrderCreatedAt',
@@ -1238,6 +1264,7 @@ async function runDispatchScan(limit = 500) {
                   'tag',
                   'status',
                   'paymentStatus',
+                  'emailPaymentStatus',
                   'orderDate',
                   'officialOrderCreatedAt',
                   'officialPaymentExpiresAt',

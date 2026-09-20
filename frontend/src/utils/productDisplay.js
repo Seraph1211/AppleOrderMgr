@@ -15,10 +15,23 @@ export function groupDisplayProducts(products) {
     const quantity = Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
     const key = JSON.stringify([name, model]);
     const existing = groups.get(key);
-    if (!existing) groups.set(key, { name, quantity });
+    if (!existing)
+      groups.set(key, {
+        name,
+        quantity,
+        ...(product?.filterKeys
+          ? {
+              filterKeys: product.filterKeys,
+              filterNeedsReview: Boolean(product.filterNeedsReview),
+            }
+          : {}),
+      });
     else {
       const sum =
         existing.quantity === null || quantity === null ? null : existing.quantity + quantity;
+      if (product?.filterKeys)
+        existing.filterKeys = [...new Set([...(existing.filterKeys || []), ...product.filterKeys])];
+      if (product?.filterNeedsReview) existing.filterNeedsReview = true;
       existing.quantity = Number.isSafeInteger(sum) ? sum : null;
     }
   }

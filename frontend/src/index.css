@@ -77,6 +77,44 @@
   width: 100%;
   min-height: 36px;
 }
+/* 订单筛选按内容收紧宽度，大屏六项同排；下拉选项保留阅读空间。 */
+.order-filter-fields {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px 12px;
+}
+.order-filter-fields > div {
+  min-width: 0;
+}
+.order-filter-product [role='option'] .truncate {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 768px) {
+  .order-filter-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .order-filter-fields > div > .relative > .absolute {
+    right: auto;
+    width: max(100%, 220px);
+  }
+  .order-filter-fields > .order-filter-product > .relative > .absolute {
+    width: max(100%, 360px);
+  }
+}
+@media (min-width: 1024px) {
+  .order-filter-fields {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1280px) {
+  .order-filter-fields {
+    grid-template-columns:
+      minmax(0, 136px) minmax(0, 280px) minmax(0, 112px)
+      minmax(0, 144px) minmax(0, 160px) 156px;
+  }
+}
+
 /* 付款两页筛选按内容控制宽度，避免等分网格在宽屏上拉伸。 */
 .payment-filter-fields {
   display: flex;

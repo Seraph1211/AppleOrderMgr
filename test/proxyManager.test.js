@@ -19,6 +19,29 @@ const proxyManagerModule = require('../src/utils/proxyManager');
 
 const { ProxyManager, maskProxyString } = proxyManagerModule;
 
+test('租用反馈和释放始终交还原 Provider，切换不会泄漏槽位', async () => {
+  const first = createProvider('fanproxy_tunnel');
+  const second = createProvider('kdl_tunnel');
+  first.releaseProxy = jest.fn();
+  first.acquireProxy = jest.fn(() => Promise.resolve({ host: 'test', port: 80 }));
+  const manager = new ProxyManager(
+    { enabled: true, provider: 'fanproxy_tunnel' },
+    ({ provider }) => (provider === 'fanproxy_tunnel' ? first : second)
+  );
+  await manager.initialize();
+  const proxy = await manager.acquireProxy();
+  await manager.switchProvider('kdl_tunnel');
+  manager.recordProxySuccess(proxy);
+  manager.recordProxyFailure(proxy, { errorCode: 'PAGE_LOADING' });
+  manager.markProxyAsBad(proxy);
+  manager.releaseProxy(proxy);
+  expect(first.recordProxySuccess).toHaveBeenCalledWith(proxy);
+  expect(first.recordProxyFailure).toHaveBeenCalledWith(proxy, { errorCode: 'PAGE_LOADING' });
+  expect(first.markProxyAsBad).toHaveBeenCalledWith(proxy);
+  expect(first.releaseProxy).toHaveBeenCalledWith(proxy);
+  expect(second.recordProxyFailure).not.toHaveBeenCalled();
+});
+
 function createProvider(name, options = {}) {
   return {
     initialize: jest.fn(() =>

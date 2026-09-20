@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Apple 订单辅助刷新",
+  "version": "0.1.2",
+  "description": "为管理员指定的订单创建临时页面，读取订单业务字段并交回订单管理系统。",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqogWhPElbjxD6oOO5rBP3kXounwLvZVww9xo+RakLaeYXpaLDyjfYRWehCzPIYdnQseOovv87t0C0+XXwo1WGjiV3IP/A5cp7AK01pGrFO4HJx1PrFqKY1cdqk7Ecr1vAAJzq0vqKiSGuhFRLWo1+6bYwrAyefsyNZkn9SDyGRl6EdLuVD4QWSLej7Ab00HRgBM91bEl0WziANNBaAN+KFX9c91jEyoPxsZMwluAP3Qw29SqpImNo7A6t5pxX+BcBBLRg1kZd3GKbfj4OiWyXTrMY6nFpwPWxCqmwkS17eR+ywmGPwVCehwXNPmNuPcAHr3U0MD6l2BjmQaWiWmZQwIDAQAB",
+  "permissions": ["debugger"],
+  "background": { "service_worker": "background.js" },
+  "externally_connectable": {
+    "matches": [
+      "https://apple.godp.me/*",
+      "http://localhost/*",
+      "http://127.0.0.1/*"
+    ]
+  }
+}

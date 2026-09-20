@@ -1,6 +1,9 @@
 const { PERMISSIONS } = require('./business');
 
 const ADMIN_RESERVED_PERMISSIONS = Object.freeze([
+  PERMISSIONS.WECOM_READ,
+  PERMISSIONS.WECOM_CONFIGURE,
+  PERMISSIONS.WECOM_RETRY,
   PERMISSIONS.INGESTION_READ,
   PERMISSIONS.INGESTION_MANAGE,
   PERMISSIONS.INGESTION_DEVICES_MANAGE,
@@ -27,6 +30,9 @@ const ADMIN_RESERVED_PERMISSIONS = Object.freeze([
 ]);
 
 const PERMISSION_DEPENDENCIES = Object.freeze({
+  [PERMISSIONS.WECOM_CONFIGURE]: [PERMISSIONS.WECOM_READ],
+  [PERMISSIONS.WECOM_RETRY]: [PERMISSIONS.WECOM_READ],
+  [PERMISSIONS.ORDER_MAIL_MANAGE]: [PERMISSIONS.ORDERS_READ],
   [PERMISSIONS.INGESTION_MANAGE]: [PERMISSIONS.INGESTION_READ],
   [PERMISSIONS.INGESTION_DEVICES_MANAGE]: [PERMISSIONS.INGESTION_READ],
   [PERMISSIONS.INGESTION_RECORDS_PROCESS]: [PERMISSIONS.INGESTION_READ],
@@ -74,12 +80,14 @@ const PERMISSION_DEPENDENCIES = Object.freeze({
 
 /* eslint-disable camelcase -- 权限模块名与对外权限码完全一致 */
 const PERMISSION_MODULE_NAMES = Object.freeze({
+  wecom: '企微订单通知',
   monitor: '服务器监控',
   ingestion: '订单数据源',
   identity: '身份核验',
   dashboard: '仪表板',
   stats: '统计',
   orders: '订单',
+  order_mail: '订单邮件',
   apple_ids: 'Apple ID',
   recipients: '取机人',
   channels: '渠道',
@@ -93,6 +101,10 @@ const PERMISSION_MODULE_NAMES = Object.freeze({
 /* eslint-enable camelcase */
 
 const PERMISSION_LABELS = Object.freeze({
+  [PERMISSIONS.WECOM_READ]: '查看企微通知配置与投递',
+  [PERMISSIONS.WECOM_CONFIGURE]: '配置企微通知及发送测试',
+  [PERMISSIONS.WECOM_RETRY]: '重试企微通知',
+  [PERMISSIONS.ORDER_MAIL_MANAGE]: '查看完整订单邮件、附件并转发',
   [PERMISSIONS.MONITOR_MANAGE]: '服务器监控（查看、处理告警、配置规则）',
   [PERMISSIONS.INGESTION_READ]: '查看订单数据源',
   [PERMISSIONS.INGESTION_MANAGE]: '切换订单数据源',

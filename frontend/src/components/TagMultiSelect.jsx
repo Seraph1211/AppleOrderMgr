@@ -18,6 +18,7 @@ export default function TagMultiSelect({
   placeholder = '全部 TAG',
   itemLabel = 'TAG',
   optionLabels = EMPTY_LABELS,
+  searchLabels = EMPTY_LABELS,
 }) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -50,12 +51,14 @@ export default function TagMultiSelect({
     [options, value, optionLabels]
   );
   const visibleOptions = useMemo(() => {
-    const search = keyword.trim().toLocaleLowerCase('zh-CN');
+    const normalizeSearch = text =>
+      text.normalize('NFKC').replace(/\s+/gu, ' ').trim().toLocaleLowerCase('zh-CN');
+    const search = normalizeSearch(keyword);
     if (!search) return normalizedOptions;
     return normalizedOptions.filter(option =>
-      getOptionLabel(option, optionLabels).toLocaleLowerCase('zh-CN').includes(search)
+      normalizeSearch(searchLabels[option] || getOptionLabel(option, optionLabels)).includes(search)
     );
-  }, [keyword, normalizedOptions, optionLabels]);
+  }, [keyword, normalizedOptions, optionLabels, searchLabels]);
 
   const toggleOption = option => {
     onChange(

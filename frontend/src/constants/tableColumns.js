@@ -14,6 +14,14 @@ export const ordersColumns = [
     pinned: false,
   },
   {
+    key: 'emailOrderStatus',
+    label: '订单状态',
+    width: '120px',
+    defaultVisible: true,
+    sortable: false,
+    pinned: false,
+  },
+  {
     key: 'status',
     label: '官网状态',
     width: '100px',
@@ -109,8 +117,16 @@ export const ordersColumns = [
   },
   // 取货信息
   {
+    key: 'emailPickupInfo',
+    label: '邮件取货安排',
+    width: '240px',
+    defaultVisible: true,
+    sortable: false,
+    pinned: false,
+  },
+  {
     key: 'pickupStore',
-    label: '取货门店',
+    label: '官网取货门店',
     width: '180px',
     defaultVisible: true,
     sortable: false,
@@ -212,7 +228,7 @@ export const ordersColumns = [
   {
     key: 'actions',
     label: '操作',
-    width: '180px',
+    width: '300px',
     defaultVisible: true,
     sortable: false,
     pinned: true,

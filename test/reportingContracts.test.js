@@ -39,7 +39,7 @@ describe('统计口径契约', () => {
     jest.clearAllMocks();
   });
 
-  test('仪表板金额必须汇总官网订单金额字段', async () => {
+  test('仪表板金额汇总映射金额并报告缺失', async () => {
     mockOrderCount.mockResolvedValue(4);
     mockRecipientCount.mockResolvedValue(AVAILABLE_RECIPIENT_COUNT);
     mockOrderSum.mockResolvedValueOnce('600.50').mockResolvedValueOnce('300.25');
@@ -50,10 +50,14 @@ describe('统计口径契约', () => {
     });
 
     expect(mockOrderSum).toHaveBeenCalledWith(
-      'officialOrderAmount',
+      'orderAmount',
       expect.objectContaining({ where: expect.any(Object) })
     );
     expect(result.totalAmount).toBe(600.5);
+    expect(result.amountSource).toBe('catalog');
+    expect(mockOrderCount).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ orderAmount: null }) })
+    );
     expect(result.amountGrowth).toBeCloseTo(100);
     expect(result.availableRecipients).toBe(AVAILABLE_RECIPIENT_COUNT);
     expect(result).not.toHaveProperty('activeRecipients');
@@ -82,7 +86,7 @@ describe('统计口径契约', () => {
     const channel = res.json.mock.calls[0][0].data.channels[0];
     expect(channel.totalAmount).toBe(12999);
     expect(channel.totalAmount).not.toBe(16000);
-    expect(channel.amountSource).toBe('official_order_amount');
+    expect(channel.amountSource).toBe('catalog');
     expect(next).not.toHaveBeenCalled();
   });
 

@@ -69,6 +69,17 @@ app.use('/api/aos-collector/v1', requestLogger(), require('./routes/aosCollector
 // 允许较大的请求体（支持上传 base64 图片，最多 10MB）
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+// Webhook 请求的 JSON 解析错误可能含输入片段，禁止传播到通用错误日志。
+app.use('/api/wecom-notifications', (error, _req, res, next) => {
+  if (error.type === 'entity.parse.failed' || error.type === 'entity.too.large')
+    return res
+      .status(400)
+      .json({
+        success: false,
+        error: { code: 'VALIDATION_ERROR', message: '请求体格式或大小无效' },
+      });
+  return next(error);
+});
 
 app.use(
   cors({
@@ -117,6 +128,7 @@ app.use('/api/recipients', recipientsRouter);
 app.use('/api/orders', ordersRouter);
 app.use('/api/order-refresh', orderRefreshRouter);
 app.use('/api/email-processing', emailProcessingRouter);
+app.use('/api/wecom-notifications', require('./routes/wecomNotifications'));
 app.use('/api/server-monitor', require('./routes/serverMonitor'));
 app.use('/api/order-ingestion', require('./routes/orderIngestion'));
 app.use('/api/stats', statsRouter);

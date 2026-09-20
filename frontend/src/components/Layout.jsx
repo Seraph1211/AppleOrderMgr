@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ShieldCheck,
+  Bell,
   LayoutDashboard,
   Package,
   User,
@@ -38,6 +39,12 @@ const baseNavigation = [
 ];
 
 const adminNavigation = [
+  {
+    name: '企微订单通知',
+    href: '/wecom-notifications',
+    icon: Bell,
+    permission: PERMISSIONS.WECOM_READ,
+  },
   {
     name: '付款调度',
     href: '/payment-dispatch',

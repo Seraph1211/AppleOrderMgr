@@ -14,6 +14,7 @@ tmp
 test-artifacts
 coverage
 release-artifacts
+output
 uploads/import/*
 !uploads/import/.gitkeep
 test

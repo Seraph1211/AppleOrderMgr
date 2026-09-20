@@ -7,6 +7,23 @@ const KDL_ERROR_CODES = {
   441: 'PROXY_441',
   517: 'PROXY_517',
 };
+const INTERNAL_ERROR_CODES = new Set([
+  ...Object.values(ERROR_CODES),
+  ...Object.values(KDL_ERROR_CODES),
+  'IDENTITY',
+  'VALIDATION',
+  'PARSE',
+  'PAGE_LOADING',
+  'DATABASE',
+  'CONCURRENCY',
+  'REQUEST_TIMEOUT',
+  'RESPONSE_STREAM',
+  'REQUEST_CANCELLED',
+  'TASK_TIMEOUT',
+  'PROXY_TRANSPORT',
+  'PROXY_BUSY',
+  'UNKNOWN',
+]);
 
 /**
  * 将爬虫异常归类为可持久化错误码。
@@ -14,6 +31,7 @@ const KDL_ERROR_CODES = {
  * @returns {string} 结构化错误码
  */
 function classifyRefreshError(error) {
+  if (INTERNAL_ERROR_CODES.has(error?.refreshErrorCode)) return error.refreshErrorCode;
   const status = error?.httpStatus || error?.response?.status;
   if (ERROR_CODES[status]) return ERROR_CODES[status];
   if (
@@ -24,10 +42,13 @@ function classifyRefreshError(error) {
   }
   if (error?.eventType === 'order_identity') return 'IDENTITY';
   if (error?.eventType === 'product_validation') return 'VALIDATION';
-  if (error?.eventType === 'parse') return 'PARSE';
+  if (error?.eventType === 'parse')
+    return error.parseReason === 'guest_order_loading' ? 'PAGE_LOADING' : 'PARSE';
   if (error?.eventType === 'database') return 'DATABASE';
   if (error?.eventType === 'concurrency') return 'CONCURRENCY';
   if (status >= 400) return `HTTP_${status}`;
+  if (error?.code === 'ERR_CANCELED' || error?.name === 'AbortError') return 'REQUEST_CANCELLED';
+  if (['ECONNABORTED', 'ETIMEDOUT'].includes(error?.code)) return 'REQUEST_TIMEOUT';
   if (
     error?.code === 'ERR_BAD_RESPONSE' ||
     /stream.*(?:interrupt|abort)|premature close/i.test(error?.message || '')

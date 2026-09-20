@@ -50,6 +50,9 @@ const EMAIL_TERMINAL_STATUSES = Object.freeze([
 ]);
 
 const PERMISSIONS = Object.freeze({
+  WECOM_READ: 'wecom.read',
+  WECOM_CONFIGURE: 'wecom.configure',
+  WECOM_RETRY: 'wecom.retry',
   MONITOR_MANAGE: 'monitor.manage',
   INGESTION_READ: 'ingestion.read',
   INGESTION_MANAGE: 'ingestion.manage',
@@ -63,6 +66,7 @@ const PERMISSIONS = Object.freeze({
   DASHBOARD_READ: 'dashboard.read',
   STATS_READ: 'stats.read',
   ORDERS_READ: 'orders.read',
+  ORDER_MAIL_MANAGE: 'order_mail.manage',
   ORDERS_EDIT: 'orders.edit',
   ORDERS_EXPORT: 'orders.export',
   ORDERS_REFRESH: 'orders.refresh',

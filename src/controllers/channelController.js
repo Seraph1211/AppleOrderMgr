@@ -33,15 +33,23 @@ exports.getChannels = async (req, res, next) => {
       attributes: [
         'tag',
         [fn('COUNT', col('id')), 'totalOrders'],
-        [fn('COUNT', literal("CASE WHEN payment_status = 'paid' THEN 1 END")), 'paidOrders'],
+        [
+          fn(
+            'COUNT',
+            literal("CASE WHEN payment_status = 'paid' OR email_payment_status = 'paid' THEN 1 END")
+          ),
+          'paidOrders',
+        ],
         [fn('COUNT', literal("CASE WHEN status = 'picked_up' THEN 1 END")), 'deliveredOrders'],
-        [fn('COALESCE', fn('SUM', col('official_order_amount')), 0), 'totalAmount'],
+        [fn('COALESCE', fn('SUM', col('order_amount')), 0), 'totalAmount'],
         [
           fn(
             'COALESCE',
             fn(
               'SUM',
-              literal("CASE WHEN payment_status = 'paid' THEN official_order_amount ELSE 0 END")
+              literal(
+                "CASE WHEN payment_status = 'paid' OR email_payment_status = 'paid' THEN order_amount ELSE 0 END"
+              )
             ),
             0
           ),
@@ -50,18 +58,12 @@ exports.getChannels = async (req, res, next) => {
         [
           fn(
             'COALESCE',
-            fn(
-              'SUM',
-              literal("CASE WHEN status = 'picked_up' THEN official_order_amount ELSE 0 END")
-            ),
+            fn('SUM', literal("CASE WHEN status = 'picked_up' THEN order_amount ELSE 0 END")),
             0
           ),
           'deliveredAmount',
         ],
-        [
-          fn('COUNT', literal('CASE WHEN official_order_amount IS NULL THEN 1 END')),
-          'missingAmountOrders',
-        ],
+        [fn('COUNT', literal('CASE WHEN order_amount IS NULL THEN 1 END')), 'missingAmountOrders'],
       ],
       where: scopeOrderWhere(req.user, { tag: { [Op.notIn]: [''] } }),
       group: ['tag'],
@@ -85,7 +87,7 @@ exports.getChannels = async (req, res, next) => {
         paidAmount: Number(channel.paidAmount || 0),
         deliveredAmount: Number(channel.deliveredAmount || 0),
         missingAmountOrders: parseInt(channel.missingAmountOrders, 10),
-        amountSource: 'official_order_amount',
+        amountSource: 'catalog',
       };
     });
 

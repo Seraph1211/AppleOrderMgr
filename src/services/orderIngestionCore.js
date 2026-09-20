@@ -151,6 +151,8 @@ async function createOrderInTransaction(emailData, transaction, options = {}) {
       );
     }
     await paymentDispatchService.enrollOrderInTransaction(order, transaction);
+    await require('./orderMailLifecycleService').applyWaitingOrderLifecycle(order, transaction);
+    await require('./wecomNotificationService').enrollOrder(order, transaction);
 
     return order;
   } catch (error) {

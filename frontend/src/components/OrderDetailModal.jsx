@@ -1,3 +1,4 @@
+import OrderAmount from './OrderAmount';
 import OrderSources from './OrderSources';
 import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect } from 'react';
@@ -177,7 +178,10 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
       onUpdate && onUpdate(updatedOrder);
       setSaving(false);
     } catch (error) {
-      setAlertInfo({ title: '保存失败', message: `保存失败：${error.message || '请重试'}` });
+      setAlertInfo({
+        title: '保存失败',
+        message: `保存失败：${error.message || '请重试'}`,
+      });
       setSaving(false);
     }
   };
@@ -196,10 +200,16 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
           },
         };
         onUpdate && onUpdate(updatedOrder);
-        setAlertInfo({ title: '任务已提交', message: '订单将在后台刷新，请稍后重新加载查看结果' });
+        setAlertInfo({
+          title: '任务已提交',
+          message: '订单将在后台刷新，请稍后重新加载查看结果',
+        });
       }
     } catch (error) {
-      setAlertInfo({ title: '刷新失败', message: error.message || '订单刷新失败，请稍后重试' });
+      setAlertInfo({
+        title: '刷新失败',
+        message: error.message || '订单刷新失败，请稍后重试',
+      });
     } finally {
       setRefreshing(false);
     }
@@ -302,20 +312,70 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
               </div>
             )}
 
+            <div className="card border-blue-100 bg-blue-50/40">
+              <h3 className="text-lg font-semibold mb-4">官方订单邮件状态</h3>
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="text-sm text-gray-600">订单状态</label>
+                  <p className="mt-1 text-sm font-medium text-gray-900">
+                    {{
+                      unknown: '待确认',
+                      confirmed: '订单已确认',
+                      processing: '处理中',
+                      ready_for_pickup: '可取货',
+                    }[order.emailOrderStatus] || '待确认'}
+                  </p>
+                </div>
+                <div>
+                  <label className="text-sm text-gray-600">邮件证据时间</label>
+                  <p className="mt-1 text-sm text-gray-900">
+                    {order.emailStatusEvidenceAt
+                      ? formatOrderTime(order.emailStatusEvidenceAt)
+                      : '-'}
+                  </p>
+                </div>
+              </div>
+              {order.emailStatusNeedsReview && (
+                <p className="mt-3 text-sm text-amber-700">
+                  邮件结论待核对，请查看邮件时间线。
+                  {!!order.emailStatusReviewReasons?.length && (
+                    <span className="block text-xs break-all">
+                      {order.emailStatusReviewReasons.join('、')}
+                    </span>
+                  )}
+                </p>
+              )}
+              {order.emailPickupInfo && (
+                <div className="mt-4 border-t border-blue-100 pt-4 text-sm text-gray-700">
+                  <p className="font-medium text-gray-900">
+                    {order.emailPickupInfo.storeName || '门店待确认'}
+                  </p>
+                  <p>{order.emailPickupInfo.storeAddress || ''}</p>
+                  <p className="mt-1">
+                    {order.emailPickupInfo.appointmentMode === 'business_hours'
+                      ? '营业时间内到店'
+                      : [
+                          order.emailPickupInfo.pickupDate,
+                          [order.emailPickupInfo.startTime, order.emailPickupInfo.endTime]
+                            .filter(Boolean)
+                            .join('–'),
+                        ]
+                          .filter(Boolean)
+                          .join(' ') || '时间待确认'}
+                  </p>
+                </div>
+              )}
+            </div>
             <OfficialOrderSummary order={order} />
             {/* 订单基本信息 */}
             <div className="card">
               <h3 className="text-lg font-semibold mb-4">基本信息</h3>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="text-sm text-gray-600">订单状态</label>
+                  <label className="text-sm text-gray-600">官网订单状态</label>
                   <div className="mt-1">
                     <span className={`badge ${badge.class}`}>{badge.text}</span>
                   </div>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">支付状态</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.paymentStatus || '-'}</p>
                 </div>
                 <div>
                   <label className="text-sm text-gray-600">取货状态</label>
@@ -469,17 +529,8 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                   <p className="text-sm text-gray-900 mt-1">{order.paymentMethod}</p>
                 </div>
                 <div>
-                  <label className="text-sm text-gray-600">官网订单金额</label>
-                  <p className="text-lg font-semibold text-accent mt-1">
-                    {order.officialOrderAmount
-                      ? `${order.officialOrderAmountCurrency || 'CNY'} ${order.officialOrderAmount}`
-                      : '-'}
-                  </p>
-                  {!order.officialOrderAmount && order.officialOrderAmountParseError && (
-                    <p className="text-xs text-gray-500 mt-1">
-                      {order.officialOrderAmountParseError}
-                    </p>
-                  )}
+                  <label className="text-sm text-gray-600">订单金额</label>
+                  <OrderAmount amount={order.orderAmount} />
                 </div>
                 <div>
                   <label className="text-sm text-gray-700 font-medium">付款人</label>

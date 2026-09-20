@@ -2,6 +2,7 @@ const { OperationLog } = require('../models');
 const logger = require('../utils/logger');
 
 const MODULE_LABELS = {
+  'wecom-notifications': '企微订单通知',
   'identity-verifications': '身份核验',
   auth: '账号',
   users: '系统账号',
@@ -19,6 +20,9 @@ const MODULE_LABELS = {
   import: '导入',
 };
 const ACTION_LABELS = {
+  test: '发送测试消息',
+  retry: '重试通知',
+  deliveries: '投递记录',
   login: '登录账号',
   logout: '退出登录',
   'change-password': '修改本人密码',

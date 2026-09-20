@@ -34,7 +34,10 @@ function isProxyProviderConfigured(proxyConfig, providerName) {
     );
   }
   if (providerName === 'kdl_private') return Boolean(proxyConfig?.apiUrl);
-  if (providerName === 'yiyou_http') return Boolean(proxyConfig?.yiyouHttp?.apiUrl);
+  if (providerName === 'yiyou_http') {
+    const options = proxyConfig?.yiyouHttp || {};
+    return options.staticProxiesJson ? Boolean(options.staticExpiresAt) : Boolean(options.apiUrl);
+  }
   if (providerName === 'fanproxy_tunnel') {
     const tunnel = proxyConfig?.fanproxyTunnel || {};
     return Boolean(tunnel.host && tunnel.port && tunnel.account && tunnel.password);

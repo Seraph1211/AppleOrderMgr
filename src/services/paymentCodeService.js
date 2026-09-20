@@ -1,9 +1,17 @@
 const { getPaymentDeadline } = require('./paymentEligibility');
 const crypto = require('crypto');
-const { Order, OrderPaymentCode, PaymentTask, PaymentTaskEvent, sequelize } = require('../models');
+const {
+  Order,
+  OrderPaymentCode,
+  AosRecord,
+  PaymentTask,
+  PaymentTaskEvent,
+  sequelize,
+} = require('../models');
 const repo = require('./ingestionRepository');
 const { validatePaymentPng } = require('./paymentCodeValidation');
 const ApiError = require('../utils/ApiError');
+const { parseAosLine } = require('./aosParser');
 const logger = require('../utils/logger');
 
 function validateRecord(input) {
@@ -41,6 +49,99 @@ function validateRecord(input) {
   }
   return validatePaymentPng(input.imageDataUrl);
 }
+
+function assertOrderIdentity(order, input) {
+  let contactEmail;
+  try {
+    contactEmail = decodeURIComponent(new URL(order.orderUrl).pathname.split('/').at(-1));
+  } catch (_error) {
+    contactEmail = null;
+  }
+  if (
+    order.appleId?.toLowerCase() !== input.appleId.toLowerCase() ||
+    contactEmail?.toLowerCase() !== input.contactEmail.toLowerCase() ||
+    !order.orderDate ||
+    repo.businessDate(order.orderDate) !== repo.businessDate(input.orderDate) ||
+    !['微信', '微信支付', 'wechat', 'wechat pay'].includes(
+      (order.paymentMethod || '').toLowerCase()
+    )
+  ) {
+    throw new ApiError(409, 'PAYMENT_CODE_IDENTITY_MISMATCH', '付款码与订单身份不一致');
+  }
+}
+
+/**
+ * 从已关联订单原文及独立付款码记录选择有效图片；不回写数据。
+ * @param {Object} order 目标订单
+ * @param {Object} transaction 调用方事务
+ * @returns {Promise<Object|null>} 最新有效付款码
+ */
+async function findOrderPaymentCode(order, transaction) {
+  try {
+    let selected = await OrderPaymentCode.findOne({
+      where: { orderId: order.id },
+      order: [
+        ['sourceTime', 'DESC'],
+        ['imageHash', 'DESC'],
+        ['id', 'ASC'],
+      ],
+      transaction,
+    });
+    const records = await AosRecord.findAll({
+      where: {
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        status: ['succeeded', 'duplicate'],
+      },
+      attributes: ['id', 'eventId', 'payload'],
+      transaction,
+    });
+    for (const record of records) {
+      const rawLine = record.payload?.rawLine;
+      const imageDataUrl = typeof rawLine === 'string' ? rawLine.split('\t')[16] : null;
+      if (!imageDataUrl?.startsWith('data:image/png;base64,')) continue;
+      const parsed = parseAosLine(rawLine);
+      if (parsed.issues.length || parsed.data.paymentMethod !== '微信') continue;
+      const input = {
+        eventId: record.eventId,
+        orderNumber: parsed.data.orderNumber,
+        orderDate: parsed.data.orderDate,
+        sourceTime: parsed.data.orderDate,
+        contactEmail: parsed.data.contactEmail,
+        appleId: parsed.data.appleId,
+        paymentMethod: parsed.data.paymentMethod,
+        imageDataUrl,
+      };
+      let imageHash;
+      try {
+        imageHash = validateRecord(input);
+        if (input.orderNumber !== order.orderNumber) continue;
+        assertOrderIdentity(order, input);
+      } catch (error) {
+        if (!error.statusCode) throw error;
+        logger.debug('订单来源付款码校验未通过', {
+          orderId: order.id,
+          recordId: record.id,
+          errorCode: error.code,
+        });
+        continue;
+      }
+      const time = Date.parse(input.sourceTime);
+      const selectedTime = selected ? new Date(selected.sourceTime).getTime() : -Infinity;
+      if (time > selectedTime || (time === selectedTime && imageHash > selected.imageHash)) {
+        selected = { sourceTime: input.sourceTime, imageHash, payload: input };
+      }
+    }
+    return selected;
+  } catch (error) {
+    logger.debug('订单付款码读取未完成', {
+      orderId: order.id,
+      errorCode: error.code || 'TEMPORARILY_UNAVAILABLE',
+    });
+    throw error;
+  }
+}
+
 /** 接收已关联的付款码；旧订单不受当天补单范围限制，绝不创建订单。 @param {string} header 凭据 @param {Object} body 请求 @returns {Promise<Object>} 回执 */
 async function receivePaymentCodes(header, body) {
   try {
@@ -81,25 +182,7 @@ async function receivePaymentCodes(header, body) {
                 lock: transaction.LOCK.UPDATE,
               });
               if (!order) throw new ApiError(409, 'ORDER_NOT_READY', '等待订单入库');
-              let contactEmail;
-              try {
-                contactEmail = decodeURIComponent(
-                  new URL(order.orderUrl).pathname.split('/').at(-1)
-                );
-              } catch (_error) {
-                contactEmail = null;
-              }
-              if (
-                order.appleId?.toLowerCase() !== input.appleId.toLowerCase() ||
-                contactEmail?.toLowerCase() !== input.contactEmail.toLowerCase() ||
-                !order.orderDate ||
-                repo.businessDate(order.orderDate) !== repo.businessDate(input.orderDate) ||
-                !['微信', '微信支付', 'wechat', 'wechat pay'].includes(
-                  (order.paymentMethod || '').toLowerCase()
-                )
-              ) {
-                throw new ApiError(409, 'PAYMENT_CODE_IDENTITY_MISMATCH', '付款码与订单身份不一致');
-              }
+              assertOrderIdentity(order, input);
               const row = await OrderPaymentCode.create(
                 {
                   id: crypto.randomUUID(),
@@ -171,22 +254,17 @@ async function getPaymentCode(id, userId, own = true) {
         );
         if (['支付宝', 'alipay'].includes((order.paymentMethod || '').trim().toLowerCase()))
           return { availability: 'unsupported', message: '支付宝暂无法获取付款码' };
-        const row = await OrderPaymentCode.findOne({
-          where: { orderId: order.id },
-          order: [
-            ['sourceTime', 'DESC'],
-            ['imageHash', 'DESC'],
-            ['id', 'ASC'],
-          ],
-          transaction,
-        });
+        const row = await findOrderPaymentCode(order, transaction);
         return {
           availability: row ? 'available' : 'missing',
           message: row ? null : '暂未采集到付款码，请稍后重试',
           orderId: order.id,
           orderNumber: order.orderNumber,
           products: order.products,
-          amount: order.officialOrderAmount,
+          amount: order.orderAmount ?? null,
+          amountCurrency: 'CNY',
+          amountSource: 'catalog',
+          amountPriceVersion: order.orderAmountPriceVersion || null,
           paymentMethod: order.paymentMethod,
           officialOrderStatus: order.status,
           officialPaymentStatus: order.paymentStatus,
@@ -208,4 +286,4 @@ async function getPaymentCode(id, userId, own = true) {
     throw error;
   }
 }
-module.exports = { receivePaymentCodes, getPaymentCode };
+module.exports = { receivePaymentCodes, getPaymentCode, findOrderPaymentCode };

@@ -10,6 +10,20 @@
 
 ## 通用约束
 
+### 浏览器辅助刷新（2026-09-21 API 已发布）
+
+新增端点均沿用登录会话认证并仅允许管理员及 `orders.refresh` 权限，默认由 `BROWSER_ORDER_REFRESH_ENABLED=false` 关闭；生产 `20260921-browser-query-fix` 延续仅对 API 配置为 true，原全局暂停保持。浏览器扩展只读取自己创建的指定订单标签页；登录令牌留在管理台，不发送给扩展。
+
+| 端点 | 请求与响应 |
+| --- | --- |
+| `POST /api/orders/:id/browser-refresh/start` | 空请求体或 `{ mode: "isolated_batch" }`；返回 `ticket`、`orderUrl`、`orderNumber`、`expiresAt`、`maxRequests=100`、`maxDurationMs`。默认 90 秒采集／120 秒任务票据；隔离批量模式 300 秒采集／330 秒票据。票据绑定账号、当前登录会话、订单号、链接摘要和数据库版本，采用与登录 JWT 分离的签名密钥用途。 |
+| `POST /api/orders/:id/browser-refresh/permit` | `{ ticket }`；复核权限、有效期、订单版本及全局暂停状态，取得 PostgreSQL 全局请求时隙后返回 `allowed=true`。每个官网请求和重定向须先取得许可；此端点不代替浏览器任务的 100 请求上限。 |
+| `POST /api/orders/:id/browser-refresh/result` | `{ ticket, page: { pageUrl, orderJson } }`；只接收扩展或本机隔离执行器提取的业务字段白名单，`pageUrl` 的访客令牌段须脱敏为 `redacted`，不接受 Cookie、令牌、原始 HTML 或客户端已归一化的业务状态。服务端解析、校验并调用既有短事务更新，返回更新摘要。 |
+
+2026-09-21 用户收窄浏览器刷新范围：只采集订单号、逐商品官网阶段与状态说明、商品名称／型号规格／明确数量。订单号仅用于身份校验，不改写订单身份。官网观测金额、支付方式、日期、门店、地址和付款截止均不作为成功必填，也不通过本入口更新；商品变化引起的独立映射金额重算遵循下方金额契约。服务器仅合并状态、商品及对应观察／校验／审计元数据；保留已有支付与取货派生字段、非商品校验问题和人工付款任务。状态变化仍参与既有自动刷新停止判断。商品不完整时保留已有商品并提示待核对；不会按条目数猜测数量。此为当前实现契约，生产版本与真实验收状态见开发进度。
+
+票据不是登录凭据；跨账号／会话／订单使用或过期返回 409 `BROWSER_TICKET_INVALID`；订单版本／链接变化或已消费后的再次提交返回 409 `BROWSER_ORDER_CHANGED`。成功写入时在 CrawlLog 保存票据随机标识；事务行锁下再次比对初始版本并检查票据是否已消费，避免同一毫秒内的并发重放。任务开始不产生后台自动刷新任务，浏览器断开、失败或超时不提交成功结果；本机在线与浏览器权限是此辅助入口的前提。仍需完成真实采集、权限及生产端到端验收。
+
 前缀为 /api。除登录和健康检查外均需认证；auth 下改密、登出、me 各自经过 authenticate，其余业务统一经过全局认证与最多三个会话校验。Bearer Token 不放入 URL。
 
 角色字段继续保留 admin、operator、readOnly，但普通业务授权以数据库 `user_permissions` 为唯一来源。admin 通过受保护身份获得代码目录中的全部有效权限；operator/readOnly 仅作为存量标签，不再在请求时隐式叠加权限。所有业务路由显式声明权限，未登记入口默认拒绝。权限目录与依赖见[用户权限方案](../planning/用户权限分配与访问控制方案.md)。
@@ -73,6 +87,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | GET    | /api/orders/export                       | orders.export                                                                          |
 | GET    | /api/orders/filter-options               | orders.read                                                                            |
 | GET    | /api/orders/:id                          | orders.read                                                                            |
+| GET    | /api/orders/:id/link                     | orders.read + 订单数据范围                                                             |
 | PUT    | /api/orders/:id                          | orders.edit                                                                            |
 | PUT    | /api/orders/:id/payer                    | orders.read + orders.payer.edit                                                        |
 | POST   | /api/orders/:id/refresh                  | orders.refresh                                                                         |
@@ -171,11 +186,12 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - `POST /api/orders/page-open-refresh` 保留参数校验和权限门禁，但返回空任务结果，不再触发官网请求。打开列表或详情只读取已有数据，已付款订单仅手动刷新。
 - `POST /api/orders/batch-refresh` 接收 `orderIds/order_ids`（1–100 个正整数）或既有筛选字段，按 `orders.refresh` 权限异步提交，返回 HTTP `202`。显式 ID 去重后逐项返回 `{ orderId, jobId, created, reason }`，含不存在／无法提交项；汇总 `total/created/merged/missing`。订单页面只勾选当前页，翻页或筛选清空选择；重复任务复用队列，逐行跟踪执行状态，不把入队视为刷新成功。
 - `GET /api/order-refresh/jobs/:id` 返回任务状态、错误分类和订单当前新鲜度；只能查询本人提交的任务，admin 可查询全部，系统自动任务允许所有已认证用户读取其非敏感状态。
+- 刷新错误分类新增 PAGE_LOADING（加载／校验未完成）、REQUEST_TIMEOUT（请求超时）、RESPONSE_STREAM（响应中断）、REQUEST_CANCELLED（主动取消）、TASK_TIMEOUT（抓取总预算耗尽）；631 保留 HTTP_631，不假定返回方。lastErrorMessage 中“已尝试 N 次”表示实际顶层抓取次数，attemptCount 仍是队列领取次数。列表沿用 last_success_at／last_failure_at／活动 job 协调状态，后续成功应清除旧错误；本次不增加字段或改变权限。
 - `GET /api/order-refresh/batches/:id` 返回批次六类计数和完成时间；只能查询本人批次，admin 可查询全部。
 - 列表和详情新增 `refresh` 对象：`freshness_status`、`last_attempt_at`、`last_success_at`、`last_failure_at`、`last_error_code`、`last_error_message` 和当前活动 `job`。超过 90 秒没有成功结果的待付款/未知订单由服务端序列化为 `stale`。
 - PUT /api/orders/:id 只允许 paymentScreenshot，不再接受 payerName。付款人必须经 `PUT /api/orders/:id/payer` 或本人任务入口更新，body 为 `{ payerName: string | null, expectedVersion, reason? }`，幂等键通过请求头传入。`payerName` 去除首尾空白后最长 100 个字符，空字符串按 null 清空；付款人不是系统账号，也不存在候选目录。
 - 官网金额、支付与取货状态是独立字段。列表、详情不返回 Apple 密码/原始订单链接，身份证和地址保持脱敏；详情顶层 `recipient_email`、`recipient_phone` 表示订单入库时保存的下单联系方式，不使用之后变更的取机人档案覆盖，其中 `recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
-- 导出使用当前筛选条件，下载按 Blob 处理；不能以固定价格代替缺失官网金额。
+- 导出使用当前筛选条件，下载按 Blob 处理；订单金额改用已确认价格映射，无法完整映射时显示待确认，不回退官网金额。
 
 ## 邮件处理
 
@@ -239,10 +255,14 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ### 订单列表组合筛选与取货时间（2026-09-17）
 
-- `GET /api/orders` 和 `GET /api/orders/export` 支持 `statuses`、`productNames`、`pickupStores` 三个 JSON 数组筛选参数，每项最多 100 个值。同一数组内按 OR 匹配，不同筛选维度之间按 AND 组合；订单状态必须属于现有状态枚举，商品名称和门店按完整值精确匹配。继续兼容既有单值 `status`、`productModel`、`pickupStore` 参数。
+- `GET /api/orders` 和 `GET /api/orders/export` 支持 `statuses`、`productNames`、`pickupStores`、`recipientTags` 四个 JSON 数组筛选参数，每项最多 100 个值。同一数组内按 OR 匹配，不同筛选维度之间按 AND 组合；订单状态必须属于现有状态枚举，商品名称和门店按完整值精确匹配。继续兼容既有单值 `status`、`productModel`、`pickupStore` 参数。
 - `pickupDate` 仅接受 `YYYY-MM-DD`。它匹配 `official_fulfillment_message` 中同一天的官网预约提示日期，不比较具体时分，也不使用下单时间、付款截止、实际取货日期或页面打开时间替代；“今天／明天”按该订单官网观测时的北京时间日期换算。列表和详情派生返回 `pickup_time`、`official_pickup_date`、`official_pickup_time_slot`，原始履约提示继续保留用于核对。
-- `GET /api/orders/filter-options` 返回 `productNames` 和 `stores`，候选来自订单完整 `products[].name` 与 `pickup_store`，不从当前分页临时拼接。兼容返回 `productModels`，但订单管理页面不再使用型号筛选。
+- `recipientTags` 按列表实际展示的 `recipient_tag` 精确匹配，最多 100 项、每项最长 500 字符；数组值保留内部逗号及首尾空格。AOS 订单依次使用非空来源 TAG、取机人档案 TAG、订单 TAG；其他订单使用取机人档案 TAG、订单 TAG。多个 TAG 为 OR，与其他维度为 AND，分页与导出前过滤，始终叠加已有订单访问范围。
+- `GET /api/orders/filter-options` 新增 `recipientTags`，来自当前账号可见的全部订单展示 TAG，排除空值、去重排序，不受分页或前 5000 条订单限制。返回 `productNames` 和 `stores`，候选来自订单完整 `products[].name` 与 `pickup_store`，不从当前分页临时拼接。兼容返回 `productModels`，但订单管理页面不再使用型号筛选。
 - 订单管理主表不展示 `validation_status` 和 `apple_id` 列；校验问题仍通过行首提示图标进入原异常说明，异常行不使用整行红色背景。上述字段仍保留在既有 DTO、搜索和详情能力中。
+- `keyword` 为纯正整数且不超过 PostgreSQL `INTEGER` 上限时，额外对系统订单 `orders.id` 做精确匹配；官网订单号、Apple ID、取机人和商品等既有模糊搜索保持不变。
+- `GET /api/orders/:id/link` 要求 `orders.read`，同时叠加订单数据范围；只在用户点击官网订单号时按需返回 `{ id, orderNumber, orderUrl }`，响应 `Cache-Control: no-store`，列表、详情和导出仍不常驻返回链接。
+- `GET /api/orders/export` 继续要求独立的 `orders.export`，不依赖 `orders.refresh`。可选 `orderIds` 为 1–100 个不重复正整数的 JSON 数组，表示导出当前页明确勾选的订单；可选 `fields` 为服务端白名单字段键 JSON 数组且至少一项。范围外、缺失订单整批拒绝；未知字段、密码、身份证号、订单链接和付款截图不能通过请求加入导出。未传 `orderIds`／`fields` 时保留原筛选导出和原字段契约。
 
 ### 下单时间精度与时区（2026-09-09 修复）
 
@@ -560,6 +580,8 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ## AOS 付款码与 Windows 更新扩展（2026-09-13，实施中）
 
+2026-09-18 增量：两个付款码 GET 接口保持既有响应结构，增加从已关联且 succeeded／duplicate 的 AOS 订单来源原文第 17 列直接读取微信 PNG。原文身份与目标订单一致且图片完整才可返回；按原文下单时间与独立付款码记录共同选取最新有效图片，同时间按图片摘要固定排序。已有来源原文可直接生效，不依赖重采集，不回填或改写业务记录；15／16 列、无图、坏图仍走原有独立码或 missing。权限、审计和 no-store 不变。
+
 - `POST /api/aos-collector/v1/payment-codes`：设备认证；`{records:[{eventId,orderNumber,orderDate,sourceTime,contactEmail,appleId,paymentMethod,imageDataUrl}]}`，每批 20 条、PNG 每张最多 128 KiB、整个请求最多 1 MiB。独立不可变事件回执，重复事件不同载荷 409；只接收微信 PNG。设备启用、当前来源为 AOS 才处理；无目标订单返回可重试等待，不因缺码阻断订单入库。已有订单允许历史补码，订单号、来源账号／联系邮箱及日期须一致。成功回执才结束本地上传。
 - `GET /api/payment-tasks/:id/payment-code`：沿用本人付款链接权限及当前任务归属；`GET /api/payment-dispatch/tasks/:id/payment-code`：沿用管理员付款调度读取权限。均返回 `{success:true,data:{availability,message,orderId,orderNumber,products,amount,paymentMethod,officialOrderStatus,officialPaymentStatus,deadlineAt,imageDataUrl,sourceTime}}`；支付宝只返回 availability=unsupported 与“支付宝暂无法获取付款码”，不返回图片或链接。微信缺码为 missing，已付款／取消／过期仍可查看。读码审计、no-store，不访问官网或改变付款状态。
 - `GET /api/order-ingestion/collector-releases`：管理员设备管理权限，列出已验签发布版本；`GET /api/order-ingestion/collector-updates` 列出最近更新任务；`POST /api/order-ingestion/collector-updates`：`{deviceIds,releaseVersion}`，限定最多 20 台已启用设备；重复同一进行中目标复用任务，不同目标冲突。
@@ -605,8 +627,56 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - 渠道改名仅允许全部订单范围且有 channels.rename 权限者执行；在同一事务更新授权 TAG 与审计，目标 TAG 已存在订单或已有授权时拒绝。订单普通编辑不开放 tag 写入。
 - 仪表板、统计、基础档案内的订单聚合和历史订单关联入口均限制订单范围；基础档案自身的读取权限不改变。
 
+## 稳定商品筛选（2026-09-20）
+
+三个列表及订单导出新增 `productKeys` JSON 字符串数组（最多 100 项，每项最多 100 字符），按独立商品筛选索引匹配，服务端分页前同组 OR、跨条件 AND；旧 `productNames` 精确名称契约不变，同时传入时必须命中同一商品项。完整 SKU 归组，不依赖官网抓取／校验成功，名称缺型号仍可选。列表商品额外返回 `filterKeys`、`filterNeedsReview`，供命中高亮。
+
+订单 `/api/orders/filter-options` 接受与订单列表相同的其他条件，新增 `productOptions`；两付款列表新增同名字段。每项 `{value,keys,keyCounts,label,aliases,count,needsReview}`（`keys` 为同一候选支持的历史键，`keyCounts` 为每个键在当前范围内的去重计数），count 为去重订单／任务数，候选排除自身商品条件但保留权限及其他条件，不截断 5000 单，不返回其他用户别名。已有 `productNames/productNameOptions` 继续兼容。已选零结果键由前端保留，查询失败不得把旧结果当新筛选结果。
+
+`productKeys` 是不透明稳定键，客户端不得自行按型号拼接。服务端当前格式为 `sku:完整SKU:身份摘要` 或 `name:摘要`／`review:摘要`；摘要为 64 位十六进制 SHA-256，保护不同容量／颜色不因误录同 SKU 被合并。
+
 ### 付款分配预检与失败明细（2026-09-20）
 
 `POST /api/payment-dispatch/tasks/assignment-preview`：admin 与 `payment_dispatch.assign`，只读预检。请求 `{ tasks: [{id, expectedVersion}], assigneeUserId? }`，1–100 条。返回 `{items:[{id,orderId,eligible,code,reason,solution,expired,warnings,hasTransfer}],eligibleCount,blockedCount,recipient}`；接收人选定后按任务 ID 升序核算容量，原负责人不重复占容量。预检不会写入任务，也不锁定资格。身份异常、状态待核实、未抓取只产生 warnings。
 
 正式分配保留版本、容量与交接确认校验及整批事务。界面默认整批提交，有阻塞时可明确选择仅提交预检合格子集；子集也原子执行，数据变化则返回 409 与 `details.items`，重新预检后再确认，不静默跳过。界面保留成功与未分配明细。失败事件保存错误码、逐条规则原因、任务 ID、目标负责人和 requestId，写在业务事务回滚后；审计失败另写脱敏应急日志。
+
+
+## 订单关联邮件 API（2026-09-20）
+
+全部端点位于 /api/orders/:id/emails，要求登录、orders.read、order_mail.manage及订单TAG范围。无权限403，范围外订单或邮件404，附件同样校验；Cache-Control:no-store。id为正整数，messageId为UUID。
+- GET /：page/limit分页默认20上限50，返回items,total,page,limit,sync；元信息、脱敏同步状态及逐封 `lifecycle` 解析摘要，无邮件也返回同步状态。
+- GET /:messageId：返回id,subject,from,to,date,receivedAt,text,attachments,expired,lifecycle；文本预览，附件摘要含index/name/size。`lifecycle` 含模板、来源验证、订单／付款候选、取货信息、待核对原因、规则版本及解析／应用时间，不返回 DKIM 原文或敏感认证材料。
+- GET /:messageId/attachments/:index：认证下载，attachment/octet-stream、nosniff，过期内容410。
+- GET /:messageId/forwards：最近50条发送历史，包含操作人ID、目标、备注、状态、时间、受控错误码。
+- POST /:messageId/forward：recipient单一邮箱，note最多2000字符，idempotencyKey为16–100位字母数字及连字符；202返回持久化任务。同key不同请求409，未配置503，过期410。HTTP请求只排队。
+- POST /:messageId/lifecycle/replay：202幂等重置该邮件解析任务；不绕过解析、订单应用或付款联动开关。
+- POST /:messageId/lifecycle/review：请求 `expectedVersion`、5–500字 `reason`，可选 `orderStatus`、`paymentStatus`、`pickupInfo`；只允许基于当前订单关联邮件追加人工核定事件，版本冲突409。人工核定不会修改TAG、订单归属、付款人、备注或截图。
+
+错误码：ORDER_MAIL_UNAVAILABLE、ORDER_MAIL_EXPIRED、IDEMPOTENCY_CONFLICT；队列 PREPARE_TEMPORARY/SMTP_TEMPORARY/SMTP_REJECTED/SMTP_AUTH/SEND_UNKNOWN/ACCESS_REVOKED。PREPARE_TEMPORARY 表示发信前的临时处理失败，最多尝试 3 次；accepted 仅表示 SMTP 接受。
+
+订单列表和详情响应新增：`email_order_status`、`email_payment_status`、`email_status_needs_review`、`email_status_review_reasons`、`email_status_version`、`email_status_evidence_at`、`email_pickup_info`、`email_pickup_date`、`email_lifecycle_updated_at`。这些字段只表达官方订单邮件结论，原 `status/payment_status/pickup_status/official_*` 继续表达官网观测。列表和导出接受 JSON 数组参数 `emailOrderStatuses`（unknown/confirmed/processing/ready_for_pickup）及 `emailPaymentStatuses`（unknown/paid）；无权访问的订单仍不会因邮件字段泄露。
+
+付款任务与调度摘要只增加 `emailPaymentStatus`、`emailPaymentConfirmed` 和必要的邮件订单状态／待核对标记，不开放邮件原文或完整订单详情。自动分配、人工分配预检及直接 SQL 候选统一排除 `email_payment_status='paid'`；邮件未知不额外禁止既有人工操作。
+
+## 企微新订单通知接口（2026-09-20）
+
+`/api/wecom-notifications` 全部要求已登录管理员及对应独立权限，Cache-Control: no-store。`wecom.read` 查看配置和投递；`wecom.configure` 依赖 read，保存配置及发送测试；`wecom.retry` 依赖 read，人工重试；三个权限均为管理员保留权限。普通订单／付款权限不能访问。
+
+- GET `/settings`：enabled、groupName、configured（不返回 Webhook 或密文）、destinationId、enabledAt、version、pausedReason、workerHeartbeatAt、updatedAt、waitSeconds=60、ratePerMinute=18。
+- PUT `/settings`：`{enabled:boolean,groupName:string,webhook?:string,expectedVersion:number}`。Webhook 空或省略保留原值，只允许官方 HTTPS send 地址且唯一 key 参数。切换 Webhook 须先停用；更换目标生成新 destinationId，取消旧待发任务。保存清除暂停原因；启用时间仅从关闭切换开启时更新，不补历史。
+- POST `/test`：`{expectedVersion:number,idempotencyKey:UUID}`，固定合成内容，配置后可在自动通知关闭时测试；与订单共用速率。成功只表示入队，重复请求返回同一记录。
+- GET `/deliveries?page=1&status=...`：分页 30 条，返回 `rows,total,page,totalPages,summary`；记录包含 ID、系统订单 ID、目标群、类型、状态、尝试次数、时间、固定错误码和 version；不含订单原文、支付地址或 Webhook。summary 含各状态计数、backlog、oldestPendingAt。
+- POST `/deliveries/:id/retry`：`{expectedVersion:number,acknowledgeUnknown?:boolean}`，仅 failed/unknown，同目标仍有效且未被停用；unknown 必须明确 acknowledgeUnknown=true，防止重复付款通知。重试仍检查订单时效。
+
+版本冲突返回 409；无效输入 400；无权 403。HTTP 和 errcode 均成功才标记 accepted；超时或不明确回执标为 unknown。仅明确未连接及明确限流最多自动尝试 3 次，配置错误暂停队列。不开放任意内容／任意地址发送接口。
+
+## 订单映射金额契约（2026-09-21）
+
+订单列表／详情增加 `order_amount`（十进制字符串或 null）、`order_amount_currency`（CNY）、`order_amount_source`（catalog）、`order_amount_price_version`。付款任务／调度 DTO 使用对应 camelCase；缺少映射显示“待确认”，不回退 officialOrderAmount。原官网金额字段为历史观测兼容保留。
+
+付款码 GET 的既有 `amount` 改用映射金额，增加 `amountCurrency`、`amountSource`、`amountPriceVersion`。金额字段不改变付款状态、权限、任务归属或二维码选取规则。
+
+订单导出使用“订单金额”“币种”“金额来源”“价格版本”；来源为“按官方售价计算”，未知金额导出“待确认”，零值保留。仪表板 totalAmount／amountGrowth、渠道 totalAmount／paidAmount／deliveredAmount 全部汇总 order_amount。仪表板增加 missingAmountOrders 和 amountSource=catalog；渠道原缺失数改统计映射缺失，amountSource=catalog。已付款／已取货分组仍按官网状态，金额仅为该分组的映射金额，不代表实际付款或退款额。
+
+规则与八档价格见 [AOS 金额映射](AOS文件采集与入库.md#订单金额价格映射2026-09-21-已批准)。

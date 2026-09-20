@@ -137,6 +137,8 @@ async function main() {
             recipientTagOptions: ['TAG-0', 'TAG-1', 'TAG-2'],
             serverTime: new Date().toISOString(),
           };
+        } else if (/^\/api\/payment-tasks\/\d+\/payment-code$/.test(url.pathname)) {
+          data = { availability: 'missing', imageDataUrl: null };
         } else if (/^\/api\/payment-tasks\/\d+\/payment-link$/.test(url.pathname)) {
           const id = Number(url.pathname.split('/').at(-2));
           paymentLinkRequests.push(id);

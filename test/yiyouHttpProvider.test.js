@@ -13,6 +13,50 @@ const YiyouHttpProvider = require('../src/services/crawler/proxy/yiyouHttpProvid
 describe('亦优 HTTP 代理 Provider', () => {
   beforeEach(() => jest.clearAllMocks());
 
+  test('静态节点优先且不访问 API，刷新保留隔离并按实际到期时间停用', async () => {
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1000);
+    try {
+      const provider = new YiyouHttpProvider({
+        apiUrl: 'https://api.yiyouip.com/test',
+        staticProxiesJson: JSON.stringify([
+          '1.2.3.4:8080 user-a pass-a',
+          '5.6.7.8:8081 user-b pass-b',
+        ]),
+        staticExpiresAt: new Date(500000).toISOString(),
+      });
+      await provider.initialize();
+      const first = provider.getNextProxy();
+      provider.markProxyAsBad(first);
+      await provider.refresh();
+      expect(provider.getNextProxy().host).toBe('5.6.7.8');
+      expect(axios.get).not.toHaveBeenCalled();
+      now.mockReturnValue(500000);
+      expect(provider.getNextProxy()).toBeNull();
+      await expect(provider.refresh()).rejects.toThrow('已到期');
+      expect(provider.getStatus().isInitialized).toBe(false);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  test.each([
+    'secret-invalid-json',
+    '[]',
+    '[123]',
+    '["1.2.3.4:8080 u p", "1.2.3.4:8080 u p"]',
+    '["1.2.3.4:8080 u p", "invalid secret-user secret-pass"]',
+  ])('静态配置错误整体拒绝且不泄露原文或回退 API：%#', async raw => {
+    const provider = new YiyouHttpProvider({
+      apiUrl: 'https://api.yiyouip.com/test',
+      staticProxiesJson: raw,
+      staticExpiresAt: '2099-01-01T00:00:00Z',
+    });
+    await expect(provider.initialize()).rejects.toThrow('亦优静态代理配置无效或已到期');
+    expect(provider.getNextProxy()).toBeNull();
+    expect(axios.get).not.toHaveBeenCalled();
+    expect(JSON.stringify(mockLogger.warn.mock.calls)).not.toContain('secret');
+  });
+
   test('解析带独立鉴权的换行文本且不复用连接', () => {
     const provider = new YiyouHttpProvider({ apiUrl: 'https://api.yiyouip.com/test' });
 

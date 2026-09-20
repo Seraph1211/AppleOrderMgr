@@ -1,3 +1,5 @@
+const { buildOrderProductCondition } = require('../utils/productFilterQuery');
+const { collectProductOptions } = require('../utils/productFilter');
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
 const { formatOrderTime } = require('../utils/orderTime');
 /* eslint-disable camelcase */
@@ -27,6 +29,8 @@ const {
   serializePublicProducts,
   serializeValidationIssues,
   serializeOfficialFields,
+  serializeOrderPricingFields,
+  serializeEmailLifecycleFields,
 } = require('../utils/orderSerialization');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
@@ -43,6 +47,99 @@ const {
 
 const MAX_MULTI_SELECT_ITEMS = 100;
 const MAX_FILTER_VALUE_LENGTH = 255;
+const MAX_ORDER_EXPORT_IDS = 100;
+const MAX_ORDER_ID = 2147483647;
+
+const ORDER_EXPORT_FIELDS = Object.freeze({
+  systemOrderId: { label: '系统订单 ID', value: item => item.id },
+  orderNumber: { label: '官网订单号', value: item => item.order_number || '' },
+  ingestionSource: {
+    label: '入库来源',
+    value: item => ({ aos: 'AOS 文件', email: '邮件' })[item.ingestion_source] || '来源未知',
+  },
+  appleId: { label: 'Apple ID', value: item => item.apple_id || '' },
+  recipientName: { label: '取机人', value: item => item.recipient_name || '' },
+  recipientTag: { label: '取机人 TAG', value: item => item.recipient_tag || '' },
+  products: {
+    label: '商品信息',
+    value: item =>
+      (item.products || [])
+        .map(product => {
+          const name = product.name || product.model || '-';
+          const quantity = Number.isInteger(product.quantity) ? product.quantity : '待核实';
+          return `${name} ×${quantity}`;
+        })
+        .join('、'),
+  },
+  emailOrderStatus: { label: '邮件订单状态', value: item => item.email_order_status || 'unknown' },
+  emailPaymentStatus: {
+    label: '邮件付款状态',
+    value: item => item.email_payment_status || 'unknown',
+  },
+  emailStatusNeedsReview: {
+    label: '邮件状态待核对',
+    value: item => (item.email_status_needs_review ? '是' : '否'),
+  },
+  officialOrderStatus: { label: '官网订单状态', value: item => item.status || '' },
+  officialPaymentStatus: { label: '官网支付状态', value: item => item.payment_status || '' },
+  pickupStatus: { label: '取货状态', value: item => item.pickup_status || '' },
+  orderAmount: { label: '订单金额', value: item => item.order_amount ?? '待确认' },
+  currency: { label: '币种', value: item => item.order_amount_currency || '' },
+  amountSource: { label: '金额来源', value: () => '按官方售价计算' },
+  priceVersion: { label: '价格版本', value: item => item.order_amount_price_version || '' },
+  emailPickupStore: {
+    label: '邮件取货门店',
+    value: item => item.email_pickup_info?.storeName || '',
+  },
+  emailPickupDate: { label: '邮件取货日期', value: item => item.email_pickup_date || '' },
+  pickupStore: { label: '官网取货门店', value: item => item.pickup_store || '' },
+  pickupStoreCode: { label: '门店代码', value: item => item.pickup_store_code || '' },
+  pickupCode: { label: '取货码', value: item => item.pickup_code || '' },
+  pickupTime: { label: '取货时间', value: item => item.pickup_time || '' },
+  actualPickupDate: { label: '实际取货日期', value: item => item.actual_pickup_date || '' },
+  paymentMethod: { label: '付款方式', value: item => item.payment_method || '' },
+  payerName: { label: '付款人', value: item => item.payer_name || '' },
+  tag: { label: '标签', value: item => item.tag || '' },
+  notes: { label: '备注', value: item => item.notes || '' },
+  orderDate: {
+    label: '下单时间（北京时间，来源记录）',
+    value: item => formatOrderTime(item.order_date),
+  },
+  lastOfficialUpdatedAt: {
+    label: '最后更新时间（北京时间）',
+    value: item => formatOrderTime(item.last_crawled_at),
+  },
+  createdAt: {
+    label: '创建时间（北京时间）',
+    value: item => formatOrderTime(item.created_at),
+  },
+  updatedAt: {
+    label: '更新时间（北京时间）',
+    value: item => formatOrderTime(item.updated_at),
+  },
+  crawlFailCount: { label: '爬取失败次数', value: item => item.crawl_fail_count ?? 0 },
+});
+
+const LEGACY_ORDER_EXPORT_FIELDS = Object.freeze([
+  'orderNumber',
+  'appleId',
+  'recipientName',
+  'emailOrderStatus',
+  'emailPaymentStatus',
+  'emailStatusNeedsReview',
+  'officialOrderStatus',
+  'officialPaymentStatus',
+  'pickupStatus',
+  'orderAmount',
+  'currency',
+  'amountSource',
+  'priceVersion',
+  'emailPickupStore',
+  'emailPickupDate',
+  'pickupStore',
+  'tag',
+  'orderDate',
+]);
 
 function getPickupReferenceTime(order) {
   return order.officialStatusObservedAt || order.lastCrawledAt || null;
@@ -124,8 +221,10 @@ function serializeOrderListItem(
       plain.ingestionSource === 'aos'
         ? plain.sourceRecipientTag || plain.recipient?.tag || plain.tag || null
         : plain.recipient?.tag || plain.tag || null,
-    products: serializePublicProducts(plain.products),
+    products: serializePublicProducts(plain.products, plain.productFilterItems),
     ...serializeOfficialFields(plain),
+    ...serializeOrderPricingFields(plain),
+    ...serializeEmailLifecycleFields(plain),
     status: normalizeOrderStatus(plain.status),
     payment_status: plain.paymentStatus,
     pickup_status: plain.pickupStatus,
@@ -159,6 +258,7 @@ function serializeOrderListItem(
     last_crawled_at: plain.lastCrawledAt,
     crawl_fail_count: plain.crawlFailCount,
     tag: plain.tag,
+    notes: plain.notes,
     created_at: plain.createdAt,
     updated_at: plain.updatedAt,
     refresh: serializeRefreshState(refreshSchedule, refreshJob, plain),
@@ -230,8 +330,10 @@ function serializeOrderDetail(
       plain.ingestionSource === 'aos'
         ? plain.sourceRecipientTag || plain.recipient?.tag || plain.tag || null
         : plain.recipient?.tag || plain.tag || null,
-    products: serializePublicProducts(plain.products),
+    products: serializePublicProducts(plain.products, plain.productFilterItems),
     ...serializeOfficialFields(plain),
+    ...serializeOrderPricingFields(plain),
+    ...serializeEmailLifecycleFields(plain),
     status: normalizeOrderStatus(plain.status),
     payment_status: plain.paymentStatus,
     pickup_status: plain.pickupStatus,
@@ -282,6 +384,7 @@ function parseMultiSelectFilter(
     allowedValues = null,
     maxItems = MAX_MULTI_SELECT_ITEMS,
     maxLength = MAX_FILTER_VALUE_LENGTH,
+    trimValues = true,
   } = {}
 ) {
   if (rawValue === undefined || rawValue === null || rawValue === '') return [];
@@ -304,7 +407,9 @@ function parseMultiSelectFilter(
   if (values.some(value => typeof value !== 'string')) {
     throw ApiError.badRequest(`${fieldName} 每项必须是字符串`);
   }
-  const normalized = [...new Set(values.map(value => value.trim()).filter(Boolean))];
+  const normalized = [
+    ...new Set(values.map(value => (trimValues ? value.trim() : value)).filter(Boolean)),
+  ];
   if (normalized.some(value => value.length > maxLength)) {
     throw ApiError.badRequest(`${fieldName} 每项不能超过 ${maxLength} 字符`);
   }
@@ -313,6 +418,13 @@ function parseMultiSelectFilter(
   }
   return normalized;
 }
+
+// 与列表 recipient_tag 的来源回退顺序一致，保留非空 TAG 的原始值。
+const RECIPIENT_TAG_EXPRESSION = Sequelize.literal(`CASE
+  WHEN "Order"."ingestion_source" = 'aos'
+    THEN COALESCE(NULLIF("Order"."source_recipient_tag", ''), NULLIF("recipient"."tag", ''), NULLIF("Order"."tag", ''))
+  ELSE COALESCE(NULLIF("recipient"."tag", ''), NULLIF("Order"."tag", ''))
+END`);
 
 /** 构造商品完整名称多选条件。 */
 function buildProductNamesCondition(productNames) {
@@ -359,6 +471,21 @@ function buildListFilters(query) {
       where.paymentStatus = query.payment_status;
     }
   }
+  const emailOrderStatuses = parseMultiSelectFilter(
+    query.emailOrderStatuses,
+    'emailOrderStatuses',
+    {
+      allowedValues: ['unknown', 'confirmed', 'processing', 'ready_for_pickup'],
+      maxLength: 30,
+    }
+  );
+  if (emailOrderStatuses.length) where.emailOrderStatus = { [Op.in]: emailOrderStatuses };
+  const emailPaymentStatuses = parseMultiSelectFilter(
+    query.emailPaymentStatuses,
+    'emailPaymentStatuses',
+    { allowedValues: ['unknown', 'paid'], maxLength: 20 }
+  );
+  if (emailPaymentStatuses.length) where.emailPaymentStatus = { [Op.in]: emailPaymentStatuses };
 
   if (query.apple_id) {
     const appleIdInt = parseInt(query.apple_id, 10);
@@ -376,13 +503,24 @@ function buildListFilters(query) {
     where.recipientRef = recipientInt;
   }
 
+  const recipientTags = parseMultiSelectFilter(query.recipientTags, 'recipientTags', {
+    trimValues: false,
+  });
+  if (recipientTags.length > 0) {
+    where[Op.and] = (where[Op.and] || []).concat(
+      Sequelize.where(RECIPIENT_TAG_EXPRESSION, { [Op.in]: recipientTags })
+    );
+  }
+
   const pickupStores = parseMultiSelectFilter(query.pickupStores, 'pickupStores');
   if (pickupStores.length > 0) where.pickupStore = { [Op.in]: pickupStores };
   else if (query.pickupStore)
     where.pickupStore = { [Op.iLike]: `%${String(query.pickupStore).trim()}%` };
   if (query.payerName) where.payerName = { [Op.iLike]: `%${String(query.payerName).trim()}%` };
   const productNames = parseMultiSelectFilter(query.productNames, 'productNames');
-  const productNamesCondition = buildProductNamesCondition(productNames);
+  const productNamesCondition =
+    buildOrderProductCondition(query, sequelize, productNames) ||
+    buildProductNamesCondition(productNames);
   if (productNamesCondition) {
     where[Op.and] = (where[Op.and] || []).concat(productNamesCondition);
   } else if (query.productModel) {
@@ -441,7 +579,7 @@ function buildListFilters(query) {
   if (query.keyword) {
     const kw = String(query.keyword).trim();
     if (kw.length > 0) {
-      // 订单号精确匹配（订单号是 ^W\\d{10}$）+ 产品名模糊匹配
+      // 系统订单 ID 精确匹配，并保留官网订单号及既有文本模糊搜索。
       where[Op.or] = [
         { orderNumber: { [Op.iLike]: `%${kw}%` } },
         { appleId: { [Op.iLike]: `%${kw}%` } },
@@ -453,6 +591,16 @@ function buildListFilters(query) {
         // 见 docs/database/数据库架构.md：products 已建 GIN 索引
         // 此处若 keyword 命中订单号 iLike 会优先；同时模糊搜索 products[].name 在 PostgreSQL 上可行
       ];
+      if (/^\d+$/.test(kw)) {
+        const systemOrderId = Number(kw);
+        if (
+          Number.isSafeInteger(systemOrderId) &&
+          systemOrderId > 0 &&
+          systemOrderId <= MAX_ORDER_ID
+        ) {
+          where[Op.or].push({ id: systemOrderId });
+        }
+      }
       // 单独补充 products 容器查询：检测到数字 ID 直接精确
       const asOrderNumber = /^W\d{10}$/.test(kw);
       if (!asOrderNumber) {
@@ -595,6 +743,41 @@ async function getOrderDetail(req, res) {
     }
     logger.error('查询订单详情失败', { orderId: req.params.id, error: error.message });
     throw ApiError.database('查询订单详情失败', { reason: error.message });
+  }
+}
+
+/**
+ * GET /api/orders/:id/link
+ * 按订单读取范围返回单个官网订单链接，不在列表和导出中常驻。
+ */
+async function getOrderLink(req, res) {
+  try {
+    const rawOrderId = String(req.params.id || '');
+    const orderId = Number(rawOrderId);
+    if (
+      !/^\d+$/.test(rawOrderId) ||
+      !Number.isSafeInteger(orderId) ||
+      orderId <= 0 ||
+      orderId > MAX_ORDER_ID
+    ) {
+      throw ApiError.badRequest('订单 ID 必须是正整数', { received: req.params.id });
+    }
+    const order = await Order.findOne({
+      where: scopeOrderWhere(req.user, { id: orderId }),
+      attributes: ['id', 'orderNumber', 'orderUrl'],
+    });
+    if (!order) throw ApiError.notFound('订单不存在');
+    if (!order.orderUrl) throw ApiError.notFound('订单链接不存在');
+    req.auditTarget = `订单；目标编号 ${order.id}`;
+    res.set('Cache-Control', 'no-store');
+    return res.json({
+      success: true,
+      data: { id: order.id, orderNumber: order.orderNumber, orderUrl: order.orderUrl },
+    });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    logger.error('读取订单链接失败', { orderId: req.params.id, error: error.message });
+    throw ApiError.database('读取订单链接失败', { reason: error.message });
   }
 }
 
@@ -777,41 +960,86 @@ async function pageOpenRefresh(req, res) {
   }
 }
 
+function parseOrderExportIds(rawValue) {
+  if (rawValue === undefined || rawValue === null || rawValue === '') return null;
+  let values = rawValue;
+  if (typeof rawValue === 'string') {
+    try {
+      values = JSON.parse(rawValue);
+    } catch (_error) {
+      throw ApiError.badRequest('orderIds 必须是合法数组');
+    }
+  }
+  if (!Array.isArray(values) || values.length === 0 || values.length > MAX_ORDER_EXPORT_IDS) {
+    throw ApiError.badRequest(`orderIds 必须是 1-${MAX_ORDER_EXPORT_IDS} 个订单 ID 的数组`);
+  }
+  if (
+    values.some(
+      value =>
+        !/^\d+$/.test(String(value)) ||
+        !Number.isSafeInteger(Number(value)) ||
+        Number(value) <= 0 ||
+        Number(value) > MAX_ORDER_ID
+    )
+  ) {
+    throw ApiError.badRequest('orderIds 包含无效订单 ID');
+  }
+  const ids = values.map(Number);
+  if (new Set(ids).size !== ids.length) throw ApiError.badRequest('orderIds 不能包含重复值');
+  return ids;
+}
+
+function parseOrderExportFields(rawValue) {
+  if (rawValue === undefined || rawValue === null || rawValue === '') {
+    return [...LEGACY_ORDER_EXPORT_FIELDS];
+  }
+  const fields = parseMultiSelectFilter(rawValue, 'fields', {
+    allowedValues: Object.keys(ORDER_EXPORT_FIELDS),
+    maxItems: Object.keys(ORDER_EXPORT_FIELDS).length,
+    maxLength: 50,
+  });
+  if (fields.length === 0) throw ApiError.badRequest('fields 至少选择一项');
+  return fields;
+}
+
+function createOrderExportRow(item, fields) {
+  return Object.fromEntries(
+    fields.map(field => {
+      const definition = ORDER_EXPORT_FIELDS[field];
+      const value = definition.value(item);
+      return [
+        definition.label,
+        typeof value === 'string' ? escapeSpreadsheetFormula(value) : value,
+      ];
+    })
+  );
+}
+
 /**
  * GET /api/orders/export
- * 按当前筛选条件导出脱敏订单。
+ * 按当前筛选条件或明确订单 ID 导出服务端白名单字段。
  */
 async function exportOrders(req, res) {
   try {
     const { where } = buildListFilters(req.query);
+    const orderIds = parseOrderExportIds(req.query.orderIds ?? req.query.order_ids);
+    const fields = parseOrderExportFields(req.query.fields);
+    if (orderIds) where.id = { [Op.in]: orderIds };
     const rows = await Order.findAll({
       where: scopeOrderWhere(req.user, where),
       include: [
         { model: AppleId, as: 'appleAccount', attributes: ['appleId'] },
-        { model: Recipient, as: 'recipient', attributes: ['lastName', 'firstName'] },
+        { model: Recipient, as: 'recipient', attributes: ['lastName', 'firstName', 'tag'] },
       ],
       order: [
         ['orderDate', 'DESC'],
         ['id', 'DESC'],
       ],
-      limit: 5000,
     });
-    const data = rows.map(order => {
-      const item = serializeOrderListItem(order);
-      return {
-        订单号: escapeSpreadsheetFormula(item.order_number || ''),
-        'Apple ID': escapeSpreadsheetFormula(item.apple_id || ''),
-        取机人: escapeSpreadsheetFormula(item.recipient_name || ''),
-        订单状态: item.status || '',
-        支付状态: item.payment_status || '',
-        取货状态: item.pickup_status || '',
-        官网金额: item.official_order_amount || '',
-        币种: item.official_order_amount_currency || '',
-        取货门店: escapeSpreadsheetFormula(item.pickup_store || ''),
-        标签: escapeSpreadsheetFormula(item.tag || ''),
-        '下单时间（北京时间，来源记录）': formatOrderTime(item.order_date),
-      };
-    });
+    if (orderIds && rows.length !== orderIds.length) {
+      throw ApiError.notFound('订单不存在或不可访问');
+    }
+    const data = rows.map(order => createOrderExportRow(serializeOrderListItem(order), fields));
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, '订单');
@@ -822,7 +1050,12 @@ async function exportOrders(req, res) {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    logger.info('订单导出完成', { userId: req.user.id, count: rows.length });
+    logger.info('订单导出完成', {
+      userId: req.user.id,
+      count: rows.length,
+      fieldCount: fields.length,
+      selectedExport: Boolean(orderIds),
+    });
     res.send(buffer);
   } catch (error) {
     if (error instanceof ApiError) throw error;
@@ -840,12 +1073,30 @@ async function exportOrders(req, res) {
 async function getFilterOptions(req, res) {
   try {
     const rows = await Order.findAll({
-      where: scopeOrderWhere(req.user),
-      attributes: ['products', 'pickupStore', 'payerName', 'recipientName'],
+      where: scopeOrderWhere(
+        req.user,
+        buildListFilters({
+          ...req.query,
+          productKeys: undefined,
+          productNames: undefined,
+          productModel: undefined,
+        }).where
+      ),
+      include: [
+        { model: Recipient, as: 'recipient', attributes: [] },
+        { model: AppleId, as: 'appleAccount', attributes: [] },
+      ],
+      attributes: ['products', 'productFilterItems', 'pickupStore', 'payerName', 'recipientName'],
       order: [['updatedAt', 'DESC']],
-      limit: 5000,
       raw: true,
     });
+    const tagRows = await Order.findAll({
+      where: scopeOrderWhere(req.user),
+      attributes: [[Sequelize.fn('DISTINCT', RECIPIENT_TAG_EXPRESSION), 'recipientTag']],
+      include: [{ model: Recipient, as: 'recipient', attributes: [] }],
+      raw: true,
+    });
+    const recipientTags = tagRows.map(row => row.recipientTag).filter(Boolean);
     const productModels = new Set();
     const productNames = new Set();
     const stores = new Set();
@@ -863,6 +1114,10 @@ async function getFilterOptions(req, res) {
     res.json({
       success: true,
       data: {
+        recipientTags: [...new Set(recipientTags)].sort((left, right) =>
+          left.localeCompare(right, 'zh-CN')
+        ),
+        productOptions: collectProductOptions(rows),
         productModels: [...productModels].sort(),
         productNames: [...productNames].sort((left, right) => left.localeCompare(right, 'zh-CN')),
         stores: [...stores].sort(),
@@ -940,6 +1195,7 @@ module.exports = {
   buildListFilters,
   listOrders,
   getOrderDetail,
+  getOrderLink,
   refreshOrder,
   batchRefresh,
   refreshAll,

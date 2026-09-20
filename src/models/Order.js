@@ -1,3 +1,5 @@
+const { calculateCatalogAmount } = require('../utils/orderCatalogPricingV1');
+const { buildProductFilterItems } = require('../utils/productFilter');
 const { DataTypes } = require('sequelize');
 const { encrypt, decrypt } = require('../utils/fieldEncryption');
 const { ORDER_STATUSES } = require('../constants/business');
@@ -154,6 +156,13 @@ module.exports = sequelize => {
           },
         },
       },
+      productFilterItems: {
+        type: DataTypes.JSONB,
+        field: 'product_filter_items',
+        allowNull: false,
+        defaultValue: [],
+        comment: '独立商品筛选索引，不依赖官网抓取',
+      },
       sourceSnapshot: {
         type: DataTypes.JSONB,
         field: 'source_snapshot',
@@ -260,6 +269,79 @@ module.exports = sequelize => {
         allowNull: true,
         field: 'payment_status',
         comment: '官网支付状态',
+      },
+      emailOrderStatus: {
+        type: DataTypes.STRING(30),
+        allowNull: false,
+        defaultValue: 'unknown',
+        field: 'email_order_status',
+        comment: '官方订单邮件归并的订单阶段',
+        validate: { isIn: [['unknown', 'confirmed', 'processing', 'ready_for_pickup']] },
+      },
+      emailPaymentStatus: {
+        type: DataTypes.STRING(20),
+        allowNull: false,
+        defaultValue: 'unknown',
+        field: 'email_payment_status',
+        comment: '官方订单邮件归并的付款状态',
+        validate: { isIn: [['unknown', 'paid']] },
+      },
+      emailStatusNeedsReview: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'email_status_needs_review',
+        comment: '邮件结论存在冲突或证据不足',
+      },
+      emailStatusReviewReasons: {
+        type: DataTypes.JSONB,
+        allowNull: false,
+        defaultValue: [],
+        field: 'email_status_review_reasons',
+        comment: '邮件状态待核对原因码',
+      },
+      emailStatusVersion: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0,
+        field: 'email_status_version',
+        comment: '邮件状态乐观锁版本',
+      },
+      emailStatusEvidenceAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'email_status_evidence_at',
+        comment: '最近有效邮件证据的发信时间',
+      },
+      emailPickupInfo: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        field: 'email_pickup_info',
+        comment: '邮件取货门店、地址、日期、时段和逐字段证据',
+      },
+      emailPickupDate: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+        field: 'email_pickup_date',
+        comment: '邮件明确的当前有效取货日期',
+      },
+      emailLifecycleUpdatedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'email_lifecycle_updated_at',
+        comment: '最近一次邮件归并应用时间',
+      },
+      orderAmount: {
+        type: DataTypes.DECIMAL(12, 2),
+        allowNull: true,
+        field: 'order_amount',
+        comment: '按已确认价格映射计算的订单金额，未知为 null',
+      },
+      orderAmountPriceVersion: {
+        type: DataTypes.STRING(40),
+        allowNull: true,
+        field: 'order_amount_price_version',
+        comment: '订单金额所用价格映射版本',
       },
       officialOrderAmount: {
         type: DataTypes.DECIMAL(12, 2),
@@ -444,6 +526,48 @@ module.exports = sequelize => {
       },
     },
     {
+      hooks: {
+        beforeSave(order, options) {
+          if (
+            order.isNewRecord ||
+            (order.changed('products') && (!options.fields || options.fields.includes('products')))
+          ) {
+            Object.assign(order, calculateCatalogAmount(order.products));
+            for (const field of ['orderAmount', 'orderAmountPriceVersion'])
+              if (options.fields && !options.fields.includes(field)) options.fields.push(field);
+          }
+          if (order.isNewRecord || order.changed('products') || order.changed('sourceSnapshot')) {
+            order.productFilterItems = buildProductFilterItems(
+              order.products,
+              order.productFilterItems,
+              order.sourceSnapshot?.products
+            );
+            if (options.fields && !options.fields.includes('productFilterItems'))
+              options.fields.push('productFilterItems');
+          }
+        },
+        beforeBulkCreate(orders, options) {
+          for (const order of orders) Object.assign(order, calculateCatalogAmount(order.products));
+          for (const field of ['orderAmount', 'orderAmountPriceVersion']) {
+            if (options.fields && !options.fields.includes(field)) options.fields.push(field);
+            if (
+              options.updateOnDuplicate?.includes('products') &&
+              !options.updateOnDuplicate.includes(field)
+            )
+              options.updateOnDuplicate.push(field);
+          }
+          for (const order of orders)
+            order.productFilterItems = buildProductFilterItems(
+              order.products,
+              order.productFilterItems,
+              order.sourceSnapshot?.products
+            );
+        },
+        beforeBulkUpdate(options) {
+          if (Object.hasOwn(options.attributes, 'products') || options.attributes.sourceSnapshot)
+            options.individualHooks = true;
+        },
+      },
       tableName: 'orders',
       timestamps: true,
       underscored: true,
@@ -481,6 +605,9 @@ module.exports = sequelize => {
           fields: ['payment_status'],
           name: 'idx_orders_payment_status',
         },
+        { fields: ['email_order_status'], name: 'idx_orders_email_order_status' },
+        { fields: ['email_payment_status'], name: 'idx_orders_email_payment_status' },
+        { fields: ['email_pickup_date'], name: 'idx_orders_email_pickup_date' },
         {
           fields: ['pickup_status'],
           name: 'idx_orders_pickup_status',
@@ -569,6 +696,10 @@ module.exports = sequelize => {
     Order.hasMany(models.OrderPayerEvent, {
       foreignKey: 'orderId',
       as: 'payerEvents',
+    });
+    Order.hasMany(models.OrderMailEvent, {
+      foreignKey: 'orderId',
+      as: 'mailEvents',
     });
   };
 

@@ -158,6 +158,30 @@ services:
     restart: unless-stopped
     stop_grace_period: 20s
 
+  wecom-worker:
+    <<: *backend-service
+    profiles: ['wecom']
+    command: npm run start:wecom-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 20s
+
+  order-mail-worker:
+    <<: *backend-service
+    profiles: ['order-mail']
+    command: npm run start:order-mail-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 90s
+
   crawler-worker:
     <<: *backend-service
     profiles: ['crawler', 'workers']
