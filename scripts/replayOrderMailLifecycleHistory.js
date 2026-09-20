@@ -12,6 +12,7 @@ const { enqueueLifecycleJob, aggregateOrderLifecycle } = require(
   path.join(projectRoot, 'src/services/orderMailLifecycleService')
 );
 
+const JSON_INDENT = 2;
 const BATCH_SIZE = 100;
 const TERMINAL_JOB_STATUSES = [
   'parsed',
@@ -266,4 +267,3 @@ async function main() {
 }
 
 main();
-const JSON_INDENT = 2;
