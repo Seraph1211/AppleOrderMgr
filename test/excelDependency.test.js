@@ -365,6 +365,13 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
           id: 41,
           orderNumber: 'W1234567890',
           products: [{ name: '=HYPERLINK("bad")', quantity: 2 }],
+          emailPickupInfo: {
+            storeName: 'Apple 长沙',
+            pickupDate: '2026-09-22',
+            startTime: '18:15',
+            endTime: '18:30',
+            appointmentMode: 'scheduled',
+          },
           applePassword: 'synthetic-secret',
           orderUrl: 'https://example.invalid/private',
         }),
@@ -376,7 +383,13 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
       {
         query: {
           orderIds: JSON.stringify([41]),
-          fields: JSON.stringify(['systemOrderId', 'orderNumber', 'products']),
+          fields: JSON.stringify([
+            'systemOrderId',
+            'orderNumber',
+            'products',
+            'emailPickupStore',
+            'emailPickupSchedule',
+          ]),
         },
         user: { id: 1, role: 'admin' },
       },
@@ -390,6 +403,8 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
         '系统订单 ID': 41,
         官网订单号: 'W1234567890',
         商品信息: '\'=HYPERLINK("bad") ×2',
+        邮件取货门店: 'Apple 长沙',
+        邮件取货安排: '2026-09-22 18:15–18:30',
       },
     ]);
     expect(JSON.stringify(data)).not.toMatch(/synthetic-secret|private|Apple ID/);

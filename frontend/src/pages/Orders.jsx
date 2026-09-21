@@ -33,6 +33,8 @@ import ColumnConfigModal from '../components/ColumnConfigModal';
 import OrderDetailModal from '../components/OrderDetailModal';
 import OrderConflictIndicator from '../components/OrderConflictIndicator';
 import {
+  EMAIL_ORDER_STATUS_BADGES,
+  getEmailOrderStatusBadge,
   getOrderStatusBadge,
   ORDER_STATUS_LABELS,
   PICKUP_STATUS_LABELS,
@@ -45,12 +47,9 @@ import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import { replayOrderMailLifecycle, replayOrderMailLifecycleBatch } from '../api/orderMailApi';
 
-const EMAIL_ORDER_STATUS_LABELS = {
-  unknown: '待确认',
-  confirmed: '订单已确认',
-  processing: '处理中',
-  ready_for_pickup: '可取货',
-};
+const EMAIL_ORDER_STATUS_LABELS = Object.fromEntries(
+  Object.entries(EMAIL_ORDER_STATUS_BADGES).map(([key, badge]) => [key, badge.text])
+);
 export default function Orders() {
   const { can, user } = useAuth();
   const canRefreshOrders = can(PERMISSIONS.ORDERS_REFRESH);
@@ -462,7 +461,6 @@ export default function Orders() {
           autoRefreshEnabled: order.auto_refresh_enabled,
           autoRefreshStopReason: order.auto_refresh_stop_reason || null,
           autoRefreshStoppedAt: order.auto_refresh_stopped_at || null,
-          paymentStatus: order.payment_status || '-',
           pickupStatus: order.pickup_status || '-',
           orderAmount: order.order_amount ?? null,
           officialOrderAmount: order.official_order_amount ?? null,
@@ -718,12 +716,11 @@ export default function Orders() {
         return <span className={`badge ${badge.class}`}>{badge.text}</span>;
       }
 
-      case 'emailOrderStatus':
+      case 'emailOrderStatus': {
+        const badge = getEmailOrderStatusBadge(value);
         return (
           <div className="text-sm">
-            <span className="badge badge-info">
-              {EMAIL_ORDER_STATUS_LABELS[value] || EMAIL_ORDER_STATUS_LABELS.unknown}
-            </span>
+            <span className={`badge ${badge.class}`}>{badge.text}</span>
             {order.emailStatusNeedsReview && (
               <p
                 className="mt-1 text-xs text-amber-700"
@@ -739,6 +736,7 @@ export default function Orders() {
             )}
           </div>
         );
+      }
 
       case 'emailPickupInfo': {
         const pickup = value;

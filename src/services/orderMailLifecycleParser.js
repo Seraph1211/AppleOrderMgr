@@ -1,7 +1,7 @@
 const { normalizeProductName } = require('../utils/productFilter');
 const { extractOrderNumber, htmlToText, mailText } = require('./orderMailContent');
 
-const RULE_VERSION = 'apple-cn-pickup-v1';
+const RULE_VERSION = 'apple-cn-pickup-v3-availability-date';
 const TEMPLATE_TYPES = Object.freeze({
   CONFIRMED: 'confirmed',
   PROCESSING: 'processing',
@@ -84,6 +84,11 @@ function parsePickupDate(lines) {
     if (match) return validDateString(match[1], match[2], match[3]);
     match = line.match(/(\d{1,2})月\s*(\d{1,2})日[,，]?\s*(20\d{2})/);
     if (match) return validDateString(match[3], match[1], match[2]);
+  }
+  for (const line of lines) {
+    if (!/^有货\s*[:：]/.test(line)) continue;
+    const match = line.match(/(20\d{2})[/-](\d{1,2})[/-](\d{1,2})/);
+    if (match) return validDateString(match[1], match[2], match[3]);
   }
   return null;
 }
@@ -187,16 +192,16 @@ function parseOrderMailLifecycle(parsed) {
   const pickupInfo =
     store.storeName || store.storeAddress || date || range || businessHours
       ? {
-        storeName: store.storeName,
-        storeAddress: store.storeAddress,
-        pickupDate: date,
-        startTime: range?.start || null,
-        endTime: range?.end || null,
-        appointmentMode: businessHours ? 'business_hours' : range ? 'scheduled' : 'unknown',
-        timeZone: 'Asia/Shanghai',
-        retentionText: retentionText?.slice(0, 300) || null,
-        rawTimeRange: range?.raw || null,
-      }
+          storeName: store.storeName,
+          storeAddress: store.storeAddress,
+          pickupDate: date,
+          startTime: range?.start || null,
+          endTime: range?.end || null,
+          appointmentMode: businessHours ? 'business_hours' : range ? 'scheduled' : 'unknown',
+          timeZone: 'Asia/Shanghai',
+          retentionText: retentionText?.slice(0, 300) || null,
+          rawTimeRange: range?.raw || null,
+        }
       : null;
 
   const result = {

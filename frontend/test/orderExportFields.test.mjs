@@ -6,6 +6,7 @@ test('订单导出首次默认字段来自当前可见业务列并排除敏感�
   const fields = getDefaultOrderExportFields([
     { key: 'orderNumber', visible: true },
     { key: 'products', visible: true },
+    { key: 'emailPickupInfo', visible: true },
     { key: 'recipientName', visible: false },
     { key: 'applePassword', visible: true },
     { key: 'recipientIdCard', visible: true },
@@ -22,5 +23,7 @@ test('订单导出首次默认字段来自当前可见业务列并排除敏感�
     'orderAmount',
     'currency',
     'amountSource',
+    'emailPickupStore',
+    'emailPickupSchedule',
   ]);
 });

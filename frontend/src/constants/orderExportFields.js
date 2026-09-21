@@ -12,14 +12,8 @@ export const orderExportFields = Object.freeze([
     label: '邮件订单状态',
     tableKeys: ['emailOrderStatus'],
   },
-  {
-    key: 'emailPaymentStatus',
-    label: '邮件付款状态',
-    tableKeys: ['emailPaymentStatus'],
-  },
   { key: 'emailStatusNeedsReview', label: '邮件状态待核对', tableKeys: [] },
   { key: 'officialOrderStatus', label: '官网订单状态', tableKeys: ['status'] },
-  { key: 'officialPaymentStatus', label: '官网支付状态', tableKeys: [] },
   { key: 'pickupStatus', label: '取货状态', tableKeys: [] },
   { key: 'currency', label: '币种', tableKeys: ['products'] },
   { key: 'amountSource', label: '金额来源', tableKeys: ['products'] },
@@ -32,6 +26,11 @@ export const orderExportFields = Object.freeze([
   {
     key: 'emailPickupDate',
     label: '邮件取货日期',
+    tableKeys: [],
+  },
+  {
+    key: 'emailPickupSchedule',
+    label: '邮件取货安排',
     tableKeys: ['emailPickupInfo'],
   },
   { key: 'pickupStore', label: '官网取货门店', tableKeys: ['pickupStore'] },

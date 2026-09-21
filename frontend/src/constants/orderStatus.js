@@ -34,6 +34,26 @@ export const PICKUP_STATUS_LABELS = {
   not_picked_up: '未取货（历史）',
 };
 
+export const EMAIL_ORDER_STATUS_BADGES = {
+  unknown: {
+    text: '待确认',
+    class: 'bg-gray-100 text-gray-700 border border-gray-200',
+  },
+  confirmed: { text: '订单已确认', class: 'badge-info' },
+  processing: {
+    text: '处理中',
+    class: 'bg-purple-100 text-purple-700 border border-purple-200',
+  },
+  ready_for_pickup: { text: '可取货', class: 'badge-success' },
+};
+
+/** 获取邮件订单状态标签；未知存量值按待确认展示。 */
+export function getEmailOrderStatusBadge(status) {
+  return Object.hasOwn(EMAIL_ORDER_STATUS_BADGES, status)
+    ? EMAIL_ORDER_STATUS_BADGES[status]
+    : EMAIL_ORDER_STATUS_BADGES.unknown;
+}
+
 /** 格式化服务端已脱敏的冲突，空值不冒充 0。 */
 export function formatOrderConflict(issue) {
   const detail =

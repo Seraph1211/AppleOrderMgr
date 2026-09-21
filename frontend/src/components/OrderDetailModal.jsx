@@ -7,7 +7,11 @@ import { updateOrder, updateOrderPayer, refreshOrder } from '../api/ordersApi';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import OfficialOrderSummary from './OfficialOrderSummary';
-import { ORDER_STATUS_BADGES, PICKUP_STATUS_LABELS } from '../constants/orderStatus';
+import {
+  getEmailOrderStatusBadge,
+  ORDER_STATUS_BADGES,
+  PICKUP_STATUS_LABELS,
+} from '../constants/orderStatus';
 import AlertModal from './AlertModal';
 
 /**
@@ -220,6 +224,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
   };
 
   const badge = getStatusBadge(order.status);
+  const emailStatusBadge = getEmailOrderStatusBadge(order.emailOrderStatus);
   const validationIssues = order.validationIssues || [];
   const officialProducts = order.officialProducts || [];
   const comparisonRows = (order.products || []).map(product => {
@@ -317,13 +322,10 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="text-sm text-gray-600">订单状态</label>
-                  <p className="mt-1 text-sm font-medium text-gray-900">
-                    {{
-                      unknown: '待确认',
-                      confirmed: '订单已确认',
-                      processing: '处理中',
-                      ready_for_pickup: '可取货',
-                    }[order.emailOrderStatus] || '待确认'}
+                  <p className="mt-1">
+                    <span className={`badge ${emailStatusBadge.class}`}>
+                      {emailStatusBadge.text}
+                    </span>
                   </p>
                 </div>
                 <div>

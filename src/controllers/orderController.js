@@ -92,6 +92,18 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
     value: item => item.email_pickup_info?.storeName || '',
   },
   emailPickupDate: { label: '邮件取货日期', value: item => item.email_pickup_date || '' },
+  emailPickupSchedule: {
+    label: '邮件取货安排',
+    value: item => {
+      const pickup = item.email_pickup_info;
+      if (!pickup) return '';
+      const pickupDate = pickup.pickupDate || item.email_pickup_date || '';
+      const timeRange = [pickup.startTime, pickup.endTime].filter(Boolean).join('–');
+      const arrangement =
+        pickup.appointmentMode === 'business_hours' ? '营业时间内到店' : timeRange;
+      return [pickupDate, arrangement].filter(Boolean).join(' ');
+    },
+  },
   pickupStore: { label: '官网取货门店', value: item => item.pickup_store || '' },
   pickupStoreCode: { label: '门店代码', value: item => item.pickup_store_code || '' },
   pickupCode: { label: '取货码', value: item => item.pickup_code || '' },
