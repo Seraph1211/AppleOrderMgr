@@ -37,7 +37,6 @@ import {
   EMAIL_ORDER_STATUS_BADGES,
   getEmailOrderStatusBadge,
   getOrderStatusBadge,
-  ORDER_STATUS_LABELS,
   PICKUP_STATUS_LABELS,
 } from '../constants/orderStatus';
 import Pagination from '../components/Pagination';
@@ -96,7 +95,6 @@ export default function Orders() {
 
   // 筛选条件
   const [filters, setFilters] = useState({
-    statuses: [],
     emailOrderStatuses: [],
     productKeys: [],
     recipientName: '',
@@ -142,7 +140,6 @@ export default function Orders() {
     }
   }, [
     searchTerm,
-    filters.statuses,
     filters.emailOrderStatuses,
     filters.productKeys,
     filters.recipientName,
@@ -420,13 +417,7 @@ export default function Orders() {
         keyword: searchTerm || undefined,
         ...filters,
       };
-      for (const key of [
-        'statuses',
-        'emailOrderStatuses',
-        'productKeys',
-        'pickupStores',
-        'recipientTags',
-      ]) {
+      for (const key of ['emailOrderStatuses', 'productKeys', 'pickupStores', 'recipientTags']) {
         if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
         else delete params[key];
       }
@@ -555,13 +546,7 @@ export default function Orders() {
 
   const handleExport = async () => {
     const params = { keyword: searchTerm || undefined, ...filters };
-    for (const key of [
-      'statuses',
-      'emailOrderStatuses',
-      'productKeys',
-      'pickupStores',
-      'recipientTags',
-    ]) {
+    for (const key of ['emailOrderStatuses', 'productKeys', 'pickupStores', 'recipientTags']) {
       if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
       else delete params[key];
     }
@@ -632,7 +617,6 @@ export default function Orders() {
 
   const resetFilters = () => {
     setFilters({
-      statuses: [],
       emailOrderStatuses: [],
       productKeys: [],
       recipientName: '',
@@ -1076,7 +1060,7 @@ export default function Orders() {
               setPagination(previous => ({ ...previous, currentPage: 1 }));
             }}
           />
-          {/* 官网状态 */}
+          {/* 邮件订单状态 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">订单状态（邮件）</label>
             <TagMultiSelect
@@ -1085,18 +1069,6 @@ export default function Orders() {
               value={filters.emailOrderStatuses}
               onChange={value => handleFilterChange('emailOrderStatuses', value)}
               ariaLabel="邮件订单状态筛选"
-              placeholder="全部状态"
-              itemLabel="状态"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">官网状态</label>
-            <TagMultiSelect
-              options={Object.keys(ORDER_STATUS_LABELS)}
-              optionLabels={ORDER_STATUS_LABELS}
-              value={filters.statuses}
-              onChange={value => handleFilterChange('statuses', value)}
-              ariaLabel="官网状态筛选"
               placeholder="全部状态"
               itemLabel="状态"
             />

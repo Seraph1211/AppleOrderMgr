@@ -281,8 +281,17 @@ async function main() {
       'https://secure.example.invalid/order/W1234567890'
     );
 
-    await page.getByRole('button', { name: '官网状态筛选' }).click();
-    await page.getByRole('option', { name: '等待付款' }).click();
+    assert.equal(await page.getByRole('button', { name: '官网状态筛选' }).count(), 0);
+    for (const width of [1280, 1440, 1920]) {
+      await page.setViewportSize({ width, height: 1000 });
+      const fields = await page.locator('.order-filter-fields > div').evaluateAll(elements =>
+        elements.filter(element => !element.classList.contains('order-date-filter')).map(element => ({ top: element.getBoundingClientRect().top, text: element.textContent }))
+      );
+      const pickupTop = await page.locator('input[aria-label="取货日期筛选"]').evaluate(element => element.parentElement.getBoundingClientRect().top);
+      assert.equal(fields.filter(field => Math.abs(field.top - pickupTop) < 2).length, 6, width + 'px 六项筛选应在同一行');
+    }
+    await page.getByRole('button', { name: '邮件订单状态筛选' }).click();
+    await page.getByRole('option', { name: '可取货', exact: true }).click();
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: '商品信息筛选' }).click();
     const productOption = page.getByRole('option', {
@@ -300,7 +309,8 @@ async function main() {
     await page.keyboard.press('Escape');
     await page.locator('input[aria-label="取货日期筛选"]').fill('2026-09-19');
     await page.waitForFunction(() => document.querySelector('tbody tr'));
-    assert.deepEqual(JSON.parse(latestOrderQuery.get('statuses')), ['payment_due']);
+    assert.equal(latestOrderQuery.has('statuses'), false);
+    assert.deepEqual(JSON.parse(latestOrderQuery.get('emailOrderStatuses')), ['ready_for_pickup']);
     assert.deepEqual(JSON.parse(latestOrderQuery.get('productKeys')), [
       'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478',
     ]);
@@ -392,7 +402,8 @@ async function main() {
         '旧列配置迁移',
         '邮件信息',
         '商品数量',
-        '状态商品门店多选和取货日期筛选',
+        '邮件状态商品门店多选和取货日期筛选',
+        '官网状态筛选移除与桌面六项同排',
         '取货时间提取展示',
         '校验与 Apple ID 主表移除',
         '异常图标保留且行不标红',
