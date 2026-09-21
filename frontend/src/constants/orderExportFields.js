@@ -49,8 +49,8 @@ export const orderExportFields = Object.freeze([
   { key: 'orderDate', label: '下单时间', tableKeys: ['orderDate'] },
   {
     key: 'lastOfficialUpdatedAt',
-    label: '最后更新时间',
-    tableKeys: ['lastOfficialUpdatedAt'],
+    label: '最后官网更新时间',
+    tableKeys: [],
   },
   { key: 'createdAt', label: '创建时间', tableKeys: ['createdAt'] },
   { key: 'updatedAt', label: '更新时间', tableKeys: ['updatedAt'] },

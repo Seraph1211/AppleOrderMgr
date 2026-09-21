@@ -4,7 +4,6 @@
  */
 
 export const ordersColumns = [
-  // 基础信息
   {
     key: 'orderNumber',
     label: '订单号',
@@ -22,14 +21,7 @@ export const ordersColumns = [
     pinned: false,
   },
   {
-    key: 'status',
-    label: '官网状态',
-    width: '100px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  {
+    // 保留历史列键以兼容个人配置；当前显示邮件归并应用时间。
     key: 'lastOfficialUpdatedAt',
     label: '最后更新时间',
     width: '180px',
@@ -37,17 +29,14 @@ export const ordersColumns = [
     sortable: false,
     pinned: false,
   },
-  // Apple ID 相关
   {
-    key: 'applePassword',
-    label: 'Apple 密码',
-    width: '120px',
-    defaultVisible: false,
+    key: 'products',
+    label: '商品',
+    width: '300px',
+    defaultVisible: true,
     sortable: false,
     pinned: false,
-    sensitive: true,
   },
-  // 收件人相关
   {
     key: 'recipientName',
     label: '取机人',
@@ -58,11 +47,60 @@ export const ordersColumns = [
   },
   {
     key: 'recipientTag',
-    label: '取机人标签',
+    label: 'TAG',
     width: '140px',
     defaultVisible: true,
     sortable: false,
     pinned: false,
+  },
+  {
+    key: 'orderDate',
+    label: '下单时间',
+    width: '160px',
+    defaultVisible: true,
+    sortable: true,
+    pinned: false,
+  },
+  {
+    key: 'emailPickupInfo',
+    label: '取货信息',
+    width: '240px',
+    defaultVisible: true,
+    sortable: false,
+    pinned: false,
+  },
+  {
+    key: 'paymentMethod',
+    label: '付款方式',
+    width: '120px',
+    defaultVisible: true,
+    sortable: false,
+    pinned: false,
+  },
+  {
+    key: 'createdAt',
+    label: '创建时间',
+    width: '160px',
+    defaultVisible: true,
+    sortable: true,
+    pinned: false,
+  },
+  {
+    key: 'status',
+    label: '官网状态',
+    width: '100px',
+    defaultVisible: false,
+    sortable: true,
+    pinned: false,
+  },
+  {
+    key: 'applePassword',
+    label: 'Apple 密码',
+    width: '120px',
+    defaultVisible: false,
+    sortable: false,
+    pinned: false,
+    sensitive: true,
   },
   {
     key: 'recipientIdCard',
@@ -89,16 +127,6 @@ export const ordersColumns = [
     sortable: false,
     pinned: false,
   },
-  // 产品信息
-  {
-    key: 'products',
-    label: '商品',
-    width: '300px',
-    defaultVisible: true,
-    sortable: false,
-    pinned: false,
-  },
-  // 订单信息
   {
     key: 'orderUrl',
     label: '订单链接',
@@ -108,27 +136,10 @@ export const ordersColumns = [
     pinned: false,
   },
   {
-    key: 'orderDate',
-    label: '下单时间',
-    width: '160px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  // 取货信息
-  {
-    key: 'emailPickupInfo',
-    label: '邮件取货安排',
-    width: '240px',
-    defaultVisible: true,
-    sortable: false,
-    pinned: false,
-  },
-  {
     key: 'pickupStore',
     label: '官网取货门店',
     width: '180px',
-    defaultVisible: true,
+    defaultVisible: false,
     sortable: false,
     pinned: false,
   },
@@ -152,7 +163,7 @@ export const ordersColumns = [
     key: 'pickupTime',
     label: '取货时间',
     width: '220px',
-    defaultVisible: true,
+    defaultVisible: false,
     sortable: false,
     pinned: false,
   },
@@ -164,24 +175,14 @@ export const ordersColumns = [
     sortable: true,
     pinned: false,
   },
-  // 付款信息
-  {
-    key: 'paymentMethod',
-    label: '付款方式',
-    width: '120px',
-    defaultVisible: true,
-    sortable: false,
-    pinned: false,
-  },
   {
     key: 'payerName',
     label: '付款人',
     width: '100px',
-    defaultVisible: true,
+    defaultVisible: false,
     sortable: false,
     pinned: false,
   },
-  // 爬虫相关
   {
     key: 'crawlFailCount',
     label: '爬取失败次数',
@@ -190,7 +191,6 @@ export const ordersColumns = [
     sortable: true,
     pinned: false,
   },
-  // 业务字段
   {
     key: 'tag',
     label: '授权 TAG',
@@ -207,15 +207,6 @@ export const ordersColumns = [
     sortable: false,
     pinned: false,
   },
-  // 时间戳
-  {
-    key: 'createdAt',
-    label: '创建时间',
-    width: '160px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
   {
     key: 'updatedAt',
     label: '更新时间',
@@ -224,7 +215,6 @@ export const ordersColumns = [
     sortable: true,
     pinned: false,
   },
-  // 操作
   {
     key: 'actions',
     label: '操作',

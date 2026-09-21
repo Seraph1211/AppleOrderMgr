@@ -1,5 +1,5 @@
 /* eslint-disable camelcase -- 合成 API 数据遵循响应契约 */
-/* global localStorage, document, navigator */
+/* global localStorage, document, navigator, getComputedStyle */
 const assert = require('node:assert/strict');
 const logger = require('../src/utils/logger');
 
@@ -110,6 +110,7 @@ async function main() {
                 validation_status: 'abnormal',
                 validation_issues: [{ message: '合成商品信息需要核对' }],
                 last_crawled_at: timestamp,
+                email_lifecycle_updated_at: '2026-09-21T03:04:05Z',
                 updated_at: '2030-01-01T00:00:00Z',
                 refresh: { freshness_status: 'fresh' },
               },
@@ -214,6 +215,7 @@ async function main() {
             { key: 'freshnessStatus', visible: true },
             { key: 'recipientPhone', visible: true },
             { key: 'lastCrawledAt', visible: false },
+            { key: 'pickupTime', visible: true },
           ],
         })
       );
@@ -228,7 +230,24 @@ async function main() {
     assert.equal(await page.getByRole('columnheader', { name: '校验状态' }).count(), 0);
     assert.equal(await page.getByRole('columnheader', { name: 'Apple ID' }).count(), 0);
     await page.getByRole('columnheader', { name: '取货时间' }).waitFor();
-    await page.getByRole('columnheader', { name: '取机人标签' }).waitFor();
+    await page.getByRole('columnheader', { name: 'TAG', exact: true }).waitFor();
+    const statusHint = page.getByRole('button', { name: '订单状态说明', exact: true });
+    await statusHint.hover();
+    await page.getByRole('tooltip').waitFor({ state: 'visible', timeout: 500 });
+    assert.match(await page.getByRole('tooltip').innerText(), /订单已确认：已下单，待付款/);
+    assert.match(await page.getByRole('tooltip').innerText(), /处理中：订单已付款/);
+    assert.match(await page.getByRole('tooltip').innerText(), /可取货：订单可取货/);
+    assert.equal(await statusHint.evaluate(element => getComputedStyle(element).cursor), 'default');
+    assert.equal(await statusHint.getAttribute('title'), null);
+    await page.keyboard.press('Escape');
+    assert.equal(await page.getByRole('tooltip').count(), 0);
+    const pickupHint = page.getByRole('button', { name: '取货信息说明', exact: true });
+    await pickupHint.hover();
+    await page.getByRole('tooltip').waitFor({ state: 'visible', timeout: 500 });
+    assert.equal(await page.getByRole('tooltip').innerText(), '基于邮件数据更新');
+    assert.equal(await pickupHint.evaluate(element => getComputedStyle(element).cursor), 'default');
+    assert.equal(await pickupHint.getAttribute('title'), null);
+    await page.keyboard.press('Escape');
     assert.equal(await page.getByRole('columnheader', { name: '付款状态' }).count(), 0);
     assert.equal(await page.getByText('付款状态（邮件）', { exact: true }).count(), 0);
     const row = page.locator('tbody tr').first();
@@ -307,10 +326,7 @@ async function main() {
     assert.equal(await row.getByRole('button', { name: '排队中 W1234567890' }).isDisabled(), true);
     await row.getByRole('button', { name: '刷新中 W1234567890' }).waitFor();
     await row.getByText('刷新成功', { exact: true }).waitFor();
-    await page.waitForFunction(() =>
-      document.querySelector('tbody tr').textContent.includes('9:00:00')
-    );
-    assert.notEqual(await row.locator('td').nth(lastUpdatedColumn).innerText(), initialTime);
+    assert.equal(await row.locator('td').nth(lastUpdatedColumn).innerText(), initialTime);
     assert.equal(submits, 1);
     await page.screenshot({ path: '/tmp/orders-browser-desktop.png', fullPage: true });
     outcome = 'failed';
@@ -381,7 +397,7 @@ async function main() {
         '校验与 Apple ID 主表移除',
         '异常图标保留且行不标红',
         '弹窗和独立详情下单联系方式及绝对预约时间',
-        '官网更新时间',
+        '邮件更新时间不受官网刷新影响',
         '排队执行成功',
         '失败可重试',
         '窄屏固定操作',

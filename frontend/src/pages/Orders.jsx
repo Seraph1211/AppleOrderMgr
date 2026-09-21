@@ -6,6 +6,7 @@ import OrderDateFilter from '../components/OrderDateFilter';
 import ProductFilter from '../components/ProductFilter';
 import ProductSummary from '../components/ProductSummary';
 import BrowserRefreshButton from '../components/BrowserRefreshButton';
+import TableHeaderHint from '../components/TableHeaderHint';
 import { formatOrderTime } from '../utils/orderTime';
 import {
   reconcileRowRefresh,
@@ -451,6 +452,7 @@ export default function Orders() {
           emailStatusEvidenceAt: order.email_status_evidence_at || null,
           emailStatusVersion: order.email_status_version || 0,
           emailPickupInfo: order.email_pickup_info || null,
+          lastOfficialUpdatedAt: order.email_lifecycle_updated_at || '-',
           officialRawStatus: order.official_raw_status,
           officialStatusObservedAt: order.official_status_observed_at,
           officialPaymentExpiresAt: order.official_payment_expires_at,
@@ -498,7 +500,6 @@ export default function Orders() {
           paymentScreenshot: order.payment_screenshot || [],
           // 爬虫相关
           lastCrawledAt: order.last_crawled_at || '-',
-          lastOfficialUpdatedAt: order.last_crawled_at || '-',
           crawlFailCount: order.crawl_fail_count || 0,
           freshnessStatus:
             order.refresh?.job?.status === 'pending'
@@ -757,7 +758,7 @@ export default function Orders() {
 
       case 'lastOfficialUpdatedAt':
         return (
-          <span className="text-sm text-gray-600" title="最后一次成功从官网更新订单数据的时间">
+          <span className="text-sm text-gray-600" title="最后一次邮件解析并更新订单数据的时间">
             {value === '-' ? '尚未更新' : new Date(value).toLocaleString('zh-CN')}
           </span>
         );
@@ -1240,7 +1241,19 @@ export default function Orders() {
                       }`}
                       style={{ minWidth: col.width }}
                     >
-                      {col.label}
+                      <span className="inline-flex items-center gap-1">
+                        {col.label}
+                        {col.key === 'emailOrderStatus' && (
+                          <TableHeaderHint label="订单状态说明">
+                            <p>订单已确认：已下单，待付款</p>
+                            <p>处理中：订单已付款</p>
+                            <p>可取货：订单可取货</p>
+                          </TableHeaderHint>
+                        )}
+                        {col.key === 'emailPickupInfo' && (
+                          <TableHeaderHint label="取货信息说明">基于邮件数据更新</TableHeaderHint>
+                        )}
+                      </span>
                     </th>
                   ))}
                 </tr>
