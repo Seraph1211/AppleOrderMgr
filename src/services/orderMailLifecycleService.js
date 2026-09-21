@@ -474,10 +474,13 @@ async function applyWaitingOrderLifecycle(order, transaction, config = getOrderM
   return result;
 }
 
-/** 管理员重放一封邮件；只重置解析任务，不绕过应用开关。 */
+/** 获授权用户重放一封邮件；只重置解析任务，不绕过应用开关。 */
 async function enqueueReplay(user, orderId, messageId) {
   const { accessibleMessage } = require('./orderMailService');
-  const message = await accessibleMessage(user, orderId, messageId, { content: true });
+  const message = await accessibleMessage(user, orderId, messageId, {
+    content: true,
+    permission: PERMISSIONS.ORDER_MAIL_MANAGE,
+  });
   const [job] = await enqueueLifecycleJob(message.id);
   await job.update({
     status: 'pending',
@@ -643,7 +646,10 @@ function reviewLifecycleEvent(user, orderId, messageId, input) {
   }
 
   return sequelize.transaction(async transaction => {
-    const message = await accessibleMessage(user, orderId, messageId, { transaction });
+    const message = await accessibleMessage(user, orderId, messageId, {
+      transaction,
+      permission: PERMISSIONS.ORDER_MAIL_MANAGE,
+    });
     const order = await Order.findByPk(Number(orderId), {
       transaction,
       lock: transaction.LOCK.UPDATE,

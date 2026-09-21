@@ -1,18 +1,17 @@
 /**
- * 管理员邮件处理路由。
+ * 逐用户权限控制的邮件处理路由。
  * @module routes/emailProcessing
  */
 
 const express = require('express');
 
-const { requireRole, requirePermission } = require('../middleware/authMiddleware');
+const { requirePermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
 const emailProcessingController = require('../controllers/emailProcessingController');
 const asyncHandler = require('../utils/asyncHandler');
 
 const router = express.Router();
 
-router.use(requireRole(['admin']));
 router.get(
   '/',
   requirePermission(PERMISSIONS.EMAIL_READ),

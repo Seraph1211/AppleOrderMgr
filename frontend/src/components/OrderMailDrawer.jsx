@@ -1,3 +1,5 @@
+import { useAuth } from "../contexts/AuthContext";
+import { PERMISSIONS } from "../constants/permissions";
 import { createPortal } from "react-dom";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -61,6 +63,9 @@ const AUTHENTICITY_LABELS = {
 
 /** 订单列表内的关联邮件抽屉；不提供独立导航或全局收件箱。 */
 export default function OrderMailDrawer({ order, onClose }) {
+  const { can } = useAuth();
+  const canManage = can(PERMISSIONS.ORDER_MAIL_MANAGE);
+  const canForward = canManage || can(PERMISSIONS.ORDER_MAIL_FORWARD);
   const [page, setPage] = useState(1);
   const [reload, setReload] = useState(0);
   const [list, setList] = useState(null);
@@ -231,6 +236,7 @@ export default function OrderMailDrawer({ order, onClose }) {
 
   async function send(event) {
     event.preventDefault();
+    if (!canForward) return;
     if (sendingRef.current) return;
     const target = recipient.trim();
     if (!window.confirm("确认将这封邮件及附件转发到 " + target + "？")) return;
@@ -274,6 +280,7 @@ export default function OrderMailDrawer({ order, onClose }) {
   }
 
   async function replayLifecycle() {
+    if (!canManage) return;
     setReplaying(true);
     setError("");
     setNotice("");
@@ -290,6 +297,7 @@ export default function OrderMailDrawer({ order, onClose }) {
 
   async function reviewLifecycle(event) {
     event.preventDefault();
+    if (!canManage) return;
     setReviewing(true);
     setError("");
     setNotice("");
@@ -447,82 +455,90 @@ export default function OrderMailDrawer({ order, onClose }) {
                             )}
                           </p>
                         )}
-                        <button
-                          type="button"
-                          className="btn btn-secondary mt-3 inline-flex items-center gap-1"
-                          disabled={replaying}
-                          onClick={replayLifecycle}
-                        >
-                          <RefreshCw
-                            className={`w-4 h-4 ${replaying ? "animate-spin" : ""}`}
-                          />
-                          {replaying ? "提交中…" : "重新解析"}
-                        </button>
-                        <form
-                          className="mt-3 space-y-2 border-t border-blue-100 pt-3"
-                          onSubmit={reviewLifecycle}
-                        >
-                          <p className="font-medium text-gray-900">
-                            人工核定当前邮件
-                          </p>
-                          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                            <label className="text-gray-700">
-                              订单状态
-                              <select
-                                className="input mt-1 w-full"
-                                value={reviewOrderStatus}
-                                disabled={reviewing}
-                                onChange={(event) =>
-                                  setReviewOrderStatus(event.target.value)
+                        {canManage && (
+                          <>
+                            <button
+                              type="button"
+                              className="btn btn-secondary mt-3 inline-flex items-center gap-1"
+                              disabled={replaying}
+                              onClick={replayLifecycle}
+                            >
+                              <RefreshCw
+                                className={`w-4 h-4 ${replaying ? "animate-spin" : ""}`}
+                              />
+                              {replaying ? "提交中…" : "重新解析"}
+                            </button>
+                            <form
+                              className="mt-3 space-y-2 border-t border-blue-100 pt-3"
+                              onSubmit={reviewLifecycle}
+                            >
+                              <p className="font-medium text-gray-900">
+                                人工核定当前邮件
+                              </p>
+                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                <label className="text-gray-700">
+                                  订单状态
+                                  <select
+                                    className="input mt-1 w-full"
+                                    value={reviewOrderStatus}
+                                    disabled={reviewing}
+                                    onChange={(event) =>
+                                      setReviewOrderStatus(event.target.value)
+                                    }
+                                  >
+                                    <option value="unknown">待确认</option>
+                                    <option value="confirmed">
+                                      订单已确认
+                                    </option>
+                                    <option value="processing">处理中</option>
+                                    <option value="ready_for_pickup">
+                                      可取货
+                                    </option>
+                                  </select>
+                                </label>
+                                <label className="text-gray-700">
+                                  付款状态
+                                  <select
+                                    className="input mt-1 w-full"
+                                    value={reviewPaymentStatus}
+                                    disabled={reviewing}
+                                    onChange={(event) =>
+                                      setReviewPaymentStatus(event.target.value)
+                                    }
+                                  >
+                                    <option value="unknown">待确认</option>
+                                    <option value="paid">已付款</option>
+                                  </select>
+                                </label>
+                              </div>
+                              <label className="block text-gray-700">
+                                核定依据
+                                <textarea
+                                  className="input mt-1 w-full"
+                                  rows={2}
+                                  minLength={5}
+                                  maxLength={500}
+                                  required
+                                  value={reviewReason}
+                                  disabled={reviewing}
+                                  placeholder="填写关联官方邮件中的核定依据"
+                                  onChange={(event) =>
+                                    setReviewReason(event.target.value)
+                                  }
+                                />
+                              </label>
+                              <button
+                                type="submit"
+                                className="btn btn-secondary"
+                                disabled={
+                                  reviewing || reviewReason.trim().length < 5
                                 }
                               >
-                                <option value="unknown">待确认</option>
-                                <option value="confirmed">订单已确认</option>
-                                <option value="processing">处理中</option>
-                                <option value="ready_for_pickup">可取货</option>
-                              </select>
-                            </label>
-                            <label className="text-gray-700">
-                              付款状态
-                              <select
-                                className="input mt-1 w-full"
-                                value={reviewPaymentStatus}
-                                disabled={reviewing}
-                                onChange={(event) =>
-                                  setReviewPaymentStatus(event.target.value)
-                                }
-                              >
-                                <option value="unknown">待确认</option>
-                                <option value="paid">已付款</option>
-                              </select>
-                            </label>
-                          </div>
-                          <label className="block text-gray-700">
-                            核定依据
-                            <textarea
-                              className="input mt-1 w-full"
-                              rows={2}
-                              minLength={5}
-                              maxLength={500}
-                              required
-                              value={reviewReason}
-                              disabled={reviewing}
-                              placeholder="填写关联官方邮件中的核定依据"
-                              onChange={(event) =>
-                                setReviewReason(event.target.value)
-                              }
-                            />
-                          </label>
-                          <button
-                            type="submit"
-                            className="btn btn-secondary"
-                            disabled={
-                              reviewing || reviewReason.trim().length < 5
-                            }
-                          >
-                            {reviewing ? "保存中…" : "保存核定"}
-                          </button>
-                        </form>
+                                {reviewing ? "保存中…" : "保存核定"}
+                              </button>
+                            </form>
+                          </>
+                        )}
                       </div>
                     )}
                     <div className="border-t pt-4 whitespace-pre-wrap break-words text-gray-900">
@@ -549,60 +565,62 @@ export default function OrderMailDrawer({ order, onClose }) {
                       ))}
                     </div>
                   )}
-                  <form
-                    onSubmit={send}
-                    className="bg-primary-50 rounded-lg p-4 space-y-3"
-                  >
-                    <h3 className="font-semibold text-gray-900">
-                      转发这封邮件
-                    </h3>
-                    <label className="block text-sm text-gray-700">
-                      目标邮箱
-                      <input
-                        type="email"
-                        required
-                        maxLength={254}
-                        value={recipient}
-                        disabled={sending}
-                        autoComplete="off"
-                        placeholder="每次输入本次转发目标"
-                        className="input w-full mt-1"
-                        onChange={(event) => {
-                          setRecipient(event.target.value);
-                          requestKey.current = null;
-                        }}
-                      />
-                    </label>
-                    <label className="block text-sm text-gray-700">
-                      备注（可选）
-                      <textarea
-                        value={note}
-                        maxLength={2000}
-                        rows={2}
-                        disabled={sending}
-                        className="input w-full mt-1"
-                        onChange={(event) => {
-                          setNote(event.target.value);
-                          requestKey.current = null;
-                        }}
-                      />
-                    </label>
-                    <p className="text-xs text-gray-600">
-                      保留原邮件正文排版、图片、原附件及原始邮件文件，请确认目标邮箱。
-                    </p>
-                    <button
-                      type="submit"
-                      className="btn btn-primary inline-flex items-center gap-2"
-                      disabled={sending || !recipient.trim()}
+                  {canForward && (
+                    <form
+                      onSubmit={send}
+                      className="bg-primary-50 rounded-lg p-4 space-y-3"
                     >
-                      {sending ? (
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                      {sending ? "提交中…" : "转发邮件"}
-                    </button>
-                  </form>
+                      <h3 className="font-semibold text-gray-900">
+                        转发这封邮件
+                      </h3>
+                      <label className="block text-sm text-gray-700">
+                        目标邮箱
+                        <input
+                          type="email"
+                          required
+                          maxLength={254}
+                          value={recipient}
+                          disabled={sending}
+                          autoComplete="off"
+                          placeholder="每次输入本次转发目标"
+                          className="input w-full mt-1"
+                          onChange={(event) => {
+                            setRecipient(event.target.value);
+                            requestKey.current = null;
+                          }}
+                        />
+                      </label>
+                      <label className="block text-sm text-gray-700">
+                        备注（可选）
+                        <textarea
+                          value={note}
+                          maxLength={2000}
+                          rows={2}
+                          disabled={sending}
+                          className="input w-full mt-1"
+                          onChange={(event) => {
+                            setNote(event.target.value);
+                            requestKey.current = null;
+                          }}
+                        />
+                      </label>
+                      <p className="text-xs text-gray-600">
+                        保留原邮件正文排版、图片、原附件及原始邮件文件，请确认目标邮箱。
+                      </p>
+                      <button
+                        type="submit"
+                        className="btn btn-primary inline-flex items-center gap-2"
+                        disabled={sending || !recipient.trim()}
+                      >
+                        {sending ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Send className="w-4 h-4" />
+                        )}
+                        {sending ? "提交中…" : "转发邮件"}
+                      </button>
+                    </form>
+                  )}
                 </>
               )}
               {!!history.length && (

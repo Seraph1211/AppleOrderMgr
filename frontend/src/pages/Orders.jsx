@@ -54,6 +54,7 @@ const EMAIL_ORDER_STATUS_LABELS = Object.fromEntries(
 export default function Orders() {
   const { can, user } = useAuth();
   const canRefreshOrders = can(PERMISSIONS.ORDERS_REFRESH);
+  const canReadMail = can(PERMISSIONS.ORDER_MAIL_READ) || can(PERMISSIONS.ORDER_MAIL_MANAGE);
   const canRefreshMailStatus = can(PERMISSIONS.ORDER_MAIL_MANAGE);
   const canExportOrders = can(PERMISSIONS.ORDERS_EXPORT);
   const canSelectOrders = canRefreshOrders || canRefreshMailStatus || canExportOrders;
@@ -850,7 +851,7 @@ export default function Orders() {
               >
                 查看
               </button>
-              {can(PERMISSIONS.ORDER_MAIL_MANAGE) && (
+              {canReadMail && (
                 <button
                   onClick={event => {
                     event.stopPropagation();
@@ -1319,7 +1320,7 @@ export default function Orders() {
         />
       )}
 
-      {mailOrder && can(PERMISSIONS.ORDER_MAIL_MANAGE) && (
+      {mailOrder && canReadMail && (
         <OrderMailDrawer key={mailOrder.id} order={mailOrder} onClose={() => setMailOrder(null)} />
       )}
 

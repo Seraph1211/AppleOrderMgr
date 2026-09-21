@@ -1,7 +1,7 @@
 const logger = require('../utils/logger');
 const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
-const { requireAllPermissions } = require('../middleware/authMiddleware');
+const { requirePermission, requireAnyPermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
 const { OrderMailDelivery } = require('../models');
 const service = require('../services/orderMailService');
@@ -9,7 +9,8 @@ const { parseOrderMail, mailText } = require('../services/orderMailContent');
 const ApiError = require('../utils/ApiError');
 
 const router = express.Router({ mergeParams: true });
-router.use(requireAllPermissions([PERMISSIONS.ORDERS_READ, PERMISSIONS.ORDER_MAIL_MANAGE]));
+router.use(requirePermission(PERMISSIONS.ORDERS_READ));
+router.use(requireAnyPermission([PERMISSIONS.ORDER_MAIL_READ, PERMISSIONS.ORDER_MAIL_MANAGE]));
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   res.set('X-Content-Type-Options', 'nosniff');
@@ -98,6 +99,7 @@ router.get(
 );
 router.post(
   '/:messageId/forward',
+  requireAnyPermission([PERMISSIONS.ORDER_MAIL_FORWARD, PERMISSIONS.ORDER_MAIL_MANAGE]),
   asyncHandler(async (req, res) => {
     try {
       const data = await service.enqueueForward(
@@ -116,6 +118,7 @@ router.post(
 );
 router.post(
   '/:messageId/lifecycle/replay',
+  requirePermission(PERMISSIONS.ORDER_MAIL_MANAGE),
   asyncHandler(async (req, res) => {
     try {
       const data = await require('../services/orderMailLifecycleService').enqueueReplay(
@@ -133,6 +136,7 @@ router.post(
 );
 router.post(
   '/:messageId/lifecycle/review',
+  requirePermission(PERMISSIONS.ORDER_MAIL_MANAGE),
   asyncHandler(async (req, res) => {
     try {
       const data = await require('../services/orderMailLifecycleService').reviewLifecycleEvent(

@@ -49,7 +49,7 @@ function createResponse() {
   return { json: jest.fn(value => value) };
 }
 
-describe('管理员邮件处理 API 契约', () => {
+describe('邮件处理 API 契约', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockFindByPk.mockResolvedValue(mockRecord);
@@ -58,7 +58,7 @@ describe('管理员邮件处理 API 契约', () => {
     mockRecord.reload.mockResolvedValue(undefined);
   });
 
-  test('详情返回管理员获准的完整 MIME、密码和身份证并记录查看审计', async () => {
+  test('详情返回获授权用户可读的完整 MIME、密码和身份证并记录查看审计', async () => {
     const req = { params: { id: '42' }, user: { id: 7 } };
     const res = createResponse();
 

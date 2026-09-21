@@ -175,7 +175,11 @@ const enabled = process.env.RUN_ORDER_MAIL_INTEGRATION === 'true';
   });
   beforeEach(async () => {
     await grant(user, ['orders.read', 'order_mail.manage']);
-    await user.update({ orderAccess: { mode: 'tags', tags: ['MAIL-A'] }, status: 'active' });
+    await user.update({
+      role: 'operator',
+      orderAccess: { mode: 'tags', tags: ['MAIL-A'] },
+      status: 'active',
+    });
     await models.OrderMailDelivery.destroy({ where: {} });
   });
   test('未授权用户列表、正文、附件、历史和转发全部403', async () => {
@@ -202,6 +206,80 @@ const enabled = process.env.RUN_ORDER_MAIL_INTEGRATION === 'true';
       'order_mail.manage'
     );
     expect(() => permissions.validatePermissionSet(['order_mail.manage'])).toThrow('权限依赖');
+  });
+  test.each(['operator', 'readOnly'])('%s 仅查看和转发，不允许重解析或核定', async role => {
+    await user.update({ role });
+    await grant(user, ['orders.read', 'order_mail.read']);
+    for (const path of [
+      '',
+      '/' + message.id,
+      '/' + message.id + '/attachments/0',
+      '/' + message.id + '/forwards',
+    ]) {
+      expect((await request(path)).status).toBe(200);
+    }
+    expect(
+      (await request('/' + message.id + '/forward', { method: 'POST', body: {} })).status
+    ).toBe(403);
+    await expect(enqueue()).rejects.toMatchObject({ statusCode: 403 });
+    await grant(user, ['orders.read', 'order_mail.read', 'order_mail.forward']);
+    for (const action of ['replay', 'review']) {
+      expect(
+        (await request('/' + message.id + '/lifecycle/' + action, { method: 'POST', body: {} }))
+          .status
+      ).toBe(403);
+    }
+    const lifecycle = require('../src/services/orderMailLifecycleService');
+    const actor = await service.currentActor(user.id);
+    await expect(lifecycle.enqueueReplay(actor, order.id, message.id)).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    await expect(lifecycle.enqueueOrderReplay(actor, [order.id])).rejects.toMatchObject({
+      statusCode: 403,
+    });
+    await expect(
+      lifecycle.reviewLifecycleEvent(actor, order.id, message.id, {
+        expectedVersion: 0,
+        reason: '合成权限边界验证',
+        orderStatus: 'confirmed',
+      })
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect((await request('', { orderId: otherOrder.id })).status).toBe(404);
+    const forbidden = await models.OrderMailMessage.findOne({
+      where: { orderNumber: otherOrder.orderNumber },
+    });
+    expect(
+      (
+        await request('/' + forbidden.id + '/forward', {
+          method: 'POST',
+          body: { recipient: 'destination@example.test', idempotencyKey: key() },
+        })
+      ).status
+    ).toBe(404);
+    const queued = await request('/' + message.id + '/forward', {
+      method: 'POST',
+      body: { recipient: 'destination@example.test', idempotencyKey: key() },
+    });
+    expect(queued.status).toBe(202);
+    const transport = {
+      sendMail: jest.fn().mockResolvedValue({ accepted: ['destination@example.test'] }),
+    };
+    await sender.sendNextOrderMail({ transport, config });
+    expect(transport.sendMail).toHaveBeenCalledTimes(1);
+    expect((await models.OrderMailDelivery.findByPk(queued.data.data.id)).status).toBe('accepted');
+  });
+  test('保留查看权限但撤销转发权限后，旧Token拒绝发送且排队任务取消', async () => {
+    await grant(user, ['orders.read', 'order_mail.read', 'order_mail.forward']);
+    const delivery = await enqueue();
+    await grant(user, ['orders.read', 'order_mail.read']);
+    expect((await request('/' + message.id)).status).toBe(200);
+    expect(
+      (await request('/' + message.id + '/forward', { method: 'POST', body: {} })).status
+    ).toBe(403);
+    const transport = { sendMail: jest.fn() };
+    await sender.sendNextOrderMail({ transport, config });
+    expect(transport.sendMail).not.toHaveBeenCalled();
+    expect((await models.OrderMailDelivery.findByPk(delivery.id)).status).toBe('cancelled');
   });
   test('TAG范围、跨订单邮件ID和附件均不能越权', async () => {
     expect((await request('', { orderId: otherOrder.id })).status).toBe(404);

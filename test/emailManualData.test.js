@@ -34,7 +34,7 @@ describe('人工邮件草稿校验', () => {
     ).toBe('2026-09-09T05:24:25.000Z');
   });
 
-  test('允许管理员填写密码、完整身份证号和系统内部状态', () => {
+  test('允许获授权用户填写密码、完整身份证号和系统内部状态', () => {
     const result = validateManualOrderData(validDraft());
     expect(result.appleId).toBe('admin@example.com');
     expect(result.applePassword).toBe('Apple-password');

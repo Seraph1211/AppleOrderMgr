@@ -96,14 +96,14 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | POST   | /api/orders/page-open-refresh            | orders.refresh                                                                         |
 | GET    | /api/order-refresh/jobs/:id              | orders.refresh                                                                         |
 | GET    | /api/order-refresh/batches/:id           | orders.refresh                                                                         |
-| GET    | /api/email-processing                    | admin + email.read                                                                     |
-| GET    | /api/email-processing/metrics            | admin + email.read                                                                     |
-| POST   | /api/email-processing/batch-reparse      | admin + email.process                                                                  |
-| GET    | /api/email-processing/:id                | admin + email.content.read                                                             |
-| POST   | /api/email-processing/:id/reparse        | admin + email.process                                                                  |
-| PUT    | /api/email-processing/:id/draft          | admin + email.process                                                                  |
-| POST   | /api/email-processing/:id/ingest         | admin + email.process                                                                  |
-| POST   | /api/email-processing/:id/resolve        | admin + email.process                                                                  |
+| GET    | /api/email-processing                    | email.read                                                                     |
+| GET    | /api/email-processing/metrics            | email.read                                                                     |
+| POST   | /api/email-processing/batch-reparse      | email.process                                                                  |
+| GET    | /api/email-processing/:id                | email.content.read                                                             |
+| POST   | /api/email-processing/:id/reparse        | email.process                                                                  |
+| PUT    | /api/email-processing/:id/draft          | email.process                                                                  |
+| POST   | /api/email-processing/:id/ingest         | email.process                                                                  |
+| POST   | /api/email-processing/:id/resolve        | email.process                                                                  |
 | GET    | /api/stats/overview                      | stats.read                                                                             |
 | GET    | /api/stats/apple-ids                     | stats.read                                                                             |
 | GET    | /api/stats/recipients                    | stats.read                                                                             |
@@ -195,18 +195,20 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 
 ## 邮件处理
 
-邮件处理页面、列表、完整详情、指标、重新解析、草稿、入库、批量操作和人工关闭均仅允许 `admin`。`operator`、`readOnly` 和未认证请求由后端拒绝，前端隐藏导航不替代该门禁。
+邮件处理按逐用户权限授权，不再要求管理员角色；`operator`、`readOnly` 均可获授权，未认证或缺少对应权限的请求仍由后端拒绝。`email.read` 允许列表与指标；`email.content.read` 允许完整详情并依赖 `email.read`；`email.process` 允许重新解析、草稿、入库、批量操作和人工关闭，依赖前两项。普通用户不会自动获得权限，管理员仍拥有全部权限。页面按权限显示详情及处理入口，仅有完整内容查看权限时字段只读。
+
+这三项权限覆盖全局收单邮件处理队列，不按订单 TAG 过滤；与按订单数据范围授权的 `order_mail.*` 独立，不扩大订单接口的数据范围。
 
 - `GET /api/email-processing`：query 支持 `page`、`limit`、`status`、`error_code`、`order_number`、`date_from`、`date_to`。省略 status 时只返回 `manual_review`。列表按人工优先、接收时间倒序，返回完整邮件主题和 From，不做字段脱敏；来源过滤错误码包括 `SUBJECT_NOT_ALLOWED` 和 `SENDER_NOT_ALLOWED`，后者保留加密原文并进入人工处理。
 - `GET /api/email-processing/metrics`：返回各状态计数、最近收信、最近成功、24 小时失败数，以及独立 Worker 的连接、30 秒心跳运行判断、连续失败和最近错误码。`worker` 新增 `lastScanStartedAt`、`lastScanSucceededAt`、`lastScanDurationMs`、`lastScanErrorCode`、`isScanHealthy`；只有进程运行、邮箱已连接、最近 90 秒有成功扫描且最近扫描无错误时 `isScanHealthy=true`，空值不代表正常。扫描时间与收信／订单成功时间独立。
-- `GET /api/email-processing/:id`：返回解密后的完整 `raw_mime`、`parsed_data`、`manual_draft`、`final_data`、处理尝试和管理员操作审计；读取完整详情本身写入 `view_full_detail` 审计。若草稿或解析结果中的订单号已存在，返回 `duplicate_order` 入口。
+- `GET /api/email-processing/:id`：返回解密后的完整 `raw_mime`、`parsed_data`、`manual_draft`、`final_data`、处理尝试和操作审计；读取完整详情本身写入 `view_full_detail` 审计。若草稿或解析结果中的订单号已存在，返回 `duplicate_order` 入口。
 - `POST /api/email-processing/:id/reparse`：只允许 `manual_review/retry_wait`，使用当前解析器生成预览但不创建订单；返回预览、最新 version 和重复订单结果。
 - `PUT /api/email-processing/:id/draft`：body 为 `{ draft, version }`，执行完整人工字段校验并加密保存。旧 version 返回 HTTP 409、错误码 `CONCURRENT_MODIFICATION`。
 - `POST /api/email-processing/:id/ingest`：body 同草稿保存；在订单号 advisory lock 和邮件行锁下统一创建/关联订单、邮件终态和首次刷新任务。相同订单不覆盖，返回已有订单并把邮件置为 `superseded`。
 - `POST /api/email-processing/batch-reparse`：body 为 `{ ids }`，1–50 个去重整数；只处理指定的可重解析记录，并为每个请求 ID 返回独立的成功、稳定错误码或 `NOT_FOUND`。
 - `POST /api/email-processing/:id/resolve`：body 为 `{ resolutionType, reason, version, orderNumber? }`；`resolutionType` 仅允许 `ignored/existing_order`，原因必填且不超过 500 字，关联已有订单时必须提供确实存在的订单号。
 
-管理员人工草稿可包含 `appleId`、`applePassword`、`orderNumber`、`orderUrl`、`orderDate`、`orderStatus`、`paymentMethod`、`products[]`，以及 `recipient.name/idLast4/idCard/email/phone/address/tag`。允许查看和填写密码、完整身份证号及系统内部状态是本模块的明确 admin 专属规则；字段在 `email_logs` 草稿/最终数据及订单敏感快照中加密存储，不得进入运行日志或错误响应。Apple URL 仍只允许中国官网 `vieworder` 路径且必须与订单号一致。
+获授权用户的人工草稿可包含 `appleId`、`applePassword`、`orderNumber`、`orderUrl`、`orderDate`、`orderStatus`、`paymentMethod`、`products[]`，以及 `recipient.name/idLast4/idCard/email/phone/address/tag`。查看密码、完整身份证号及系统内部状态要求 `email.content.read`，修正并保存要求 `email.process`；字段在 `email_logs` 草稿/最终数据及订单敏感快照中加密存储，不得进入运行日志或错误响应。Apple URL 仍只允许中国官网 `vieworder` 路径且必须与订单号一致。
 
 ## 付款任务与付款人姓名
 
@@ -644,7 +646,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ## 订单关联邮件 API（2026-09-20）
 
-全部端点位于 /api/orders/:id/emails，要求登录、orders.read、order_mail.manage及订单TAG范围。无权限403，范围外订单或邮件404，附件同样校验；Cache-Control:no-store。id为正整数，messageId为UUID。
+全部端点位于 /api/orders/:id/emails，要求登录、`orders.read` 及订单 TAG 范围。查看列表、正文、附件和转发记录要求 `order_mail.read`；提交转发另要求 `order_mail.forward`；重新解析和人工核定要求 `order_mail.manage`。现有 `order_mail.manage` 兼容包含查看和转发能力，原授权不变。新权限均可授予普通用户，`order_mail.read` 依赖 `orders.read`，`order_mail.forward` 依赖前两项。仅需查看并转发时授予 `orders.read`、`order_mail.read`、`order_mail.forward`，不授予 `order_mail.manage` 或收单处理的 `email.*`。发送 Worker 在准备内容前和实际发送前均重新检查最新转发权限及 TAG 范围，撤销转发权限后未发送任务取消。无权限403，范围外订单或邮件404，附件同样校验；Cache-Control:no-store。id为正整数，messageId为UUID。
 - GET /：page/limit分页默认20上限50，返回items,total,page,limit,sync；元信息、脱敏同步状态及逐封 `lifecycle` 解析摘要，无邮件也返回同步状态。
 - GET /:messageId：返回id,subject,from,to,date,receivedAt,text,attachments,expired,lifecycle；文本预览，附件摘要含index/name/size。`lifecycle` 含模板、来源验证、订单／付款候选、取货信息、待核对原因、规则版本及解析／应用时间，不返回 DKIM 原文或敏感认证材料。
 - GET /:messageId/attachments/:index：认证下载，attachment/octet-stream、nosniff，过期内容410。

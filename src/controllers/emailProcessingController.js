@@ -1,6 +1,6 @@
 /* eslint-disable camelcase */
 /**
- * 管理员邮件处理 API。
+ * 按权限授权的邮件处理 API。
  * @module controllers/emailProcessingController
  */
 

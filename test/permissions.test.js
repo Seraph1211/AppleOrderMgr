@@ -83,7 +83,7 @@ describe('逐用户权限矩阵', () => {
   });
 
   test.each(['operator', 'readOnly'])('非管理员角色不能进入管理员保留端点', role => {
-    const req = { user: { id: 3, role, permissions: [] }, path: '/email-processing' };
+    const req = { user: { id: 3, role, permissions: [] }, path: '/users' };
     const res = createResponse();
     const next = jest.fn();
 

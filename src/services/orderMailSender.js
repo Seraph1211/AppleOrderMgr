@@ -1,4 +1,5 @@
 const nodemailer = require('nodemailer');
+const { PERMISSIONS } = require('../constants/business');
 const { Op } = require('sequelize');
 const { sequelize, OrderMailDelivery } = require('../models');
 const { getOrderMailConfig, isOrderMailConfigured } = require('./orderMailConfig');
@@ -76,6 +77,7 @@ async function sendNextOrderMail({ transport, config = getOrderMailConfig() } = 
     const actor = await currentActor(delivery.actorUserId);
     const message = await accessibleMessage(actor, delivery.orderId, delivery.messageId, {
       content: true,
+      permission: PERMISSIONS.ORDER_MAIL_FORWARD,
     });
     const raw = Buffer.from(message.rawContent, 'base64');
     const parsed = await parseOrderMail(raw);
@@ -84,7 +86,7 @@ async function sendNextOrderMail({ transport, config = getOrderMailConfig() } = 
       await currentActor(delivery.actorUserId),
       delivery.orderId,
       delivery.messageId,
-      { content: true }
+      { content: true, permission: PERMISSIONS.ORDER_MAIL_FORWARD }
     );
     client = transport || nodemailer.createTransport(config.smtp);
     smtpStarted = true;

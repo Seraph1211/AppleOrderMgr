@@ -66,6 +66,8 @@ const PERMISSIONS = Object.freeze({
   DASHBOARD_READ: 'dashboard.read',
   STATS_READ: 'stats.read',
   ORDERS_READ: 'orders.read',
+  ORDER_MAIL_READ: 'order_mail.read',
+  ORDER_MAIL_FORWARD: 'order_mail.forward',
   ORDER_MAIL_MANAGE: 'order_mail.manage',
   ORDERS_EDIT: 'orders.edit',
   ORDERS_EXPORT: 'orders.export',

@@ -1,6 +1,8 @@
 import { formatOrderTime } from '../utils/orderTime';
 import { ORDER_STATUS_LABELS } from '../constants/orderStatus';
 import { useCallback, useEffect, useState } from 'react';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
 import { Link } from 'react-router-dom';
 import {
   AlertCircle,
@@ -98,6 +100,10 @@ function normalizeDraft(data) {
 }
 
 export default function EmailProcessing() {
+  const { can } = useAuth();
+  const canReadContent = can(PERMISSIONS.EMAIL_CONTENT_READ);
+  const canProcess = can(PERMISSIONS.EMAIL_PROCESS);
+  const columnCount = canProcess ? 7 : 6;
   const [records, setRecords] = useState([]);
   const [metrics, setMetrics] = useState(null);
   const [filters, setFilters] = useState({
@@ -150,6 +156,7 @@ export default function EmailProcessing() {
   }, [loadRecords, loadMetrics]);
 
   const openRecord = async id => {
+    if (!canReadContent) return;
     setWorking(true);
     setError('');
     try {
@@ -164,6 +171,7 @@ export default function EmailProcessing() {
   };
 
   const handleReparse = async id => {
+    if (!canProcess) return;
     setWorking(true);
     setError('');
     try {
@@ -219,6 +227,7 @@ export default function EmailProcessing() {
   };
 
   const handleSaveDraft = async () => {
+    if (!canProcess) return;
     setWorking(true);
     setError('');
     try {
@@ -237,6 +246,7 @@ export default function EmailProcessing() {
   };
 
   const handleIngest = async () => {
+    if (!canProcess) return;
     if (!window.confirm('确认按当前预览创建订单？相同订单号不会覆盖已有订单。')) return;
     setWorking(true);
     setError('');
@@ -254,6 +264,7 @@ export default function EmailProcessing() {
   };
 
   const handleResolve = async resolutionType => {
+    if (!canProcess) return;
     const reason = window.prompt(
       resolutionType === 'ignored' ? '请输入忽略原因：' : '请输入关联已有订单的原因：'
     );
@@ -282,6 +293,7 @@ export default function EmailProcessing() {
   };
 
   const handleBatchReparse = async () => {
+    if (!canProcess) return;
     if (selectedIds.length === 0) return;
     setWorking(true);
     try {
@@ -301,16 +313,22 @@ export default function EmailProcessing() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">邮件处理</h1>
-          <p className="mt-1 text-gray-500">检查失败邮件，快速重新解析、修正并确认入库</p>
+          <p className="mt-1 text-gray-500">
+            {canProcess
+              ? '检查失败邮件，快速重新解析、修正并确认入库'
+              : '查看邮件处理记录与运行状态'}
+          </p>
         </div>
-        <button
-          className="btn btn-primary flex items-center space-x-2"
-          disabled={working || selectedIds.length === 0}
-          onClick={handleBatchReparse}
-        >
-          <RefreshCw className={`h-4 w-4 ${working ? 'animate-spin' : ''}`} />
-          <span>批量重新解析（{selectedIds.length}）</span>
-        </button>
+        {canProcess && (
+          <button
+            className="btn btn-primary flex items-center space-x-2"
+            disabled={working || selectedIds.length === 0}
+            onClick={handleBatchReparse}
+          >
+            <RefreshCw className={`h-4 w-4 ${working ? 'animate-spin' : ''}`} />
+            <span>批量重新解析（{selectedIds.length}）</span>
+          </button>
+        )}
       </div>
 
       {metrics && (
@@ -349,12 +367,12 @@ export default function EmailProcessing() {
               查看订单
             </Link>
           )}
-          {records[0] && (
+          {canReadContent && records[0] && (
             <button
               className="font-medium text-primary hover:text-primary-700"
               onClick={() => openRecord(records[0].id)}
             >
-              处理下一封
+              {canProcess ? '处理下一封' : '查看下一封'}
             </button>
           )}
         </div>
@@ -412,7 +430,9 @@ export default function EmailProcessing() {
         <table className="w-full">
           <thead>
             <tr className="border-b border-gray-200 bg-gray-50">
-              <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">选择</th>
+              {canProcess && (
+                <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">选择</th>
+              )}
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">接收时间</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">邮件</th>
               <th className="px-4 py-3 text-left text-sm font-medium text-gray-500">订单 / 错误</th>
@@ -424,33 +444,35 @@ export default function EmailProcessing() {
           <tbody>
             {loading ? (
               <tr>
-                <td className="px-4 py-12 text-center text-gray-500" colSpan="7">
+                <td className="px-4 py-12 text-center text-gray-500" colSpan={columnCount}>
                   加载中...
                 </td>
               </tr>
             ) : records.length === 0 ? (
               <tr>
-                <td className="px-4 py-12 text-center text-gray-500" colSpan="7">
+                <td className="px-4 py-12 text-center text-gray-500" colSpan={columnCount}>
                   暂无邮件处理记录
                 </td>
               </tr>
             ) : (
               records.map(record => (
                 <tr key={record.id} className="border-b border-gray-200 hover:bg-gray-50">
-                  <td className="px-4 py-4">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(record.id)}
-                      disabled={!['manual_review', 'retry_wait'].includes(record.status)}
-                      onChange={event =>
-                        setSelectedIds(previous =>
-                          event.target.checked
-                            ? [...previous, record.id]
-                            : previous.filter(id => id !== record.id)
-                        )
-                      }
-                    />
-                  </td>
+                  {canProcess && (
+                    <td className="px-4 py-4">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(record.id)}
+                        disabled={!['manual_review', 'retry_wait'].includes(record.status)}
+                        onChange={event =>
+                          setSelectedIds(previous =>
+                            event.target.checked
+                              ? [...previous, record.id]
+                              : previous.filter(id => id !== record.id)
+                          )
+                        }
+                      />
+                    </td>
+                  )}
                   <td className="whitespace-nowrap px-4 py-4 text-sm text-gray-600">
                     {record.received_at ? new Date(record.received_at).toLocaleString() : '-'}
                   </td>
@@ -492,7 +514,7 @@ export default function EmailProcessing() {
                   </td>
                   <td className="px-4 py-4 text-right">
                     <div className="flex justify-end gap-2">
-                      {['manual_review', 'retry_wait'].includes(record.status) && (
+                      {canProcess && ['manual_review', 'retry_wait'].includes(record.status) && (
                         <button
                           className="btn btn-secondary"
                           disabled={working}
@@ -502,14 +524,18 @@ export default function EmailProcessing() {
                           <span>重新解析</span>
                         </button>
                       )}
-                      <button
-                        className="btn btn-secondary"
-                        disabled={working}
-                        onClick={() => openRecord(record.id)}
-                      >
-                        <Eye className="h-4 w-4" />
-                        <span>详情</span>
-                      </button>
+                      {canReadContent ? (
+                        <button
+                          className="btn btn-secondary"
+                          disabled={working}
+                          onClick={() => openRecord(record.id)}
+                        >
+                          <Eye className="h-4 w-4" />
+                          <span>详情</span>
+                        </button>
+                      ) : (
+                        <span className="text-sm text-gray-400">-</span>
+                      )}
                     </div>
                   </td>
                 </tr>
@@ -540,7 +566,7 @@ export default function EmailProcessing() {
         </div>
       </div>
 
-      {detail && (
+      {canReadContent && detail && (
         <div className="fixed inset-0 z-50 flex justify-end bg-black/50">
           <div className="h-full w-full max-w-4xl overflow-y-auto bg-gray-50 shadow-xl">
             <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4">
@@ -617,6 +643,7 @@ export default function EmailProcessing() {
                     <label key={field} className={field === 'orderUrl' ? 'md:col-span-2' : ''}>
                       <span className="mb-2 block text-sm font-medium text-gray-700">{label}</span>
                       <input
+                        readOnly={!canProcess}
                         className="input w-full"
                         type={type}
                         step={field === 'orderDate' ? 1 : undefined}
@@ -632,6 +659,7 @@ export default function EmailProcessing() {
                       系统内部状态
                     </span>
                     <select
+                      disabled={!canProcess}
                       className="input w-full"
                       value={draft.orderStatus}
                       onChange={event => updateDraft('orderStatus', event.target.value)}
@@ -660,6 +688,7 @@ export default function EmailProcessing() {
                     <label key={field} className={field === 'address' ? 'md:col-span-2' : ''}>
                       <span className="mb-2 block text-sm font-medium text-gray-700">{label}</span>
                       <input
+                        readOnly={!canProcess}
                         className="input w-full"
                         value={draft.recipient[field] || ''}
                         onChange={event => updateRecipient(field, event.target.value)}
@@ -672,10 +701,12 @@ export default function EmailProcessing() {
               <section className="rounded-xl border border-gray-200 bg-white p-5">
                 <div className="flex items-center justify-between">
                   <h3 className="font-semibold text-gray-900">商品</h3>
-                  <button className="btn btn-secondary" onClick={addProduct}>
-                    <Plus className="h-4 w-4" />
-                    <span>增加商品</span>
-                  </button>
+                  {canProcess && (
+                    <button className="btn btn-secondary" onClick={addProduct}>
+                      <Plus className="h-4 w-4" />
+                      <span>增加商品</span>
+                    </button>
+                  )}
                 </div>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full">
@@ -692,6 +723,7 @@ export default function EmailProcessing() {
                         <tr key={`${index}-${product.model}`} className="border-b border-gray-200">
                           <td className="px-3 py-2">
                             <input
+                              readOnly={!canProcess}
                               className="input"
                               value={product.model}
                               onChange={event => updateProduct(index, 'model', event.target.value)}
@@ -699,6 +731,7 @@ export default function EmailProcessing() {
                           </td>
                           <td className="px-3 py-2">
                             <input
+                              readOnly={!canProcess}
                               className="input min-w-64"
                               value={product.name}
                               onChange={event => updateProduct(index, 'name', event.target.value)}
@@ -706,6 +739,7 @@ export default function EmailProcessing() {
                           </td>
                           <td className="px-3 py-2">
                             <input
+                              readOnly={!canProcess}
                               className="input w-24"
                               type="number"
                               min="1"
@@ -717,14 +751,16 @@ export default function EmailProcessing() {
                             />
                           </td>
                           <td className="px-3 py-2 text-right">
-                            <button
-                              className="rounded-lg p-2 text-red-600 hover:bg-red-50"
-                              disabled={draft.products.length === 1}
-                              onClick={() => removeProduct(index)}
-                              aria-label="删除商品"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
+                            {canProcess && (
+                              <button
+                                className="rounded-lg p-2 text-red-600 hover:bg-red-50"
+                                disabled={draft.products.length === 1}
+                                onClick={() => removeProduct(index)}
+                                aria-label="删除商品"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ))}
@@ -734,36 +770,42 @@ export default function EmailProcessing() {
               </section>
 
               <section className="rounded-xl border border-gray-200 bg-white p-5">
-                <h3 className="font-semibold text-gray-900">原始 MIME（管理员完整视图）</h3>
+                <h3 className="font-semibold text-gray-900">原始 MIME（完整内容）</h3>
                 <pre className="mt-4 max-h-80 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-gray-100 p-4 text-xs text-gray-700">
                   {detail.raw_mime || '原始 MIME 已清理或未保存'}
                 </pre>
               </section>
 
-              <div className="flex flex-wrap justify-end gap-3">
-                <button
-                  className="btn btn-secondary"
-                  disabled={working}
-                  onClick={() => handleResolve('ignored')}
-                >
-                  标记忽略
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  disabled={working}
-                  onClick={() => handleResolve('existing_order')}
-                >
-                  标记已有订单
-                </button>
-                <button className="btn btn-secondary" disabled={working} onClick={handleSaveDraft}>
-                  <Save className="h-4 w-4" />
-                  <span>保存草稿</span>
-                </button>
-                <button className="btn btn-primary" disabled={working} onClick={handleIngest}>
-                  <CheckCircle className="h-4 w-4" />
-                  <span>确认入库</span>
-                </button>
-              </div>
+              {canProcess && (
+                <div className="flex flex-wrap justify-end gap-3">
+                  <button
+                    className="btn btn-secondary"
+                    disabled={working}
+                    onClick={() => handleResolve('ignored')}
+                  >
+                    标记忽略
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={working}
+                    onClick={() => handleResolve('existing_order')}
+                  >
+                    标记已有订单
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={working}
+                    onClick={handleSaveDraft}
+                  >
+                    <Save className="h-4 w-4" />
+                    <span>保存草稿</span>
+                  </button>
+                  <button className="btn btn-primary" disabled={working} onClick={handleIngest}>
+                    <CheckCircle className="h-4 w-4" />
+                    <span>确认入库</span>
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -34,12 +34,21 @@ const MESSAGE_ATTRIBUTES = [
   'orderNumber',
   'createdAt',
 ];
-const REQUIRED_PERMISSIONS = [PERMISSIONS.ORDERS_READ, PERMISSIONS.ORDER_MAIL_MANAGE];
 
 /** 对每个邮件入口验证功能权限与精确订单TAG范围。 */
-async function accessibleOrder(user, orderId, transaction) {
+async function accessibleOrder(
+  user,
+  orderId,
+  transaction,
+  permission = PERMISSIONS.ORDER_MAIL_READ
+) {
   try {
-    if (!REQUIRED_PERMISSIONS.every(code => user.permissions?.includes(code)))
+    if (
+      !user.permissions?.includes(PERMISSIONS.ORDERS_READ) ||
+      (!user.permissions.includes(PERMISSIONS.ORDER_MAIL_MANAGE) &&
+        (!user.permissions.includes(PERMISSIONS.ORDER_MAIL_READ) ||
+          !user.permissions.includes(permission)))
+    )
       throw new ApiError(403, 'FORBIDDEN', '当前账号没有订单邮件权限');
     if (!/^[1-9][0-9]*$/.test(String(orderId)) || !Number.isSafeInteger(Number(orderId)))
       throw ApiError.badRequest('订单ID无效');
@@ -74,9 +83,14 @@ async function currentActor(actorUserId) {
 }
 
 /** 查询属于当前订单的邮件；禁止凭猜测邮件ID越权。 */
-async function accessibleMessage(user, orderId, messageId, { content = false, transaction } = {}) {
+async function accessibleMessage(
+  user,
+  orderId,
+  messageId,
+  { content = false, transaction, permission = PERMISSIONS.ORDER_MAIL_READ } = {}
+) {
   try {
-    const order = await accessibleOrder(user, orderId, transaction);
+    const order = await accessibleOrder(user, orderId, transaction, permission);
     if (!/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(String(messageId)))
       throw ApiError.notFound('邮件不存在或不可访问');
     const message = await OrderMailMessage.findOne({
@@ -309,7 +323,10 @@ async function enqueueForward(user, orderId, messageId, body) {
         replacements: { userId: user.id },
         transaction,
       });
-      await accessibleMessage(user, orderId, messageId, { transaction });
+      await accessibleMessage(user, orderId, messageId, {
+        transaction,
+        permission: PERMISSIONS.ORDER_MAIL_FORWARD,
+      });
       const payload = { recipient: input.recipient, note: input.note };
       const previous = await OrderMailDelivery.findOne({
         where: { actorUserId: user.id, idempotencyKey: input.idempotencyKey },
@@ -326,7 +343,11 @@ async function enqueueForward(user, orderId, messageId, body) {
       }
       if (!isOrderMailConfigured())
         throw new ApiError(503, 'ORDER_MAIL_UNAVAILABLE', '订单邮件收发尚未配置');
-      await accessibleMessage(user, orderId, messageId, { content: true, transaction });
+      await accessibleMessage(user, orderId, messageId, {
+        content: true,
+        transaction,
+        permission: PERMISSIONS.ORDER_MAIL_FORWARD,
+      });
       const delivery = await OrderMailDelivery.create(
         {
           id: crypto.randomUUID(),

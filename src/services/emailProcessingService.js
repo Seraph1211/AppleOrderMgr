@@ -445,10 +445,10 @@ function recoverInterruptedRecords() {
 }
 
 /**
- * 在邮件记录内追加不含业务明文的管理员操作审计。
+ * 在邮件记录内追加不含业务明文的用户操作审计。
  * @param {number} recordId - 邮件记录 ID
  * @param {string} action - 稳定操作名
- * @param {number} userId - 管理员 ID
+ * @param {number} userId - 操作用户 ID
  * @param {Object} [details] - 非敏感结果信息
  * @returns {Promise<Object>} 更新后的邮件记录
  */
@@ -545,7 +545,7 @@ function saveManualDraft(record, draft, expectedVersion) {
  * @param {Object} record - 邮件记录
  * @param {Object} draft - 草稿
  * @param {number} expectedVersion - 乐观锁版本
- * @param {number} userId - 管理员 ID
+ * @param {number} userId - 操作用户 ID
  * @returns {Promise<Object>} 订单
  */
 function ingestManualDraft(record, draft, expectedVersion, userId) {
@@ -565,7 +565,7 @@ function ingestManualDraft(record, draft, expectedVersion, userId) {
  * 人工标记忽略或关联已有订单。
  * @param {Object} record - 邮件记录
  * @param {Object} input - 决议
- * @param {number} userId - 管理员 ID
+ * @param {number} userId - 操作用户 ID
  * @returns {Promise<Object>} 更新后的记录
  */
 function resolveRecord(record, input, userId) {
