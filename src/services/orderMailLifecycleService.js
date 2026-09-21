@@ -223,6 +223,18 @@ function aggregateOrderLifecycle(order, events) {
       },
     }
     : null;
+  if (pickupInfo) {
+    for (const candidate of pickupCandidates.slice(1)) {
+      for (const [field, value] of Object.entries(candidate.pickupInfo)) {
+        if (
+          (pickupInfo[field] === null || pickupInfo[field] === '') &&
+          value !== null &&
+          value !== ''
+        )
+          pickupInfo[field] = value;
+      }
+    }
+  }
   return {
     orderStatus,
     paymentStatus,
