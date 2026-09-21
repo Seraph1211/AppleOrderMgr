@@ -1,3 +1,4 @@
+const { getSourcePaymentMethod } = require('../../utils/paymentMethod');
 const { PAYMENT_WINDOW_MS, normalizeOrderStatus } = require('../../constants/business');
 const { normalizeText: normalize, equivalentOrderValue } = require('./orderComparison');
 
@@ -322,7 +323,12 @@ function mergeOfficialOrder(order, data, observedAt = new Date()) {
     update.officialOrderAmountParseError = data.officialOrderAmountParseError;
   // orderDate 是邮件/人工录入的来源时间，官网日期不得覆盖其时分秒。
   // 官网精确时间单独写入 officialOrderCreatedAt。
-  if (data.officialPaymentMethod) update.paymentMethod = data.officialPaymentMethod;
+  const sourcePaymentMethod = getSourcePaymentMethod({
+    paymentMethod: order.paymentMethod,
+    sourceSnapshot: source,
+  });
+  if (sourcePaymentMethod || data.officialPaymentMethod)
+    update.paymentMethod = sourcePaymentMethod || data.officialPaymentMethod;
   const addConflict = (field, sourceValue, officialValue, message) => {
     if (
       sourceValue !== undefined &&
@@ -340,7 +346,12 @@ function mergeOfficialOrder(order, data, observedAt = new Date()) {
         source: 'imported',
         sourceValue,
         officialValue,
-        resolution: field === 'orderDate' ? 'manual_review' : 'official',
+        resolution:
+          field === 'orderDate'
+            ? 'manual_review'
+            : field === 'paymentMethod'
+              ? 'source'
+              : 'official',
         message,
       });
     }
@@ -355,7 +366,7 @@ function mergeOfficialOrder(order, data, observedAt = new Date()) {
         source[field],
         officialValue,
         field === 'paymentMethod'
-          ? '付款方式与官网不一致，已采用官网值'
+          ? '付款方式与官网不一致，保留来源值，请核对'
           : '取货门店与官网不一致，已采用官网值'
       );
   }

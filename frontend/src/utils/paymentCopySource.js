@@ -1,10 +1,13 @@
 import { buildPaymentCopyText } from './paymentCopy.js';
 import { decodePaymentQr } from './paymentQr.js';
+import { isWechatPayment } from './paymentMethod.js';
 
 /** 从已鉴权付款码优先提取支付地址，缺码或识读失败再读取原订单链接。 */
 export async function readPaymentCopyText(task, getCode, getLink, decode = decodePaymentQr) {
   try {
-    const response = await getCode(task.id);
+    const response = isWechatPayment(task.paymentMethod)
+      ? await getCode(task.id)
+      : { success: true, data: { availability: 'unsupported' } };
     if (
       !response.success ||
       !['available', 'missing', 'unsupported'].includes(response.data?.availability)

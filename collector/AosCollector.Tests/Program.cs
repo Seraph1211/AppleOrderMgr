@@ -13,6 +13,11 @@ string Line(string number = "W9900000001", string? day = null) => string.Join('\
 UploadEvent Event(string raw, string? scan = null) => new(Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), "AOS订单记录-测试.txt", 1, Protocol.Now(), scan, null, raw);
 var utf8 = new UTF8Encoding(false, true);
 try {
+  if (args.Contains("--payment-codes-only")) {
+    PaymentCodeTests.Run(Check, root);
+    System.Console.WriteLine($"全部 {passed} 项付款码专项测试通过。");
+    return;
+  }
   await TrayControlTests.RunAsync(Check);
   PaymentCodeTests.Run(Check, root);
   MonitorTests.Run(Check, root);

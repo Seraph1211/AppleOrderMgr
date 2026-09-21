@@ -6,7 +6,7 @@ import client from '../api/client';
 import { getPaymentStageLabel } from '../utils/paymentStage';
 import { formatPaymentDeadline, getPaymentDeadlineTime } from '../utils/paymentDeadline';
 
-/** 按服务端当前任务权限读取付款码；支付宝只显示明确提示。 */
+/** 按服务端当前任务权限读取付款码；所有非微信方式保留按钮并显示明确提示。 */
 export default function PaymentCodeButton({ taskId, orderDate, dispatch = false }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
@@ -99,7 +99,7 @@ export default function PaymentCodeButton({ taskId, orderDate, dispatch = false 
               )}
               {data?.availability === 'unsupported' ? (
                 <p role="status" className="text-gray-700 py-8 text-center">
-                  支付宝暂无法获取付款码
+                  {data.message || '该支付方式暂无法获取付款码'}
                 </p>
               ) : (
                 data && (

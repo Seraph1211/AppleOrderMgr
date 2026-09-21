@@ -30,6 +30,18 @@ beforeEach(() => {
   OrderPaymentCode.findOne.mockResolvedValue(null);
   AosRecord.findAll.mockResolvedValue([source()]);
 });
+test.each(['招行24期', '微信分付12期', '微信分付24期', 'VISA'])(
+  '来源 %s 即使遗留已关联微信码也不读取',
+  async paymentMethod => {
+    const result = await findOrderPaymentCode(
+      { ...order, sourceSnapshot: { paymentMethod } },
+      transaction
+    );
+    expect(result).toBeNull();
+    expect(OrderPaymentCode.findOne).not.toHaveBeenCalled();
+    expect(AosRecord.findAll).not.toHaveBeenCalled();
+  }
+);
 test('17 列订单直接返回有效图片，来源时间保留原文下单时间', async () => {
   const result = await findOrderPaymentCode(order, transaction);
   expect(result.payload.imageDataUrl).toBe(makePng());

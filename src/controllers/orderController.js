@@ -1,3 +1,4 @@
+const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 const { buildOrderProductCondition } = require('../utils/productFilterQuery');
 const { collectProductOptions } = require('../utils/productFilter');
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
@@ -262,7 +263,7 @@ function serializeOrderListItem(
     pickup_time_slot: plain.pickupTimeSlot,
     ...serializePickupFields(plain),
     actual_pickup_date: plain.actualPickupDate,
-    payment_method: plain.paymentMethod,
+    payment_method: getSourcePaymentMethod(plain),
     payer_name: plain.payerName,
     payer_version: plain.payerVersion,
     payment_screenshot: plain.paymentScreenshot,
@@ -360,7 +361,7 @@ function serializeOrderDetail(
     auto_refresh_stop_reason: plain.autoRefreshStopReason,
     auto_refresh_stopped_at: plain.autoRefreshStoppedAt,
     order_url: null,
-    payment_method: plain.paymentMethod,
+    payment_method: getSourcePaymentMethod(plain),
     payer_name: plain.payerName,
     payer_version: plain.payerVersion,
     payment_screenshot: plain.paymentScreenshot,

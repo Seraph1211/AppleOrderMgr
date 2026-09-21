@@ -1,3 +1,4 @@
+const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 const { randomUUID } = require('crypto');
 const { Op } = require('sequelize');
 const { sequelize, WecomNotificationDelivery: Delivery, Order } = require('../models');
@@ -108,7 +109,7 @@ async function prepare(row, now) {
     if (reason)
       return { status: reason === 'DEADLINE_MISSING' ? 'failed' : 'skipped', errorCode: reason };
     let url = null;
-    if (content.isWechat(order.paymentMethod)) {
+    if (content.isWechat(getSourcePaymentMethod(order))) {
       const code = await paymentCode.findOrderPaymentCode(order);
       url = content.decodePaymentQr(code?.payload?.imageDataUrl);
       if (!url && +now < +new Date(row.waitUntil))

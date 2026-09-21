@@ -1,3 +1,4 @@
+const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 const { parseProductKeys, productKeySql } = require('../utils/productFilterQuery');
 const { collectProductOptions } = require('../utils/productFilter');
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
@@ -90,6 +91,7 @@ function includeTaskRelations() {
         'emailStatusEvidenceAt',
         'emailPickupInfo',
         'paymentMethod',
+        'sourceSnapshot',
         'orderAmount',
         'orderAmountPriceVersion',
         'officialOrderAmount',
@@ -229,7 +231,7 @@ function serializeTask(task, serverTime = new Date()) {
     emailStatusNeedsReview: Boolean(plain.order?.emailStatusNeedsReview),
     emailStatusEvidenceAt: plain.order?.emailStatusEvidenceAt || null,
     emailPickupInfo: plain.order?.emailPickupInfo || null,
-    paymentMethod: plain.order?.paymentMethod || null,
+    paymentMethod: getSourcePaymentMethod(plain.order),
     ...serializeOrderPricing(plain.order),
     officialOrderAmount: plain.order?.officialOrderAmount ?? null,
     officialOrderAmountCurrency: plain.order?.officialOrderAmountCurrency || null,

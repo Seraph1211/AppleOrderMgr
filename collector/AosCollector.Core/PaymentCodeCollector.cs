@@ -15,8 +15,8 @@ public static class PaymentCodeParser
     // 仅分割固定前 29 项，保留 Data URL 自身的逗号。
     var f = line.Split(',', 30);
     if (f.Length != 30 || !Regex.IsMatch(f[26], @"^/W\d{10}$")) throw new CollectorException("SUCCESS_RECORD_INVALID");
-    if (f[19] == "支付宝") return null;
-    if (f[19] != "微信" || !f[29].StartsWith("data:image/png;base64,")) throw new CollectorException("PAYMENT_IMAGE_MISSING");
+    if (PaymentMethods.IsKnownNonWechat(f[19])) return null;
+    if (!PaymentMethods.IsWechat(f[19]) || !f[29].StartsWith("data:image/png;base64,")) throw new CollectorException("PAYMENT_IMAGE_MISSING");
     var clock = Regex.Match(f[0], @"^\d{2}:\d{2}:\d{2}\.\d{3}");
     if (!clock.Success || f[29].Length > 180000) throw new CollectorException("SUCCESS_RECORD_INVALID");
     try {
@@ -27,7 +27,7 @@ public static class PaymentCodeParser
   }
   public static PaymentCodeEvent Match(SuccessCandidate s, string[] o)
   {
-    if (o.Length < 15 || o[0] != s.OrderNumber || o[1] != s.ContactEmail || o[2] != s.AppleId || o[4] != s.LastName || o[5] != s.FirstName || o[6] != s.Store || o[9] != s.Phone || o[10] != s.Products || o[11] != "微信" || o[12] != s.Tag || (o.Length > 15 && o[15] != s.IdLast4)) throw new CollectorException("PAYMENT_CODE_IDENTITY_MISMATCH");
+    if (o.Length < 15 || o[0] != s.OrderNumber || o[1] != s.ContactEmail || o[2] != s.AppleId || o[4] != s.LastName || o[5] != s.FirstName || o[6] != s.Store || o[9] != s.Phone || o[10] != s.Products || !PaymentMethods.IsWechat(o[11]) || o[12] != s.Tag || (o.Length > 15 && o[15] != s.IdLast4)) throw new CollectorException("PAYMENT_CODE_IDENTITY_MISMATCH");
     if (!DateTime.TryParseExact(o[14], ["yyyy-MM-dd HH:mm:ss", "yyyy-MM-dd HH:mm:ss.FFF"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var date) ||
       !TimeSpan.TryParseExact(s.Clock, @"hh\:mm\:ss\.fff", CultureInfo.InvariantCulture, out var clock)) throw new CollectorException("PAYMENT_CODE_TIME_INVALID");
     var source = date.Date.Add(clock);

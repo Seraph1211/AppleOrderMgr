@@ -78,3 +78,44 @@ test('不加载外部图片、非 PNG 和超大载荷', async () => {
     assert.equal(await decodePaymentQr(value), null);
   }
 });
+
+for (const paymentMethod of [
+  '支付宝',
+  '花呗12期',
+  '招行12期',
+  '招行24期',
+  '建行12期',
+  '建行24期',
+  '工行12期',
+  '工行24期',
+  '微信分付12期',
+  '微信分付24期',
+  '支付宝银行12期',
+  '支付宝银行24期',
+  'VISA',
+  'MASTERCARD',
+]) {
+  test(`${paymentMethod} 直接复制订单链接，不读码且保留完整名称`, async () => {
+    const result = await readPaymentCopyText(
+      { ...task, paymentMethod },
+      () => assert.fail('非微信不得读码'),
+      link,
+      () => assert.fail('非微信不得识读二维码')
+    );
+    assert.equal(result, `101 || - || ${paymentMethod} || - || https://example.com/order`);
+  });
+}
+test('非微信原订单链接接口拒绝或失败不能复制', async () => {
+  for (const message of ['权限不足', '任务已转派', '网络错误']) {
+    await assert.rejects(
+      readPaymentCopyText(
+        { ...task, paymentMethod: '招行24期' },
+        () => assert.fail('非微信不得读码'),
+        async () => {
+          throw new Error(message);
+        }
+      ),
+      new RegExp(message)
+    );
+  }
+});

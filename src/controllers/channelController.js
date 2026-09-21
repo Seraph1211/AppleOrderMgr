@@ -1,3 +1,4 @@
+const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 /**
  * 渠道控制器
  * @module controllers/channelController
@@ -284,7 +285,7 @@ exports.getChannelOrders = async (req, res, next) => {
         pickupStore: plain.pickupStore,
         pickupTimeSlot: plain.pickupTimeSlot,
         orderUrl: null,
-        paymentMethod: plain.paymentMethod,
+        paymentMethod: getSourcePaymentMethod(plain),
         orderDate: plain.orderDate,
         tag: plain.tag,
         createdAt: plain.createdAt,

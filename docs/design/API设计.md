@@ -585,7 +585,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 2026-09-18 增量：两个付款码 GET 接口保持既有响应结构，增加从已关联且 succeeded／duplicate 的 AOS 订单来源原文第 17 列直接读取微信 PNG。原文身份与目标订单一致且图片完整才可返回；按原文下单时间与独立付款码记录共同选取最新有效图片，同时间按图片摘要固定排序。已有来源原文可直接生效，不依赖重采集，不回填或改写业务记录；15／16 列、无图、坏图仍走原有独立码或 missing。权限、审计和 no-store 不变。
 
 - `POST /api/aos-collector/v1/payment-codes`：设备认证；`{records:[{eventId,orderNumber,orderDate,sourceTime,contactEmail,appleId,paymentMethod,imageDataUrl}]}`，每批 20 条、PNG 每张最多 128 KiB、整个请求最多 1 MiB。独立不可变事件回执，重复事件不同载荷 409；只接收微信 PNG。设备启用、当前来源为 AOS 才处理；无目标订单返回可重试等待，不因缺码阻断订单入库。已有订单允许历史补码，订单号、来源账号／联系邮箱及日期须一致。成功回执才结束本地上传。
-- `GET /api/payment-tasks/:id/payment-code`：沿用本人付款链接权限及当前任务归属；`GET /api/payment-dispatch/tasks/:id/payment-code`：沿用管理员付款调度读取权限。均返回 `{success:true,data:{availability,message,orderId,orderNumber,products,amount,paymentMethod,officialOrderStatus,officialPaymentStatus,deadlineAt,imageDataUrl,sourceTime}}`；支付宝只返回 availability=unsupported 与“支付宝暂无法获取付款码”，不返回图片或链接。微信缺码为 missing，已付款／取消／过期仍可查看。读码审计、no-store，不访问官网或改变付款状态。
+- `GET /api/payment-tasks/:id/payment-code`：沿用本人付款链接权限及当前任务归属；`GET /api/payment-dispatch/tasks/:id/payment-code`：沿用管理员付款调度读取权限。均返回 `{success:true,data:{availability,message,orderId,orderNumber,products,amount,paymentMethod,officialOrderStatus,officialPaymentStatus,deadlineAt,imageDataUrl,sourceTime}}`；所有非普通微信方式只返回 availability=unsupported 与“具体支付方式暂无法获取付款码”（支付宝仍为“支付宝暂无法获取付款码”），不返回图片或链接。微信缺码为 missing，已付款／取消／过期仍可查看。读码审计、no-store，不访问官网或改变付款状态。
 - `GET /api/order-ingestion/collector-releases`：管理员设备管理权限，列出已验签发布版本；`GET /api/order-ingestion/collector-updates` 列出最近更新任务；`POST /api/order-ingestion/collector-updates`：`{deviceIds,releaseVersion}`，限定最多 20 台已启用设备；重复同一进行中目标复用任务，不同目标冲突。
 - `GET /api/aos-collector/v1/update`：领取自身更新任务和签名 manifest；`GET /api/aos-collector/v1/update/:id/package`：仅自身非终态任务的已验签固定制品；`POST /api/aos-collector/v1/update/:id/status`：`{status,agentVersion,errorCode}`，稳定状态码，终态幂等且禁止倒退。
 - manifest 使用 `{payload,signature}`，两值为 Base64；原始 UTF-8 payload 为 `{product:'AppleOrderMgrAosCollector',version,platform:'win-x64',sha256,size,queueSchema:1}`，RSA-SHA256 PKCS#1 v1.5 校验精确字节。配置 `COLLECTOR_RELEASE_DIR` 与 `COLLECTOR_UPDATE_PUBLIC_KEY_FILE`；未配置时更新发布不可用，既有采集继续。
@@ -682,3 +682,9 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 订单导出使用“订单金额”“币种”“金额来源”“价格版本”；来源为“按官方售价计算”，未知金额导出“待确认”，零值保留。仪表板 totalAmount／amountGrowth、渠道 totalAmount／paidAmount／deliveredAmount 全部汇总 order_amount。仪表板增加 missingAmountOrders 和 amountSource=catalog；渠道原缺失数改统计映射缺失，amountSource=catalog。已付款／已取货分组仍按官网状态，金额仅为该分组的映射金额，不代表实际付款或退款额。
 
 规则与八档价格见 [AOS 金额映射](AOS文件采集与入库.md#订单金额价格映射2026-09-21-已批准)。
+
+### 支付方式扩展与来源展示（2026-09-21，本地适配）
+
+支持清单见 [AOS 支付方式扩展](AOS文件采集与入库.md#支付方式扩展2026-09-21已批准本地适配)。AOS 原文解析及人工草稿共用校验。订单列表／详情／导出、渠道订单、本人任务／调度 DTO 的支付方式优先读取 sourceSnapshot.paymentMethod，缺失时读取 paymentMethod；不向付款任务 DTO 暴露完整来源快照。普通官网合并仅保存 officialPaymentMethod，保留来源付款方式。
+
+两个付款码 GET 接口继续执行权限、当前归属及访问审计，全部非普通微信方式返回 unsupported，不返回图片或链接；两页按钮保留并显示服务端提示。复制时只有普通微信读取付款码，其他方式直接调用原链接接口，仍由服务端校验权限和归属；微信分付使用订单链接。复制字段顺序、批量失败处理、来源时间加 30 分钟规则保持。

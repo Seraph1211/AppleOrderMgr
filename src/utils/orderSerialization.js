@@ -53,7 +53,7 @@ function serializeValidationIssues(issues) {
     ) {
       result.field = issue.field;
       result.source = 'imported';
-      result.resolution = ['official', 'manual_review'].includes(issue.resolution)
+      result.resolution = ['official', 'source', 'manual_review'].includes(issue.resolution)
         ? issue.resolution
         : null;
       for (const key of ['sourceValue', 'officialValue'])

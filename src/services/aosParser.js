@@ -1,6 +1,7 @@
 /* eslint-disable no-control-regex -- 校验并拒绝来源字段中的控制字符。 */
 /** AOS 固定前置列、已知尾部列解析、草稿及来源身份校验。 */
 const ApiError = require('../utils/ApiError');
+const { normalizePaymentMethod } = require('../utils/paymentMethod');
 
 const AOS_BASE_COLUMN_COUNT = 15;
 const RECIPIENT_ID_LAST4_LENGTH = 4;
@@ -20,13 +21,6 @@ const DRAFT_FIELDS = [
   'orderUrl',
   'orderDate',
 ];
-const PAYMENT_METHODS = new Map([
-  ['微信', '微信'],
-  ['wechat', '微信'],
-  ['wechat pay', '微信'],
-  ['支付宝', '支付宝'],
-  ['alipay', '支付宝'],
-]);
 
 function issue(field, code, message) {
   return { field, code, message };
@@ -67,7 +61,7 @@ function validateAosDraft(input) {
   stringField('recipientTag', 500, null, true);
   stringField('paymentMethod', 50);
   if (data.paymentMethod) {
-    const method = PAYMENT_METHODS.get(data.paymentMethod.toLowerCase());
+    const method = normalizePaymentMethod(data.paymentMethod);
     if (method) data.paymentMethod = method;
     else issues.push(issue('paymentMethod', 'AOS_FIELD_INVALID', '未识别的支付方式，请人工核对'));
   }

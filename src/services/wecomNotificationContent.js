@@ -1,3 +1,4 @@
+const { getSourcePaymentMethod, isWechatPayment } = require('../utils/paymentMethod');
 const { PNG } = require('pngjs');
 const jsQR = require('jsqr');
 const { getPaymentDeadline, isAssignmentBlocked } = require('./paymentEligibility');
@@ -22,11 +23,7 @@ const clean = value =>
 
 /** 判断支付方式是否为微信。 @param {string} method 支付方式 @returns {boolean} 是否微信 */
 function isWechat(method) {
-  return ['微信', '微信支付', 'wechat', 'wechat pay'].includes(
-    String(method || '')
-      .trim()
-      .toLowerCase()
-  );
+  return isWechatPayment(method);
 }
 /** 本地识读有效付款 PNG，不请求码内地址。 @param {string} value PNG @returns {string|null} 地址 */
 function decodePaymentQr(value) {
@@ -82,7 +79,7 @@ function buildNotificationText(order, url) {
     else grouped.set(key, { name, quantity });
   }
   const products = [...grouped.values()].map(p => `${p.name} x ${p.quantity}`).join('、') || '-';
-  const method = clean(order.paymentMethod);
+  const method = clean(getSourcePaymentMethod(order));
   const paymentMethod = isWechat(method)
     ? '微信'
     : method.toLowerCase() === 'alipay'

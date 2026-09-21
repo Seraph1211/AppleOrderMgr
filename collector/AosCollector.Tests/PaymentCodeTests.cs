@@ -24,6 +24,16 @@ internal static class PaymentCodeTests
     check(mismatch, "同号不同账号禁止挂码");
     fields[19]="支付宝";fields[29]=order[13];
     check(PaymentCodeParser.Parse(string.Join(',',fields)) == null, "支付宝订单链接不当作付款码上传");
+    foreach (var method in new[] {"支付宝", "花呗12期", "招行12期", "招行24期", "建行12期", "建行24期", "工行12期", "工行24期", "微信分付12期", "微信分付24期", "支付宝银行12期", "支付宝银行24期", "VISA", "MASTERCARD", " visa ", "ＭＡＳＴＥＲＣＡＲＤ"}) {
+      fields[19] = method;
+      var nonWechat = string.Join(',', fields);
+      check(PaymentCodeParser.Parse(nonWechat) == null, method + " 不采集付款码也不报缺图");
+      check(!FileParser.Parse(Encoding.UTF8.GetBytes(nonWechat), "utf-8", true, true)[0].PendingTail, method + " 完整稳定尾行正常消费");
+    }
+    fields[19] = "未知方式";
+    var unknownRejected = false;
+    try { PaymentCodeParser.Parse(string.Join(',', fields)); } catch (CollectorException) { unknownRejected = true; }
+    check(unknownRejected, "未知方式保留诊断，不能误判普通微信");
     var path = Path.Combine(root, "payment-queue.sqlite");
     using (var queue = new QueueStore(path, new TestProtector())) {
       check(queue.EnqueueCode(item), "独立付款码事件可靠持久化");

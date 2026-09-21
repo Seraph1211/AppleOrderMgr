@@ -115,9 +115,51 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     expect(order.sourceContactEmail).toBe('contact@example.com');
     expect(order.recipientRef).toBeNull();
     expect(await OrderRefreshJob.count({ where: { orderId: order.id } })).toBe(1);
-    expect((await OrderRefreshJob.findOne({ where: { orderId: order.id } })).trigger).toBe('initial');
+    expect((await OrderRefreshJob.findOne({ where: { orderId: order.id } })).trigger).toBe(
+      'initial'
+    );
     expect((await models.OrderRefreshSchedule.findByPk(order.id)).nextAutoRefreshAt).toBeNull();
     expect(await PaymentTask.count({ where: { orderId: order.id } })).toBe(1);
+  });
+  test.each(require('../src/utils/paymentMethod').PAYMENT_METHODS)(
+    '%s 从采集回执到订单和付款任务完整入库',
+    async paymentMethod => {
+      const input = event();
+      const columns = input.rawLine.split('\t');
+      columns[11] = paymentMethod;
+      input.rawLine = columns.join('\t');
+      await aos.receiveBatch(auth, { schemaVersion: 1, records: [input] });
+      await aos.processQueue();
+      const row = await AosRecord.findOne({ where: { eventId: input.eventId } });
+      expect(row.status).toBe('succeeded');
+      const order = await Order.findByPk(row.orderId);
+      expect(order.paymentMethod).toBe(paymentMethod);
+      expect(await PaymentTask.count({ where: { orderId: order.id } })).toBe(1);
+    }
+  );
+  test('历史支付方式待人工记录重新解析后入库，重复回执不重复建单', async () => {
+    const input = event();
+    const columns = input.rawLine.split('\t');
+    columns[11] = '招行24期';
+    input.rawLine = columns.join('\t');
+    await aos.receiveBatch(auth, { schemaVersion: 1, records: [input] });
+    const row = await AosRecord.findOne({ where: { eventId: input.eventId } });
+    await row.update({
+      status: 'manual_review',
+      errorCode: 'AOS_FIELD_INVALID',
+      issues: [{ field: 'paymentMethod', code: 'AOS_FIELD_INVALID' }],
+    });
+    const req = request({ expectedVersion: row.version }, `/aos-records/${row.id}/reparse`, 'POST');
+    req.params.id = row.id;
+    await aos.processManual('reparse', req);
+    await aos.processQueue();
+    await row.reload();
+    expect(row.status).toBe('succeeded');
+    expect(row.history.some(item => item.action === 'reparse')).toBe(true);
+    expect((await Order.findByPk(row.orderId)).paymentMethod).toBe('招行24期');
+    await aos.receiveBatch(auth, { schemaVersion: 1, records: [input] });
+    await aos.processQueue();
+    expect(await Order.count({ where: { orderNumber: row.orderNumber } })).toBe(1);
   });
   test('第 16 列身份证后四位参与取机人匹配，R502 补全成都万象城', async () => {
     expect(await PickupStore.count()).toBe(EXPECTED_PICKUP_STORE_COUNT);

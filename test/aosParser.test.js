@@ -1,7 +1,24 @@
 const { parseAosLine, validateAosDraft } = require('../src/services/aosParser');
 const { buildAosLine } = require('./fixtures/aosRecords');
+const { PAYMENT_METHODS } = require('../src/utils/paymentMethod');
 
 describe('AOS 严格解析', () => {
+  test.each(PAYMENT_METHODS)('支持完整支付方式 %s 和人工草稿', paymentMethod => {
+    const result = parseAosLine(buildAosLine({ 11: paymentMethod }));
+    expect(result.issues).toEqual([]);
+    expect(result.data.paymentMethod).toBe(paymentMethod);
+    expect(validateAosDraft(result.data).issues).toEqual([]);
+  });
+  test.each([
+    [' 招行24期 ', '招行24期'],
+    [' visa ', 'VISA'],
+    ['ＭＡＳＴＥＲＣＡＲＤ', 'MASTERCARD'],
+    ['WECHAT PAY', '微信'],
+  ])('规范化 %s 为 %s', (source, expected) => {
+    const result = parseAosLine(buildAosLine({ 11: source }));
+    expect(result.issues).toEqual([]);
+    expect(result.data.paymentMethod).toBe(expected);
+  });
   test('保留空列、显式姓与名、完整 TAG 和北京时间毫秒', () => {
     const result = parseAosLine(buildAosLine());
     expect(result.issues).toEqual([]);

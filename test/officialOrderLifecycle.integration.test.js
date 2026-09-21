@@ -367,7 +367,8 @@ const axios = require('axios');
     expect(order.autoRefreshEnabled).toBe(false);
     expect(order.sourceSnapshot.paymentMethod).toBe(source);
     expect(order.sourceSnapshot.products[0].name).toBe(name);
-    expect(order.paymentMethod).toBe(official);
+    expect(order.paymentMethod).toBe(source);
+    expect(order.officialPaymentMethod).toBe(official);
     expect(order.products[0].name).toBe(officialName);
   });
 

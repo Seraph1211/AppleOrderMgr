@@ -110,7 +110,8 @@ describe('官网生命周期和来源合并', () => {
     const expiresAt = order.officialPaymentExpiresAt;
     expect(expiresAt.getTime()).toBe(1788871260 * 1000);
     expect(order.officialOrderAmount).toBe(8999);
-    expect(order.paymentMethod).toBe('支付宝');
+    expect(order.paymentMethod).toBe('银行卡');
+    expect(order.officialPaymentMethod).toBe('支付宝');
     expect(order.products).toEqual([expect.objectContaining({ model: 'MODEL-1', quantity: 1 })]);
     expect(order.sourceSnapshot.products[0].quantity).toBe(2);
     const conflicts = order.validationIssues;

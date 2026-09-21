@@ -115,3 +115,16 @@ test('按 UTF-8 字节限制文本，不截断付款链接', async () => {
   });
   expect(axios.post).not.toHaveBeenCalled();
 });
+
+test.each(['招行24期', '微信分付12期', '微信分付24期', '支付宝银行24期', 'VISA'])(
+  '通知保留来源 %s 且不归入普通微信',
+  paymentMethod => {
+    expect(content.isWechat(paymentMethod)).toBe(false);
+    expect(
+      content.buildNotificationText(
+        { ...order, sourceSnapshot: { paymentMethod } },
+        'https://example.test'
+      )
+    ).toContain(` || ${paymentMethod} || `);
+  }
+);

@@ -1,3 +1,4 @@
+const { getSourcePaymentMethod, isWechatPayment } = require('../utils/paymentMethod');
 const { getPaymentDeadline } = require('./paymentEligibility');
 const crypto = require('crypto');
 const {
@@ -62,9 +63,7 @@ function assertOrderIdentity(order, input) {
     contactEmail?.toLowerCase() !== input.contactEmail.toLowerCase() ||
     !order.orderDate ||
     repo.businessDate(order.orderDate) !== repo.businessDate(input.orderDate) ||
-    !['微信', '微信支付', 'wechat', 'wechat pay'].includes(
-      (order.paymentMethod || '').toLowerCase()
-    )
+    !isWechatPayment(getSourcePaymentMethod(order))
   ) {
     throw new ApiError(409, 'PAYMENT_CODE_IDENTITY_MISMATCH', '付款码与订单身份不一致');
   }
@@ -78,6 +77,7 @@ function assertOrderIdentity(order, input) {
  */
 async function findOrderPaymentCode(order, transaction) {
   try {
+    if (!isWechatPayment(getSourcePaymentMethod(order))) return null;
     let selected = await OrderPaymentCode.findOne({
       where: { orderId: order.id },
       order: [
@@ -252,8 +252,14 @@ async function getPaymentCode(id, userId, own = true) {
           },
           { transaction }
         );
-        if (['支付宝', 'alipay'].includes((order.paymentMethod || '').trim().toLowerCase()))
-          return { availability: 'unsupported', message: '支付宝暂无法获取付款码' };
+        const paymentMethod = getSourcePaymentMethod(order);
+        if (!isWechatPayment(paymentMethod)) {
+          const label = paymentMethod?.toLowerCase() === 'alipay' ? '支付宝' : paymentMethod;
+          return {
+            availability: 'unsupported',
+            message: `${label || '该支付方式'}暂无法获取付款码`,
+          };
+        }
         const row = await findOrderPaymentCode(order, transaction);
         return {
           availability: row ? 'available' : 'missing',
@@ -265,7 +271,7 @@ async function getPaymentCode(id, userId, own = true) {
           amountCurrency: 'CNY',
           amountSource: 'catalog',
           amountPriceVersion: order.orderAmountPriceVersion || null,
-          paymentMethod: order.paymentMethod,
+          paymentMethod,
           officialOrderStatus: order.status,
           officialPaymentStatus: order.paymentStatus,
           deadlineAt: getPaymentDeadline(order),

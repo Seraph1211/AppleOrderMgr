@@ -199,12 +199,23 @@ const { buildAosLine } = require('./fixtures/aosRecords');
       'cancelled'
     );
   });
-  test('支付宝只返回无法获取提示，不返回图片或链接', async () => {
-    await order.update({ paymentMethod: '支付宝' });
+  test.each(
+    require('../src/utils/paymentMethod').PAYMENT_METHODS.filter(method => method !== '微信')
+  )('%s 只返回无法获取提示，不返回历史图片或链接', async paymentMethod => {
+    await order.update({ paymentMethod: 'WECHAT', sourceSnapshot: { paymentMethod } });
     expect(await service.getPaymentCode(Number(task.id), other.id)).toEqual({
       availability: 'unsupported',
-      message: '支付宝暂无法获取付款码',
+      message: `${paymentMethod}暂无法获取付款码`,
     });
+    const own = await require('../src/services/paymentTaskService').listOwnTasks(other.id, {});
+    const dispatch = await require('../src/services/paymentDispatchService').listDispatchTasks({});
+    expect(own.items.find(item => item.id === task.id).paymentMethod).toBe(paymentMethod);
+    expect(dispatch.items.find(item => item.id === task.id).paymentMethod).toBe(paymentMethod);
+    const controller = require('../src/controllers/orderController');
+    expect(controller.serializeOrderListItem(order).payment_method).toBe(paymentMethod);
+    expect(controller.serializeOrderDetail(order).payment_method).toBe(paymentMethod);
+    expect(JSON.stringify(own)).not.toContain('sourceSnapshot');
+    await order.update({ paymentMethod: '支付宝', sourceSnapshot: null });
   });
   test('更新任务归属隔离及状态不倒退', async () => {
     const job = await models.CollectorUpdateJob.create({
