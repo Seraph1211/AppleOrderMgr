@@ -352,6 +352,21 @@
 }
 /* 付款任务手机列表：同一份表格数据与编辑草稿，纵向呈现主字段。 */
 @media (max-width: 767px) {
+  .pickups-page .input {
+    font-size: 16px;
+  }
+  .pickups-page .btn,
+  .pickups-page select,
+  .pickups-page input:not([type='file']),
+  .pickups-page textarea {
+    min-height: 44px;
+  }
+  .pickups-page .btn {
+    min-width: 44px;
+  }
+  .pickup-dialog-footer {
+    padding-bottom: max(12px, env(safe-area-inset-bottom));
+  }
   .payment-tasks .input,
   .login-page .input {
     font-size: 16px;

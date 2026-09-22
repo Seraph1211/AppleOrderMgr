@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Clock3, Download, FileImage, History, Pencil, Search, Upload, X } from 'lucide-react';
+import {
+  Clock3,
+  Download,
+  ExternalLink,
+  Eye,
+  FileImage,
+  History,
+  Pencil,
+  Search,
+  Upload,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
@@ -13,7 +24,11 @@ import {
   updatePickupRecord,
 } from '../api/pickupsApi';
 
-const STATUS_LABELS = { pending: '待取货', picked_up: '已取货', exception: '异常' };
+const STATUS_LABELS = {
+  pending: '待取货',
+  picked_up: '已取货',
+  exception: '异常',
+};
 const STATUS_BADGES = {
   pending: 'badge-warning',
   picked_up: 'badge-success',
@@ -40,6 +55,10 @@ function localDateTime(value) {
   return local.toISOString().slice(0, 16);
 }
 
+function isImageEvidence(evidence) {
+  return String(evidence?.contentType || '').startsWith('image/');
+}
+
 export default function Pickups() {
   const { can } = useAuth();
   const [searchParams] = useSearchParams();
@@ -55,14 +74,28 @@ export default function Pickups() {
   const [total, setTotal] = useState(0);
   const [editing, setEditing] = useState(null);
   const [events, setEvents] = useState(null);
+  const [evidencePreview, setEvidencePreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState('');
+
+  useEffect(() => {
+    if (!editing && !events && !evidencePreview) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [editing, events, evidencePreview]);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const response = await getPickupRecords({ ...filters, page, pageSize: 20 });
+      const response = await getPickupRecords({
+        ...filters,
+        page,
+        pageSize: 20,
+      });
       setItems(response.data.items);
       setTotal(response.data.total);
     } catch (failure) {
@@ -132,7 +165,10 @@ export default function Pickups() {
           objectKey: prepared.data.objectKey,
         });
       }
-      const refreshed = await getPickupRecords({ search: String(editing.orderId), pageSize: 1 });
+      const refreshed = await getPickupRecords({
+        search: String(editing.orderId),
+        pageSize: 1,
+      });
       openEdit(refreshed.data.items[0]);
       await load();
     } catch (failure) {
@@ -143,11 +179,22 @@ export default function Pickups() {
   };
 
   const viewEvidence = async evidence => {
+    setEvidencePreview({ evidence, loading: true, url: '', error: '' });
     try {
       const response = await getPickupEvidenceUrl(editing.orderId, evidence.id);
-      window.open(response.data.url, '_blank', 'noopener,noreferrer');
+      setEvidencePreview({
+        evidence,
+        loading: false,
+        url: response.data.url,
+        error: '',
+      });
     } catch (failure) {
-      setError(failure.message || '打开凭证失败');
+      setEvidencePreview({
+        evidence,
+        loading: false,
+        url: '',
+        error: failure.message || '加载凭证失败',
+      });
     }
   };
 
@@ -161,14 +208,17 @@ export default function Pickups() {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="pickups-page space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">取货记录</h1>
           <p className="mt-1 text-sm text-gray-500">按订单TAG查看并登记交接与结款信息</p>
         </div>
         {can(PERMISSIONS.PICKUPS_EXPORT) && (
-          <button className="btn btn-secondary" onClick={() => exportPickupRecords(filters)}>
+          <button
+            className="btn btn-secondary w-full justify-center sm:w-auto"
+            onClick={() => exportPickupRecords(filters)}
+          >
             <Download className="h-4 w-4" />
             导出Excel
           </button>
@@ -351,11 +401,18 @@ export default function Pickups() {
       </div>
 
       {editing && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 sm:items-center sm:p-4">
-          <div className="max-h-[92vh] w-full overflow-y-auto rounded-t-xl bg-white p-5 sm:max-w-2xl sm:rounded-xl">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex min-h-0 items-end justify-center bg-black/50 sm:items-center sm:p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pickup-edit-title"
+            className="flex h-screen max-h-screen w-full flex-col overflow-hidden bg-white shadow-xl [height:100dvh] [max-height:100dvh] sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl sm:rounded-xl"
+          >
+            <div className="flex shrink-0 items-start justify-between border-b border-gray-100 px-4 py-3 sm:px-5 sm:py-4">
               <div>
-                <h2 className="text-lg font-semibold">登记取货 #{editing.orderId}</h2>
+                <h2 id="pickup-edit-title" className="text-lg font-semibold">
+                  登记取货 #{editing.orderId}
+                </h2>
                 <p className="text-sm text-gray-500">
                   {editing.orderNumber} · {editing.tag || '-'}
                 </p>
@@ -364,111 +421,141 @@ export default function Pickups() {
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <label className="text-sm">
-                取货状态
-                <select
-                  className="input mt-1 w-full"
-                  value={editing.status}
-                  onChange={event =>
-                    setEditing(value => ({ ...value, status: event.target.value }))
-                  }
-                >
-                  <option value="pending">待取货</option>
-                  <option value="picked_up">已取货</option>
-                  <option value="exception">异常</option>
-                </select>
-              </label>
-              <label className="text-sm">
-                实际取货时间
-                <input
-                  type="datetime-local"
-                  className="input mt-1 w-full"
-                  value={editing.pickedUpAtInput}
-                  onChange={event =>
-                    setEditing(value => ({ ...value, pickedUpAtInput: event.target.value }))
-                  }
-                />
-              </label>
-              <label className="text-sm">
-                结款金额
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="input mt-1 w-full"
-                  value={editing.settlementAmount}
-                  onChange={event =>
-                    setEditing(value => ({ ...value, settlementAmount: event.target.value }))
-                  }
-                  placeholder="非必填"
-                />
-              </label>
-              <label className="text-sm">
-                结款人
-                <input
-                  className="input mt-1 w-full"
-                  value={editing.settlementPerson}
-                  onChange={event =>
-                    setEditing(value => ({ ...value, settlementPerson: event.target.value }))
-                  }
-                  placeholder="非必填"
-                />
-              </label>
-              <label className="text-sm sm:col-span-2">
-                备注
-                <textarea
-                  className="input mt-1 min-h-24 w-full"
-                  value={editing.notes}
-                  onChange={event => setEditing(value => ({ ...value, notes: event.target.value }))}
-                />
-              </label>
-            </div>
-            <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              {['pickup', 'settlement'].map(kind => (
-                <div key={kind} className="rounded-lg border border-gray-200 p-3">
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="font-medium">
-                      {kind === 'pickup' ? '取货凭证' : '结款凭证'}
-                    </span>
-                    <label className="btn btn-secondary cursor-pointer">
-                      <Upload className="h-4 w-4" />
-                      {uploading === kind ? '上传中' : '上传'}
-                      <input
-                        type="file"
-                        multiple
-                        accept="image/jpeg,image/png,image/webp,application/pdf"
-                        className="hidden"
-                        disabled={Boolean(uploading)}
-                        onChange={event => upload(kind, event.target.files)}
-                      />
-                    </label>
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="text-sm">
+                  取货状态
+                  <select
+                    className="input mt-1 w-full"
+                    value={editing.status}
+                    onChange={event =>
+                      setEditing(value => ({
+                        ...value,
+                        status: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="pending">待取货</option>
+                    <option value="picked_up">已取货</option>
+                    <option value="exception">异常</option>
+                  </select>
+                </label>
+                <label className="min-w-0 text-sm">
+                  实际取货时间
+                  <input
+                    type="datetime-local"
+                    className="input mt-1 w-full min-w-0"
+                    value={editing.pickedUpAtInput}
+                    onChange={event =>
+                      setEditing(value => ({
+                        ...value,
+                        pickedUpAtInput: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+                <label className="text-sm">
+                  结款金额
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    inputMode="decimal"
+                    className="input mt-1 w-full"
+                    value={editing.settlementAmount}
+                    onChange={event =>
+                      setEditing(value => ({
+                        ...value,
+                        settlementAmount: event.target.value,
+                      }))
+                    }
+                    placeholder="非必填"
+                  />
+                </label>
+                <label className="text-sm">
+                  结款人
+                  <input
+                    className="input mt-1 w-full"
+                    value={editing.settlementPerson}
+                    onChange={event =>
+                      setEditing(value => ({
+                        ...value,
+                        settlementPerson: event.target.value,
+                      }))
+                    }
+                    placeholder="非必填"
+                  />
+                </label>
+                <label className="text-sm sm:col-span-2">
+                  备注
+                  <textarea
+                    className="input mt-1 min-h-24 w-full"
+                    value={editing.notes}
+                    onChange={event =>
+                      setEditing(value => ({
+                        ...value,
+                        notes: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              </div>
+              <div className="mt-5 grid gap-4 sm:grid-cols-2">
+                {['pickup', 'settlement'].map(kind => (
+                  <div key={kind} className="rounded-lg border border-gray-200 p-3">
+                    <div className="mb-2 flex items-center justify-between gap-3">
+                      <span className="font-medium">
+                        {kind === 'pickup' ? '取货凭证' : '结款凭证'}
+                      </span>
+                      <label className="btn btn-secondary shrink-0 cursor-pointer">
+                        <Upload className="h-4 w-4" />
+                        {uploading === kind ? '上传中' : '上传'}
+                        <input
+                          type="file"
+                          multiple
+                          accept="image/jpeg,image/png,image/webp,application/pdf"
+                          className="hidden"
+                          disabled={Boolean(uploading)}
+                          onChange={event => upload(kind, event.target.files)}
+                        />
+                      </label>
+                    </div>
+                    <div className="space-y-2">
+                      {editing.evidence
+                        .filter(file => file.kind === kind)
+                        .map(file => (
+                          <button
+                            type="button"
+                            key={file.id}
+                            className="flex min-h-11 w-full items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-2 text-left text-sm hover:border-primary/40 hover:bg-primary-50"
+                            onClick={() => viewEvidence(file)}
+                          >
+                            <FileImage className="h-5 w-5 shrink-0 text-primary" />
+                            <span className="min-w-0 flex-1 truncate">{file.originalName}</span>
+                            <Eye className="h-4 w-4 shrink-0 text-gray-500" />
+                            <span className="sr-only">查看</span>
+                          </button>
+                        ))}
+                      {!editing.evidence.some(file => file.kind === kind) && (
+                        <p className="text-sm text-gray-400">未上传（非必填）</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="space-y-2">
-                    {editing.evidence
-                      .filter(file => file.kind === kind)
-                      .map(file => (
-                        <button
-                          key={file.id}
-                          className="flex w-full items-center gap-2 rounded bg-gray-50 p-2 text-left text-sm"
-                          onClick={() => viewEvidence(file)}
-                        >
-                          <FileImage className="h-4 w-4 text-primary" />
-                          <span className="truncate">{file.originalName}</span>
-                        </button>
-                      ))}
-                    {!editing.evidence.some(file => file.kind === kind) && (
-                      <p className="text-sm text-gray-400">未上传（非必填）</p>
-                    )}
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button className="btn btn-secondary" onClick={() => setEditing(null)}>
+            <div className="pickup-dialog-footer flex shrink-0 gap-3 border-t border-gray-100 bg-white px-4 py-3 sm:justify-end sm:px-5">
+              <button
+                className="btn btn-secondary flex-1 justify-center sm:flex-none"
+                onClick={() => setEditing(null)}
+              >
                 取消
               </button>
-              <button className="btn btn-primary" disabled={saving || uploading} onClick={save}>
+              <button
+                className="btn btn-primary flex-1 justify-center sm:flex-none"
+                disabled={saving || uploading}
+                onClick={save}
+              >
                 {saving ? '保存中...' : '保存'}
               </button>
             </div>
@@ -477,15 +564,15 @@ export default function Pickups() {
       )}
 
       {events && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="max-h-[85vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-white p-5">
-            <div className="flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex min-h-0 items-end justify-center bg-black/50 sm:items-center sm:p-4">
+          <div className="flex h-screen max-h-screen w-full flex-col overflow-hidden bg-white [height:100dvh] [max-height:100dvh] sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl sm:rounded-xl">
+            <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-3 sm:px-5">
               <h2 className="text-lg font-semibold">更新记录 #{events.item.orderId}</h2>
               <button className="p-2" aria-label="关闭更新记录" onClick={() => setEvents(null)}>
                 <X className="h-5 w-5" />
               </button>
             </div>
-            <div className="mt-4 space-y-3">
+            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 sm:p-5">
               {events.rows.map(row => (
                 <div key={row.id} className="rounded-lg border border-gray-200 p-3">
                   <div className="flex items-center justify-between text-sm">
@@ -504,6 +591,82 @@ export default function Pickups() {
                 <p className="py-6 text-center text-gray-500">暂无更新记录</p>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {evidencePreview && (
+        <div className="fixed inset-0 z-[60] flex min-h-0 items-center justify-center bg-black/80 p-0 sm:p-4">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pickup-evidence-title"
+            className="flex h-screen max-h-screen w-full flex-col overflow-hidden bg-white [height:100dvh] [max-height:100dvh] sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-4xl sm:rounded-xl"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
+              <div className="min-w-0">
+                <h2 id="pickup-evidence-title" className="font-semibold">
+                  {evidencePreview.evidence.kind === 'pickup' ? '取货凭证' : '结款凭证'}
+                </h2>
+                <p className="truncate text-sm text-gray-500">
+                  {evidencePreview.evidence.originalName}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="flex min-h-11 min-w-11 shrink-0 items-center justify-center"
+                aria-label="关闭凭证预览"
+                onClick={() => setEvidencePreview(null)}
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-gray-100 p-3 sm:p-5">
+              {evidencePreview.loading && <p className="text-gray-500">正在加载凭证...</p>}
+              {evidencePreview.error && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700">
+                  {evidencePreview.error}
+                </div>
+              )}
+              {evidencePreview.url && isImageEvidence(evidencePreview.evidence) && (
+                <img
+                  src={evidencePreview.url}
+                  alt={evidencePreview.evidence.originalName}
+                  className="max-h-full max-w-full object-contain"
+                  onError={() =>
+                    setEvidencePreview(current =>
+                      current?.evidence.id === evidencePreview.evidence.id
+                        ? {
+                            ...current,
+                            url: '',
+                            error: '凭证图片加载失败，请关闭后重试',
+                          }
+                        : current
+                    )
+                  }
+                />
+              )}
+              {evidencePreview.url && !isImageEvidence(evidencePreview.evidence) && (
+                <iframe
+                  title={evidencePreview.evidence.originalName}
+                  src={evidencePreview.url}
+                  className="h-full min-h-[60vh] w-full rounded bg-white"
+                />
+              )}
+            </div>
+            {evidencePreview.url && (
+              <div className="pickup-dialog-footer flex shrink-0 justify-end border-t border-gray-200 bg-white px-4 py-3">
+                <a
+                  className="btn btn-secondary w-full justify-center sm:w-auto"
+                  href={evidencePreview.url}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  在新窗口打开
+                </a>
+              </div>
+            )}
           </div>
         </div>
       )}
