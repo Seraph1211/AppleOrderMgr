@@ -22,6 +22,7 @@ import WecomNotifications from './pages/WecomNotifications';
 import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
 import IdentityVerifications from './pages/IdentityVerifications';
+import Pickups from './pages/Pickups';
 import { PERMISSIONS } from './constants/permissions';
 
 function permissionRoute(permission, element) {
@@ -78,6 +79,10 @@ function App() {
                   <Route
                     path="/orders"
                     element={permissionRoute(PERMISSIONS.ORDERS_READ, <Orders />)}
+                  />
+                  <Route
+                    path="/pickups"
+                    element={permissionRoute(PERMISSIONS.PICKUPS_READ, <Pickups />)}
                   />
                   <Route
                     path="/orders/:id"

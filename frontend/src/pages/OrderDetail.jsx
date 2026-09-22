@@ -5,6 +5,8 @@ import { getEmailOrderStatusBadge } from '../constants/orderStatus';
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, ArrowLeft, CreditCard, ExternalLink, Mail, User } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
 
 function formatDate(value) {
   if (!value) return '-';
@@ -22,6 +24,7 @@ function formatPickup(pickup) {
 export default function OrderDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { can } = useAuth();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -94,7 +97,17 @@ export default function OrderDetail() {
           <h1 className="text-2xl font-bold text-gray-900">订单详情</h1>
           <p className="mt-1 font-mono text-sm text-gray-500">{order.order_number}</p>
         </div>
-        <span className={`badge ${statusBadge.class}`}>{statusBadge.text}</span>
+        <div className="flex items-center gap-2">
+          {can(PERMISSIONS.PICKUPS_READ) && (
+            <button
+              className="btn btn-secondary"
+              onClick={() => navigate(`/pickups?search=${order.id}`)}
+            >
+              查看取货记录
+            </button>
+          )}
+          <span className={`badge ${statusBadge.class}`}>{statusBadge.text}</span>
+        </div>
       </div>
 
       <div className="card border-blue-100 bg-blue-50/40">

@@ -49,6 +49,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "ali-oss": "^6.23.0",
     "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
     "cheerio": "^1.2.0",

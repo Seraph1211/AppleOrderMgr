@@ -20,7 +20,7 @@ const ORDER_STATUSES = Object.freeze([
   'unknown',
 ]);
 
-const USER_ROLES = Object.freeze(['admin', 'operator', 'readOnly']);
+const USER_ROLES = Object.freeze(['admin', 'operator', 'pickupStaff', 'readOnly']);
 
 /** 将未识别的存量订单状态归为 unknown，不推断其业务结果。 */
 function normalizeOrderStatus(status) {
@@ -72,6 +72,9 @@ const PERMISSIONS = Object.freeze({
   ORDERS_EDIT: 'orders.edit',
   ORDERS_EXPORT: 'orders.export',
   ORDERS_PAYER_EDIT: 'orders.payer.edit',
+  PICKUPS_READ: 'pickups.read',
+  PICKUPS_EDIT: 'pickups.edit',
+  PICKUPS_EXPORT: 'pickups.export',
   APPLE_IDS_READ: 'apple_ids.read',
   APPLE_IDS_CREATE: 'apple_ids.create',
   APPLE_IDS_EDIT: 'apple_ids.edit',
@@ -113,6 +116,7 @@ const PERMISSIONS = Object.freeze({
 const ROLE_PERMISSIONS = Object.freeze({
   admin: Object.freeze(Object.values(PERMISSIONS)),
   operator: Object.freeze([]),
+  pickupStaff: Object.freeze([]),
   readOnly: Object.freeze([]),
 });
 

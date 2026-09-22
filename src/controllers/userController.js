@@ -4,7 +4,7 @@ const { softDeleteUser } = require('../services/accountService');
 const { Op } = require('sequelize');
 const authService = require('../services/authService');
 const logger = require('../utils/logger');
-const { MIN_PASSWORD_LENGTH, USER_ROLES } = require('../constants/business');
+const { MIN_PASSWORD_LENGTH, USER_ROLES, PERMISSIONS } = require('../constants/business');
 const permissionService = require('../services/permissionService');
 const ApiError = require('../utils/ApiError');
 
@@ -113,6 +113,10 @@ async function listUsers(req, res) {
 async function createUser(req, res) {
   try {
     const { username, password, role = 'operator', permissions = [] } = req.body;
+    const initialPermissions =
+      role === 'pickupStaff' && permissions.length === 0
+        ? [PERMISSIONS.PICKUPS_READ, PERMISSIONS.PICKUPS_EDIT, PERMISSIONS.PICKUPS_EXPORT]
+        : permissions;
     const nickname = normalizeNickname(req.body.nickname ?? username);
 
     // 输入验证
@@ -149,7 +153,7 @@ async function createUser(req, res) {
     if (!USER_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: '角色必须是 admin、operator 或 readOnly',
+        message: '角色必须是 admin、operator、pickupStaff 或 readOnly',
       });
     }
 
@@ -176,7 +180,7 @@ async function createUser(req, res) {
         status: 'active',
         forcePasswordChange: false,
       },
-      permissions,
+      initialPermissions,
       req.user.id
     );
     const { user } = created;
@@ -239,7 +243,7 @@ async function updateUser(req, res) {
     if (role && !USER_ROLES.includes(role)) {
       return res.status(400).json({
         success: false,
-        message: '角色必须是 admin、operator 或 readOnly',
+        message: '角色必须是 admin、operator、pickupStaff 或 readOnly',
       });
     }
 

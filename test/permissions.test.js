@@ -32,6 +32,7 @@ describe('逐用户权限矩阵', () => {
 
   test('普通用户角色不再隐式授权', () => {
     expect(ROLE_PERMISSIONS.operator).toEqual([]);
+    expect(ROLE_PERMISSIONS.pickupStaff).toEqual([]);
     expect(ROLE_PERMISSIONS.readOnly).toEqual([]);
   });
 

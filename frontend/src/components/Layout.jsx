@@ -18,6 +18,7 @@ import {
   ScrollText,
   CreditCard,
   ListChecks,
+  ClipboardCheck,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getEmailProcessingMetrics } from '../api';
@@ -27,6 +28,12 @@ import { PERMISSIONS } from '../constants/permissions';
 const baseNavigation = [
   { name: '仪表板', href: '/', icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD_READ },
   { name: '订单管理', href: '/orders', icon: Package, permission: PERMISSIONS.ORDERS_READ },
+  {
+    name: '取货记录',
+    href: '/pickups',
+    icon: ClipboardCheck,
+    permission: PERMISSIONS.PICKUPS_READ,
+  },
   { name: 'Apple ID', href: '/apple-ids', icon: Apple, permission: PERMISSIONS.APPLE_IDS_READ },
   { name: '取机人', href: '/recipients', icon: User, permission: PERMISSIONS.RECIPIENTS_READ },
   {

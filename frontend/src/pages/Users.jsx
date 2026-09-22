@@ -169,6 +169,9 @@ export default function Users() {
     if (role === 'operator') {
       return <span className="badge badge-success">业务操作员</span>;
     }
+    if (role === 'pickupStaff') {
+      return <span className="badge badge-primary">内部工作人员</span>;
+    }
     return <span className="badge badge-info">普通用户</span>;
   };
 

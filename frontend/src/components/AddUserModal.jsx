@@ -222,6 +222,7 @@ export default function AddUserModal({ onClose, onSuccess }) {
                 disabled={loading}
               >
                 <option value="operator">业务操作员</option>
+                <option value="pickupStaff">内部工作人员</option>
                 <option value="readOnly">只读用户</option>
                 <option value="admin">管理员</option>
               </select>

@@ -31,6 +31,9 @@ describe('模型安全与关联契约', () => {
       OrderMailMessage: require('../src/models/OrderMailMessage')(sequelize),
       OrderMailProcessingJob: require('../src/models/OrderMailProcessingJob')(sequelize),
       OrderMailEvent: require('../src/models/OrderMailEvent')(sequelize),
+      PickupRecord: require('../src/models/PickupRecord')(sequelize),
+      PickupEvidence: require('../src/models/PickupEvidence')(sequelize),
+      PickupRecordEvent: require('../src/models/PickupRecordEvent')(sequelize),
     };
 
     Object.values(models).forEach(model => {

@@ -62,11 +62,11 @@ module.exports = sequelize => {
         type: DataTypes.STRING(20),
         allowNull: false,
         defaultValue: 'operator',
-        comment: '用户角色：admin/operator/readOnly',
+        comment: '用户角色：admin/operator/pickupStaff/readOnly',
         validate: {
           isIn: {
             args: [USER_ROLES],
-            msg: '角色必须是：admin、operator 或 readOnly',
+            msg: '角色必须是：admin、operator、pickupStaff 或 readOnly',
           },
         },
       },
@@ -285,6 +285,7 @@ module.exports = sequelize => {
       foreignKey: 'userId',
       as: 'paymentStaffSetting',
     });
+    User.hasMany(models.PickupRecord, { foreignKey: 'lastUpdatedBy', as: 'updatedPickupRecords' });
   };
 
   return User;

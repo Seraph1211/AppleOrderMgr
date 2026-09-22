@@ -123,6 +123,7 @@ app.use('/api/users', usersRouter);
 app.use('/api/apple-ids', appleIdsRouter);
 app.use('/api/recipients', recipientsRouter);
 app.use('/api/orders', ordersRouter);
+app.use('/api/pickups', require('./routes/pickups'));
 app.use('/api/order-refresh', orderRefreshRouter);
 app.use('/api/email-processing', emailProcessingRouter);
 app.use('/api/wecom-notifications', require('./routes/wecomNotifications'));

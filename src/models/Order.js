@@ -489,6 +489,7 @@ module.exports = sequelize => {
       foreignKey: 'orderId',
       as: 'mailEvents',
     });
+    Order.hasOne(models.PickupRecord, { foreignKey: 'orderId', as: 'pickupRecord' });
   };
 
   return Order;

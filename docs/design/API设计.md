@@ -696,6 +696,20 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 两个付款码 GET 接口继续执行权限、当前归属及访问审计，全部非普通微信方式返回 unsupported，不返回图片或链接；两页按钮保留并显示服务端提示。复制时只有普通微信读取付款码，其他方式直接调用原链接接口，仍由服务端校验权限和归属；微信分付使用订单链接。复制字段顺序、批量失败处理、来源时间加 30 分钟规则保持。
 
+## 取货记录接口（2026-09-22，本地实现）
+
+`/api/pickups` 的全部接口同时检查对应功能权限与 `orders.tag` 范围。管理员范围为全部；混合或越权订单不返回存在性信息。
+
+- `GET /api/pickups`：分页列表，支持 search、tag 精确值和 status。
+- `GET /api/pickups/export`：导出当前筛选和授权范围 Excel。
+- `PUT /api/pickups/:orderId`：请求状态、实际时间、结款金额、结款人、备注和 expectedVersion；首次已取货自动补当前时间，冲突返回 409 CONCURRENT_MODIFICATION。
+- `GET /api/pickups/:orderId/events`：最多返回最近 200 条追加历史。
+- `POST /api/pickups/:orderId/evidence/prepare`：校验文件和订单权限后返回 5 分钟 OSS PUT 地址。
+- `POST /api/pickups/:orderId/evidence/confirm`：核验 OSS 对象后登记元数据并追加事件。
+- `GET /api/pickups/:orderId/evidence/:evidenceId`：复验订单范围并返回 5 分钟私有读取地址，响应 no-store。
+
+凭证仅允许 JPG/PNG/WebP/PDF，单文件上限 10MB。未配置 OSS 时上传端点返回 503 OSS_NOT_CONFIGURED，其他取货登记和导出仍可使用。
+
 ## 邮件联系人与多收件人转发（2026-09-22）
 
 - `GET /api/mail-contacts`：管理员或同时有 `orders.read`、`order_mail.read`、`order_mail.forward` 的用户可用，`order_mail.manage` 兼容查看/转发。全局通讯录不按订单 TAG 划分，不扩大邮件/订单范围。`search` 最多100字，按姓名/邮箱包含匹配；`page` 默认1，`limit` 默认50、最大100。返回 `{items,total,page,limit}`，每项含 id/name/email/createdAt/updatedAt。响应 no-store。

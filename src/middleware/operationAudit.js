@@ -8,6 +8,7 @@ const MODULE_LABELS = {
   auth: '账号',
   users: '系统账号',
   orders: '订单',
+  pickups: '取货记录',
   'apple-ids': 'Apple ID',
   recipients: '取机人',
   channels: '渠道',
