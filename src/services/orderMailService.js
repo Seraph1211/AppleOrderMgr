@@ -305,7 +305,8 @@ function deliverySummary(delivery) {
   return {
     id: delivery.id,
     actorUserId: delivery.actorUserId,
-    ...delivery.payload,
+    recipient: delivery.payload.recipient,
+    note: delivery.payload.note,
     status: delivery.status,
     errorCode: delivery.errorCode,
     createdAt: delivery.createdAt,
@@ -369,6 +370,88 @@ async function enqueueForward(user, orderId, messageId, body) {
   }
 }
 
+/** 规范化批量目标；绑定完整请求以保护部分变更后的重试。 */
+function validateBatchForward(body) {
+  if (!Array.isArray(body?.recipients) || body.recipients.length < 1 || body.recipients.length > 50)
+    throw ApiError.badRequest('请选择1至50个收件邮箱');
+  if (typeof body.idempotencyKey !== 'string' || !/^[A-Za-z0-9-]{16,64}$/.test(body.idempotencyKey))
+    throw ApiError.badRequest('批量发送请求标识须为16至64位字母数字或连字符');
+  const inputs = body.recipients.map(recipient => validateForwardInput({ ...body, recipient }));
+  return {
+    recipients: [...new Set(inputs.map(input => input.recipient.toLowerCase()))].sort(),
+    note: inputs[0].note,
+    idempotencyKey: body.idempotencyKey,
+  };
+}
+
+/** 同一事务排队全部收件人；独立投递且重试不重复建任务。 */
+async function enqueueBatchForward(user, orderId, messageId, body) {
+  try {
+    const input = validateBatchForward(body);
+    const keys = input.recipients.map((_recipient, index) => input.idempotencyKey + '-' + index);
+    const payloads = input.recipients.map(recipient => ({
+      recipient,
+      note: input.note,
+      batchRecipients: input.recipients,
+    }));
+    return await sequelize.transaction(async transaction => {
+      await sequelize.query('SELECT pg_advisory_xact_lock(820421, :userId)', {
+        replacements: { userId: user.id },
+        transaction,
+      });
+      await accessibleMessage(user, orderId, messageId, {
+        transaction,
+        permission: PERMISSIONS.ORDER_MAIL_FORWARD,
+      });
+      const previous = await OrderMailDelivery.findAll({
+        where: { actorUserId: user.id, idempotencyKey: { [Op.in]: keys } },
+        transaction,
+      });
+      if (previous.length) {
+        const byKey = new Map(previous.map(item => [item.idempotencyKey, item]));
+        if (
+          previous.length !== keys.length ||
+          keys.some((key, index) => {
+            const item = byKey.get(key);
+            return (
+              !item ||
+              item.orderId !== Number(orderId) ||
+              item.messageId !== messageId ||
+              JSON.stringify(item.payload) !== JSON.stringify(payloads[index])
+            );
+          })
+        )
+          throw ApiError.conflict('发送请求标识已用于其他内容', undefined, 'IDEMPOTENCY_CONFLICT');
+        return { items: keys.map(key => deliverySummary(byKey.get(key))) };
+      }
+      if (!isOrderMailConfigured())
+        throw new ApiError(503, 'ORDER_MAIL_UNAVAILABLE', '订单邮件收发尚未配置');
+      await accessibleMessage(user, orderId, messageId, {
+        content: true,
+        transaction,
+        permission: PERMISSIONS.ORDER_MAIL_FORWARD,
+      });
+      const deliveries = await OrderMailDelivery.bulkCreate(
+        payloads.map((payload, index) => ({
+          id: crypto.randomUUID(),
+          orderId: Number(orderId),
+          messageId,
+          actorUserId: user.id,
+          idempotencyKey: keys[index],
+          payload,
+          notBefore: new Date(),
+          status: 'queued',
+        })),
+        { transaction, returning: true }
+      );
+      return { items: deliveries.map(deliverySummary) };
+    });
+  } catch (error) {
+    logger.warn('订单邮件批量转发未完成', { errorType: error.name, errorCode: error.code });
+    throw error;
+  }
+}
+
 /** 内容到期清除，保留关联与发送审计。 */
 async function purgeOrderMail() {
   try {
@@ -385,6 +468,8 @@ async function purgeOrderMail() {
 }
 
 module.exports = {
+  validateBatchForward,
+  enqueueBatchForward,
   accessibleOrder,
   accessibleMessage,
   currentActor,

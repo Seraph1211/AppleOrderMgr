@@ -1,13 +1,13 @@
+import MailForwardForm from './MailForwardForm';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import { createPortal } from 'react-dom';
 import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Download, Loader2, Mail, RefreshCw, Send, X } from 'lucide-react';
+import { ArrowLeft, Download, Mail, RefreshCw, X } from 'lucide-react';
 import {
   getOrderEmails,
   getOrderEmail,
   getOrderEmailForwards,
-  forwardOrderEmail,
   downloadOrderEmailAttachment,
   replayOrderEmailLifecycle,
   reviewOrderEmailLifecycle,
@@ -67,8 +67,6 @@ export default function OrderMailDrawer({ order, onClose }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [recipient, setRecipient] = useState('');
-  const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(null);
   const [replaying, setReplaying] = useState(false);
@@ -77,11 +75,11 @@ export default function OrderMailDrawer({ order, onClose }) {
   const [reviewOrderStatus, setReviewOrderStatus] = useState('unknown');
   const [reviewPaymentStatus, setReviewPaymentStatus] = useState('unknown');
   const [statusVersion, setStatusVersion] = useState(order.emailStatusVersion || 0);
-  const requestKey = useRef(null);
-  const sendingRef = useRef(false);
   const panelRef = useRef(null);
   const closeRef = useRef(onClose);
-  closeRef.current = onClose;
+  closeRef.current = () => {
+    if (!sending) onClose();
+  };
 
   useEffect(() => {
     setStatusVersion(order.emailStatusVersion || 0);
@@ -162,11 +160,8 @@ export default function OrderMailDrawer({ order, onClose }) {
     let active = true;
     setDetail(null);
     setHistory([]);
-    setRecipient('');
-    setNote('');
     setNotice('');
     setError('');
-    requestKey.current = null;
     if (!selectedId)
       return () => {
         active = false;
@@ -222,39 +217,6 @@ export default function OrderMailDrawer({ order, onClose }) {
       window.clearInterval(timer);
     };
   }, [order.id, selectedId, hasPending]);
-
-  async function send(event) {
-    event.preventDefault();
-    if (!canForward) return;
-    if (sendingRef.current) return;
-    const target = recipient.trim();
-    if (!window.confirm('确认将这封邮件及附件转发到 ' + target + '？')) return;
-    sendingRef.current = true;
-    setSending(true);
-    setError('');
-    setNotice('');
-    requestKey.current ||= crypto.randomUUID();
-    try {
-      const response = await forwardOrderEmail(order.id, selectedId, {
-        recipient: target,
-        note,
-        idempotencyKey: requestKey.current,
-      });
-      setHistory(previous => [
-        response.data,
-        ...previous.filter(item => item.id !== response.data.id),
-      ]);
-      setNotice('转发任务已提交，可在下方查看发送结果。');
-      setRecipient('');
-      setNote('');
-      requestKey.current = null;
-    } catch (failure) {
-      setError(failure.message || '提交失败，请重试；重复提交不会重复排队');
-    } finally {
-      sendingRef.current = false;
-      setSending(false);
-    }
-  }
 
   async function download(attachment) {
     setDownloading(attachment.index);
@@ -334,6 +296,7 @@ export default function OrderMailDrawer({ order, onClose }) {
           <button
             type="button"
             onClick={onClose}
+            disabled={sending}
             className="btn btn-secondary"
             aria-label="关闭订单邮件"
           >
@@ -524,55 +487,21 @@ export default function OrderMailDrawer({ order, onClose }) {
                     </div>
                   )}
                   {canForward && (
-                    <form onSubmit={send} className="bg-primary-50 rounded-lg p-4 space-y-3">
-                      <h3 className="font-semibold text-gray-900">转发这封邮件</h3>
-                      <label className="block text-sm text-gray-700">
-                        目标邮箱
-                        <input
-                          type="email"
-                          required
-                          maxLength={254}
-                          value={recipient}
-                          disabled={sending}
-                          autoComplete="off"
-                          placeholder="每次输入本次转发目标"
-                          className="input w-full mt-1"
-                          onChange={event => {
-                            setRecipient(event.target.value);
-                            requestKey.current = null;
-                          }}
-                        />
-                      </label>
-                      <label className="block text-sm text-gray-700">
-                        备注（可选）
-                        <textarea
-                          value={note}
-                          maxLength={2000}
-                          rows={2}
-                          disabled={sending}
-                          className="input w-full mt-1"
-                          onChange={event => {
-                            setNote(event.target.value);
-                            requestKey.current = null;
-                          }}
-                        />
-                      </label>
-                      <p className="text-xs text-gray-600">
-                        保留原邮件正文排版、图片、原附件及原始邮件文件，请确认目标邮箱。
-                      </p>
-                      <button
-                        type="submit"
-                        className="btn btn-primary inline-flex items-center gap-2"
-                        disabled={sending || !recipient.trim()}
-                      >
-                        {sending ? (
-                          <Loader2 className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Send className="w-4 h-4" />
-                        )}
-                        {sending ? '提交中…' : '转发邮件'}
-                      </button>
-                    </form>
+                    <MailForwardForm
+                      key={order.id + ':' + selectedId}
+                      orderId={order.id}
+                      messageId={selectedId}
+                      onSendingChange={setSending}
+                      onQueued={items => {
+                        setHistory(previous => [
+                          ...items,
+                          ...previous.filter(item => !items.some(queued => queued.id === item.id)),
+                        ]);
+                        setNotice(
+                          '已提交 ' + items.length + ' 个转发任务，可在下方分别查看发送结果。'
+                        );
+                      }}
+                    />
                   )}
                 </>
               )}

@@ -24,6 +24,7 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  MailContact: require('./MailContact')(sequelize),
   WecomNotificationSetting: require('./WecomNotificationSetting')(sequelize),
   WecomNotificationDelivery: require('./WecomNotificationDelivery')(sequelize),
   OrderMailMessage: require('./OrderMailMessage')(sequelize),

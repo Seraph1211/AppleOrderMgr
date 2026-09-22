@@ -10,6 +10,7 @@
     "start:email-worker": "node src/workers/emailWorker.js",
     "dev": "nodemon src/app.js",
     "test": "jest --coverage",
+    "test:browser:mail-contacts": "node scripts/testMailContactsBrowser.js",
     "test:browser:lifecycle": "node scripts/testLifecycleBrowser.js",
     "test:watch": "jest --watch",
     "lint": "eslint . --ext .js",

@@ -159,6 +159,7 @@ const enabled = process.env.RUN_ORDER_MAIL_INTEGRATION === 'true';
     app.use(require('../src/middleware/authMiddleware').authenticate);
     app.use(require('../src/middleware/operationAudit').operationAudit);
     app.use('/api/orders/:id/emails', require('../src/routes/orderMail'));
+    app.use('/api/mail-contacts', require('../src/routes/mailContacts'));
     app.use(require('../src/middleware/errorHandler'));
     server = app.listen(0, '127.0.0.1');
     await new Promise(resolve => server.once('listening', resolve));
@@ -432,10 +433,178 @@ const enabled = process.env.RUN_ORDER_MAIL_INTEGRATION === 'true';
     expect(await sender.claimDelivery()).toBeNull();
     expect((await models.OrderMailDelivery.findByPk(delivery.id)).status).toBe('unknown');
   });
+  test('批量并发重试去重，目标顺序和大小写不产生重复任务', async () => {
+    const body = {
+      recipients: ['B@example.test', 'a@example.test', 'b@example.test'],
+      note: '批量备注',
+      idempotencyKey: key(),
+    };
+    const path = '/' + message.id + '/forward-batch';
+    const results = await Promise.all([
+      request(path, { method: 'POST', body }),
+      request(path, { method: 'POST', body }),
+    ]);
+    expect(results.map(result => result.status)).toEqual([202, 202]);
+    expect(results[0].data.data.items.map(item => item.id)).toEqual(
+      results[1].data.data.items.map(item => item.id)
+    );
+    expect(await models.OrderMailDelivery.count()).toBe(2);
+    expect(results[0].data.data.items[0]).not.toHaveProperty('batchRecipients');
+    for (const patch of [
+      { recipients: ['a@example.test'] },
+      { recipients: ['a@example.test', 'c@example.test'] },
+      { note: '改动' },
+    ]) {
+      expect((await request(path, { method: 'POST', body: { ...body, ...patch } })).status).toBe(
+        409
+      );
+    }
+    expect(await models.OrderMailDelivery.count()).toBe(2);
+  });
+  test('批量无权、范围外及无效目标均不产生任务', async () => {
+    const body = { recipients: ['a@example.test'], idempotencyKey: key() };
+    const path = '/' + message.id + '/forward-batch';
+    expect((await request(path, { method: 'POST', body, token: otherToken })).status).toBe(403);
+    expect((await request(path, { method: 'POST', body, orderId: otherOrder.id })).status).toBe(
+      404
+    );
+    for (const recipients of [
+      [],
+      ['ok@example.test', 'invalid'],
+      Array(51).fill('a@example.test'),
+    ]) {
+      expect((await request(path, { method: 'POST', body: { ...body, recipients } })).status).toBe(
+        400
+      );
+    }
+    expect(await models.OrderMailDelivery.count()).toBe(0);
+  });
+  test('批量写入后异常回滚全部任务', async () => {
+    const original = models.OrderMailDelivery.bulkCreate.bind(models.OrderMailDelivery);
+    const spy = jest
+      .spyOn(models.OrderMailDelivery, 'bulkCreate')
+      .mockImplementationOnce(async (...args) => {
+        try {
+          await original(...args);
+          throw new Error('synthetic rollback');
+        } catch (error) {
+          error.testContext = 'batch rollback';
+          throw error;
+        }
+      });
+    try {
+      const actor = await service.currentActor(user.id);
+      await expect(
+        service.enqueueBatchForward(actor, order.id, message.id, {
+          recipients: ['a@example.test', 'b@example.test'],
+          idempotencyKey: key(),
+        })
+      ).rejects.toThrow('synthetic rollback');
+      expect(await models.OrderMailDelivery.count()).toBe(0);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+  test('多收件人独立发送，单个失败不影响其他收件人', async () => {
+    const actor = await service.currentActor(user.id);
+    await service.enqueueBatchForward(actor, order.id, message.id, {
+      recipients: ['a@example.test', 'b@example.test'],
+      note: '',
+      idempotencyKey: key(),
+    });
+    const transport = {
+      sendMail: jest
+        .fn()
+        .mockRejectedValueOnce({ responseCode: 550 })
+        .mockImplementationOnce(async mail => {
+          try {
+            return await Promise.resolve({ accepted: [mail.to] });
+          } catch (error) {
+            error.testContext = 'fake SMTP';
+            throw error;
+          }
+        }),
+    };
+    await sender.sendNextOrderMail({ transport, config });
+    await sender.sendNextOrderMail({ transport, config });
+    expect(transport.sendMail).toHaveBeenCalledTimes(2);
+    const deliveries = await models.OrderMailDelivery.findAll();
+    expect(deliveries.map(item => item.status).sort()).toEqual(['accepted', 'failed']);
+    expect(transport.sendMail.mock.calls.map(([mail]) => mail.to).sort()).toEqual([
+      'a@example.test',
+      'b@example.test',
+    ]);
+  });
+  test('联系人迁移、管理员CRUD、普通转发用户只读、唯一邮箱与快照', async () => {
+    const migration = require('../migrations/20260922000003-create-mail-contacts');
+    const qi = models.sequelize.getQueryInterface();
+    await qi.dropTable('mail_contacts');
+    await migration.up(qi, models.Sequelize);
+    await migration.down(qi);
+    await migration.up(qi, models.Sequelize);
+    async function contacts(path = '', method = 'GET', body, auth = token) {
+      try {
+        const response = await fetch(baseUrl + '/api/mail-contacts' + path, {
+          method,
+          headers: headers(auth),
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        return { status: response.status, data: await response.json() };
+      } catch (error) {
+        error.testContext = 'contacts';
+        throw error;
+      }
+    }
+    expect((await contacts('', 'GET', undefined, otherToken)).status).toBe(403);
+    expect((await contacts()).status).toBe(200);
+    expect((await contacts('', 'POST', { name: '测试', email: 'a@example.test' })).status).toBe(
+      403
+    );
+    await user.update({ role: 'admin' });
+    const created = await contacts('', 'POST', { name: ' 测试联系人 ', email: ' A@example.test ' });
+    expect(created.status).toBe(201);
+    const contact = created.data.data;
+    expect(contact.name).toBe('测试联系人');
+    expect(contact.email).toBe('a@example.test');
+    expect((await contacts('', 'POST', { name: '另一个', email: 'A@example.test' })).status).toBe(
+      409
+    );
+    expect((await contacts('', 'POST', { name: '', email: 'a@example.test' })).status).toBe(400);
+    expect((await contacts('?search=测试')).data.data.total).toBe(1);
+    expect((await contacts('?search=%25')).data.data.total).toBe(0);
+    expect((await contacts('?page=0')).status).toBe(400);
+    const actor = await service.currentActor(user.id);
+    const batch = await service.enqueueBatchForward(actor, order.id, message.id, {
+      recipients: [contact.email],
+      idempotencyKey: key(),
+    });
+    expect(
+      (await contacts('/' + contact.id, 'PUT', { name: '新名', email: 'new@example.test' })).status
+    ).toBe(200);
+    await user.update({ role: 'operator' });
+    expect((await contacts('/' + contact.id, 'DELETE')).status).toBe(403);
+    expect(
+      (await contacts('/' + contact.id, 'PUT', { name: '绕过', email: 'hack@example.test' })).status
+    ).toBe(403);
+    await user.update({ role: 'admin' });
+    expect((await contacts('/' + contact.id, 'DELETE')).status).toBe(200);
+    expect((await contacts('/' + contact.id, 'DELETE')).status).toBe(404);
+    expect((await models.OrderMailDelivery.findByPk(batch.items[0].id)).payload.recipient).toBe(
+      'a@example.test'
+    );
+  });
   test('内容到期禁读禁发，清理原文但保留关联', async () => {
     await message.update({ expiresAt: new Date(Date.now() - 1) });
     expect((await request('/' + message.id)).status).toBe(410);
     await expect(enqueue()).rejects.toMatchObject({ statusCode: 410 });
+    expect(
+      (
+        await request('/' + message.id + '/forward-batch', {
+          method: 'POST',
+          body: { recipients: ['a@example.test'], idempotencyKey: key() },
+        })
+      ).status
+    ).toBe(410);
     await service.purgeOrderMail();
     await message.reload();
     expect(message.rawContent).toBeNull();

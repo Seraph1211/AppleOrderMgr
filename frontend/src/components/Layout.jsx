@@ -90,8 +90,14 @@ export default function Layout({ children }) {
   const { user, logout, can } = useAuth();
 
   // 根据用户角色生成导航菜单
-  const navigation = [...baseNavigation, ...adminNavigation]
-    .filter(item => can(item.permission))
+  const navigation = [
+    ...baseNavigation,
+    ...adminNavigation,
+    ...(user?.role === 'admin'
+      ? [{ name: '邮件联系人', href: '/mail-contacts', icon: Mail, adminOnly: true }]
+      : []),
+  ]
+    .filter(item => item.adminOnly || can(item.permission))
     .concat({ name: '个人设置', href: '/profile', icon: Settings });
 
   // 处理登出

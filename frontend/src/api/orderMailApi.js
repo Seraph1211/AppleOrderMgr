@@ -51,3 +51,7 @@ export async function downloadOrderEmailAttachment(orderId, messageId, attachmen
     throw new Error(error.message || '附件下载失败', { cause: error });
   }
 }
+
+/** 原子提交多收件人的独立转发任务。 */
+export const forwardOrderEmailBatch = (orderId, messageId, body) =>
+  client.post('/orders/' + orderId + '/emails/' + messageId + '/forward-batch', body);

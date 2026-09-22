@@ -98,6 +98,26 @@ router.get(
   })
 );
 router.post(
+  '/:messageId/forward-batch',
+  requireAnyPermission([PERMISSIONS.ORDER_MAIL_FORWARD, PERMISSIONS.ORDER_MAIL_MANAGE]),
+  asyncHandler(async (req, res) => {
+    try {
+      const data = await service.enqueueBatchForward(
+        req.user,
+        req.params.id,
+        req.params.messageId,
+        req.body
+      );
+      req.auditTarget =
+        '订单邮件批量转发；订单ID ' + req.params.id + '；任务数 ' + data.items.length;
+      res.status(202).json({ success: true, data });
+    } catch (error) {
+      logger.warn('订单邮件批量转发未完成', { errorType: error.name, errorCode: error.code });
+      throw error;
+    }
+  })
+);
+router.post(
   '/:messageId/forward',
   requireAnyPermission([PERMISSIONS.ORDER_MAIL_FORWARD, PERMISSIONS.ORDER_MAIL_MANAGE]),
   asyncHandler(async (req, res) => {

@@ -132,6 +132,7 @@ app.use('/api/stats', statsRouter);
 app.use('/api/import', importRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/channels', channelsRouter);
+app.use('/api/mail-contacts', require('./routes/mailContacts'));
 app.use('/api/system', systemRouter);
 app.use('/api/payment-tasks', paymentTasksRouter);
 app.use('/api/payment-dispatch', paymentDispatchRouter);

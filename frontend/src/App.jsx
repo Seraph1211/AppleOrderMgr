@@ -11,6 +11,7 @@ import Recipients from './pages/Recipients';
 import Channels from './pages/Channels';
 import ChannelOrders from './pages/ChannelOrders';
 import Users from './pages/Users';
+import MailContacts from './pages/MailContacts';
 import Profile from './pages/Profile';
 import OperationLogs from './pages/OperationLogs';
 import ChangePassword from './pages/ChangePassword';
@@ -56,6 +57,14 @@ function App() {
                   <Route
                     path="/order-ingestion"
                     element={permissionRoute(PERMISSIONS.INGESTION_READ, <OrderIngestion />)}
+                  />
+                  <Route
+                    path="/mail-contacts"
+                    element={
+                      <ProtectedRoute requiredRole="admin">
+                        <MailContacts />
+                      </ProtectedRoute>
+                    }
                   />
                   <Route path="/profile" element={<Profile />} />
                   <Route

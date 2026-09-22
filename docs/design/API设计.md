@@ -695,3 +695,9 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 支持清单见 [AOS 支付方式扩展](AOS文件采集与入库.md#支付方式扩展2026-09-21已生产发布)。AOS 原文解析及人工草稿共用校验。订单列表／详情／导出、渠道订单、本人任务／调度 DTO 的支付方式优先读取 sourceSnapshot.paymentMethod，缺失时读取 paymentMethod；不向付款任务 DTO 暴露完整来源快照。普通官网合并仅保存 officialPaymentMethod，保留来源付款方式。
 
 两个付款码 GET 接口继续执行权限、当前归属及访问审计，全部非普通微信方式返回 unsupported，不返回图片或链接；两页按钮保留并显示服务端提示。复制时只有普通微信读取付款码，其他方式直接调用原链接接口，仍由服务端校验权限和归属；微信分付使用订单链接。复制字段顺序、批量失败处理、来源时间加 30 分钟规则保持。
+
+## 邮件联系人与多收件人转发（2026-09-22）
+
+- `GET /api/mail-contacts`：管理员或同时有 `orders.read`、`order_mail.read`、`order_mail.forward` 的用户可用，`order_mail.manage` 兼容查看/转发。全局通讯录不按订单 TAG 划分，不扩大邮件/订单范围。`search` 最多100字，按姓名/邮箱包含匹配；`page` 默认1，`limit` 默认50、最大100。返回 `{items,total,page,limit}`，每项含 id/name/email/createdAt/updatedAt。响应 no-store。
+- `POST /api/mail-contacts`、`PUT /api/mail-contacts/:id`、`DELETE /api/mail-contacts/:id`：仅管理员；新增/编辑必填 name（1–100字）、email（单一合法邮箱，最多254字符），邮箱去空白转小写，重复409，非法400，不存在404；新增201，其余200。返回标准 success/data。
+- `POST /api/orders/:id/emails/:messageId/forward-batch`：沿用单封转发的权限、TAG、内容有效期规则。请求 `recipients`（1–50个单邮箱字符串，规范化后去重排序）、`note`（最多2000字）、`idempotencyKey`（16–64位字母数字和连字符）；202 返回 `{items:[发送任务]}`。同一事务创建所有任务，每个邮箱独立发送；同一操作人/key绑定完整目标列表、订单、邮件和备注，重试复用，改变内容409。原单收件人 `/forward` 保持兼容。联系人选择只填充邮箱，提交时形成快照；发信前仍重新检查用户权限。
