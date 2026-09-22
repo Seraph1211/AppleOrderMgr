@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Clock3,
@@ -12,6 +12,9 @@ import {
   Upload,
   X,
 } from 'lucide-react';
+import Pagination from '../components/Pagination';
+import TagMultiSelect from '../components/TagMultiSelect';
+import { describePickupEvent, formatPickupHistoryTime } from '../utils/pickupHistory';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
@@ -20,6 +23,7 @@ import {
   getPickupEvents,
   getPickupEvidenceUrl,
   getPickupRecords,
+  getPickupFilterOptions,
   preparePickupEvidence,
   updatePickupRecord,
 } from '../api/pickupsApi';
@@ -68,8 +72,13 @@ export default function Pickups() {
   const [filters, setFilters] = useState({
     search: searchParams.get('search') || '',
     status: '',
-    tag: '',
+    tags: [],
   });
+  const [tagOptions, setTagOptions] = useState([]);
+  const [tagError, setTagError] = useState('');
+  const [exporting, setExporting] = useState(false);
+  const [pageSize, setPageSize] = useState(20);
+  const requestSequence = useRef(0);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [editing, setEditing] = useState(null);
@@ -88,26 +97,68 @@ export default function Pickups() {
   }, [editing, events, evidencePreview]);
 
   const load = useCallback(async () => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
+    setItems([]);
     setError('');
     try {
       const response = await getPickupRecords({
         ...filters,
         page,
-        pageSize: 20,
+        pageSize,
       });
+      if (sequence !== requestSequence.current) return;
+      const lastPage = Math.max(1, Math.ceil(response.data.total / pageSize));
+      if (page > lastPage) {
+        setPage(lastPage);
+        return;
+      }
       setItems(response.data.items);
       setTotal(response.data.total);
     } catch (failure) {
-      setError(failure.message || '加载取货记录失败');
+      if (sequence === requestSequence.current) {
+        setTotal(0);
+        setError(failure.message || '加载取货记录失败');
+      }
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
-  }, [filters, page]);
+  }, [filters, page, pageSize]);
 
   useEffect(() => {
     load();
+    return () => {
+      requestSequence.current += 1;
+    };
   }, [load]);
+
+  useEffect(() => {
+    let active = true;
+    const loadTags = async () => {
+      try {
+        const response = await getPickupFilterOptions();
+        if (active) setTagOptions(response.data.tags);
+      } catch (failure) {
+        if (active) setTagError(failure.message || '加载 TAG 筛选项失败，请刷新重试');
+      }
+    };
+    loadTags();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const exportRecords = async () => {
+    setExporting(true);
+    setError('');
+    try {
+      await exportPickupRecords(filters);
+    } catch (failure) {
+      setError(failure.message || '导出取货清单失败');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const openEdit = item =>
     setEditing({
@@ -208,7 +259,7 @@ export default function Pickups() {
   };
 
   return (
-    <div className="pickups-page space-y-4">
+    <div className="pickups-page min-w-0 max-w-full space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">取货记录</h1>
@@ -217,16 +268,17 @@ export default function Pickups() {
         {can(PERMISSIONS.PICKUPS_EXPORT) && (
           <button
             className="btn btn-secondary w-full justify-center sm:w-auto"
-            onClick={() => exportPickupRecords(filters)}
+            onClick={exportRecords}
+            disabled={exporting}
           >
             <Download className="h-4 w-4" />
-            导出Excel
+            <span>{exporting ? '导出中...' : '导出Excel'}</span>
           </button>
         )}
       </div>
 
       <div className="card flex flex-col gap-3 lg:flex-row">
-        <label className="relative flex-1">
+        <label className="relative min-w-0 flex-1">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <input
             className="input w-full pl-9"
@@ -238,15 +290,17 @@ export default function Pickups() {
             placeholder="搜索系统编号、订单号、取机人"
           />
         </label>
-        <input
-          className="input lg:w-56"
-          value={filters.tag}
-          onChange={event => {
-            setFilters(value => ({ ...value, tag: event.target.value }));
-            setPage(1);
-          }}
-          placeholder="订单TAG（精确）"
-        />
+        <div className="min-w-0 lg:w-56">
+          <TagMultiSelect
+            options={tagOptions}
+            value={filters.tags}
+            onChange={tags => {
+              setFilters(value => ({ ...value, tags }));
+              setPage(1);
+            }}
+            ariaLabel="订单 TAG 筛选"
+          />
+        </div>
         <select
           className="input lg:w-40"
           value={filters.status}
@@ -261,9 +315,9 @@ export default function Pickups() {
           <option value="exception">异常</option>
         </select>
       </div>
-      {error && (
+      {(error || tagError) && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {error}
+          {error || tagError}
         </div>
       )}
 
@@ -341,8 +395,8 @@ export default function Pickups() {
       <div className="space-y-3 lg:hidden">
         {items.map(item => (
           <div key={item.orderId} className="card space-y-3">
-            <div className="flex items-start justify-between">
-              <div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <div className="font-medium text-gray-900">
                   #{item.orderId} · {item.orderNumber}
                 </div>
@@ -380,25 +434,17 @@ export default function Pickups() {
       {!loading && !items.length && (
         <div className="card py-10 text-center text-gray-500">暂无符合条件的订单</div>
       )}
-      <div className="flex items-center justify-between text-sm text-gray-500">
-        <span>共 {total} 条</span>
-        <div className="flex gap-2">
-          <button
-            className="btn btn-secondary"
-            disabled={page <= 1}
-            onClick={() => setPage(value => value - 1)}
-          >
-            上一页
-          </button>
-          <button
-            className="btn btn-secondary"
-            disabled={page * 20 >= total}
-            onClick={() => setPage(value => value + 1)}
-          >
-            下一页
-          </button>
-        </div>
-      </div>
+      <Pagination
+        currentPage={page}
+        totalPages={Math.max(1, Math.ceil(total / pageSize))}
+        totalItems={total}
+        pageSize={pageSize}
+        onPageChange={setPage}
+        onPageSizeChange={size => {
+          setPageSize(size);
+          setPage(1);
+        }}
+      />
 
       {editing && (
         <div className="fixed inset-0 z-50 flex min-h-0 items-end justify-center bg-black/50 sm:items-center sm:p-4">
@@ -565,7 +611,12 @@ export default function Pickups() {
 
       {events && (
         <div className="fixed inset-0 z-50 flex min-h-0 items-end justify-center bg-black/50 sm:items-center sm:p-4">
-          <div className="flex h-screen max-h-screen w-full flex-col overflow-hidden bg-white [height:100dvh] [max-height:100dvh] sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl sm:rounded-xl">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="更新记录"
+            className="flex h-screen max-h-screen w-full flex-col overflow-hidden bg-white [height:100dvh] [max-height:100dvh] sm:h-auto sm:max-h-[calc(100dvh-2rem)] sm:max-w-2xl sm:rounded-xl"
+          >
             <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-3 sm:px-5">
               <h2 className="text-lg font-semibold">更新记录 #{events.item.orderId}</h2>
               <button className="p-2" aria-label="关闭更新记录" onClick={() => setEvents(null)}>
@@ -575,16 +626,20 @@ export default function Pickups() {
             <div className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4 sm:p-5">
               {events.rows.map(row => (
                 <div key={row.id} className="rounded-lg border border-gray-200 p-3">
-                  <div className="flex items-center justify-between text-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                     <span className="font-medium">{row.actorName}</span>
                     <span className="text-gray-500">
                       <Clock3 className="mr-1 inline h-4 w-4" />
-                      {new Date(row.createdAt).toLocaleString('zh-CN')}
+                      {formatPickupHistoryTime(row.createdAt)}（北京）
                     </span>
                   </div>
-                  <pre className="mt-2 whitespace-pre-wrap text-xs text-gray-600">
-                    {JSON.stringify(row.changes, null, 2)}
-                  </pre>
+                  <ul className="mt-2 space-y-2 text-sm text-gray-600">
+                    {describePickupEvent(row).map((line, index) => (
+                      <li key={index} className="whitespace-pre-wrap break-words">
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               ))}
               {!events.rows.length && (

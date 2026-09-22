@@ -260,7 +260,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `GET /api/orders` 和 `GET /api/orders/export` 支持 `statuses`、`productNames`、`pickupStores`、`recipientTags` 四个 JSON 数组筛选参数，每项最多 100 个值。同一数组内按 OR 匹配，不同筛选维度之间按 AND 组合；订单状态必须属于现有状态枚举，商品名称和门店按完整值精确匹配。继续兼容既有单值 `status`、`productModel`、`pickupStore` 参数。
 - `pickupDate` 仅接受 `YYYY-MM-DD`。它匹配 `official_fulfillment_message` 中同一天的官网预约提示日期，不比较具体时分，也不使用下单时间、付款截止、实际取货日期或页面打开时间替代；“今天／明天”按该订单官网观测时的北京时间日期换算。列表和详情派生返回 `pickup_time`、`official_pickup_date`、`official_pickup_time_slot`，原始履约提示继续保留用于核对。
 - `recipientTags` 按列表实际展示的 `recipient_tag` 精确匹配，最多 100 项、每项最长 500 字符；数组值保留内部逗号及首尾空格。AOS 订单依次使用非空来源 TAG、取机人档案 TAG、订单 TAG；其他订单使用取机人档案 TAG、订单 TAG。多个 TAG 为 OR，与其他维度为 AND，分页与导出前过滤，始终叠加已有订单访问范围。
-- `GET /api/orders/filter-options` 新增 `recipientTags`，来自当前账号可见的全部订单展示 TAG，排除空值、去重排序，不受分页或前 5000 条订单限制。返回 `productNames` 和 `stores`，候选来自订单完整 `products[].name` 与 `pickup_store`，不从当前分页临时拼接。兼容返回 `productModels`，但订单管理页面不再使用型号筛选。
+- `GET /api/orders/filter-options` 新增 `recipientTags`，来自当前账号可见的全部订单展示 TAG，排除空值、去重排序，不受分页或前 5000 条订单限制。返回 `productNames` 和 `stores`，候选来自订单完整 `products[].name` 与邮件 `email_pickup_info.storeName`，不从当前分页临时拼接。兼容返回 `productModels`，但订单管理页面不再使用型号筛选。
 - 订单管理主表不展示 `validation_status` 和 `apple_id` 列；校验问题仍通过行首提示图标进入原异常说明，异常行不使用整行红色背景。上述字段仍保留在既有 DTO、搜索和详情能力中。
 - `keyword` 为纯正整数且不超过 PostgreSQL `INTEGER` 上限时，额外对系统订单 `orders.id` 做精确匹配；官网订单号、Apple ID、取机人和商品等既有模糊搜索保持不变。
 - `GET /api/orders/:id/link` 要求 `orders.read`，同时叠加订单数据范围；用户点击官网订单号或打开订单详情时按需返回 `{ id, orderNumber, orderUrl }`，响应 `Cache-Control: no-store`。链接只临时进入当前详情视图，不进入列表响应、导出或浏览器持久化存储。
@@ -700,7 +700,8 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 `/api/pickups` 的全部接口同时检查对应功能权限与 `orders.tag` 范围。管理员范围为全部；混合或越权订单不返回存在性信息。
 
-- `GET /api/pickups`：分页列表，支持 search、tag 精确值和 status。
+- `GET /api/pickups`：分页列表，支持 search、tags（JSON 字符串数组，最多 100 项，每项 1–500 字符；完整值精确 OR 匹配，保留原文）、兼容单值 tag 和 status；page/pageSize 为正整数，每页最多 100 条。列表和导出使用相同筛选及授权交集。
+- `GET /api/pickups/filter-options`：需 pickups.read，返回 `{tags: string[]}`；候选来自授权范围内全部订单的非空 `orders.tag`，去重排序，不受分页限制。
 - `GET /api/pickups/export`：导出当前筛选和授权范围 Excel。
 - `PUT /api/pickups/:orderId`：请求状态、实际时间、结款金额、结款人、备注和 expectedVersion；首次已取货自动补当前时间，冲突返回 409 CONCURRENT_MODIFICATION。
 - `GET /api/pickups/:orderId/events`：最多返回最近 200 条追加历史。
@@ -715,3 +716,5 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `GET /api/mail-contacts`：管理员或同时有 `orders.read`、`order_mail.read`、`order_mail.forward` 的用户可用，`order_mail.manage` 兼容查看/转发。全局通讯录不按订单 TAG 划分，不扩大邮件/订单范围。`search` 最多100字，按姓名/邮箱包含匹配；`page` 默认1，`limit` 默认50、最大100。返回 `{items,total,page,limit}`，每项含 id/name/email/createdAt/updatedAt。响应 no-store。
 - `POST /api/mail-contacts`、`PUT /api/mail-contacts/:id`、`DELETE /api/mail-contacts/:id`：仅管理员；新增/编辑必填 name（1–100字）、email（单一合法邮箱，最多254字符），邮箱去空白转小写，重复409，非法400，不存在404；新增201，其余200。返回标准 success/data。
 - `POST /api/orders/:id/emails/:messageId/forward-batch`：沿用单封转发的权限、TAG、内容有效期规则。请求 `recipients`（1–50个单邮箱字符串，规范化后去重排序）、`note`（最多2000字）、`idempotencyKey`（16–64位字母数字和连字符）；202 返回 `{items:[发送任务]}`。同一事务创建所有任务，每个邮箱独立发送；同一操作人/key绑定完整目标列表、订单、邮件和备注，重试复用，改变内容409。原单收件人 `/forward` 保持兼容。联系人选择只填充邮箱，提交时形成快照；发信前仍重新检查用户权限。
+
+2026-09-23 门店筛选修复：列表、导出及商品候选均按 `email_pickup_info.storeName` 精确匹配；门店候选来自同一邮件字段，保留其他筛选与订单权限，排除自身门店条件，便于继续多选。

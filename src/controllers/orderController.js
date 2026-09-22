@@ -396,11 +396,13 @@ function buildListFilters(query) {
   const pickupStores = parseMultiSelectFilter(query.pickupStores, 'pickupStores');
   if (pickupStores.length > 0) {
     where[Op.and] = (where[Op.and] || []).concat(
-      Sequelize.where(Sequelize.json('emailPickupInfo.storeName'), { [Op.in]: pickupStores })
+      Sequelize.where(Sequelize.literal('"Order"."email_pickup_info"->>\'storeName\''), {
+        [Op.in]: pickupStores,
+      })
     );
   } else if (query.pickupStore) {
     where[Op.and] = (where[Op.and] || []).concat(
-      Sequelize.where(Sequelize.json('emailPickupInfo.storeName'), {
+      Sequelize.where(Sequelize.literal('"Order"."email_pickup_info"->>\'storeName\''), {
         [Op.iLike]: `%${String(query.pickupStore).trim()}%`,
       })
     );
@@ -745,8 +747,34 @@ async function getFilterOptions(req, res) {
         { model: Recipient, as: 'recipient', attributes: [] },
         { model: AppleId, as: 'appleAccount', attributes: [] },
       ],
-      attributes: ['products', 'productFilterItems', 'pickupStore', 'payerName', 'recipientName'],
+      attributes: [
+        'products',
+        'productFilterItems',
+        'emailPickupInfo',
+        'payerName',
+        'recipientName',
+      ],
       order: [['updatedAt', 'DESC']],
+      raw: true,
+    });
+    const storeRows = await Order.findAll({
+      where: scopeOrderWhere(
+        req.user,
+        buildListFilters({ ...req.query, pickupStores: undefined, pickupStore: undefined }).where
+      ),
+      include: [
+        { model: Recipient, as: 'recipient', attributes: [] },
+        { model: AppleId, as: 'appleAccount', attributes: [] },
+      ],
+      attributes: [
+        [
+          Sequelize.fn(
+            'DISTINCT',
+            Sequelize.literal('"Order"."email_pickup_info"->>\'storeName\'')
+          ),
+          'store',
+        ],
+      ],
       raw: true,
     });
     const tagRows = await Order.findAll({
@@ -758,7 +786,7 @@ async function getFilterOptions(req, res) {
     const recipientTags = tagRows.map(row => row.recipientTag).filter(Boolean);
     const productModels = new Set();
     const productNames = new Set();
-    const stores = new Set();
+    const stores = new Set(storeRows.map(row => row.store).filter(Boolean));
     const recipients = new Set();
     const payers = new Set();
     rows.forEach(row => {
@@ -766,7 +794,6 @@ async function getFilterOptions(req, res) {
         if (product.model || product.modelId) productModels.add(product.model || product.modelId);
         if (product.name) productNames.add(product.name);
       });
-      if (row.pickupStore) stores.add(row.pickupStore);
       if (row.recipientName) recipients.add(row.recipientName);
       if (row.payerName) payers.add(row.payerName);
     });

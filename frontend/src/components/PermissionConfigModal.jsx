@@ -120,7 +120,7 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
               <section className="border border-gray-200 rounded-lg p-4 space-y-3">
                 <h3 className="font-semibold text-gray-900">订单数据范围</h3>
                 <p className="text-sm text-gray-500">
-                  按订单自身 TAG 精确匹配，限制订单查询及操作。本人付款任务的信息和操作保持不变。
+                  按订单自身 TAG 精确匹配，同时限制订单管理和取货记录可访问的数据。下方功能权限决定能否查看、登记或导出；两者同时生效。管理员可访问全部订单，本人付款任务的信息和操作保持不变。
                 </p>
                 <div className="flex flex-wrap gap-5">
                   {[

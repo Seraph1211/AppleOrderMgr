@@ -354,6 +354,7 @@
 @media (max-width: 767px) {
   .pickups-page .input {
     font-size: 16px;
+    min-height: 44px;
   }
   .pickups-page .btn,
   .pickups-page select,
@@ -528,4 +529,24 @@
   .payment-task-table .payment-task-details {
     display: none;
   }
+}
+
+/* 取货页图标与文字同行；长订单、TAG、备注和文件名不撑宽手机视口。 */
+.pickups-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.pickups-page .btn svg,
+.pickups-page .badge {
+  flex-shrink: 0;
+}
+.pickups-page .card,
+.pickups-page [role="dialog"] {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pickups-page [role="dialog"] > div {
+  min-width: 0;
 }

@@ -5,6 +5,11 @@ const { PERMISSIONS } = require('../constants/business');
 const controller = require('../controllers/pickupController');
 
 const router = express.Router();
+router.get(
+  '/filter-options',
+  requirePermission(PERMISSIONS.PICKUPS_READ),
+  asyncHandler(controller.filterOptions)
+);
 router.get('/', requirePermission(PERMISSIONS.PICKUPS_READ), asyncHandler(controller.list));
 router.get(
   '/export',

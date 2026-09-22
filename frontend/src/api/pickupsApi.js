@@ -1,6 +1,18 @@
 import client from './client';
 
-export const getPickupRecords = params => client.get('/pickups', { params });
+function serializeFilters(params = {}) {
+  return Object.fromEntries(
+    Object.entries(params).map(([key, value]) => [
+      key,
+      Array.isArray(value) ? JSON.stringify(value) : value,
+    ])
+  );
+}
+
+/** 获取授权范围内可搜索的 TAG 候选。 */
+export const getPickupFilterOptions = () => client.get('/pickups/filter-options');
+export const getPickupRecords = params =>
+  client.get('/pickups', { params: serializeFilters(params) });
 export const updatePickupRecord = (orderId, payload) => client.put(`/pickups/${orderId}`, payload);
 export const getPickupEvents = orderId => client.get(`/pickups/${orderId}/events`);
 export const preparePickupEvidence = (orderId, payload) =>
@@ -12,7 +24,9 @@ export const getPickupEvidenceUrl = (orderId, evidenceId) =>
 
 export async function exportPickupRecords(params) {
   const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-  const query = new URLSearchParams(Object.entries(params || {}).filter(([, value]) => value));
+  const query = new URLSearchParams(
+    Object.entries(serializeFilters(params)).filter(([, value]) => value)
+  );
   const response = await fetch(`/api/pickups/export?${query}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });

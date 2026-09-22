@@ -12,11 +12,14 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     const context = await browser.newContext();
     const page = await context.newPage();
     const pageErrors = [];
+    const requests = [];
     page.on('pageerror', error => pageErrors.push(error.message));
     await page.addInitScript(() => localStorage.setItem('token', 'pickup-synthetic-token'));
     await page.route('**/api/**', route => {
       const request = route.request();
-      const path = new URL(request.url()).pathname;
+      const url = new URL(request.url());
+      const path = url.pathname;
+      requests.push({ path, query: Object.fromEntries(url.searchParams) });
       if (!path.startsWith('/api/')) return route.continue();
       let data;
       if (path === '/api/auth/me') {
@@ -29,13 +32,41 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           orderAccess: { mode: 'tags', tags: ['长沙 张良帅'] },
           availableHome: '/pickups',
         };
+      } else if (path === '/api/pickups/filter-options') {
+        data = { tags: ['长沙 张良帅', "上海, 测试'O", '南京 测试'] };
+      } else if (path === '/api/pickups/522/events') {
+        data = [
+          {
+            id: 'event-1',
+            actorName: '测试员工',
+            createdAt: '2026-09-22T19:39:00Z',
+            eventType: 'updated',
+            changes: {
+              status: { before: 'pending', after: 'picked_up' },
+              pickedUpAt: { before: null, after: '2026-09-22T19:39:00Z' },
+              settlementAmount: { before: null, after: 150 },
+              notes: { before: null, after: '长备注'.repeat(100) },
+            },
+          },
+          {
+            id: 'event-2',
+            actorName: '测试员工',
+            createdAt: '2026-09-22T19:39:00Z',
+            eventType: 'evidence_added',
+            changes: {
+              evidence: { kind: 'pickup', id: 'internal-secret-id', name: '测试凭证.jpg' },
+            },
+          },
+        ];
+      } else if (path === '/api/pickups/export') {
+        return route.fulfill({ status: 500, json: { success: false } });
       } else if (path === '/api/pickups') {
         data = {
           items: [
             {
               orderId: 522,
               orderNumber: 'W1687010672',
-              tag: '长沙 张良帅',
+              tag: '长沙 张良帅' + 'LongTag'.repeat(12),
               recipientName: '许雨',
               products: [{ name: 'iPhone 18 Pro Max 冰川蓝色 512GB', quantity: 1 }],
               pickupStore: 'Apple 长沙',
@@ -49,7 +80,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
               pickedUpAt: '2026-09-22T19:39:00.000Z',
               settlementAmount: null,
               settlementPerson: null,
-              notes: '',
+              notes: '长备注'.repeat(100),
               version: 1,
               lastUpdater: { id: 1, name: 'admin' },
               updatedAt: '2026-09-22T19:39:09.000Z',
@@ -65,9 +96,9 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
               ],
             },
           ],
-          page: 1,
-          pageSize: 20,
-          total: 1,
+          page: Number(url.searchParams.get('page')) || 1,
+          pageSize: Number(url.searchParams.get('pageSize')) || 20,
+          total: 655,
         };
       } else if (path === '/api/pickups/522/evidence/synthetic-evidence-1') {
         const previewSvg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="960" viewBox="0 0 720 960">
@@ -88,7 +119,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       return route.fulfill({ json: { success: true, data } });
     });
 
-    for (const width of [320, 375, 390, 430, 768, 1024]) {
+    for (const width of [320, 375, 390, 430, 768, 1024, 1440]) {
       await page.setViewportSize({ width, height: width <= 430 ? 700 : 900 });
       await page.goto('http://127.0.0.1:5173/pickups');
       await page.waitForFunction(() =>
@@ -103,6 +134,50 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
         `取货页面横向溢出：${width}`
       );
+      await page.getByRole('button', { name: '订单 TAG 筛选' }).click();
+      await page.getByPlaceholder('搜索 TAG').fill('上海');
+      assert(await page.getByRole('option', { name: "上海, 测试'O", exact: true }).isVisible());
+      assert(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), `TAG 下拉横向溢出：${width}`);
+      await page.keyboard.press('Escape');
+      for (const label of ['导出Excel', '登记']) {
+        const button = page
+          .getByRole('button', { name: label, exact: true })
+          .filter({ visible: true })
+          .first();
+        const aligned = await button.evaluate(element => {
+          const style = getComputedStyle(element);
+          return (
+            ['flex', 'inline-flex'].includes(style.display) &&
+            style.alignItems === 'center' &&
+            style.justifyContent === 'center'
+          );
+        });
+        assert(aligned, `按钮图标文字未居中：${label} ${width}`);
+      }
+      await page
+        .getByRole('button', {
+          name: width >= 1024 ? '记录' : '查看订单 522 更新记录',
+          exact: true,
+        })
+        .first()
+        .click();
+      const history = page.getByRole('dialog', { name: '更新记录', exact: true });
+      await history.waitFor();
+      const historyText = await history.innerText();
+      assert(historyText.includes('取货状态：待取货 → 已取货'));
+      assert(historyText.includes('结款金额：未填写 → ¥150.00'));
+      assert(historyText.includes('03:39:00'));
+      assert(historyText.includes('上传取货凭证：测试凭证.jpg'));
+      assert(!historyText.includes('pickedUpAt') && !historyText.includes('internal-secret-id'));
+      assert(
+        await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+        `历史横向溢出：${width}`
+      );
+      if (output && width === 390)
+        await page.screenshot({ path: `${output}/中文更新记录-390.png` });
+      await page.getByRole('button', { name: '关闭更新记录' }).click();
+      if (output && [390, 1440].includes(width))
+        await page.screenshot({ path: `${output}/取货列表-${width}.png`, fullPage: true });
       await page.locator('button:visible').filter({ hasText: '登记' }).first().click();
       const editDialog = page.getByRole('dialog', { name: /登记取货/ });
       await editDialog.waitFor();
@@ -146,6 +221,51 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       await editDialog.getByRole('button', { name: '关闭取货登记' }).click();
       assert.equal(await page.evaluate(() => document.body.style.overflow), '');
     }
+    await page.getByRole('button', { name: '订单 TAG 筛选' }).click();
+    await page.getByPlaceholder('搜索 TAG').fill('上海');
+    await page.getByRole('option', { name: "上海, 测试'O", exact: true }).click();
+    await page.getByPlaceholder('搜索 TAG').fill('长沙');
+    await page.getByRole('option', { name: '长沙 张良帅', exact: true }).click();
+    await page.waitForResponse(response => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === '/api/pickups' &&
+        JSON.parse(url.searchParams.get('tags') || '[]').length === 2
+      );
+    });
+    await page.keyboard.press('Escape');
+    const selected = requests.filter(item => item.path === '/api/pickups').at(-1);
+    assert.deepEqual(JSON.parse(selected.query.tags), ["上海, 测试'O", '长沙 张良帅']);
+    await page.getByTitle('下一页', { exact: true }).click();
+    await page.waitForResponse(
+      response =>
+        new URL(response.url()).pathname === '/api/pickups' &&
+        new URL(response.url()).searchParams.get('page') === '2'
+    );
+    await page
+      .locator('select')
+      .filter({ has: page.locator('option[value="100"]') })
+      .selectOption('50');
+    await page.waitForResponse(
+      response =>
+        new URL(response.url()).pathname === '/api/pickups' &&
+        new URL(response.url()).searchParams.get('pageSize') === '50'
+    );
+    const resized = requests.filter(item => item.path === '/api/pickups').at(-1);
+    assert.equal(resized.query.page, '1');
+    await page.getByRole('button', { name: '导出Excel', exact: true }).click();
+    await page.getByText('导出取货清单失败', { exact: true }).waitFor();
+    assert.deepEqual(
+      JSON.parse(requests.find(item => item.path === '/api/pickups/export').query.tags),
+      ["上海, 测试'O", '长沙 张良帅']
+    );
+    await page.getByRole('button', { name: '订单 TAG 筛选' }).click();
+    await page.getByRole('button', { name: '清空选择' }).click();
+    await page.waitForResponse(
+      response =>
+        new URL(response.url()).pathname === '/api/pickups' &&
+        new URL(response.url()).searchParams.get('tags') === '[]'
+    );
     assert.deepEqual(pageErrors, []);
     console.log('取货记录凭证预览与手机适配验收通过');
   } finally {
