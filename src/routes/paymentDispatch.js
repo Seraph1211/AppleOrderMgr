@@ -5,6 +5,7 @@ const { requireRole, requirePermission } = require('../middleware/authMiddleware
 const { PERMISSIONS } = require('../constants/business');
 const controller = require('../controllers/paymentDispatchController');
 const tagRules = require('../controllers/paymentTagRuleController');
+const retiredFeature = require('../middleware/retiredFeature');
 
 const router = express.Router();
 
@@ -69,11 +70,7 @@ router.put(
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),
   asyncHandler(controller.assignTasks)
 );
-router.post(
-  '/tasks/refresh',
-  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),
-  asyncHandler(controller.refreshTasks)
-);
+router.post('/tasks/refresh', retiredFeature('付款调度官网刷新'));
 router.put(
   '/tasks/:id/assignee',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),
@@ -84,11 +81,7 @@ router.put(
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CORRECT),
   asyncHandler(controller.updateTaskNotes)
 );
-router.post(
-  '/tasks/:id/refresh',
-  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),
-  asyncHandler(controller.refreshTask)
-);
+router.post('/tasks/:id/refresh', retiredFeature('付款调度官网刷新'));
 router.post(
   '/tasks/:id/reopen',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CORRECT),

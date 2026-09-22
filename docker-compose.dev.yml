@@ -182,18 +182,6 @@ services:
     restart: unless-stopped
     stop_grace_period: 90s
 
-  crawler-worker:
-    <<: *backend-service
-    profiles: ['crawler', 'workers']
-    command: npm run start:crawler-worker
-    depends_on:
-      postgres:
-        condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
-    restart: unless-stopped
-    stop_grace_period: 20s
-
 volumes:
   postgres_data:
   frontend_dist:

@@ -61,7 +61,4 @@ ApiError.internal = (message = '服务器内部错误', details, code = 'INTERNA
 ApiError.database = (message = '数据库操作失败', details) =>
   new ApiError(500, 'DATABASE_ERROR', message, details);
 
-ApiError.crawler = (message = '爬虫执行失败', details) =>
-  new ApiError(500, 'CRAWLER_ERROR', message, details);
-
 module.exports = ApiError;

@@ -1,16 +1,8 @@
-import { useAuth } from "../contexts/AuthContext";
-import { PERMISSIONS } from "../constants/permissions";
-import { createPortal } from "react-dom";
-import { useEffect, useRef, useState } from "react";
-import {
-  ArrowLeft,
-  Download,
-  Loader2,
-  Mail,
-  RefreshCw,
-  Send,
-  X,
-} from "lucide-react";
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
+import { createPortal } from 'react-dom';
+import { useEffect, useRef, useState } from 'react';
+import { ArrowLeft, Download, Loader2, Mail, RefreshCw, Send, X } from 'lucide-react';
 import {
   getOrderEmails,
   getOrderEmail,
@@ -19,46 +11,46 @@ import {
   downloadOrderEmailAttachment,
   replayOrderEmailLifecycle,
   reviewOrderEmailLifecycle,
-} from "../api/orderMailApi";
-import { formatOrderTime } from "../utils/orderTime";
+} from '../api/orderMailApi';
+import { formatOrderTime } from '../utils/orderTime';
 
 const SYNC_LABELS = {
-  disabled: "订单邮件同步尚未启用，请联系管理员",
-  pending: "尚未完成首次同步",
-  syncing: "正在同步邮件，列表可能尚不完整",
-  error: "邮件同步异常或已暂停，当前显示已保存邮件",
-  ready: "邮件同步正常",
+  disabled: '订单邮件同步尚未启用，请联系管理员',
+  pending: '尚未完成首次同步',
+  syncing: '正在同步邮件，列表可能尚不完整',
+  error: '邮件同步异常或已暂停，当前显示已保存邮件',
+  ready: '邮件同步正常',
 };
 const DELIVERY_LABELS = {
-  queued: "等待发送",
-  sending: "正在发送",
-  retry_wait: "等待重试",
-  accepted: "已提交邮件服务器",
-  failed: "发送失败",
-  unknown: "结果不明，请核实收件箱后再决定是否重发",
-  cancelled: "已取消（权限或内容失效）",
+  queued: '等待发送',
+  sending: '正在发送',
+  retry_wait: '等待重试',
+  accepted: '已提交邮件服务器',
+  failed: '发送失败',
+  unknown: '结果不明，请核实收件箱后再决定是否重发',
+  cancelled: '已取消（权限或内容失效）',
 };
 const TEMPLATE_LABELS = {
-  confirmed: "订单确认",
-  processing: "正在处理",
-  ready_update: "可取货更新",
-  ready_info: "取货信息",
-  excluded: "本期排除",
-  unknown: "未知模板",
+  confirmed: '订单确认',
+  processing: '正在处理',
+  ready_update: '可取货更新',
+  ready_info: '取货信息',
+  excluded: '本期排除',
+  unknown: '未知模板',
 };
 const LIFECYCLE_STATUS_LABELS = {
-  unknown: "待确认",
-  confirmed: "订单已确认",
-  processing: "处理中",
-  ready_for_pickup: "可取货",
-  paid: "已付款",
+  unknown: '待确认',
+  confirmed: '订单已确认',
+  processing: '处理中',
+  ready_for_pickup: '可取货',
+  paid: '已付款',
 };
 const AUTHENTICITY_LABELS = {
-  verified: "DKIM 验签通过",
-  manually_verified: "人工核定",
-  failed: "来源验证未通过",
-  temporary_failure: "来源验证暂时失败",
-  not_checked: "未执行来源验证",
+  verified: '订单号匹配',
+  manually_verified: '人工核定',
+  failed: '订单号不匹配',
+  temporary_failure: '订单号核对暂时失败',
+  not_checked: '等待系统订单',
 };
 
 /** 订单列表内的关联邮件抽屉；不提供独立导航或全局收件箱。 */
@@ -73,20 +65,18 @@ export default function OrderMailDrawer({ order, onClose }) {
   const [detail, setDetail] = useState(null);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
-  const [recipient, setRecipient] = useState("");
-  const [note, setNote] = useState("");
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [recipient, setRecipient] = useState('');
+  const [note, setNote] = useState('');
   const [sending, setSending] = useState(false);
   const [downloading, setDownloading] = useState(null);
   const [replaying, setReplaying] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const [reviewReason, setReviewReason] = useState("");
-  const [reviewOrderStatus, setReviewOrderStatus] = useState("unknown");
-  const [reviewPaymentStatus, setReviewPaymentStatus] = useState("unknown");
-  const [statusVersion, setStatusVersion] = useState(
-    order.emailStatusVersion || 0,
-  );
+  const [reviewReason, setReviewReason] = useState('');
+  const [reviewOrderStatus, setReviewOrderStatus] = useState('unknown');
+  const [reviewPaymentStatus, setReviewPaymentStatus] = useState('unknown');
+  const [statusVersion, setStatusVersion] = useState(order.emailStatusVersion || 0);
   const requestKey = useRef(null);
   const sendingRef = useRef(false);
   const panelRef = useRef(null);
@@ -99,21 +89,21 @@ export default function OrderMailDrawer({ order, onClose }) {
 
   useEffect(() => {
     if (!detail?.lifecycle) return;
-    setReviewOrderStatus(detail.lifecycle.orderStatus || "unknown");
-    setReviewPaymentStatus(detail.lifecycle.paymentStatus || "unknown");
-    setReviewReason("");
+    setReviewOrderStatus(detail.lifecycle.orderStatus || 'unknown');
+    setReviewPaymentStatus(detail.lifecycle.paymentStatus || 'unknown');
+    setReviewReason('');
   }, [detail]);
 
   useEffect(() => {
     const previous = document.activeElement;
     const panel = panelRef.current;
     panel?.focus();
-    const onKey = (event) => {
-      if (event.key === "Escape") closeRef.current();
-      if (event.key !== "Tab") return;
-      const focusable = [
-        ...panel.querySelectorAll('button,input,textarea,[tabindex="0"]'),
-      ].filter((element) => !element.disabled && element.offsetParent !== null);
+    const onKey = event => {
+      if (event.key === 'Escape') closeRef.current();
+      if (event.key !== 'Tab') return;
+      const focusable = [...panel.querySelectorAll('button,input,textarea,[tabindex="0"]')].filter(
+        element => !element.disabled && element.offsetParent !== null
+      );
       if (!focusable.length) {
         event.preventDefault();
         return;
@@ -132,10 +122,10 @@ export default function OrderMailDrawer({ order, onClose }) {
       }
     };
     const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    panel.addEventListener("keydown", onKey);
+    document.body.style.overflow = 'hidden';
+    panel.addEventListener('keydown', onKey);
     return () => {
-      panel.removeEventListener("keydown", onKey);
+      panel.removeEventListener('keydown', onKey);
       document.body.style.overflow = previousOverflow;
       previous?.focus();
     };
@@ -144,14 +134,14 @@ export default function OrderMailDrawer({ order, onClose }) {
   useEffect(() => {
     let active = true;
     setLoading(true);
-    setError("");
+    setError('');
     setList(null);
     getOrderEmails(order.id, page)
-      .then((response) => {
+      .then(response => {
         if (active) setList(response.data);
       })
-      .catch((failure) => {
-        if (active) setError(failure.message || "加载邮件失败");
+      .catch(failure => {
+        if (active) setError(failure.message || '加载邮件失败');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -163,8 +153,7 @@ export default function OrderMailDrawer({ order, onClose }) {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible" && !selectedId)
-        setReload((value) => value + 1);
+      if (document.visibilityState === 'visible' && !selectedId) setReload(value => value + 1);
     }, 15000);
     return () => window.clearInterval(timer);
   }, [selectedId]);
@@ -173,10 +162,10 @@ export default function OrderMailDrawer({ order, onClose }) {
     let active = true;
     setDetail(null);
     setHistory([]);
-    setRecipient("");
-    setNote("");
-    setNotice("");
-    setError("");
+    setRecipient('');
+    setNote('');
+    setNotice('');
+    setError('');
     requestKey.current = null;
     if (!selectedId)
       return () => {
@@ -189,14 +178,14 @@ export default function OrderMailDrawer({ order, onClose }) {
     ])
       .then(([message, forwards]) => {
         if (active) {
-          if (message.status === "fulfilled") setDetail(message.value.data);
-          else setError(message.reason.message || "邮件正文暂不可用");
-          if (forwards.status === "fulfilled") setHistory(forwards.value.data);
-          else setError(forwards.reason.message || "转发记录暂不可用");
+          if (message.status === 'fulfilled') setDetail(message.value.data);
+          else setError(message.reason.message || '邮件正文暂不可用');
+          if (forwards.status === 'fulfilled') setHistory(forwards.value.data);
+          else setError(forwards.reason.message || '转发记录暂不可用');
         }
       })
-      .catch((failure) => {
-        if (active) setError(failure.message || "加载邮件失败");
+      .catch(failure => {
+        if (active) setError(failure.message || '加载邮件失败');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -206,8 +195,8 @@ export default function OrderMailDrawer({ order, onClose }) {
     };
   }, [order.id, selectedId]);
 
-  const hasPending = history.some((item) =>
-    ["queued", "sending", "retry_wait"].includes(item.status),
+  const hasPending = history.some(item =>
+    ['queued', 'sending', 'retry_wait'].includes(item.status)
   );
   useEffect(() => {
     if (!selectedId || !hasPending) return undefined;
@@ -239,11 +228,11 @@ export default function OrderMailDrawer({ order, onClose }) {
     if (!canForward) return;
     if (sendingRef.current) return;
     const target = recipient.trim();
-    if (!window.confirm("确认将这封邮件及附件转发到 " + target + "？")) return;
+    if (!window.confirm('确认将这封邮件及附件转发到 ' + target + '？')) return;
     sendingRef.current = true;
     setSending(true);
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
     requestKey.current ||= crypto.randomUUID();
     try {
       const response = await forwardOrderEmail(order.id, selectedId, {
@@ -251,16 +240,16 @@ export default function OrderMailDrawer({ order, onClose }) {
         note,
         idempotencyKey: requestKey.current,
       });
-      setHistory((previous) => [
+      setHistory(previous => [
         response.data,
-        ...previous.filter((item) => item.id !== response.data.id),
+        ...previous.filter(item => item.id !== response.data.id),
       ]);
-      setNotice("转发任务已提交，可在下方查看发送结果。");
-      setRecipient("");
-      setNote("");
+      setNotice('转发任务已提交，可在下方查看发送结果。');
+      setRecipient('');
+      setNote('');
       requestKey.current = null;
     } catch (failure) {
-      setError(failure.message || "提交失败，请重试；重复提交不会重复排队");
+      setError(failure.message || '提交失败，请重试；重复提交不会重复排队');
     } finally {
       sendingRef.current = false;
       setSending(false);
@@ -269,11 +258,11 @@ export default function OrderMailDrawer({ order, onClose }) {
 
   async function download(attachment) {
     setDownloading(attachment.index);
-    setError("");
+    setError('');
     try {
       await downloadOrderEmailAttachment(order.id, selectedId, attachment);
     } catch (failure) {
-      setError(failure.message || "附件下载失败");
+      setError(failure.message || '附件下载失败');
     } finally {
       setDownloading(null);
     }
@@ -282,14 +271,14 @@ export default function OrderMailDrawer({ order, onClose }) {
   async function replayLifecycle() {
     if (!canManage) return;
     setReplaying(true);
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
     try {
       await replayOrderEmailLifecycle(order.id, selectedId);
-      setNotice("已提交重新解析；应用结果仍受服务端受控开关约束。");
-      setReload((value) => value + 1);
+      setNotice('已提交重新解析；应用结果仍受服务端受控开关约束。');
+      setReload(value => value + 1);
     } catch (failure) {
-      setError(failure.message || "重新解析提交失败");
+      setError(failure.message || '重新解析提交失败');
     } finally {
       setReplaying(false);
     }
@@ -299,8 +288,8 @@ export default function OrderMailDrawer({ order, onClose }) {
     event.preventDefault();
     if (!canManage) return;
     setReviewing(true);
-    setError("");
-    setNotice("");
+    setError('');
+    setNotice('');
     try {
       const response = await reviewOrderEmailLifecycle(order.id, selectedId, {
         expectedVersion: statusVersion,
@@ -311,9 +300,9 @@ export default function OrderMailDrawer({ order, onClose }) {
       setStatusVersion(response.data.version);
       const refreshed = await getOrderEmail(order.id, selectedId);
       setDetail(refreshed.data);
-      setNotice("人工核定已追加；订单与付款任务是否应用仍受服务端开关约束。");
+      setNotice('人工核定已追加；订单与付款任务是否应用仍受服务端开关约束。');
     } catch (failure) {
-      setError(failure.message || "人工核定失败，请刷新后重试");
+      setError(failure.message || '人工核定失败，请刷新后重试');
     } finally {
       setReviewing(false);
     }
@@ -380,15 +369,9 @@ export default function OrderMailDrawer({ order, onClose }) {
               {detail && (
                 <>
                   <div className="border rounded-lg p-4 space-y-2 break-words">
-                    <h3 className="font-semibold text-gray-900">
-                      {detail.subject || "无主题"}
-                    </h3>
-                    <p className="text-sm text-gray-600">
-                      发件人：{detail.from || "-"}
-                    </p>
-                    <p className="text-sm text-gray-600">
-                      原始收件人：{detail.to || "-"}
-                    </p>
+                    <h3 className="font-semibold text-gray-900">{detail.subject || '无主题'}</h3>
+                    <p className="text-sm text-gray-600">发件人：{detail.from || '-'}</p>
+                    <p className="text-sm text-gray-600">原始收件人：{detail.to || '-'}</p>
                     <p className="text-sm text-gray-600">
                       邮件发信：{formatOrderTime(detail.date)}
                     </p>
@@ -398,36 +381,28 @@ export default function OrderMailDrawer({ order, onClose }) {
                     {detail.lifecycle && (
                       <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
                         <p className="font-medium text-gray-900">
-                          {TEMPLATE_LABELS[detail.lifecycle.templateType] ||
-                            "未知模板"}
+                          {TEMPLATE_LABELS[detail.lifecycle.templateType] || '未知模板'}
                         </p>
                         <p className="mt-1 text-gray-700">
                           订单：
-                          {LIFECYCLE_STATUS_LABELS[
-                            detail.lifecycle.orderStatus
-                          ] || "不更新"}{" "}
-                          · 付款：
-                          {LIFECYCLE_STATUS_LABELS[
-                            detail.lifecycle.paymentStatus
-                          ] || "不更新"}
+                          {LIFECYCLE_STATUS_LABELS[detail.lifecycle.orderStatus] || '不更新'} ·
+                          付款：
+                          {LIFECYCLE_STATUS_LABELS[detail.lifecycle.paymentStatus] || '不更新'}
                         </p>
                         <p className="mt-1 text-gray-700">
                           来源：
-                          {AUTHENTICITY_LABELS[
-                            detail.lifecycle.authenticityStatus
-                          ] || "待核对"}
+                          {AUTHENTICITY_LABELS[detail.lifecycle.authenticityStatus] || '待核对'}
                         </p>
                         {detail.lifecycle.pickupInfo && (
                           <div className="mt-2 text-gray-700">
                             <p>
                               取货门店：
-                              {detail.lifecycle.pickupInfo.storeName || "-"}
+                              {detail.lifecycle.pickupInfo.storeName || '-'}
                             </p>
                             <p>
                               取货安排：
-                              {detail.lifecycle.pickupInfo.appointmentMode ===
-                              "business_hours"
-                                ? "营业时间内到店"
+                              {detail.lifecycle.pickupInfo.appointmentMode === 'business_hours'
+                                ? '营业时间内到店'
                                 : [
                                     detail.lifecycle.pickupInfo.pickupDate,
                                     detail.lifecycle.pickupInfo.startTime &&
@@ -436,7 +411,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                                       : null,
                                   ]
                                     .filter(Boolean)
-                                    .join(" ") || "-"}
+                                    .join(' ') || '-'}
                             </p>
                           </div>
                         )}
@@ -450,7 +425,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                             该结论需要人工核对
                             {!!detail.lifecycle.reviewReasons?.length && (
                               <span className="block text-xs break-all">
-                                {detail.lifecycle.reviewReasons.join("、")}
+                                {detail.lifecycle.reviewReasons.join('、')}
                               </span>
                             )}
                           </p>
@@ -463,18 +438,14 @@ export default function OrderMailDrawer({ order, onClose }) {
                               disabled={replaying}
                               onClick={replayLifecycle}
                             >
-                              <RefreshCw
-                                className={`w-4 h-4 ${replaying ? "animate-spin" : ""}`}
-                              />
-                              {replaying ? "提交中…" : "重新解析"}
+                              <RefreshCw className={`w-4 h-4 ${replaying ? 'animate-spin' : ''}`} />
+                              {replaying ? '提交中…' : '重新解析'}
                             </button>
                             <form
                               className="mt-3 space-y-2 border-t border-blue-100 pt-3"
                               onSubmit={reviewLifecycle}
                             >
-                              <p className="font-medium text-gray-900">
-                                人工核定当前邮件
-                              </p>
+                              <p className="font-medium text-gray-900">人工核定当前邮件</p>
                               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                 <label className="text-gray-700">
                                   订单状态
@@ -482,18 +453,12 @@ export default function OrderMailDrawer({ order, onClose }) {
                                     className="input mt-1 w-full"
                                     value={reviewOrderStatus}
                                     disabled={reviewing}
-                                    onChange={(event) =>
-                                      setReviewOrderStatus(event.target.value)
-                                    }
+                                    onChange={event => setReviewOrderStatus(event.target.value)}
                                   >
                                     <option value="unknown">待确认</option>
-                                    <option value="confirmed">
-                                      订单已确认
-                                    </option>
+                                    <option value="confirmed">订单已确认</option>
                                     <option value="processing">处理中</option>
-                                    <option value="ready_for_pickup">
-                                      可取货
-                                    </option>
+                                    <option value="ready_for_pickup">可取货</option>
                                   </select>
                                 </label>
                                 <label className="text-gray-700">
@@ -502,9 +467,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                                     className="input mt-1 w-full"
                                     value={reviewPaymentStatus}
                                     disabled={reviewing}
-                                    onChange={(event) =>
-                                      setReviewPaymentStatus(event.target.value)
-                                    }
+                                    onChange={event => setReviewPaymentStatus(event.target.value)}
                                   >
                                     <option value="unknown">待确认</option>
                                     <option value="paid">已付款</option>
@@ -522,19 +485,15 @@ export default function OrderMailDrawer({ order, onClose }) {
                                   value={reviewReason}
                                   disabled={reviewing}
                                   placeholder="填写关联官方邮件中的核定依据"
-                                  onChange={(event) =>
-                                    setReviewReason(event.target.value)
-                                  }
+                                  onChange={event => setReviewReason(event.target.value)}
                                 />
                               </label>
                               <button
                                 type="submit"
                                 className="btn btn-secondary"
-                                disabled={
-                                  reviewing || reviewReason.trim().length < 5
-                                }
+                                disabled={reviewing || reviewReason.trim().length < 5}
                               >
-                                {reviewing ? "保存中…" : "保存核定"}
+                                {reviewing ? '保存中…' : '保存核定'}
                               </button>
                             </form>
                           </>
@@ -542,14 +501,13 @@ export default function OrderMailDrawer({ order, onClose }) {
                       </div>
                     )}
                     <div className="border-t pt-4 whitespace-pre-wrap break-words text-gray-900">
-                      {detail.text ||
-                        "此邮件没有可预览的文字正文，可查看附件。"}
+                      {detail.text || '此邮件没有可预览的文字正文，可查看附件。'}
                     </div>
                   </div>
                   {!!detail.attachments?.length && (
                     <div className="space-y-2">
                       <h3 className="font-medium text-gray-900">附件</h3>
-                      {detail.attachments.map((attachment) => (
+                      {detail.attachments.map(attachment => (
                         <button
                           key={attachment.index}
                           className="btn btn-secondary flex items-center gap-2 max-w-full"
@@ -566,13 +524,8 @@ export default function OrderMailDrawer({ order, onClose }) {
                     </div>
                   )}
                   {canForward && (
-                    <form
-                      onSubmit={send}
-                      className="bg-primary-50 rounded-lg p-4 space-y-3"
-                    >
-                      <h3 className="font-semibold text-gray-900">
-                        转发这封邮件
-                      </h3>
+                    <form onSubmit={send} className="bg-primary-50 rounded-lg p-4 space-y-3">
+                      <h3 className="font-semibold text-gray-900">转发这封邮件</h3>
                       <label className="block text-sm text-gray-700">
                         目标邮箱
                         <input
@@ -584,7 +537,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                           autoComplete="off"
                           placeholder="每次输入本次转发目标"
                           className="input w-full mt-1"
-                          onChange={(event) => {
+                          onChange={event => {
                             setRecipient(event.target.value);
                             requestKey.current = null;
                           }}
@@ -598,7 +551,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                           rows={2}
                           disabled={sending}
                           className="input w-full mt-1"
-                          onChange={(event) => {
+                          onChange={event => {
                             setNote(event.target.value);
                             requestKey.current = null;
                           }}
@@ -617,7 +570,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                         ) : (
                           <Send className="w-4 h-4" />
                         )}
-                        {sending ? "提交中…" : "转发邮件"}
+                        {sending ? '提交中…' : '转发邮件'}
                       </button>
                     </form>
                   )}
@@ -625,9 +578,7 @@ export default function OrderMailDrawer({ order, onClose }) {
               )}
               {!!history.length && (
                 <div>
-                  <h3 className="font-medium text-gray-900 mb-2">
-                    转发记录（最近50条）
-                  </h3>
+                  <h3 className="font-medium text-gray-900 mb-2">转发记录（最近50条）</h3>
                   <div className="overflow-x-auto border rounded-lg">
                     <table className="w-full text-sm text-left">
                       <thead className="bg-gray-50 text-gray-600">
@@ -639,7 +590,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {history.map((item) => (
+                        {history.map(item => (
                           <tr key={item.id} className="border-t">
                             <td className="p-2 break-all">{item.recipient}</td>
                             <td className="p-2">{item.actorUserId}</td>
@@ -666,7 +617,7 @@ export default function OrderMailDrawer({ order, onClose }) {
             <>
               <div className="flex flex-wrap justify-between items-center gap-2">
                 <p className="text-sm text-gray-600">
-                  {list ? SYNC_LABELS[list.sync.status] : "正在读取同步状态"}
+                  {list ? SYNC_LABELS[list.sync.status] : '正在读取同步状态'}
                   {list?.sync.lastSucceededAt && (
                     <span className="block text-xs text-gray-500">
                       最近同步：{formatOrderTime(list.sync.lastSucceededAt)}
@@ -676,11 +627,9 @@ export default function OrderMailDrawer({ order, onClose }) {
                 <button
                   className="btn btn-secondary inline-flex items-center gap-1"
                   disabled={loading}
-                  onClick={() => setReload((value) => value + 1)}
+                  onClick={() => setReload(value => value + 1)}
                 >
-                  <RefreshCw
-                    className={"w-4 h-4 " + (loading ? "animate-spin" : "")}
-                  />
+                  <RefreshCw className={'w-4 h-4 ' + (loading ? 'animate-spin' : '')} />
                   刷新列表
                 </button>
               </div>
@@ -709,13 +658,10 @@ export default function OrderMailDrawer({ order, onClose }) {
                         </tr>
                       </thead>
                       <tbody>
-                        {list.items.map((item) => (
-                          <tr
-                            key={item.id}
-                            className="border-t hover:bg-gray-50"
-                          >
+                        {list.items.map(item => (
+                          <tr key={item.id} className="border-t hover:bg-gray-50">
                             <td className="p-3 min-w-40 break-words">
-                              {item.subject || "邮件内容已过期"}
+                              {item.subject || '邮件内容已过期'}
                               <span className="block text-xs text-gray-500 break-all">
                                 {item.to}
                               </span>
@@ -724,9 +670,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                               </span>
                             </td>
                             <td className="p-3 whitespace-nowrap">
-                              <span className="block">
-                                发信 {formatOrderTime(item.date)}
-                              </span>
+                              <span className="block">发信 {formatOrderTime(item.date)}</span>
                               <span className="block text-xs text-gray-500">
                                 收信 {formatOrderTime(item.receivedAt)}
                               </span>
@@ -735,31 +679,27 @@ export default function OrderMailDrawer({ order, onClose }) {
                               {item.lifecycle ? (
                                 <div>
                                   <p>
-                                    {TEMPLATE_LABELS[
-                                      item.lifecycle.templateType
-                                    ] || "未知模板"}
+                                    {TEMPLATE_LABELS[item.lifecycle.templateType] || '未知模板'}
                                   </p>
                                   <p className="text-xs text-gray-500">
                                     {item.lifecycle.needsReview
-                                      ? "待核对"
+                                      ? '待核对'
                                       : item.lifecycle.appliedAt
-                                        ? "已应用"
-                                        : "已解析"}
+                                        ? '已应用'
+                                        : '已解析'}
                                   </p>
                                 </div>
                               ) : (
                                 <span className="text-gray-400">等待解析</span>
                               )}
                             </td>
-                            <td className="p-3">
-                              {item.attachments?.length || 0}
-                            </td>
+                            <td className="p-3">{item.attachments?.length || 0}</td>
                             <td className="p-3">
                               <button
                                 className="btn btn-secondary whitespace-nowrap"
                                 onClick={() => setSelectedId(item.id)}
                               >
-                                {item.expired ? "查看记录" : "查看邮件"}
+                                {item.expired ? '查看记录' : '查看邮件'}
                               </button>
                             </td>
                           </tr>
@@ -774,7 +714,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                   <button
                     className="btn btn-secondary"
                     disabled={page === 1 || loading}
-                    onClick={() => setPage((value) => value - 1)}
+                    onClick={() => setPage(value => value - 1)}
                   >
                     上一页
                   </button>
@@ -784,7 +724,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                   <button
                     className="btn btn-secondary"
                     disabled={page * 20 >= list.total || loading}
-                    onClick={() => setPage((value) => value + 1)}
+                    onClick={() => setPage(value => value + 1)}
                   >
                     下一页
                   </button>
@@ -795,6 +735,6 @@ export default function OrderMailDrawer({ order, onClose }) {
         </div>
       </section>
     </div>,
-    document.body,
+    document.body
   );
 }

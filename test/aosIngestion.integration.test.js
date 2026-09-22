@@ -17,7 +17,6 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     AosRecord,
     Order,
     OrderSource,
-    OrderRefreshJob,
     PaymentTask,
     PickupStore,
     Recipient,
@@ -114,11 +113,6 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     expect(order.appleId).toBe('account@example.com');
     expect(order.sourceContactEmail).toBe('contact@example.com');
     expect(order.recipientRef).toBeNull();
-    expect(await OrderRefreshJob.count({ where: { orderId: order.id } })).toBe(1);
-    expect((await OrderRefreshJob.findOne({ where: { orderId: order.id } })).trigger).toBe(
-      'initial'
-    );
-    expect((await models.OrderRefreshSchedule.findByPk(order.id)).nextAutoRefreshAt).toBeNull();
     expect(await PaymentTask.count({ where: { orderId: order.id } })).toBe(1);
   });
   test.each(require('../src/utils/paymentMethod').PAYMENT_METHODS)(
@@ -220,7 +214,7 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     expect(duplicate.orderId).toBe(original.orderId);
     expect((await Order.findByPk(original.orderId)).sourceRecipientTag).toBe('测试 TAG');
     expect(await OrderSource.count({ where: { orderId: original.orderId } })).toBe(2);
-    expect(await OrderRefreshJob.count({ where: { orderId: original.orderId } })).toBe(1);
+    expect(await PaymentTask.count({ where: { orderId: original.orderId } })).toBe(1);
   });
   test('混合坏行可靠接收，格式错误不阻塞有效订单', async () => {
     const valid = event();
@@ -553,7 +547,6 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     await aos.processQueue();
     row = await AosRecord.findByPk(row.id);
     expect(row.status).toBe('succeeded');
-    expect(await OrderRefreshJob.count({ where: { orderId: row.orderId } })).toBe(1);
     expect(await PaymentTask.count({ where: { orderId: row.orderId } })).toBe(1);
   });
 

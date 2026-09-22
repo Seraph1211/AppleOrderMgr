@@ -59,12 +59,12 @@ function decodePaymentQr(value) {
 /** 返回发送前应跳过／失败的原因。 @param {Object} order 订单 @param {Date} now 当前时间 @returns {string|null} 原因 */
 function orderBlockReason(order, now) {
   if (!order) return 'ORDER_MISSING';
-  if (isAssignmentBlocked(order)) return 'ORDER_TERMINAL';
+  if (isAssignmentBlocked(order, true, now)) return 'ORDER_TERMINAL';
   const deadline = getPaymentDeadline(order);
   if (!deadline) return 'DEADLINE_MISSING';
   return +deadline <= +now ? 'ORDER_EXPIRED' : null;
 }
-/** 格式与付款复制一致，仅在 ID 后插入 TAG。 @param {Object} order 订单 @param {string} url 链接 @returns {string} 文本 */
+/** 在付款复制格式中插入 TAG，含“代抢”时追加取机人姓名。 @param {Object} order 订单 @param {string} url 链接 @returns {string} 文本 */
 function buildNotificationText(order, url) {
   const grouped = new Map();
   for (const product of Array.isArray(order.products) ? order.products : []) {
@@ -95,7 +95,8 @@ function buildNotificationText(order, url) {
   const time = parts
     ? `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`
     : '-';
-  return `${order.id} || ${tag} || ${products} || ${paymentMethod} || ${time} || ${url}`;
+  const recipientPart = tag.includes('代抢') ? ` || ${clean(order.recipientName) || '-'}` : '';
+  return `${order.id} || ${tag}${recipientPart} || ${products} || ${paymentMethod} || ${time} || ${url}`;
 }
 module.exports = {
   isWechat,

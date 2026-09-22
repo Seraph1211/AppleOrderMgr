@@ -48,7 +48,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
             username: '合成验收',
             permissions: [
               'orders.read',
-              ...(allowRefresh ? ['orders.refresh'] : []),
+              ...(allowRefresh ? ['orders.edit'] : []),
               'payment_tasks.read_own',
               'payment_dispatch.read',
               'recipients.read',

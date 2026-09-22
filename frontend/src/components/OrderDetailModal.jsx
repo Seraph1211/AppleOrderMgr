@@ -1,162 +1,88 @@
+import AlertModal from './AlertModal';
 import OrderAmount from './OrderAmount';
 import OrderSources from './OrderSources';
-import { formatOrderTime } from '../utils/orderTime';
-import { useState, useEffect } from 'react';
-import { X, Upload, Save, ExternalLink, AlertTriangle, RefreshCw } from 'lucide-react';
-import { updateOrder, updateOrderPayer, refreshOrder } from '../api/ordersApi';
-import { useAuth } from '../contexts/AuthContext';
+import { updateOrder, updateOrderPayer } from '../api/ordersApi';
+import { getEmailOrderStatusBadge } from '../constants/orderStatus';
 import { PERMISSIONS } from '../constants/permissions';
-import OfficialOrderSummary from './OfficialOrderSummary';
-import {
-  getEmailOrderStatusBadge,
-  ORDER_STATUS_BADGES,
-  PICKUP_STATUS_LABELS,
-} from '../constants/orderStatus';
-import AlertModal from './AlertModal';
+import { useAuth } from '../contexts/AuthContext';
+import { formatOrderTime } from '../utils/orderTime';
+import { ExternalLink, Save, Upload, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 
-/**
- * 订单详情弹窗组件
- * 功能：展示订单完整信息，支持编辑付款人和上传付款截图（最多9张）
- */
+function readScreenshots(order) {
+  const value = order.paymentScreenshots || order.paymentScreenshot;
+  if (Array.isArray(value)) return value.filter(Boolean);
+  return typeof value === 'string' && value !== '-' ? [value] : [];
+}
+
+function formatPickup(pickup) {
+  if (!pickup) return '尚无邮件取货信息';
+  if (pickup.appointmentMode === 'business_hours') return '营业时间内到店';
+  const range = [pickup.startTime, pickup.endTime].filter(Boolean).join('–');
+  return [pickup.pickupDate, range].filter(Boolean).join(' ') || '时间待确认';
+}
+
+/** 展示订单邮件状态与来源数据，并支持既有付款信息维护。 */
 export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
   const { can } = useAuth();
-  const [formData, setFormData] = useState({
-    payerName: '',
-    paymentScreenshots: [], // 改为数组，支持多张图片
-  });
+  const [formData, setFormData] = useState({ payerName: '', paymentScreenshots: [] });
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const [alertInfo, setAlertInfo] = useState(null);
 
   useEffect(() => {
-    if (order) {
-      // 解析 paymentScreenshot 字段（现在是 JSONB 数组）
-      let screenshots = [];
-
-      // 优先使用 paymentScreenshots 数组（前端保存的）
-      if (order.paymentScreenshots && Array.isArray(order.paymentScreenshots)) {
-        screenshots = order.paymentScreenshots;
-      }
-      // 否则从 paymentScreenshot 字段解析（后端返回的）
-      else if (order.paymentScreenshot) {
-        // 如果是数组，直接使用
-        if (Array.isArray(order.paymentScreenshot)) {
-          screenshots = order.paymentScreenshot.filter(
-            url =>
-              url &&
-              url !== '-' &&
-              (url.startsWith('http://') ||
-                url.startsWith('https://') ||
-                url.startsWith('data:image/'))
-          );
-        }
-        // 如果是字符串（旧数据），转为数组
-        else if (typeof order.paymentScreenshot === 'string' && order.paymentScreenshot !== '-') {
-          if (
-            order.paymentScreenshot.startsWith('http://') ||
-            order.paymentScreenshot.startsWith('https://') ||
-            order.paymentScreenshot.startsWith('data:image/')
-          ) {
-            screenshots = [order.paymentScreenshot];
-          }
-        }
-      }
-
-      setFormData({
-        payerName: order.payerName || '',
-        paymentScreenshots: screenshots,
-      });
-    }
+    if (!order) return;
+    setFormData({
+      payerName: order.payerName || '',
+      paymentScreenshots: readScreenshots(order),
+    });
   }, [order]);
 
   if (!isOpen || !order) return null;
 
-  const handleFileUpload = async e => {
-    const files = Array.from(e.target.files);
-    if (files.length === 0) return;
-
-    // 检查是否超过最大数量（9张）
-    const currentCount = formData.paymentScreenshots.length;
-    const remainingSlots = 9 - currentCount;
-
-    if (files.length > remainingSlots) {
-      setAlertInfo({
-        title: '上传数量超限',
-        message: `最多只能上传 9 张截图，当前已有 ${currentCount} 张，还可上传 ${remainingSlots} 张`,
-      });
+  const handleFileUpload = async event => {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    const remaining = 9 - formData.paymentScreenshots.length;
+    if (files.length > remaining) {
+      setAlertInfo({ title: '上传数量超限', message: `最多可再上传 ${remaining} 张图片` });
       return;
     }
-
-    // 验证所有文件
-    for (const file of files) {
-      if (!file.type.startsWith('image/')) {
-        setAlertInfo({ title: '文件类型错误', message: '请上传图片文件' });
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        setAlertInfo({ title: '文件过大', message: '图片大小不能超过 5MB' });
-        return;
-      }
+    if (files.some(file => !file.type.startsWith('image/') || file.size > 5 * 1024 * 1024)) {
+      setAlertInfo({ title: '图片不符合要求', message: '请上传 5MB 以内的图片文件' });
+      return;
     }
-
     setUploading(true);
     try {
-      // TODO: 实现文件上传到服务器
-      // const uploadPromises = files.map(file => {
-      //   const formData = new FormData()
-      //   formData.append('file', file)
-      //   return uploadFile(formData)
-      // })
-      // const responses = await Promise.all(uploadPromises)
-      // const imageUrls = responses.map(r => r.url)
-
-      // 临时使用本地预览
-      const readFilePromises = files.map(file => {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = e => {
-            resolve(e.target.result);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(file);
-        });
-      });
-
-      const imageDataUrls = await Promise.all(readFilePromises);
-      setFormData(prev => {
-        const newScreenshots = [...prev.paymentScreenshots, ...imageDataUrls];
-        return {
-          ...prev,
-          paymentScreenshots: newScreenshots,
-        };
-      });
-      setUploading(false);
-    } catch (error) {
-      setAlertInfo({ title: '上传失败', message: '上传失败，请重试' });
+      const images = await Promise.all(
+        files.map(
+          file =>
+            new Promise((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = loadEvent => resolve(loadEvent.target.result);
+              reader.onerror = reject;
+              reader.readAsDataURL(file);
+            })
+        )
+      );
+      setFormData(previous => ({
+        ...previous,
+        paymentScreenshots: [...previous.paymentScreenshots, ...images],
+      }));
+    } catch (_error) {
+      setAlertInfo({ title: '上传失败', message: '图片读取失败，请重试' });
+    } finally {
       setUploading(false);
     }
-
-    // 重置 input，允许重复上传相同文件
-    e.target.value = '';
-  };
-
-  const handleRemoveScreenshot = index => {
-    setFormData(prev => ({
-      ...prev,
-      paymentScreenshots: prev.paymentScreenshots.filter((_, i) => i !== index),
-    }));
   };
 
   const handleSave = async () => {
     setSaving(true);
     try {
       if (can(PERMISSIONS.ORDERS_EDIT)) {
-        await updateOrder(order.id, {
-          paymentScreenshot: formData.paymentScreenshots,
-        });
+        await updateOrder(order.id, { paymentScreenshot: formData.paymentScreenshots });
       }
-
       let payerVersion = order.payerVersion || 0;
       const payerName = formData.payerName.trim();
       if (can(PERMISSIONS.ORDERS_PAYER_EDIT) && payerName !== (order.payerName || '')) {
@@ -167,500 +93,233 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
         );
         payerVersion = response.data.payerVersion;
       }
-
-      // 更新订单数据
-      const updatedOrder = {
+      onUpdate?.({
         ...order,
-        paymentScreenshot: formData.paymentScreenshots, // 保存为数组
-        paymentScreenshots: formData.paymentScreenshots, // 前端兼容字段
+        paymentScreenshot: formData.paymentScreenshots,
+        paymentScreenshots: formData.paymentScreenshots,
         payerName: payerName || null,
         payerVersion,
-        updatedAt: new Date().toISOString(),
-      };
-
+      });
       setAlertInfo({ title: '保存成功', message: '付款信息已保存' });
-      onUpdate && onUpdate(updatedOrder);
-      setSaving(false);
     } catch (error) {
-      setAlertInfo({
-        title: '保存失败',
-        message: `保存失败：${error.message || '请重试'}`,
-      });
-      setSaving(false);
-    }
-  };
-
-  const handleManualRefresh = async () => {
-    setRefreshing(true);
-    try {
-      const response = await refreshOrder(order.id);
-      if (response.success) {
-        const updatedOrder = {
-          ...order,
-          freshnessStatus: response.data.status === 'running' ? 'refreshing' : 'pending',
-          refreshJob: {
-            id: response.data.jobId,
-            status: response.data.status,
-          },
-        };
-        onUpdate && onUpdate(updatedOrder);
-        setAlertInfo({
-          title: '任务已提交',
-          message: '订单将在后台刷新，请稍后重新加载查看结果',
-        });
-      }
-    } catch (error) {
-      setAlertInfo({
-        title: '刷新失败',
-        message: error.message || '订单刷新失败，请稍后重试',
-      });
+      setAlertInfo({ title: '保存失败', message: error.message || '请重试' });
     } finally {
-      setRefreshing(false);
+      setSaving(false);
     }
   };
 
-  const getStatusBadge = status => {
-    return ORDER_STATUS_BADGES[status] || ORDER_STATUS_BADGES.unknown;
-  };
-
-  const badge = getStatusBadge(order.status);
-  const emailStatusBadge = getEmailOrderStatusBadge(order.emailOrderStatus);
-  const validationIssues = order.validationIssues || [];
-  const officialProducts = order.officialProducts || [];
-  const comparisonRows = (order.products || []).map(product => {
-    const normalizedName = String(product.name || '')
-      .replace(/\s+/g, '')
-      .toLowerCase();
-    const official = officialProducts.find(item => {
-      const officialName = String(item.name || '')
-        .replace(/\s+/g, '')
-        .toLowerCase();
-      return (
-        officialName &&
-        normalizedName &&
-        (officialName.includes(normalizedName) || normalizedName.includes(officialName))
-      );
-    });
-    const emailQuantity = Number(product.quantity || 0);
-    const officialQuantity = official ? Number(official.quantity || 0) : null;
-    return {
-      model: product.model || product.modelId || official?.model || '-',
-      name: product.name || official?.name || '-',
-      emailQuantity,
-      officialQuantity,
-      result: official && emailQuantity === officialQuantity ? 'valid' : 'abnormal',
-    };
-  });
+  const statusBadge = getEmailOrderStatusBadge(order.emailOrderStatus);
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
-        {/* 弹窗头部 */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
+        <div className="flex items-center justify-between border-b border-gray-200 p-6">
           <div>
             <h2 className="text-2xl font-bold">订单详情</h2>
-            <p className="text-gray-600 mt-1 font-mono">{order.orderNumber}</p>
-            <p className="mt-1 text-sm text-gray-500">
-              创建来源：
-              {order.ingestionSource === 'aos'
-                ? 'AOS 文件'
-                : order.ingestionSource === 'email'
-                  ? '邮件'
-                  : '未知'}
-            </p>
+            <p className="mt-1 font-mono text-gray-600">{order.orderNumber}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-            <X className="w-6 h-6" />
+          <button
+            onClick={onClose}
+            aria-label="关闭订单详情"
+            className="text-gray-400 hover:text-gray-600"
+          >
+            <X className="h-6 w-6" />
           </button>
         </div>
 
-        {/* 弹窗内容 */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="space-y-6">
-            {order.ingestionSource === 'aos' && (
-              <div className="rounded border border-blue-100 bg-blue-50 p-3 text-sm">
-                来源 TAG：{order.sourceRecipientTag || '—'}
-                {order.recipientTagConflict && (
-                  <p className="text-amber-700">
-                    档案 TAG：{order.recipientProfileTag}（存在差异）
-                  </p>
-                )}
-                {!order.recipientLinked && <p className="text-amber-700">取机人待关联</p>}
+        <div className="flex-1 space-y-6 overflow-y-auto p-6">
+          <OrderSources orderId={order.id} />
+          <div className="card border-blue-100 bg-blue-50/40">
+            <h3 className="mb-4 text-lg font-semibold">官方订单邮件状态</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <p className="text-sm text-gray-600">订单状态</p>
+                <span className={`badge mt-1 ${statusBadge.class}`}>{statusBadge.text}</span>
               </div>
-            )}
-            <OrderSources orderId={order.id} />
-            {order.validationStatus === 'abnormal' && (
-              <div className="border border-red-200 bg-red-50 rounded-lg p-4 flex gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5" />
-                <div>
-                  <p className="text-sm font-medium text-red-700">异常订单</p>
-                  <p className="text-sm text-red-600 mt-1">
-                    {validationIssues[0]?.message ||
-                      order.autoRefreshStopReason ||
-                      '商品校验存在差异'}
-                  </p>
-                  <div className="text-xs text-red-500 mt-2 space-x-4">
-                    <span>
-                      发现时间:{' '}
-                      {order.anomalyDetectedAt
-                        ? new Date(order.anomalyDetectedAt).toLocaleString('zh-CN')
-                        : '-'}
-                    </span>
-                    <span>
-                      最后爬取:{' '}
-                      {order.lastCrawledAt !== '-'
-                        ? new Date(order.lastCrawledAt).toLocaleString('zh-CN')
-                        : '-'}
-                    </span>
-                  </div>
-                </div>
+              <div>
+                <p className="text-sm text-gray-600">邮件证据时间</p>
+                <p className="mt-1 text-sm">{formatOrderTime(order.emailStatusEvidenceAt)}</p>
               </div>
+              <div>
+                <p className="text-sm text-gray-600">邮件状态更新时间</p>
+                <p className="mt-1 text-sm">{formatOrderTime(order.emailLifecycleUpdatedAt)}</p>
+              </div>
+            </div>
+            {order.emailStatusNeedsReview && (
+              <p className="mt-3 text-sm text-amber-700">
+                邮件结论待核对
+                {order.emailStatusReviewReasons?.length
+                  ? `：${order.emailStatusReviewReasons.join('、')}`
+                  : ''}
+              </p>
             )}
+            {order.paymentAssignmentHoldReason && (
+              <p className="mt-3 text-sm text-amber-700">历史付款限制：禁止重新分配付款任务</p>
+            )}
+            <div className="mt-4 border-t border-blue-100 pt-4 text-sm">
+              <p className="font-medium">{order.emailPickupInfo?.storeName || '门店待确认'}</p>
+              <p>{order.emailPickupInfo?.storeAddress || ''}</p>
+              <p className="mt-1">{formatPickup(order.emailPickupInfo)}</p>
+            </div>
+          </div>
 
-            <div className="card border-blue-100 bg-blue-50/40">
-              <h3 className="text-lg font-semibold mb-4">官方订单邮件状态</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="text-sm text-gray-600">订单状态</label>
-                  <p className="mt-1">
-                    <span className={`badge ${emailStatusBadge.class}`}>
-                      {emailStatusBadge.text}
-                    </span>
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">邮件证据时间</label>
-                  <p className="mt-1 text-sm text-gray-900">
-                    {order.emailStatusEvidenceAt
-                      ? formatOrderTime(order.emailStatusEvidenceAt)
-                      : '-'}
-                  </p>
-                </div>
+          <div className="card">
+            <h3 className="mb-4 text-lg font-semibold">基本信息</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <p className="text-sm text-gray-600">下单时间</p>
+                <p className="mt-1 text-sm">{formatOrderTime(order.orderDate)}</p>
               </div>
-              {order.emailStatusNeedsReview && (
-                <p className="mt-3 text-sm text-amber-700">
-                  邮件结论待核对，请查看邮件时间线。
-                  {!!order.emailStatusReviewReasons?.length && (
-                    <span className="block text-xs break-all">
-                      {order.emailStatusReviewReasons.join('、')}
-                    </span>
-                  )}
+              <div>
+                <p className="text-sm text-gray-600">Apple ID</p>
+                <p className="mt-1 break-all text-sm">{order.appleId}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">订单来源</p>
+                <p className="mt-1 text-sm">
+                  {order.ingestionSource === 'aos'
+                    ? 'AOS 文件'
+                    : order.ingestionSource === 'email'
+                      ? '邮件'
+                      : '未知'}
                 </p>
-              )}
-              {order.emailPickupInfo && (
-                <div className="mt-4 border-t border-blue-100 pt-4 text-sm text-gray-700">
-                  <p className="font-medium text-gray-900">
-                    {order.emailPickupInfo.storeName || '门店待确认'}
-                  </p>
-                  <p>{order.emailPickupInfo.storeAddress || ''}</p>
-                  <p className="mt-1">
-                    {order.emailPickupInfo.appointmentMode === 'business_hours'
-                      ? '营业时间内到店'
-                      : [
-                          order.emailPickupInfo.pickupDate,
-                          [order.emailPickupInfo.startTime, order.emailPickupInfo.endTime]
-                            .filter(Boolean)
-                            .join('–'),
-                        ]
-                          .filter(Boolean)
-                          .join(' ') || '时间待确认'}
-                  </p>
-                </div>
-              )}
-            </div>
-            <OfficialOrderSummary order={order} />
-            {/* 订单基本信息 */}
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">基本信息</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-gray-600">官网订单状态</label>
-                  <div className="mt-1">
-                    <span className={`badge ${badge.class}`}>{badge.text}</span>
-                  </div>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">取货状态</label>
-                  <p className="text-sm text-gray-900 mt-1">
-                    {PICKUP_STATUS_LABELS[order.pickupStatus] || '-'}
-                  </p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">下单时间（北京时间，来源记录）</label>
-                  <p className="text-sm text-gray-900 mt-1">{formatOrderTime(order.orderDate)}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">Apple ID</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.appleId}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">订单链接</label>
-                  {order.orderUrl !== '-' ? (
-                    <a
-                      href={order.orderUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-primary hover:underline text-sm flex items-center gap-1 mt-1"
-                    >
-                      查看订单 <ExternalLink className="w-3 h-3" />
-                    </a>
-                  ) : (
-                    <p className="text-sm text-gray-400 mt-1">-</p>
-                  )}
-                </div>
               </div>
-            </div>
-
-            {/* 商品信息 */}
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">当前商品（来源冲突见官网核对）</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-gray-200 bg-gray-50">
-                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                        型号
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                        名称
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                        当前有效数量
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                        官网数量
-                      </th>
-                      <th className="text-left py-3 px-4 text-sm font-medium text-gray-500">
-                        校验结果
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white">
-                    {comparisonRows.length > 0 ? (
-                      comparisonRows.map((row, index) => (
-                        <tr key={index} className="border-b border-gray-200">
-                          <td className="py-3 px-4 text-sm text-gray-600 font-mono">{row.model}</td>
-                          <td className="py-3 px-4 text-sm text-gray-900">{row.name}</td>
-                          <td className="py-3 px-4 text-sm text-gray-600">{row.emailQuantity}</td>
-                          <td className="py-3 px-4 text-sm text-gray-600">
-                            {row.officialQuantity ?? '-'}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span
-                              className={`badge ${row.result === 'valid' ? 'badge-success' : 'badge-error'}`}
-                            >
-                              {row.result === 'valid' ? '正常' : '异常'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))
-                    ) : (
-                      <tr>
-                        <td colSpan="5" className="py-6 px-4 text-sm text-gray-400 text-center">
-                          暂无商品信息
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* 取机人信息 */}
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">取机人信息</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-gray-600">姓名</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.recipientName}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">下单手机号</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.recipientPhone}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">下单邮箱</label>
-                  <p className="text-sm text-gray-900 mt-1 break-all">{order.recipientEmail}</p>
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm text-gray-600">收件地址</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.recipientAddress || '-'}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* 取货信息 */}
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">取货信息</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-gray-600">取货门店</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.pickupStore}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">取货码</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.pickupCode || '-'}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">预约取货日期</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.officialPickupDate || '-'}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">预约取货时间段</label>
-                  <p className="text-sm text-gray-900 mt-1">
-                    {order.officialPickupTimeSlot || '-'}
-                  </p>
-                </div>
-                {order.actualPickupDate !== '-' && (
-                  <div>
-                    <label className="text-sm text-gray-600">实际取货日期（业务记录）</label>
-                    <p className="text-sm text-gray-900 mt-1">
-                      {new Date(order.actualPickupDate).toLocaleDateString('zh-CN')}
-                    </p>
-                  </div>
+              <div>
+                <p className="text-sm text-gray-600">订单链接</p>
+                {order.orderUrl !== '-' ? (
+                  <a
+                    href={order.orderUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                  >
+                    查看订单 <ExternalLink className="h-3 w-3" />
+                  </a>
+                ) : (
+                  <p className="mt-1 text-sm text-gray-400">-</p>
                 )}
               </div>
             </div>
+          </div>
 
-            {/* 付款信息（可编辑） */}
-            <div className="card border-2 border-blue-200 bg-blue-50">
-              <h3 className="text-lg font-semibold mb-4">付款信息</h3>
-              <div className="space-y-4">
-                <div>
-                  <label className="text-sm text-gray-600">付款方式</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.paymentMethod}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">订单金额</label>
-                  <OrderAmount amount={order.orderAmount} />
-                </div>
-                <div>
-                  <label className="text-sm text-gray-700 font-medium">付款人</label>
-                  {can(PERMISSIONS.ORDERS_PAYER_EDIT) ? (
-                    <input
-                      type="text"
-                      maxLength="100"
-                      placeholder="输入实际付款人姓名"
-                      value={formData.payerName}
-                      onChange={event =>
-                        setFormData(previous => ({
-                          ...previous,
-                          payerName: event.target.value,
-                        }))
-                      }
-                      className="input mt-1"
-                    />
-                  ) : (
-                    <p className="text-sm text-gray-900 mt-1">{order.payerName || '-'}</p>
-                  )}
-                </div>
-                <div>
-                  <label className="text-sm text-gray-700 font-medium">
-                    付款截图 ({formData.paymentScreenshots.length}/9)
-                  </label>
-                  <div className="mt-2 space-y-3">
-                    {/* 图片网格展示 */}
-                    {formData.paymentScreenshots.length > 0 && (
-                      <div className="grid grid-cols-3 gap-3">
-                        {formData.paymentScreenshots.map((screenshot, index) => (
-                          <div key={index} className="relative group">
-                            <img
-                              src={screenshot}
-                              alt={`付款截图 ${index + 1}`}
-                              className="w-full h-32 object-cover rounded-lg border border-gray-300 shadow-sm cursor-pointer hover:opacity-90 transition-opacity"
-                              onClick={() => window.open(screenshot, '_blank')}
-                            />
-                            {can(PERMISSIONS.ORDERS_EDIT) && (
-                              <button
-                                type="button"
-                                onClick={() => handleRemoveScreenshot(index)}
-                                className="absolute top-1 right-1 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity"
-                              >
-                                <X className="w-3 h-3" />
-                              </button>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* 上传按钮 */}
-                    {can(PERMISSIONS.ORDERS_EDIT) && formData.paymentScreenshots.length < 9 && (
-                      <div>
-                        <label className="btn btn-secondary cursor-pointer inline-flex items-center space-x-2">
-                          <Upload className="w-4 h-4" />
-                          <span>
-                            {uploading
-                              ? '上传中...'
-                              : formData.paymentScreenshots.length === 0
-                                ? '上传截图'
-                                : '继续上传'}
-                          </span>
-                          <input
-                            type="file"
-                            accept="image/*"
-                            multiple
-                            onChange={handleFileUpload}
-                            className="hidden"
-                            disabled={uploading}
-                          />
-                        </label>
-                        <p className="text-xs text-gray-500 mt-1">
-                          支持 JPG、PNG 格式，单张大小不超过 5MB，最多上传 9 张
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+          <div className="card overflow-hidden p-0">
+            <div className="border-b border-gray-200 px-5 py-4">
+              <h3 className="text-lg font-semibold">商品信息</h3>
             </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-4 py-3 text-left text-sm text-gray-500">型号</th>
+                    <th className="px-4 py-3 text-left text-sm text-gray-500">名称</th>
+                    <th className="px-4 py-3 text-right text-sm text-gray-500">数量</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(order.products || []).map((product, index) => (
+                    <tr
+                      key={`${product.model || product.name}-${index}`}
+                      className="border-t border-gray-100"
+                    >
+                      <td className="px-4 py-3 font-mono text-sm">
+                        {product.model || product.modelId || '-'}
+                      </td>
+                      <td className="px-4 py-3 text-sm">{product.name || '-'}</td>
+                      <td className="px-4 py-3 text-right text-sm">{product.quantity ?? '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-            {/* 其他信息 */}
-            <div className="card">
-              <h3 className="text-lg font-semibold mb-4">其他信息</h3>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm text-gray-600">标签</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.tag || '-'}</p>
-                </div>
-                <div>
-                  <label className="text-sm text-gray-600">创建时间</label>
-                  <p className="text-sm text-gray-900 mt-1">
-                    {order.createdAt ? new Date(order.createdAt).toLocaleString('zh-CN') : '-'}
-                  </p>
-                </div>
-                <div className="col-span-2">
-                  <label className="text-sm text-gray-600">备注</label>
-                  <p className="text-sm text-gray-900 mt-1">{order.notes || '-'}</p>
+          <div className="card border-2 border-blue-200 bg-blue-50">
+            <h3 className="mb-4 text-lg font-semibold">付款信息</h3>
+            <div className="space-y-4">
+              <div>
+                <p className="text-sm text-gray-600">付款方式</p>
+                <p className="mt-1 text-sm">{order.paymentMethod}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">订单金额</p>
+                <OrderAmount amount={order.orderAmount} />
+              </div>
+              <label className="block text-sm font-medium text-gray-700">
+                付款人
+                {can(PERMISSIONS.ORDERS_PAYER_EDIT) ? (
+                  <input
+                    className="input mt-1"
+                    maxLength="100"
+                    value={formData.payerName}
+                    onChange={event =>
+                      setFormData(previous => ({ ...previous, payerName: event.target.value }))
+                    }
+                  />
+                ) : (
+                  <p className="mt-1 font-normal">{order.payerName || '-'}</p>
+                )}
+              </label>
+              <div>
+                <p className="mb-2 text-sm font-medium text-gray-700">
+                  付款截图 ({formData.paymentScreenshots.length}/9)
+                </p>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  {formData.paymentScreenshots.map((src, index) => (
+                    <div key={`${src.slice(0, 32)}-${index}`} className="relative">
+                      <img
+                        src={src}
+                        alt={`付款截图 ${index + 1}`}
+                        className="h-32 w-full rounded border border-gray-200 object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setFormData(previous => ({
+                            ...previous,
+                            paymentScreenshots: previous.paymentScreenshots.filter(
+                              (_, itemIndex) => itemIndex !== index
+                            ),
+                          }))
+                        }
+                        className="absolute right-1 top-1 rounded bg-white/90 p-1 text-red-600"
+                        aria-label={`删除付款截图 ${index + 1}`}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
               </div>
+              {can(PERMISSIONS.ORDERS_EDIT) && formData.paymentScreenshots.length < 9 && (
+                <label className="btn btn-secondary inline-flex cursor-pointer items-center gap-2">
+                  <Upload className="h-4 w-4" />
+                  {uploading ? '读取中...' : '添加付款截图'}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    className="hidden"
+                    disabled={uploading}
+                    onChange={handleFileUpload}
+                  />
+                </label>
+              )}
             </div>
           </div>
         </div>
 
-        {/* 弹窗底部 */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 bg-gray-50">
-          <button onClick={onClose} className="btn btn-secondary" disabled={saving}>
-            取消
+        <div className="flex justify-end gap-3 border-t border-gray-200 p-6">
+          <button onClick={onClose} className="btn btn-secondary">
+            关闭
           </button>
-          {can(PERMISSIONS.ORDERS_REFRESH) && (
-            <button
-              onClick={handleManualRefresh}
-              className="btn btn-secondary flex items-center space-x-2"
-              disabled={saving || refreshing}
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-              <span>{refreshing ? '刷新中...' : '手动刷新'}</span>
-            </button>
-          )}
           {(can(PERMISSIONS.ORDERS_EDIT) || can(PERMISSIONS.ORDERS_PAYER_EDIT)) && (
             <button
               onClick={handleSave}
-              className="btn btn-primary flex items-center space-x-2"
-              disabled={saving}
+              disabled={saving || uploading}
+              className="btn btn-primary inline-flex items-center gap-2"
             >
-              <Save className="w-4 h-4" />
-              <span>{saving ? '保存中...' : '保存修改'}</span>
+              <Save className="h-4 w-4" />
+              {saving ? '保存中...' : '保存付款信息'}
             </button>
           )}
         </div>

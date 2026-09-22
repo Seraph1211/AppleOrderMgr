@@ -314,59 +314,7 @@ async function getOrderByNumber(orderNumber) {
   }
 }
 
-/**
- * 更新订单状态
- * @param {string} orderNumber - 订单号
- * @param {string} status - 新状态
- * @returns {Promise<boolean>} 是否更新成功
- */
-async function updateOrderStatus(orderNumber, status) {
-  try {
-    const [updatedCount] = await Order.update({ status }, { where: { orderNumber } });
-
-    if (updatedCount > 0) {
-      logger.info('订单状态更新成功', { orderNumber, status });
-      return true;
-    } else {
-      logger.warn('订单不存在', { orderNumber });
-      return false;
-    }
-  } catch (error) {
-    logger.error('更新订单状态失败', {
-      orderNumber,
-      status,
-      error: error.message,
-    });
-    throw error;
-  }
-}
-
-/**
- * 获取待爬取的订单列表
- * @param {number} limit - 限制数量
- * @returns {Promise<Array>} 订单列表
- */
-async function getPendingOrders(limit = 10) {
-  try {
-    const orders = await Order.findAll({
-      where: {
-        status: 'pending',
-        lastCrawledAt: null,
-      },
-      limit,
-      order: [['createdAt', 'ASC']],
-    });
-
-    return orders;
-  } catch (error) {
-    logger.error('获取待爬取订单失败', { error: error.message });
-    throw error;
-  }
-}
-
 module.exports = {
   saveOrderFromEmail,
   getOrderByNumber,
-  updateOrderStatus,
-  getPendingOrders,
 };

@@ -215,12 +215,10 @@ const Dashboard = () => {
               className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white"
             >
               <option value="">全部状态</option>
-              <option value="待处理">待处理</option>
+              <option value="待确认">待确认</option>
+              <option value="已确认">已确认</option>
               <option value="处理中">处理中</option>
-              <option value="已发货">已发货</option>
               <option value="可取货">可取货</option>
-              <option value="已完成">已完成</option>
-              <option value="已取消">已取消</option>
             </select>
           </div>
 
@@ -303,11 +301,11 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* 待取订单 */}
+        {/* 待处理订单 */}
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
           <div className="flex items-start justify-between">
             <div className="flex-1">
-              <p className="text-sm font-medium text-gray-500 mb-2">待取订单</p>
+              <p className="text-sm font-medium text-gray-500 mb-2">待处理订单</p>
               <div className="flex items-baseline gap-3 mb-2">
                 <h3 className="text-3xl font-bold text-gray-900">
                   {formatAmount(stats.pendingOrders)}

@@ -8,11 +8,6 @@
 require('dotenv').config();
 
 const logger = require('./logger');
-const {
-  DEFAULT_PROXY_PROVIDER,
-  SUPPORTED_PROXY_PROVIDERS,
-  isSupportedProxyProvider,
-} = require('../services/crawler/proxy/proxyProvider');
 
 const EMAIL_DOMAIN_PATTERN =
   /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/;
@@ -99,33 +94,6 @@ const config = {
       !process.env.SMTP_USER && !process.env.SMTP_PASSWORD && Boolean(process.env.IMAP_USER),
   },
 
-  // 爬虫配置
-  crawler: {
-    requestDelay: {
-      min: parseInt(process.env.CRAWLER_DELAY_MIN, 10) || 5000,
-      max: parseInt(process.env.CRAWLER_DELAY_MAX, 10) || 10000,
-    },
-    maxRetry: parseInt(process.env.CRAWLER_MAX_RETRY, 10) || 3,
-    timeout: parseInt(process.env.CRAWLER_TIMEOUT, 10) || 30000,
-    taskTimeoutMs: Math.max(
-      1,
-      Math.min(parseInt(process.env.CRAWLER_TASK_TIMEOUT_MS, 10) || 120000, 300000)
-    ),
-    requestsPerSecond: parseInt(process.env.CRAWLER_REQUESTS_PER_SECOND, 10) || 5,
-    workerConcurrency: parseInt(process.env.CRAWLER_WORKER_CONCURRENCY, 10) || 8,
-    schedulerTickMs: parseInt(process.env.CRAWLER_SCHEDULER_TICK_MS, 10) || 5000,
-    jobLeaseMs: parseInt(process.env.CRAWLER_JOB_LEASE_MS, 10) || 300000,
-    scheduleScanLimit: parseInt(process.env.CRAWLER_SCHEDULE_SCAN_LIMIT, 10) || 500,
-    retryDelayMinMs: parseInt(process.env.CRAWLER_RETRY_DELAY_MIN_MS, 10) || 1000,
-    retryDelayMaxMs: parseInt(process.env.CRAWLER_RETRY_DELAY_MAX_MS, 10) || 5000,
-    autoRefreshEnabled: process.env.AUTO_ORDER_REFRESH_ENABLED === 'true',
-    autoRefreshIntervalMs: parseInt(process.env.AUTO_ORDER_REFRESH_INTERVAL_MS, 10) || 300000,
-    windControlPauseThreshold: parseInt(process.env.CRAWLER_WIND_CONTROL_PAUSE_THRESHOLD, 10) || 2,
-    userAgent:
-      process.env.CRAWLER_USER_AGENT ||
-      'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-  },
-
   // Telegram 告警配置（仅从环境变量读取）
   telegram: {
     enabled:
@@ -140,53 +108,6 @@ const config = {
       quietStart: process.env.TELEGRAM_HEARTBEAT_QUIET_START || null,
       quietEnd: process.env.TELEGRAM_HEARTBEAT_QUIET_END || null,
     },
-  },
-
-  // 代理池配置
-  proxy: {
-    enabled: process.env.PROXY_ENABLED === 'true',
-    provider: process.env.PROXY_PROVIDER || DEFAULT_PROXY_PROVIDER,
-    apiUrl: process.env.PROXY_API_URL,
-    apiKey: process.env.PROXY_API_KEY,
-    refreshInterval: parseInt(process.env.PROXY_REFRESH_INTERVAL, 10) || 3600000, // 1小时
-    badProxyTimeout: parseInt(process.env.PROXY_BAD_TIMEOUT, 10) || 3600000, // 1小时
-    maxFailCount: parseInt(process.env.PROXY_MAX_FAIL_COUNT, 10) || 2,
-    tunnel: {
-      host: process.env.KDL_TUNNEL_HOST,
-      backupHost: process.env.KDL_TUNNEL_BACKUP_HOST,
-      port: parseInt(process.env.KDL_TUNNEL_PORT, 10) || null,
-      username: process.env.KDL_TUNNEL_USERNAME,
-      password: process.env.KDL_TUNNEL_PASSWORD,
-      stickyPeriod: process.env.KDL_TUNNEL_STICKY_PERIOD || '0.5',
-      poolType: process.env.KDL_TUNNEL_POOL_TYPE || 'std',
-      poolPriority: process.env.KDL_TUNNEL_POOL_PRIORITY || 'q10',
-    },
-    fanproxyTunnel: {
-      host: process.env.FANPROXY_TUNNEL_HOST,
-      backupHost: process.env.FANPROXY_TUNNEL_BACKUP_HOST,
-      port: parseInt(process.env.FANPROXY_TUNNEL_PORT, 10) || null,
-      account: process.env.FANPROXY_TUNNEL_ACCOUNT,
-      password: process.env.FANPROXY_TUNNEL_PASSWORD,
-      country: process.env.FANPROXY_TUNNEL_COUNTRY || 'CN',
-      region: process.env.FANPROXY_TUNNEL_REGION || null,
-      sessionPoolSize: parseInt(process.env.FANPROXY_TUNNEL_SESSION_POOL_SIZE, 10) || 5,
-      sessionMode: process.env.FANPROXY_TUNNEL_SESSION_MODE || 'sticky_pool',
-      cooldownMs: Math.max(60000, parseInt(process.env.FANPROXY_TUNNEL_COOLDOWN_MS, 10) || 60000),
-    },
-    yiyouHttp: {
-      apiUrl: process.env.YIYOU_HTTP_PROXY_API_URL,
-      staticProxiesJson: process.env.YIYOU_HTTP_STATIC_PROXIES_JSON,
-      staticExpiresAt: process.env.YIYOU_HTTP_STATIC_EXPIRES_AT,
-      poolTtlMs: parseInt(process.env.YIYOU_HTTP_PROXY_TTL_MS, 10) || 240000,
-      badProxyTimeout: parseInt(process.env.PROXY_BAD_TIMEOUT, 10) || 3600000,
-      maxFailCount: parseInt(process.env.PROXY_MAX_FAIL_COUNT, 10) || 2,
-    },
-  },
-
-  // 定时任务配置
-  cron: {
-    orderSync: process.env.CRON_ORDER_SYNC || '0 */6 * * *', // 每6小时
-    proxyRefresh: process.env.CRON_PROXY_REFRESH || '0 * * * *', // 每小时
   },
 };
 
@@ -203,11 +124,6 @@ const validateConfig = ({ requireImap = true } = {}) => {
     throw new Error('IMAP_ALLOWED_SENDER_DOMAINS 包含无效域名');
   }
 
-  if (config.proxy.enabled && !isSupportedProxyProvider(config.proxy.provider)) {
-    logger.error('配置验证失败', { invalidProxyProvider: true });
-    throw new Error(`PROXY_PROVIDER 必须是 ${SUPPORTED_PROXY_PROVIDERS.join('、')}`);
-  }
-
   // 数据库配置必需（除非提供了 DATABASE_URL）
   if (!config.database.url) {
     requiredVars.push('DB_HOST', 'DB_NAME', 'DB_PASSWORD');
@@ -219,39 +135,11 @@ const validateConfig = ({ requireImap = true } = {}) => {
   // IMAP 配置必需
   if (requireImap) requiredVars.push('IMAP_HOST', 'IMAP_USER', 'IMAP_PASSWORD');
 
-  // 生产环境下，代理配置必需
-  if (config.app.env === 'production' && config.proxy.enabled) {
-    if (config.proxy.provider === 'kdl_tunnel') {
-      requiredVars.push(
-        'KDL_TUNNEL_HOST',
-        'KDL_TUNNEL_PORT',
-        'KDL_TUNNEL_USERNAME',
-        'KDL_TUNNEL_PASSWORD'
-      );
-    } else if (config.proxy.provider === 'fanproxy_tunnel') {
-      requiredVars.push(
-        'FANPROXY_TUNNEL_HOST',
-        'FANPROXY_TUNNEL_PORT',
-        'FANPROXY_TUNNEL_ACCOUNT',
-        'FANPROXY_TUNNEL_PASSWORD'
-      );
-    } else if (config.proxy.provider === 'yiyou_http') {
-      requiredVars.push(
-        config.proxy.yiyouHttp.staticProxiesJson
-          ? 'YIYOU_HTTP_STATIC_EXPIRES_AT'
-          : 'YIYOU_HTTP_PROXY_API_URL'
-      );
-    } else {
-      requiredVars.push('PROXY_API_URL');
-    }
-  }
-
   try {
     validateRequiredEnvVars(requiredVars);
     logger.info('配置验证通过', {
       env: config.app.env,
       port: config.app.port,
-      proxyEnabled: config.proxy.enabled,
     });
   } catch (error) {
     logger.error('配置验证失败', { error: error.message });
@@ -259,17 +147,7 @@ const validateConfig = ({ requireImap = true } = {}) => {
   }
 };
 
-/**
- * 获取随机延迟时间（用于爬虫反爬）
- * @returns {number} 随机延迟时间（毫秒）
- */
-const getRandomDelay = () => {
-  const { min, max } = config.crawler.requestDelay;
-  return Math.floor(Math.random() * (max - min)) + min;
-};
-
 module.exports = {
   config,
   validateConfig,
-  getRandomDelay,
 };

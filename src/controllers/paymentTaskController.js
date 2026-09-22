@@ -47,28 +47,10 @@ async function getOwnPaymentLink(req, res) {
   return res.json({ success: true, data });
 }
 
-/** 提交本人任务订单刷新。 */
-async function refreshOwnTask(req, res) {
-  const data = await paymentTaskService.refreshOwnTask(Number(req.params.id), req.user.id);
-  return res.status(202).json({ success: true, data });
-}
-
-/** 查询本人任务关联订单的刷新进度。 */
-async function getOwnRefreshJob(req, res) {
-  const data = await paymentTaskService.getOwnRefreshJob(
-    Number(req.params.id),
-    Number(req.params.jobId),
-    req.user.id
-  );
-  return res.json({ success: true, data });
-}
-
 module.exports = {
   listOwnTasks,
   getOwnTask,
   updateOwnTask,
   assignOwnTaskPayer,
   getOwnPaymentLink,
-  refreshOwnTask,
-  getOwnRefreshJob,
 };

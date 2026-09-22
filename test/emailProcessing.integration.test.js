@@ -12,8 +12,7 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
   const repo = require('../src/services/ingestionRepository');
   const buildHtmlBody = options =>
     buildHistoricalHtmlBody(options).replace('2025/10/8', repo.businessDate().replace(/-/g, '/'));
-  const { sequelize, EmailLog, EmailWorkerState, Order, OrderRefreshSchedule, OrderRefreshJob } =
-    models;
+  const { sequelize, EmailLog, EmailWorkerState, Order, PaymentTask } = models;
   const orderNumbers = ['W9700000001', 'W9700000002', 'W9700000003', 'W9700000004'];
 
   async function cleanSyntheticRows() {
@@ -344,7 +343,7 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
     expect(metrics.worker.isRunning).toBe(true);
   });
 
-  test('相同订单并发处理只创建一单和一个首次刷新任务', async () => {
+  test('相同订单并发处理只创建一单和一个付款任务', async () => {
     const firstLog = await createProcessableLog('it-email-order-1', orderNumbers[0]);
     const secondLog = await createProcessableLog('it-email-order-2', orderNumbers[0]);
     const orderData = validOrderData(orderNumbers[0]);
@@ -356,10 +355,7 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
 
     expect(firstOrder.id).toBe(secondOrder.id);
     expect(await Order.count({ where: { orderNumber: orderNumbers[0] } })).toBe(1);
-    expect(await OrderRefreshSchedule.count({ where: { orderId: firstOrder.id } })).toBe(1);
-    expect(await OrderRefreshJob.count({ where: { orderId: firstOrder.id } })).toBe(1);
-    expect((await OrderRefreshJob.findOne({ where: { orderId: firstOrder.id } })).trigger).toBe('initial');
-    expect((await OrderRefreshSchedule.findByPk(firstOrder.id)).nextAutoRefreshAt).toBeNull();
+    expect(await PaymentTask.count({ where: { orderId: firstOrder.id } })).toBe(1);
     const statuses = await EmailLog.findAll({
       where: { id: [firstLog.id, secondLog.id] },
       attributes: ['status'],
@@ -368,18 +364,16 @@ describeDatabase('邮件处理隔离 PostgreSQL 集成', () => {
     expect(statuses.map(item => item.status).sort()).toEqual(['succeeded', 'superseded']);
   });
 
-  test('首次刷新任务写入失败时订单和邮件状态全部回滚', async () => {
+  test('付款任务写入失败时订单和邮件状态全部回滚', async () => {
     const emailLog = await createProcessableLog('it-email-rollback-1', orderNumbers[1]);
-    const createJob = jest
-      .spyOn(OrderRefreshJob, 'create')
-      .mockRejectedValueOnce(new Error('boom'));
+    const createTask = jest.spyOn(PaymentTask, 'create').mockRejectedValueOnce(new Error('boom'));
 
     await expect(
       saveOrderFromEmail(validOrderData(orderNumbers[1]), emailLog.emailUid, {
         emailLogId: emailLog.id,
       })
     ).rejects.toThrow('boom');
-    createJob.mockRestore();
+    createTask.mockRestore();
 
     expect(await Order.count({ where: { orderNumber: orderNumbers[1] } })).toBe(0);
     await emailLog.reload();

@@ -47,18 +47,13 @@ export const EMAIL_ORDER_STATUS_BADGES = {
   ready_for_pickup: { text: '可取货', class: 'badge-success' },
 };
 
+export const EMAIL_ORDER_STATUS_LABELS = Object.fromEntries(
+  Object.entries(EMAIL_ORDER_STATUS_BADGES).map(([key, badge]) => [key, badge.text])
+);
+
 /** 获取邮件订单状态标签；未知存量值按待确认展示。 */
 export function getEmailOrderStatusBadge(status) {
   return Object.hasOwn(EMAIL_ORDER_STATUS_BADGES, status)
     ? EMAIL_ORDER_STATUS_BADGES[status]
     : EMAIL_ORDER_STATUS_BADGES.unknown;
-}
-
-/** 格式化服务端已脱敏的冲突，空值不冒充 0。 */
-export function formatOrderConflict(issue) {
-  const detail =
-    issue.sourceValue !== undefined && issue.officialValue !== undefined
-      ? `（导入：${issue.sourceValue ?? '缺失'}；官网：${issue.officialValue ?? '缺失'}）`
-      : '';
-  return `${issue.message || '订单数据需要核对'}${detail}`;
 }

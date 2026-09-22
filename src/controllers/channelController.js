@@ -34,35 +34,18 @@ exports.getChannels = async (req, res, next) => {
       attributes: [
         'tag',
         [fn('COUNT', col('id')), 'totalOrders'],
-        [
-          fn(
-            'COUNT',
-            literal("CASE WHEN payment_status = 'paid' OR email_payment_status = 'paid' THEN 1 END")
-          ),
-          'paidOrders',
-        ],
-        [fn('COUNT', literal("CASE WHEN status = 'picked_up' THEN 1 END")), 'deliveredOrders'],
+        [fn('COUNT', literal("CASE WHEN email_payment_status = 'paid' THEN 1 END")), 'paidOrders'],
         [fn('COALESCE', fn('SUM', col('order_amount')), 0), 'totalAmount'],
         [
           fn(
             'COALESCE',
             fn(
               'SUM',
-              literal(
-                "CASE WHEN payment_status = 'paid' OR email_payment_status = 'paid' THEN order_amount ELSE 0 END"
-              )
+              literal("CASE WHEN email_payment_status = 'paid' THEN order_amount ELSE 0 END")
             ),
             0
           ),
           'paidAmount',
-        ],
-        [
-          fn(
-            'COALESCE',
-            fn('SUM', literal("CASE WHEN status = 'picked_up' THEN order_amount ELSE 0 END")),
-            0
-          ),
-          'deliveredAmount',
         ],
         [fn('COUNT', literal('CASE WHEN order_amount IS NULL THEN 1 END')), 'missingAmountOrders'],
       ],
@@ -75,7 +58,6 @@ exports.getChannels = async (req, res, next) => {
     const formattedChannels = channels.map((channel, index) => {
       const totalOrders = parseInt(channel.totalOrders, 10);
       const paidOrders = parseInt(channel.paidOrders, 10);
-      const deliveredOrders = parseInt(channel.deliveredOrders, 10);
 
       return {
         id: index + 1, // 虚拟ID，用于前端展示
@@ -83,10 +65,10 @@ exports.getChannels = async (req, res, next) => {
         channelName: channel.tag,
         totalOrders,
         paidOrders,
-        deliveredOrders,
+        deliveredOrders: null,
         totalAmount: Number(channel.totalAmount || 0),
         paidAmount: Number(channel.paidAmount || 0),
-        deliveredAmount: Number(channel.deliveredAmount || 0),
+        deliveredAmount: null,
         missingAmountOrders: parseInt(channel.missingAmountOrders, 10),
         amountSource: 'catalog',
       };
@@ -139,19 +121,20 @@ exports.getChannelStats = async (req, res, next) => {
       attributes: [
         [fn('COUNT', col('id')), 'totalOrders'],
         [
-          fn('COUNT', literal("CASE WHEN status IN ('pending', 'payment_due') THEN 1 END")),
+          fn('COUNT', literal("CASE WHEN email_order_status = 'unknown' THEN 1 END")),
           'pendingOrders',
         ],
         [
-          fn('COUNT', literal("CASE WHEN status IN ('processing', 'payment_received') THEN 1 END")),
+          fn('COUNT', literal("CASE WHEN email_order_status = 'processing' THEN 1 END")),
           'processingOrders',
         ],
-        [fn('COUNT', literal("CASE WHEN status = 'shipped' THEN 1 END")), 'shippedOrders'],
-        [fn('COUNT', literal("CASE WHEN status = 'ready_for_pickup' THEN 1 END")), 'readyOrders'],
-        [fn('COUNT', literal("CASE WHEN status = 'picked_up' THEN 1 END")), 'completedOrders'],
         [
-          fn('COUNT', literal("CASE WHEN status IN ('cancelled', 'payment_expired') THEN 1 END")),
-          'cancelledOrders',
+          fn('COUNT', literal("CASE WHEN email_order_status = 'confirmed' THEN 1 END")),
+          'confirmedOrders',
+        ],
+        [
+          fn('COUNT', literal("CASE WHEN email_order_status = 'ready_for_pickup' THEN 1 END")),
+          'readyOrders',
         ],
       ],
       where: orderWhere,
@@ -173,10 +156,11 @@ exports.getChannelStats = async (req, res, next) => {
         totalOrders: parseInt(stats.totalOrders, 10),
         pendingOrders: parseInt(stats.pendingOrders, 10),
         processingOrders: parseInt(stats.processingOrders, 10),
-        shippedOrders: parseInt(stats.shippedOrders, 10),
+        confirmedOrders: parseInt(stats.confirmedOrders, 10),
         readyOrders: parseInt(stats.readyOrders, 10),
-        completedOrders: parseInt(stats.completedOrders, 10),
-        cancelledOrders: parseInt(stats.cancelledOrders, 10),
+        shippedOrders: null,
+        completedOrders: null,
+        cancelledOrders: null,
         recipientCount,
       },
     });
@@ -238,7 +222,10 @@ exports.getChannelOrders = async (req, res, next) => {
 
     // 状态筛选
     if (status) {
-      whereClause.status = status;
+      if (!['unknown', 'confirmed', 'processing', 'ready_for_pickup'].includes(status)) {
+        throw ApiError.badRequest('status 必须是邮件订单状态');
+      }
+      whereClause.emailOrderStatus = status;
     }
 
     // 搜索关键词
@@ -281,9 +268,10 @@ exports.getChannelOrders = async (req, res, next) => {
           : plain.recipientName,
         recipientPhone: maskPhone(plain.recipient?.phone || plain.recipientPhone),
         products: serializePublicProducts(plain.products),
-        status: plain.status,
-        pickupStore: plain.pickupStore,
-        pickupTimeSlot: plain.pickupTimeSlot,
+        status: plain.emailOrderStatus || 'unknown',
+        emailPaymentStatus: plain.emailPaymentStatus || 'unknown',
+        pickupStore: plain.emailPickupInfo?.storeName || null,
+        pickupTimeSlot: plain.emailPickupInfo || null,
         orderUrl: null,
         paymentMethod: getSourcePaymentMethod(plain),
         orderDate: plain.orderDate,

@@ -38,6 +38,7 @@ build/
 test-artifacts/
 release-artifacts/
 output/
+outputs/
 
 # PM2
 .pm2/

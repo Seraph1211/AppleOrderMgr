@@ -22,10 +22,9 @@ const {
   validatePaymentOrderUrl,
   assessAssignment,
 } = require('./paymentEligibility');
-const { buildOfficialStatusCondition } = require('./paymentStatusFilter');
+const { buildEmailStatusCondition } = require('./paymentStatusFilter');
 const { PAYMENT_EXECUTION_PERMISSIONS } = require('../constants/permissionCatalog');
 const { PAYMENT_ASSIGNMENT_LOCK_ID, getEffectivePermissions } = require('./permissionService');
-const refreshJobService = require('./crawler/refreshJobService');
 const {
   ACTIVE_PAYMENT_TASK_STATUSES,
   buildProductCondition,
@@ -137,9 +136,10 @@ async function getPendingOverview() {
       sequelize.query(
         `SELECT t.assignee_user_id AS "userId", COUNT(*)::int AS count
          FROM orders o LEFT JOIN payment_tasks t ON t.order_id = o.id
-         WHERE o.status = 'payment_due'
-           AND o.email_payment_status <> 'paid'
-           AND (o.payment_status IS NULL OR o.payment_status NOT IN ('paid', 'refunded'))
+         WHERE o.email_payment_status <> 'paid'
+           AND o.payment_assignment_hold_reason IS NULL
+           AND o.order_date IS NOT NULL
+           AND o.order_date + INTERVAL '30 minutes' > NOW()
          GROUP BY t.assignee_user_id`,
         { type: Sequelize.QueryTypes.SELECT }
       ),
@@ -462,13 +462,10 @@ async function previewAssignment(input) {
             'orderNumber',
             'orderUrl',
             'orderDate',
-            'status',
-            'paymentStatus',
             'emailPaymentStatus',
-            'lastCrawledAt',
-            'officialStatusNeedsReview',
-            'officialAllItemsTerminal',
-            'validationIssues',
+            'emailOrderStatus',
+            'emailStatusNeedsReview',
+            'paymentAssignmentHoldReason',
           ],
         },
       ],
@@ -617,16 +614,11 @@ async function executeAssignment(input, actorUserId) {
           attributes: [
             'orderNumber',
             'orderUrl',
-            'status',
-            'paymentStatus',
             'emailPaymentStatus',
+            'emailOrderStatus',
+            'emailStatusNeedsReview',
+            'paymentAssignmentHoldReason',
             'orderDate',
-            'lastCrawledAt',
-            'officialOrderCreatedAt',
-            'officialPaymentExpiresAt',
-            'officialStatusNeedsReview',
-            'officialAllItemsTerminal',
-            'validationIssues',
           ],
         },
       ],
@@ -690,8 +682,7 @@ async function executeAssignment(input, actorUserId) {
           details: {
             reason: reason || null,
             batchSize: tasks.length,
-            expiredAtAssignment:
-              task.order.status === 'payment_expired' || getPaymentDeadline(task.order) <= now,
+            expiredAtAssignment: getPaymentDeadline(task.order) <= now,
           },
           idempotencyKey: buildAssignmentEventKey(idempotencyKey, task.id),
         },
@@ -717,28 +708,20 @@ async function executeAssignment(input, actorUserId) {
           'sourceRecipientTag',
           'tag',
           'products',
-          'status',
-          'paymentStatus',
           'emailOrderStatus',
           'emailPaymentStatus',
+          'paymentAssignmentHoldReason',
           'emailStatusNeedsReview',
           'emailStatusEvidenceAt',
+          'emailLifecycleUpdatedAt',
           'emailPickupInfo',
           'paymentMethod',
           'sourceSnapshot',
           'orderAmount',
           'orderAmountPriceVersion',
-          'officialOrderAmount',
-          'officialOrderAmountCurrency',
           'payerName',
           'payerVersion',
           'orderDate',
-          'officialOrderCreatedAt',
-          'officialPaymentExpiresAt',
-          'officialStatusNeedsReview',
-          'officialAllItemsTerminal',
-          'validationIssues',
-          'lastCrawledAt',
           'updatedAt',
         ],
       },
@@ -846,25 +829,20 @@ async function updateTaskNotes(taskId, input, actorUserId) {
           'sourceRecipientTag',
           'tag',
           'products',
-          'status',
-          'paymentStatus',
           'emailOrderStatus',
           'emailPaymentStatus',
+          'paymentAssignmentHoldReason',
           'emailStatusNeedsReview',
           'emailStatusEvidenceAt',
+          'emailLifecycleUpdatedAt',
           'emailPickupInfo',
           'paymentMethod',
           'sourceSnapshot',
           'orderAmount',
           'orderAmountPriceVersion',
-          'officialOrderAmount',
-          'officialOrderAmountCurrency',
           'payerName',
           'payerVersion',
           'orderDate',
-          'officialOrderCreatedAt',
-          'officialPaymentExpiresAt',
-          'lastCrawledAt',
           'updatedAt',
         ],
       },
@@ -947,8 +925,8 @@ async function listDispatchTasks(query = {}) {
       orderWhere.orderNumber = { [Op.iLike]: `%${orderNumber}%` };
     }
     const productCondition = buildProductCondition(query);
-    const officialStatusCondition = buildOfficialStatusCondition(query);
-    if (officialStatusCondition) orderWhere.status = officialStatusCondition;
+    const emailStatusCondition = buildEmailStatusCondition(query);
+    if (emailStatusCondition) orderWhere.emailOrderStatus = emailStatusCondition;
     const orderDateCondition = buildOrderDateCondition(query);
     if (orderDateCondition) orderWhere.orderDate = orderDateCondition;
     const recipientTagCondition = buildRecipientTagCondition(
@@ -985,28 +963,20 @@ async function listDispatchTasks(query = {}) {
                 'tag',
                 'products',
                 'productFilterItems',
-                'status',
-                'paymentStatus',
                 'emailOrderStatus',
                 'emailPaymentStatus',
+                'paymentAssignmentHoldReason',
                 'emailStatusNeedsReview',
                 'emailStatusEvidenceAt',
+                'emailLifecycleUpdatedAt',
                 'emailPickupInfo',
                 'paymentMethod',
                 'sourceSnapshot',
                 'orderAmount',
                 'orderAmountPriceVersion',
-                'officialOrderAmount',
-                'officialOrderAmountCurrency',
                 'payerName',
                 'payerVersion',
                 'orderDate',
-                'officialOrderCreatedAt',
-                'officialPaymentExpiresAt',
-                'officialStatusNeedsReview',
-                'officialAllItemsTerminal',
-                'validationIssues',
-                'lastCrawledAt',
                 'updatedAt',
               ],
               where: orderWhere,
@@ -1087,57 +1057,6 @@ async function getPaymentLink(taskId, actorUserId) {
   }
 }
 
-function normalizeTaskIds(taskIds) {
-  if (!Array.isArray(taskIds) || taskIds.length === 0 || taskIds.length > 100) {
-    throw ApiError.badRequest('taskIds 必须是 1-100 个任务 ID 的数组');
-  }
-  const normalized = [...new Set(taskIds.map(id => Number(id)))];
-  if (normalized.some(id => !Number.isInteger(id) || id <= 0)) {
-    throw ApiError.badRequest('taskIds 包含无效任务 ID');
-  }
-  return normalized;
-}
-
-/**
- * 为管理员选中的付款任务提交官网刷新队列。
- * @param {number[]} taskIds - 付款任务 ID
- * @param {number} actorUserId - 管理员 ID
- * @returns {Promise<Object>} 批量入队汇总
- */
-async function refreshTasks(taskIds, actorUserId) {
-  const normalizedIds = normalizeTaskIds(taskIds);
-  const tasks = await PaymentTask.findAll({
-    where: { id: { [Op.in]: normalizedIds } },
-    attributes: ['id', 'orderId'],
-    order: [['id', 'ASC']],
-  });
-  if (tasks.length !== normalizedIds.length) throw ApiError.notFound('部分付款任务不存在');
-  return refreshJobService.enqueueMany(
-    tasks.map(task => task.orderId),
-    { trigger: 'manual_single', requestedBy: actorUserId }
-  );
-}
-
-/**
- * 为单个付款任务提交官网刷新队列。
- * @param {number} taskId - 付款任务 ID
- * @param {number} actorUserId - 管理员 ID
- * @returns {Promise<Object>} 单项入队结果
- */
-async function refreshTask(taskId, actorUserId) {
-  const summary = await refreshTasks([taskId], actorUserId);
-  const result = summary.results[0];
-  if (!result?.jobId) throw ApiError.notFound('关联订单不存在');
-  const job = await refreshJobService.getJob(result.jobId);
-  if (!job) throw ApiError.notFound('刷新任务不存在');
-  return {
-    jobId: job.id,
-    status: job.status,
-    created: result.created,
-    merged: !result.created,
-  };
-}
-
 /**
  * 扫描新订单并在 auto 模式下按负载比自动分配。
  * @param {number} [limit=500] - 单次扫描上限
@@ -1161,16 +1080,10 @@ async function runDispatchScan(limit = 500) {
           attributes: [
             'id',
             'createdAt',
-            'status',
-            'paymentStatus',
             'emailPaymentStatus',
+            'paymentAssignmentHoldReason',
             'orderUrl',
             'orderDate',
-            'officialOrderCreatedAt',
-            'officialPaymentExpiresAt',
-            'officialStatusNeedsReview',
-            'officialAllItemsTerminal',
-            'validationIssues',
           ],
           include: [{ model: PaymentTask, as: 'paymentTask', required: false, attributes: ['id'] }],
           order: [['id', 'ASC']],
@@ -1265,15 +1178,9 @@ async function runDispatchScan(limit = 500) {
                   'ingestionSource',
                   'sourceRecipientTag',
                   'tag',
-                  'status',
-                  'paymentStatus',
                   'emailPaymentStatus',
+                  'paymentAssignmentHoldReason',
                   'orderDate',
-                  'officialOrderCreatedAt',
-                  'officialPaymentExpiresAt',
-                  'officialStatusNeedsReview',
-                  'officialAllItemsTerminal',
-                  'validationIssues',
                 ],
                 where: {
                   orderDate: { [Op.gt]: new Date(Date.now() - 30 * 60 * 1000) },
@@ -1372,8 +1279,6 @@ module.exports = {
   assignTasks,
   assignTask,
   updateTaskNotes,
-  refreshTasks,
-  refreshTask,
   reopenTask,
   listDispatchTasks,
   runDispatchScan,

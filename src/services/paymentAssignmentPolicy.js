@@ -42,9 +42,9 @@ function describeAutoAssignment(task, rule, overview, now = new Date()) {
   } else if (task.processingStatus !== 'pending') {
     reasonCode = 'NOT_PENDING';
     reason = '仅待处理任务参与自动分配';
-  } else if (isAssignmentBlocked(task.order)) {
+  } else if (isAssignmentBlocked(task.order, true, now)) {
     reasonCode = 'ORDER_BLOCKED';
-    reason = '订单当前状态不允许自动分配';
+    reason = task.order.paymentAssignmentHoldReason ? '历史付款限制，待核对' : '邮件已确认付款';
   } else if (!deadline) {
     reasonCode = 'UNKNOWN_DEADLINE';
     reason = '来源下单时间未知';

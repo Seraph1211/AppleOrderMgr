@@ -94,8 +94,8 @@ const task = {
   processingStatus: 'pending',
   paymentLinkSource: 'order_url',
   order: {
-    status: 'payment_due',
-    paymentStatus: 'unpaid',
+    emailOrderStatus: 'confirmed',
+    emailPaymentStatus: 'unknown',
     orderDate: now,
     orderNumber: 'W12345',
     orderUrl: 'https://www.apple.com.cn/xc/cn/vieworder/W12345/synthetic',
@@ -125,7 +125,7 @@ test.each([
 });
 test.each([
   [{ processingStatus: 'exception' }, 'NOT_PENDING'],
-  [{ order: { ...task.order, paymentStatus: 'paid' } }, 'ORDER_BLOCKED'],
+  [{ order: { ...task.order, emailPaymentStatus: 'paid' } }, 'ORDER_BLOCKED'],
   [{ order: { ...task.order, orderDate: null } }, 'UNKNOWN_DEADLINE'],
   [{ order: { ...task.order, orderDate: new Date(now - 3600000) } }, 'EXPIRED'],
   [{ order: { ...task.order, orderUrl: null } }, 'MISSING_LINK'],

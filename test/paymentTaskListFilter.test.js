@@ -4,8 +4,6 @@ jest.mock('../src/models', () => ({
   User: {},
 }));
 jest.mock('../src/utils/logger', () => ({ error: jest.fn() }));
-jest.mock('../src/services/crawler/refreshJobService', () => ({}));
-
 const { PaymentTask } = require('../src/models');
 const { listOwnTasks } = require('../src/services/paymentTaskService');
 

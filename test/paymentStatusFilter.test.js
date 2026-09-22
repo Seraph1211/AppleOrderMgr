@@ -1,31 +1,33 @@
 const { Op } = require('sequelize');
-const { buildOfficialStatusCondition } = require('../src/services/paymentStatusFilter');
+const { buildEmailStatusCondition } = require('../src/services/paymentStatusFilter');
 
-test('多状态按 OR 去重，兼容旧单值，空选不限制', () => {
+test('邮件状态多选按 OR 去重，兼容单值，空选不限制', () => {
   expect(
-    buildOfficialStatusCondition({
-      officialOrderStatuses: '["payment_due","processing","payment_due"]',
+    buildEmailStatusCondition({
+      emailOrderStatuses: '["confirmed","processing","confirmed"]',
     })
-  ).toEqual({ [Op.in]: ['payment_due', 'processing'] });
-  expect(buildOfficialStatusCondition({ officialOrderStatus: 'payment_due' })).toEqual({
-    [Op.in]: ['payment_due'],
+  ).toEqual({ [Op.in]: ['confirmed', 'processing'] });
+  expect(buildEmailStatusCondition({ emailOrderStatus: 'ready_for_pickup' })).toEqual({
+    [Op.in]: ['ready_for_pickup'],
   });
-  expect(buildOfficialStatusCondition({})).toBeNull();
-  expect(
-    buildOfficialStatusCondition({ officialOrderStatuses: [], officialOrderStatus: 'processing' })
-  ).toBeNull();
+  expect(buildEmailStatusCondition({})).toBeNull();
 });
 test.each([
   'bad',
   'null',
   '{}',
-  '"payment_due"',
+  '"confirmed"',
   '[1]',
   '["bad"]',
-  '["completed"]',
+  '["picked_up"]',
   null,
   42,
-  Array(13).fill('payment_due'),
-])('拒绝非法多选 %j', officialOrderStatuses => {
-  expect(() => buildOfficialStatusCondition({ officialOrderStatuses })).toThrow();
+  Array(5).fill('confirmed'),
+])('拒绝非法邮件状态多选 %j', emailOrderStatuses => {
+  expect(() => buildEmailStatusCondition({ emailOrderStatuses })).toThrow();
 });
+
+test.each([{ officialOrderStatus: 'payment_due' }, { officialOrderStatuses: '[]' }])(
+  '拒绝退休的官网状态参数 %j',
+  query => expect(() => buildEmailStatusCondition(query)).toThrow('官网订单状态筛选参数已退休')
+);

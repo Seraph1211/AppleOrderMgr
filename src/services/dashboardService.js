@@ -1,6 +1,6 @@
 const { parseOrderTimeBoundary } = require('../utils/orderTime');
 /* eslint-disable no-unused-vars, require-await, camelcase */
-const { Op, fn, col, literal } = require('sequelize');
+const { Op, fn, col, literal, Sequelize } = require('sequelize');
 const { Order, AppleId, Recipient, sequelize } = require('../models');
 const { getOrderTagBind } = require('./orderAccessService');
 const logger = require('../utils/logger');
@@ -28,7 +28,7 @@ const buildWhereClause = filters => {
   // 订单状态（转换中文为英文）
   if (filters.status) {
     const englishStatus = STATUS_MAP[filters.status] || filters.status;
-    where.status = englishStatus;
+    where.emailOrderStatus = englishStatus;
   }
 
   // 产品型号（需要在 JSONB products 数组中搜索）
@@ -43,7 +43,9 @@ const buildWhereClause = filters => {
 
   // 取货门店
   if (filters.store) {
-    where.pickupStore = filters.store;
+    where[Op.and] = (where[Op.and] || []).concat(
+      Sequelize.where(Sequelize.json('emailPickupInfo.storeName'), filters.store)
+    );
   }
 
   if (filters.orderUser) {
@@ -57,18 +59,11 @@ const buildWhereClause = filters => {
  * 状态映射（中文 -> 英文）
  */
 const STATUS_MAP = {
-  待处理: 'pending',
-  等待付款: 'payment_due',
-  官网已收款: 'payment_received',
-  已取货: 'picked_up',
-  付款已过期: 'payment_expired',
+  待确认: 'unknown',
+  已确认: 'confirmed',
   处理中: 'processing',
-  已发货: 'shipped',
   可取货: 'ready_for_pickup',
-  已送达: 'delivered',
-  取货已取消: 'pickup_cancelled',
   unknown: 'unknown',
-  已取消: 'cancelled',
 };
 
 /**
@@ -85,18 +80,12 @@ const getStats = async filters => {
       // 总订单量
       Order.count({ where }),
 
-      // 待取订单数（待处理、处理中、可取货）
+      // 尚未进入可取货阶段的邮件订单数。
       Order.count({
         where: {
           ...where,
-          status: {
-            [Op.in]: [
-              'pending',
-              'payment_due',
-              'payment_received',
-              'processing',
-              'ready_for_pickup',
-            ],
+          emailOrderStatus: {
+            [Op.in]: ['unknown', 'confirmed', 'processing'],
           },
         },
       }),
@@ -337,19 +326,22 @@ const getStoreDistribution = async filters => {
     const where = buildWhereClause(filters);
 
     const result = await Order.findAll({
-      attributes: ['pickupStore', [fn('COUNT', col('id')), 'value']],
+      attributes: [
+        [literal("email_pickup_info->>'storeName'"), 'storeName'],
+        [fn('COUNT', col('id')), 'value'],
+      ],
       where: {
         ...where,
-        pickupStore: { [Op.ne]: null },
+        emailPickupInfo: { [Op.ne]: null },
       },
-      group: ['pickupStore'],
+      group: [literal("email_pickup_info->>'storeName'")],
       order: [[fn('COUNT', col('id')), 'DESC']],
       limit: 10,
       raw: true,
     });
 
     return result.map(item => ({
-      name: item.pickupStore || '未知门店',
+      name: item.storeName || '未知门店',
       value: parseInt(item.value),
     }));
   } catch (error) {
@@ -380,10 +372,10 @@ const buildSqlWhereClause = filters => {
   }
   if (filters.status) {
     const englishStatus = STATUS_MAP[filters.status] || filters.status;
-    conditions.push('status = :status');
+    conditions.push('email_order_status = :status');
   }
   if (filters.store) {
-    conditions.push('pickup_store = :store');
+    conditions.push("email_pickup_info->>'storeName' = :store");
   }
   if (filters.productModel) {
     conditions.push(`EXISTS (
@@ -443,13 +435,13 @@ const getFilterOptions = async (filters = {}) => {
       { type: sequelize.QueryTypes.SELECT, replacements: getReplacements(filters) }
     );
 
-    // 获取所有取货门店（使用数据库字段名 pickup_store）
+    // 获取所有邮件取货门店。
     const stores = await sequelize.query(
       `
-      SELECT DISTINCT pickup_store AS store
+      SELECT DISTINCT email_pickup_info->>'storeName' AS store
       FROM orders
-      WHERE pickup_store IS NOT NULL AND ${buildSqlWhereClause(filters)}
-      ORDER BY pickup_store
+      WHERE email_pickup_info->>'storeName' IS NOT NULL AND ${buildSqlWhereClause(filters)}
+      ORDER BY store
       `,
       { type: sequelize.QueryTypes.SELECT, replacements: getReplacements(filters) }
     );

@@ -192,16 +192,16 @@ function parseOrderMailLifecycle(parsed) {
   const pickupInfo =
     store.storeName || store.storeAddress || date || range || businessHours
       ? {
-          storeName: store.storeName,
-          storeAddress: store.storeAddress,
-          pickupDate: date,
-          startTime: range?.start || null,
-          endTime: range?.end || null,
-          appointmentMode: businessHours ? 'business_hours' : range ? 'scheduled' : 'unknown',
-          timeZone: 'Asia/Shanghai',
-          retentionText: retentionText?.slice(0, 300) || null,
-          rawTimeRange: range?.raw || null,
-        }
+        storeName: store.storeName,
+        storeAddress: store.storeAddress,
+        pickupDate: date,
+        startTime: range?.start || null,
+        endTime: range?.end || null,
+        appointmentMode: businessHours ? 'business_hours' : range ? 'scheduled' : 'unknown',
+        timeZone: 'Asia/Shanghai',
+        retentionText: retentionText?.slice(0, 300) || null,
+        rawTimeRange: range?.raw || null,
+      }
       : null;
 
   const result = {

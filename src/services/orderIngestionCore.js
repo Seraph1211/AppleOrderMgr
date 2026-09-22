@@ -1,5 +1,5 @@
 /** 公共订单创建：调用方持有来源锁及订单号锁，所有后续任务在同一事务登记。 */
-const { sequelize, AppleId, Order, OrderRefreshSchedule, OrderRefreshJob } = require('../models');
+const { sequelize, AppleId, Order } = require('../models');
 const logger = require('../utils/logger');
 const paymentDispatchService = require('./paymentDispatchService');
 const { findRecipientForOrder } = require('./profileOrderMatching');
@@ -128,28 +128,6 @@ async function createOrderInTransaction(emailData, transaction, options = {}) {
       productCount: order.products.length,
     });
 
-    // 与订单创建同一事务写入首次刷新任务，避免提交后进程退出导致任务丢失。
-    const refreshScheduledAt = new Date();
-    await OrderRefreshSchedule.create(
-      {
-        orderId: order.id,
-        nextAutoRefreshAt: null,
-        freshnessStatus: 'stale',
-      },
-      { transaction }
-    );
-    if (order.orderUrl) {
-      await OrderRefreshJob.create(
-        {
-          orderId: order.id,
-          trigger: 'initial',
-          status: 'pending',
-          priority: 250,
-          scheduledAt: refreshScheduledAt,
-        },
-        { transaction }
-      );
-    }
     await paymentDispatchService.enrollOrderInTransaction(order, transaction);
     await require('./orderMailLifecycleService').applyWaitingOrderLifecycle(order, transaction);
     await require('./wecomNotificationService').enrollOrder(order, transaction);

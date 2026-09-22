@@ -14,7 +14,6 @@ import Users from './pages/Users';
 import Profile from './pages/Profile';
 import OperationLogs from './pages/OperationLogs';
 import ChangePassword from './pages/ChangePassword';
-import SystemLogs from './pages/SystemLogs';
 import EmailProcessing from './pages/EmailProcessing';
 import OrderIngestion from './pages/OrderIngestion';
 import ServerMonitor from './pages/ServerMonitor';
@@ -109,11 +108,6 @@ function App() {
                     )}
                   />
                   <Route path="/change-password" element={<ChangePassword />} />
-                  <Route
-                    path="/system-logs"
-                    element={permissionRoute(PERMISSIONS.SYSTEM_LOGS_READ, <SystemLogs />)}
-                  />
-
                   <Route
                     path="/email-processing"
                     element={

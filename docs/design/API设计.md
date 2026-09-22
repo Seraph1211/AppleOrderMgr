@@ -14,13 +14,13 @@
 
 新增端点均沿用登录会话认证并仅允许管理员及 `orders.refresh` 权限，默认由 `BROWSER_ORDER_REFRESH_ENABLED=false` 关闭；生产 `20260921-browser-query-fix` 延续仅对 API 配置为 true，原全局暂停保持。浏览器扩展只读取自己创建的指定订单标签页；登录令牌留在管理台，不发送给扩展。
 
-| 端点 | 请求与响应 |
-| --- | --- |
-| `POST /api/orders/:id/browser-refresh/start` | 空请求体或 `{ mode: "isolated_batch" }`；返回 `ticket`、`orderUrl`、`orderNumber`、`expiresAt`、`maxRequests=100`、`maxDurationMs`。默认 90 秒采集／120 秒任务票据；隔离批量模式 300 秒采集／330 秒票据。票据绑定账号、当前登录会话、订单号、链接摘要和数据库版本，采用与登录 JWT 分离的签名密钥用途。 |
-| `POST /api/orders/:id/browser-refresh/permit` | `{ ticket }`；复核权限、有效期、订单版本及全局暂停状态，取得 PostgreSQL 全局请求时隙后返回 `allowed=true`。每个官网请求和重定向须先取得许可；此端点不代替浏览器任务的 100 请求上限。 |
-| `POST /api/orders/:id/browser-refresh/result` | `{ ticket, page: { pageUrl, orderJson } }`；只接收扩展或本机隔离执行器提取的业务字段白名单，`pageUrl` 的访客令牌段须脱敏为 `redacted`，不接受 Cookie、令牌、原始 HTML 或客户端已归一化的业务状态。服务端解析、校验并调用既有短事务更新，返回更新摘要。 |
+| 端点                                          | 请求与响应                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /api/orders/:id/browser-refresh/start`  | 空请求体或 `{ mode: "isolated_batch" }`；返回 `ticket`、`orderUrl`、`orderNumber`、`expiresAt`、`maxRequests=100`、`maxDurationMs`、`refreshScope=status_products_lifecycle`（已随 `20260921-local-lifecycle-batch-r2` 发布）。新执行器在采集前校验 scope，拒绝旧版仅同步商品／阶段的接口。默认 90 秒采集／120 秒任务票据；隔离批量模式 300 秒采集／330 秒票据。票据绑定账号、当前登录会话、订单号、链接摘要和数据库版本，采用与登录 JWT 分离的签名密钥用途。 |
+| `POST /api/orders/:id/browser-refresh/permit` | `{ ticket }`；复核权限、有效期、订单版本及全局暂停状态，取得 PostgreSQL 全局请求时隙后返回 `allowed=true`。每个官网请求和重定向须先取得许可；此端点不代替浏览器任务的 100 请求上限。                                                                                                                                                                                                                                                                          |
+| `POST /api/orders/:id/browser-refresh/result` | `{ ticket, page: { pageUrl, orderJson } }`；只接收扩展或本机隔离执行器提取的业务字段白名单，`pageUrl` 的访客令牌段须脱敏为 `redacted`，不接受 Cookie、令牌、原始 HTML 或客户端已归一化的业务状态。服务端解析、校验并调用既有短事务更新，返回更新摘要。                                                                                                                                                                                                        |
 
-2026-09-21 用户收窄浏览器刷新范围：只采集订单号、逐商品官网阶段与状态说明、商品名称／型号规格／明确数量。订单号仅用于身份校验，不改写订单身份。官网观测金额、支付方式、日期、门店、地址和付款截止均不作为成功必填，也不通过本入口更新；商品变化引起的独立映射金额重算遵循下方金额契约。服务器仅合并状态、商品及对应观察／校验／审计元数据；保留已有支付与取货派生字段、非商品校验问题和人工付款任务。状态变化仍参与既有自动刷新停止判断。商品不完整时保留已有商品并提示待核对；不会按条目数猜测数量。此为当前实现契约，生产版本与真实验收状态见开发进度。
+2026-09-21 用户收窄浏览器刷新范围：只采集订单号、逐商品官网阶段与状态说明、商品名称／型号规格／明确数量。订单号仅用于身份校验，不改写订单身份。官网观测金额、支付方式、日期、门店、地址和付款截止均不作为成功必填，也不通过本入口更新；商品变化引起的独立映射金额重算遵循下方金额契约。服务器仅合并状态、商品及对应观察／校验／审计元数据；按本次本机批量状态刷新需求，复用既有逐商品阶段映射同步 `paymentStatus` 与 `pickupStatus`；无法确定时保留旧值并标记待核对，取消或配送不推断付款。非商品校验问题和人工付款任务保持不变。此增量已随 `20260921-local-lifecycle-batch-r2` 发布生产，真实官网批次待验收。状态变化仍参与既有自动刷新停止判断。商品不完整时保留已有商品并提示待核对；不会按条目数猜测数量。此为当前实现契约，生产版本与真实验收状态见开发进度。
 
 票据不是登录凭据；跨账号／会话／订单使用或过期返回 409 `BROWSER_TICKET_INVALID`；订单版本／链接变化或已消费后的再次提交返回 409 `BROWSER_ORDER_CHANGED`。成功写入时在 CrawlLog 保存票据随机标识；事务行锁下再次比对初始版本并检查票据是否已消费，避免同一毫秒内的并发重放。任务开始不产生后台自动刷新任务，浏览器断开、失败或超时不提交成功结果；本机在线与浏览器权限是此辅助入口的前提。仍需完成真实采集、权限及生产端到端验收。
 
@@ -643,23 +643,30 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 正式分配保留版本、容量与交接确认校验及整批事务。界面默认整批提交，有阻塞时可明确选择仅提交预检合格子集；子集也原子执行，数据变化则返回 409 与 `details.items`，重新预检后再确认，不静默跳过。界面保留成功与未分配明细。失败事件保存错误码、逐条规则原因、任务 ID、目标负责人和 requestId，写在业务事务回滚后；审计失败另写脱敏应急日志。
 
-
 ## 订单关联邮件 API（2026-09-20）
 
 全部端点位于 /api/orders/:id/emails，要求登录、`orders.read` 及订单 TAG 范围。查看列表、正文、附件和转发记录要求 `order_mail.read`；提交转发另要求 `order_mail.forward`；重新解析和人工核定要求 `order_mail.manage`。现有 `order_mail.manage` 兼容包含查看和转发能力，原授权不变。新权限均可授予普通用户，`order_mail.read` 依赖 `orders.read`，`order_mail.forward` 依赖前两项。仅需查看并转发时授予 `orders.read`、`order_mail.read`、`order_mail.forward`，不授予 `order_mail.manage` 或收单处理的 `email.*`。发送 Worker 在准备内容前和实际发送前均重新检查最新转发权限及 TAG 范围，撤销转发权限后未发送任务取消。无权限403，范围外订单或邮件404，附件同样校验；Cache-Control:no-store。id为正整数，messageId为UUID。
+
 - GET /：page/limit分页默认20上限50，返回items,total,page,limit,sync；元信息、脱敏同步状态及逐封 `lifecycle` 解析摘要，无邮件也返回同步状态。
-- GET /:messageId：返回id,subject,from,to,date,receivedAt,text,attachments,expired,lifecycle；文本预览，附件摘要含index/name/size。`lifecycle` 含模板、来源验证、订单／付款候选、取货信息、待核对原因、规则版本及解析／应用时间，不返回 DKIM 原文或敏感认证材料。
+- GET /:messageId：返回id,subject,from,to,date,receivedAt,text,attachments,expired,lifecycle；文本预览，附件摘要含index/name/size。`lifecycle` 含模板、订单号核对结果、订单／付款候选、取货信息、待核对原因、规则版本及解析／应用时间，不返回 DKIM 原文或敏感认证材料。
 - GET /:messageId/attachments/:index：认证下载，attachment/octet-stream、nosniff，过期内容410。
 - GET /:messageId/forwards：最近50条发送历史，包含操作人ID、目标、备注、状态、时间、受控错误码。
 - POST /:messageId/forward：recipient单一邮箱，note最多2000字符，idempotencyKey为16–100位字母数字及连字符；202返回持久化任务。同key不同请求409，未配置503，过期410。HTTP请求只排队。
 - POST /:messageId/lifecycle/replay：202幂等重置该邮件解析任务；不绕过解析、订单应用或付款联动开关。
 - POST /:messageId/lifecycle/review：请求 `expectedVersion`、5–500字 `reason`，可选 `orderStatus`、`paymentStatus`、`pickupInfo`；只允许基于当前订单关联邮件追加人工核定事件，版本冲突409。人工核定不会修改TAG、订单归属、付款人、备注或截图。
 
+订单级重放另提供两个入口，均要求 `orders.read`、`order_mail.manage` 及订单 TAG 范围；单次最多100个订单，活动中的 pending／processing 任务复用，终态任务重置为 pending，原文已过期的邮件只计数不排队。返回 `results: [{orderId,messageCount,enqueued,active,expired}]`、对应 `totals` 及 `mode: shadow | apply`；HTTP 202 只表示已接受，不表示邮件已解析或订单已更新。两个入口始终遵循当前三个生命周期开关，不能绕过完整订单号精确匹配、模板／商品核对、人工核定、订单应用或付款任务联动：
+
+- `POST /api/orders/:id/email-lifecycle/replay`：刷新单个订单的全部关联邮件。
+- `POST /api/orders/email-lifecycle/replay`：请求 `{orderIds:[...]}`，批量刷新所选订单的全部关联邮件。
+
 错误码：ORDER_MAIL_UNAVAILABLE、ORDER_MAIL_EXPIRED、IDEMPOTENCY_CONFLICT；队列 PREPARE_TEMPORARY/SMTP_TEMPORARY/SMTP_REJECTED/SMTP_AUTH/SEND_UNKNOWN/ACCESS_REVOKED。PREPARE_TEMPORARY 表示发信前的临时处理失败，最多尝试 3 次；accepted 仅表示 SMTP 接受。
 
-订单列表和详情响应新增：`email_order_status`、`email_payment_status`、`email_status_needs_review`、`email_status_review_reasons`、`email_status_version`、`email_status_evidence_at`、`email_pickup_info`、`email_pickup_date`、`email_lifecycle_updated_at`。这些字段只表达官方订单邮件结论，原 `status/payment_status/pickup_status/official_*` 继续表达官网观测。列表和导出接受 JSON 数组参数 `emailOrderStatuses`（unknown/confirmed/processing/ready_for_pickup）及 `emailPaymentStatuses`（unknown/paid）；无权访问的订单仍不会因邮件字段泄露。
+订单列表和详情响应新增：`email_order_status`、`email_payment_status`、`email_status_needs_review`、`email_status_review_reasons`、`email_status_version`、`email_status_evidence_at`、`email_pickup_info`、`email_pickup_date`、`email_lifecycle_updated_at`。这些字段只表达官方订单邮件结论，原 `status/payment_status/pickup_status/official_*` 继续表达官网观测。列表和导出接受 JSON 数组参数 `emailOrderStatuses`（unknown/confirmed/processing/ready_for_pickup）及 `emailPaymentStatuses`（unknown/paid）；后者和付款状态导出字段作为兼容 API 保留，但订单管理页面的列表、筛选、详情和导出字段弹窗均不展示付款状态。无权访问的订单仍不会因邮件字段泄露。
 
-付款任务与调度摘要只增加 `emailPaymentStatus`、`emailPaymentConfirmed` 和必要的邮件订单状态／待核对标记，不开放邮件原文或完整订单详情。自动分配、人工分配预检及直接 SQL 候选统一排除 `email_payment_status='paid'`；邮件未知不额外禁止既有人工操作。
+订单导出字段白名单保留 `emailPickupStore`（“邮件取货门店”），并增加 `emailPickupSchedule`（“邮件取货安排”）；页面显示邮件取货安排列时，两项均作为默认导出字段。固定预约按 `YYYY-MM-DD HH:mm–HH:mm` 输出，例如 `2026-09-21 12:30–12:45`；营业时间预约按“日期 营业时间内到店”输出，日期缺失时只输出已确认的安排，不从下单时间或官网状态推断。
+
+付款任务与调度摘要保留 `emailPaymentStatus`、`emailPaymentConfirmed` 和必要的邮件订单状态／待核对标记，不开放邮件原文或完整订单详情。付款状态仅在付款调度和本人付款任务页面展示，订单管理列表与详情不展示。自动分配、人工分配预检及直接 SQL 候选统一排除 `email_payment_status='paid'`；邮件未知不额外禁止既有人工操作。
 
 ## 企微新订单通知接口（2026-09-20）
 

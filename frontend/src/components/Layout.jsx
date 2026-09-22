@@ -71,12 +71,6 @@ const adminNavigation = [
   },
   { name: '邮件处理', href: '/email-processing', icon: Mail, permission: PERMISSIONS.EMAIL_READ },
   {
-    name: '系统日志',
-    href: '/system-logs',
-    icon: ScrollText,
-    permission: PERMISSIONS.SYSTEM_LOGS_READ,
-  },
-  {
     name: '操作记录',
     href: '/operation-logs',
     icon: ScrollText,

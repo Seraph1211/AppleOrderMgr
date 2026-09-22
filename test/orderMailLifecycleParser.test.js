@@ -5,7 +5,10 @@ const {
   parsePickupDate,
   parseTimeRange,
 } = require('../src/services/orderMailLifecycleParser');
-const { aggregateOrderLifecycle } = require('../src/services/orderMailLifecycleService');
+const {
+  aggregateOrderLifecycle,
+  verifyOrderNumberMatch,
+} = require('../src/services/orderMailLifecycleService');
 
 function parsed(subject, body) {
   return {
@@ -16,6 +19,30 @@ function parsed(subject, body) {
 }
 
 describe('订单邮件生命周期模板解析', () => {
+  test('订单号精确一致即通过来源条件，不依赖 DKIM', () => {
+    const message = { orderNumber: 'W1234567890' };
+    const parsedResult = { orderNumber: 'W1234567890' };
+    expect(verifyOrderNumberMatch(message, parsedResult, { orderNumber: 'W1234567890' })).toEqual({
+      status: 'verified',
+      reason: null,
+      evidence: { method: 'order_number_match', matched: true },
+    });
+    expect(verifyOrderNumberMatch(message, parsedResult, null)).toEqual({
+      status: 'not_checked',
+      reason: 'ORDER_NOT_AVAILABLE',
+      evidence: { method: 'order_number_match' },
+    });
+    expect(
+      verifyOrderNumberMatch(
+        message,
+        { orderNumber: 'W0987654321' },
+        {
+          orderNumber: 'W0987654321',
+        }
+      )
+    ).toMatchObject({ status: 'failed', reason: 'ORDER_NUMBER_MISMATCH' });
+  });
+
   test('确认邮件只确认订单，不把条件式催付判为未付款', () => {
     const result = parseOrderMailLifecycle(
       parsed(
@@ -103,6 +130,30 @@ describe('订单邮件生命周期模板解析', () => {
     });
   });
 
+  test('取货日期字段为空时从明确有货通知提取日期', () => {
+    const result = parseOrderMailLifecycle(
+      parsed(
+        '我们正在处理你的订单 W1234567890',
+        [
+          '你的订单正在处理中。',
+          '有货： 2026/09/22. 你订购的商品可以取货时，我们会与你联系。',
+          'iPhone 18 Pro Max 512GB 冰川蓝色',
+          '取货日期:',
+          '签到时间: 18:15 - 18:30',
+          '数量 1',
+          '取货零售店:',
+          'Apple 长沙',
+        ].join('\n')
+      )
+    );
+    expect(result.pickupInfo).toMatchObject({
+      storeName: 'Apple 长沙',
+      pickupDate: '2026-09-22',
+      startTime: '18:15',
+      endTime: '18:30',
+    });
+  });
+
   test('营业时间内到店不补造日期或时段', () => {
     const result = parseOrderMailLifecycle(
       parsed(
@@ -157,10 +208,12 @@ describe('订单邮件生命周期模板解析', () => {
 
   test('日期和时段拒绝非法值', () => {
     expect(parsePickupDate(['取货日期： 2026/02/30'])).toBeNull();
+    expect(parsePickupDate(['有货： 2026/02/30. 你订购的商品可以取货。'])).toBeNull();
     expect(parseTimeRange(['到店时间： 13:00 PM - 01:15 PM'])).toBeNull();
   });
 
   test('多封邮件乱序归并不回退，冲突只增加待核对标记', () => {
+    const orderNumber = 'W1234567890';
     const products = [{ name: 'iPhone 18 Pro Max 256GB 黑色', quantity: 1 }];
     const readyPickup = {
       storeName: 'Apple 测试门店',
@@ -168,62 +221,59 @@ describe('订单邮件生命周期模板解析', () => {
       startTime: '20:00',
       endTime: '20:15',
     };
-    const aggregate = aggregateOrderLifecycle(
-      { products },
-      [
-        {
-          id: 'ready',
-          messageId: 'ready-message',
-          revision: 1,
-          source: 'parser',
-          templateType: TEMPLATE_TYPES.READY_UPDATE,
-          authenticityStatus: 'verified',
-          orderStatus: 'ready_for_pickup',
-          paymentStatus: 'paid',
-          pickupInfo: readyPickup,
-          products,
-          needsReview: false,
-          reviewReasons: [],
-          parsedAt: new Date('2026-09-20T02:00:00Z'),
-          ruleVersion: 'test',
-          message: { emailDate: new Date('2026-09-20T01:00:00Z') },
-        },
-        {
-          id: 'confirmed',
-          messageId: 'confirmed-message',
-          revision: 1,
-          source: 'parser',
-          templateType: TEMPLATE_TYPES.CONFIRMED,
-          authenticityStatus: 'verified',
-          orderStatus: 'confirmed',
-          paymentStatus: null,
-          pickupInfo: null,
-          products,
-          needsReview: false,
-          reviewReasons: [],
-          parsedAt: new Date('2026-09-21T02:00:00Z'),
-          ruleVersion: 'test',
-          message: { emailDate: new Date('2026-09-21T01:00:00Z') },
-        },
-        {
-          id: 'conflict',
-          messageId: 'conflict-message',
-          revision: 1,
-          source: 'parser',
-          templateType: TEMPLATE_TYPES.READY_UPDATE,
-          authenticityStatus: 'verified',
-          orderStatus: 'ready_for_pickup',
-          paymentStatus: 'paid',
-          pickupInfo: null,
-          products: [{ name: 'iPhone 18 Pro Max 512GB 黑色', quantity: 1 }],
-          needsReview: true,
-          reviewReasons: ['PRODUCT_SCOPE_MISMATCH'],
-          parsedAt: new Date('2026-09-22T02:00:00Z'),
-          ruleVersion: 'test',
-          message: { emailDate: new Date('2026-09-22T01:00:00Z') },
-        },
-      ]
-    );
+    const aggregate = aggregateOrderLifecycle({ orderNumber, products }, [
+      {
+        id: 'ready',
+        messageId: 'ready-message',
+        revision: 1,
+        source: 'parser',
+        templateType: TEMPLATE_TYPES.READY_UPDATE,
+        authenticityStatus: 'verified',
+        orderStatus: 'ready_for_pickup',
+        paymentStatus: 'paid',
+        pickupInfo: readyPickup,
+        products,
+        needsReview: false,
+        reviewReasons: [],
+        parsedAt: new Date('2026-09-20T02:00:00Z'),
+        ruleVersion: 'test',
+        message: { orderNumber, emailDate: new Date('2026-09-20T01:00:00Z') },
+      },
+      {
+        id: 'confirmed',
+        messageId: 'confirmed-message',
+        revision: 1,
+        source: 'parser',
+        templateType: TEMPLATE_TYPES.CONFIRMED,
+        authenticityStatus: 'verified',
+        orderStatus: 'confirmed',
+        paymentStatus: null,
+        pickupInfo: null,
+        products,
+        needsReview: false,
+        reviewReasons: [],
+        parsedAt: new Date('2026-09-21T02:00:00Z'),
+        ruleVersion: 'test',
+        message: { orderNumber, emailDate: new Date('2026-09-21T01:00:00Z') },
+      },
+      {
+        id: 'conflict',
+        messageId: 'conflict-message',
+        revision: 1,
+        source: 'parser',
+        templateType: TEMPLATE_TYPES.READY_UPDATE,
+        authenticityStatus: 'verified',
+        orderStatus: 'ready_for_pickup',
+        paymentStatus: 'paid',
+        pickupInfo: null,
+        products: [{ name: 'iPhone 18 Pro Max 512GB 黑色', quantity: 1 }],
+        needsReview: true,
+        reviewReasons: ['PRODUCT_SCOPE_MISMATCH'],
+        parsedAt: new Date('2026-09-22T02:00:00Z'),
+        ruleVersion: 'test',
+        message: { orderNumber, emailDate: new Date('2026-09-22T01:00:00Z') },
+      },
+    ]);
     expect(aggregate).toMatchObject({
       orderStatus: 'ready_for_pickup',
       paymentStatus: 'paid',

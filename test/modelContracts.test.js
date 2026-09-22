@@ -20,11 +20,6 @@ describe('模型安全与关联契约', () => {
       Order: require('../src/models/Order')(sequelize),
       EmailLog: require('../src/models/EmailLog')(sequelize),
       EmailWorkerState: require('../src/models/EmailWorkerState')(sequelize),
-      CrawlLog: require('../src/models/CrawlLog')(sequelize),
-      OrderRefreshSchedule: require('../src/models/OrderRefreshSchedule')(sequelize),
-      OrderRefreshBatch: require('../src/models/OrderRefreshBatch')(sequelize),
-      OrderRefreshJob: require('../src/models/OrderRefreshJob')(sequelize),
-      OrderRefreshSystemState: require('../src/models/OrderRefreshSystemState')(sequelize),
       UserPermission: require('../src/models/UserPermission')(sequelize),
       UserPermissionEvent: require('../src/models/UserPermissionEvent')(sequelize),
       PaymentTask: require('../src/models/PaymentTask')(sequelize),
@@ -80,13 +75,11 @@ describe('模型安全与关联契约', () => {
     expect(models.Recipient.rawAttributes).not.toHaveProperty('recipient_ref');
     expect(models.Order.rawAttributes).not.toHaveProperty('apple_id_ref');
     expect(models.Order.rawAttributes).not.toHaveProperty('recipient_ref');
-    expect(models.CrawlLog.rawAttributes).not.toHaveProperty('order_id');
     expect(models.EmailLog.rawAttributes).not.toHaveProperty('order_id');
 
     expect(models.Recipient.rawAttributes).toHaveProperty('appleIdRef');
     expect(models.Order.rawAttributes).toHaveProperty('appleIdRef');
     expect(models.Order.rawAttributes).toHaveProperty('recipientRef');
-    expect(models.CrawlLog.rawAttributes).toHaveProperty('orderId');
     expect(models.EmailLog.rawAttributes).toHaveProperty('orderId');
   });
 

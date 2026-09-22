@@ -98,18 +98,6 @@ services:
     cpus: 0.75
     pids_limit: 192
 
-  crawler-worker:
-    <<: *service-defaults
-    stop_grace_period: 120s
-    command: ['node', 'src/workers/crawlerWorker.js']
-    environment:
-      NODE_ENV: production
-      LOG_TO_FILES: 'false'
-      DB_POOL_MAX: '3'
-    mem_limit: 768m
-    cpus: 1.0
-    pids_limit: 256
-
   migrate:
     image: ${MIGRATOR_IMAGE:?请在发布环境文件中设置 MIGRATOR_IMAGE}
     profiles: ['tools']

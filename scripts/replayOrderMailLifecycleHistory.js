@@ -13,6 +13,7 @@ const { enqueueLifecycleJob, aggregateOrderLifecycle } = require(
 );
 
 const JSON_INDENT = 2;
+const COMMAND_INDEX = 2;
 const BATCH_SIZE = 100;
 const TERMINAL_JOB_STATUSES = [
   'parsed',
@@ -23,11 +24,6 @@ const TERMINAL_JOB_STATUSES = [
   'ignored',
   'failed',
 ];
-const AUTHENTICITY_REVIEW_REASONS = new Set([
-  'AUTHENTICITY_NOT_VERIFIED',
-  'DKIM_NOT_VERIFIED',
-]);
-
 function optionValue(name) {
   const prefix = `--${name}=`;
   const option = process.argv.find(value => value.startsWith(prefix));
@@ -50,7 +46,7 @@ function assertShadowMode() {
   }
 }
 
-/** 幂等登记全部仍保留原文的历史订单邮件解析任务。 */
+/** 幂等登记全部仍保留原文的历史邮件；活动任务复用，终态任务重新排队。 */
 async function enqueueHistory() {
   if (!process.argv.includes('--confirm-shadow-enqueue')) {
     throw new Error('登记历史任务必须显式传入 --confirm-shadow-enqueue');
@@ -63,18 +59,42 @@ async function enqueueHistory() {
     raw: true,
   });
   let created = 0;
-  let existing = 0;
+  let reset = 0;
+  let active = 0;
   for (let start = 0; start < messages.length; start += BATCH_SIZE) {
     const batch = messages.slice(start, start + BATCH_SIZE);
     await sequelize.transaction(async transaction => {
+      const jobs = await OrderMailProcessingJob.findAll({
+        where: { messageId: { [Op.in]: batch.map(message => message.id) } },
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      const jobByMessage = new Map(jobs.map(job => [job.messageId, job]));
       for (const message of batch) {
-        const [, wasCreated] = await enqueueLifecycleJob(message.id, transaction);
-        if (wasCreated) created += 1;
-        else existing += 1;
+        const job = jobByMessage.get(message.id);
+        if (!job) {
+          await enqueueLifecycleJob(message.id, transaction);
+          created += 1;
+        } else if (['pending', 'processing'].includes(job.status)) {
+          active += 1;
+        } else {
+          await job.update(
+            {
+              status: 'pending',
+              attempts: 0,
+              notBefore: new Date(),
+              leaseExpiresAt: null,
+              lastErrorCode: null,
+              completedAt: null,
+            },
+            { transaction }
+          );
+          reset += 1;
+        }
       }
     });
   }
-  return { mode: 'enqueue', messages: messages.length, created, existing };
+  return { mode: 'enqueue', messages: messages.length, created, reset, active };
 }
 
 function proposedPickupInfo(aggregate) {
@@ -88,23 +108,6 @@ function proposedPickupInfo(aggregate) {
   };
 }
 
-function withoutAuthenticityGate(events) {
-  return events.map(event => {
-    const value = event.toJSON();
-    const reviewReasons = (value.reviewReasons || []).filter(
-      reason => !AUTHENTICITY_REVIEW_REASONS.has(reason)
-    );
-    return {
-      ...value,
-      authenticityStatus:
-        value.authenticityStatus === 'failed' ? 'manually_verified' : value.authenticityStatus,
-      needsReview: reviewReasons.length > 0,
-      reviewReasons,
-      message: value.message,
-    };
-  });
-}
-
 /** 生成不含邮件正文、联系人和订单号的逐订单影子差异报告。 */
 async function buildReport() {
   assertShadowMode();
@@ -112,6 +115,7 @@ async function buildReport() {
     Order.findAll({
       attributes: [
         'id',
+        'orderNumber',
         'products',
         'emailOrderStatus',
         'emailPaymentStatus',
@@ -127,7 +131,7 @@ async function buildReport() {
         {
           model: OrderMailMessage,
           as: 'message',
-          attributes: ['id', 'emailDate', 'receivedAt', 'createdAt'],
+          attributes: ['id', 'orderNumber', 'emailDate', 'receivedAt', 'createdAt'],
         },
       ],
       order: [
@@ -152,10 +156,6 @@ async function buildReport() {
     const orderEvents = eventsByOrder.get(order.id) || [];
     if (!orderEvents.length) continue;
     const aggregate = aggregateOrderLifecycle(order, orderEvents);
-    const parserCandidate = aggregateOrderLifecycle(
-      order,
-      withoutAuthenticityGate(orderEvents)
-    );
     const pickupInfo = proposedPickupInfo(aggregate);
     const currentPickupInfo = order.emailPickupInfo
       ? {
@@ -189,15 +189,6 @@ async function buildReport() {
         reviewReasons: aggregate.reviewReasons,
         pickupInfo,
       },
-      parserCandidate: {
-        orderStatus: parserCandidate.orderStatus,
-        paymentStatus: parserCandidate.paymentStatus,
-        needsReview: parserCandidate.needsReview,
-        reviewReasons: parserCandidate.reviewReasons,
-        pickupInfo: proposedPickupInfo(parserCandidate),
-        eligibleAfterTrustedAuthentication:
-          parserCandidate.applicable.length > 0 && !parserCandidate.needsReview,
-      },
       changes,
       eligibleForApplication: aggregate.applicable.length > 0 && !aggregate.needsReview,
     });
@@ -219,21 +210,16 @@ async function buildReport() {
       ordersWithChanges: items.filter(item => item.changes.length > 0).length,
       eligibleForApplication: items.filter(item => item.eligibleForApplication).length,
       needsReview: items.filter(item => item.proposed.needsReview).length,
+      ordersWithOrderNumberMismatch: items.filter(item =>
+        item.proposed.reviewReasons.includes('ORDER_NUMBER_MISMATCH')
+      ).length,
       eventsWithoutSystemOrder: missingOrderEvents.length,
       failedJobs: failedJobs.length,
-      parserCandidatesEligibleAfterTrustedAuthentication: items.filter(
-        item => item.parserCandidate.eligibleAfterTrustedAuthentication
-      ).length,
-      parserCandidatesNeedingOtherReview: items.filter(
-        item => item.parserCandidate.needsReview
-      ).length,
     },
     jobStatuses: countBy(jobs, job => job.status),
     jobErrors: countBy(failedJobs, job => job.lastErrorCode),
     proposedOrderStatuses: countBy(items, item => item.proposed.orderStatus),
     proposedPaymentStatuses: countBy(items, item => item.proposed.paymentStatus),
-    parserCandidateOrderStatuses: countBy(items, item => item.parserCandidate.orderStatus),
-    parserCandidatePaymentStatuses: countBy(items, item => item.parserCandidate.paymentStatus),
     templateTypes: countBy(events, event => event.templateType),
     authenticityStatuses: countBy(events, event => event.authenticityStatus),
     reviewReasons: countBy(
@@ -248,7 +234,7 @@ async function buildReport() {
 async function main() {
   try {
     await sequelize.authenticate();
-    const command = process.argv[2] || 'report';
+    const command = process.argv[COMMAND_INDEX] || 'report';
     const result = command === 'enqueue' ? await enqueueHistory() : await buildReport();
     const serialized = `${JSON.stringify(result, null, JSON_INDENT)}\n`;
     const output = optionValue('output');

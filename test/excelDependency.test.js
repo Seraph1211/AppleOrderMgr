@@ -15,8 +15,6 @@ jest.mock('../src/models', () => ({
   Order: { findAll: jest.fn() },
   sequelize: { transaction: jest.fn(), query: jest.fn() },
 }));
-jest.mock('../src/services/crawler/refreshJobService', () => ({}));
-
 const {
   parseExcelFile,
   previewImportData,

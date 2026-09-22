@@ -99,7 +99,6 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
       'orders.read',
       'orders.edit',
       'orders.export',
-      'orders.refresh',
       'orders.payer.edit',
       'channels.read',
       'channels.rename',
@@ -122,12 +121,11 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
         tag,
         sourceRecipientTag: i === 1 ? 'TAG-A' : null,
         ingestionSource: 'aos',
-        status: 'payment_due',
-        paymentStatus: 'unpaid',
+        emailOrderStatus: 'confirmed',
+        emailPaymentStatus: 'unknown',
         products: [{ name: `合成商品${i}`, model: `MODEL-${i}`, quantity: 1 }],
         pickupStore: `合成门店${i}`,
         recipientName: `合成取机人${i}`,
-        officialOrderAmount: 100 + i,
         orderDate: new Date(),
         orderUrl: `https://example.invalid/order/${i}`,
       }))
@@ -269,15 +267,13 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
     expect(all.body.data.recipientTags).not.toContain('TAG-B');
   });
 
-  test('显式混合批量刷新与页面刷新整体拒绝，不创建任务', async () => {
-    const before = await models.OrderRefreshJob.count();
+  test('已退休的批量刷新与页面刷新接口返回不存在', async () => {
     for (const [path, body] of [
       ['batch-refresh', { orderIds: orders.slice(0, 2).map(o => o.id) }],
       ['page-open-refresh', { order_ids: orders.slice(0, 2).map(o => o.id) }],
     ]) {
-      expect((await request(`/orders/${path}`, { method: 'POST', body })).status).toBe(404);
+      expect((await request(`/orders/${path}`, { method: 'POST', body })).status).toBe(410);
     }
-    expect(await models.OrderRefreshJob.count()).toBe(before);
   });
   test('渠道列表、统计和明细均不能旁路；指定 TAG 用户不能改名', async () => {
     const list = await request('/channels');
@@ -310,7 +306,7 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
     await setScope([]);
     expect((await request('/dashboard/filter-options')).body.data.productModels).toEqual([]);
   });
-  test('本人跨 TAG 任务保留信息、链接、付款人登记、处理及刷新；订单接口仍拒绝', async () => {
+  test('本人跨 TAG 任务保留信息、链接、付款人登记和处理；订单接口仍拒绝', async () => {
     const baseline = await request(`/payment-tasks/${task.id}`, { token: adminToken });
     expect(baseline.status).toBe(404); // 管理员也不绕过本人任务归属
     const detail = await request(`/payment-tasks/${task.id}`);
@@ -346,33 +342,11 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
         })
       ).status
     ).toBe(200);
-    const refresh = await request(`/payment-tasks/${task.id}/refresh`, {
-      method: 'POST',
-      body: {},
-    });
-    expect(refresh.status).toBe(202);
-    expect(
-      (await request(`/payment-tasks/${task.id}/refresh/${refresh.body.data.jobId}`)).status
-    ).toBe(200);
-    expect((await request(`/order-refresh/jobs/${refresh.body.data.jobId}`)).status).toBe(404);
+    expect((await request(`/payment-tasks/${task.id}/refresh`, { method: 'POST' })).status).toBe(
+      410
+    );
     expect((await request(`/orders/${orders[1].id}`)).status).toBe(404);
     expect((await request(`/payment-tasks/${task.id}`, { token: otherToken })).status).toBe(404);
-  });
-  test('刷新全部只入队范围订单，范围缩小后不能读取旧批次', async () => {
-    const result = await request('/orders/refresh-all', { method: 'POST', body: {} });
-    expect(result.status).toBe(202);
-    const batch = await models.OrderRefreshBatch.findByPk(result.body.data.batchId);
-    expect(batch.orderIds).toEqual([orders[0].id]);
-    expect((await request(`/order-refresh/batches/${batch.id}`)).status).toBe(200);
-    await setScope([]);
-    expect((await request(`/order-refresh/batches/${batch.id}`)).status).toBe(404);
-    const otherResult = await request('/orders/refresh-all', {
-      token: otherToken,
-      method: 'POST',
-      body: {},
-    });
-    expect(otherResult.status).toBe(202);
-    expect(otherResult.body.data.batchId).not.toBe(batch.id);
   });
   test('管理员原子保存范围、审计、并发冲突、幂等内容冲突；旧 token 随即受限', async () => {
     const config = await request(`/users/${staff.id}/permissions`, { token: adminToken });

@@ -7,40 +7,15 @@ const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
 const { requireRole, requirePermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
-const systemController = require('../controllers/systemController');
+const retiredFeature = require('../middleware/retiredFeature');
 
 const router = express.Router();
 
-router.get(
-  '/logs',
-  requireRole(['admin']),
-  requirePermission(PERMISSIONS.SYSTEM_LOGS_READ),
-  asyncHandler(systemController.listSystemLogs)
-);
-router.get(
-  '/auto-refresh',
-  requireRole(['admin']),
-  requirePermission(PERMISSIONS.SYSTEM_REFRESH_READ),
-  asyncHandler(systemController.getAutoRefreshStatus)
-);
-router.post(
-  '/auto-refresh/resume',
-  requireRole(['admin']),
-  requirePermission(PERMISSIONS.SYSTEM_REFRESH_MANAGE),
-  asyncHandler(systemController.resumeAutoRefresh)
-);
-router.get(
-  '/proxy-provider',
-  requireRole(['admin']),
-  requirePermission(PERMISSIONS.SYSTEM_PROXY_READ),
-  asyncHandler(systemController.getProxyProviderStatus)
-);
-router.post(
-  '/proxy-provider',
-  requireRole(['admin']),
-  requirePermission(PERMISSIONS.SYSTEM_PROXY_MANAGE),
-  asyncHandler(systemController.switchProxyProvider)
-);
+router.get('/logs', retiredFeature('爬虫运行日志'));
+router.get('/auto-refresh', retiredFeature('官网自动刷新状态'));
+router.post('/auto-refresh/resume', retiredFeature('官网自动刷新控制'));
+router.get('/proxy-provider', retiredFeature('官网刷新代理切换'));
+router.post('/proxy-provider', retiredFeature('官网刷新代理切换'));
 
 router.get(
   '/operation-logs',

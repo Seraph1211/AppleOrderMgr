@@ -111,7 +111,6 @@ const otherProduct = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A'
     expect(
       options.body.data.productOptions.find(option => option.value === 'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478').count
     ).toBe(2);
-    expect(await models.OrderRefreshJob.count()).toBe(0);
   });
 
   test('候选、别名与计数遵守订单 TAG 和本人任务范围；其他条件 AND', async () => {

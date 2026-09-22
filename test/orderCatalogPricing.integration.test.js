@@ -141,39 +141,6 @@ const product = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A', qua
     expect((await order.reload()).orderAmount).toBe('21998.00');
   });
 
-  test('官网金额变化不覆盖映射，官网有效数量变化重算', async () => {
-    const order = await create();
-    const { mergeOfficialOrder } = require('../src/services/crawler/officialOrderData');
-    await order.update(
-      mergeOfficialOrder(order, {
-        orderStatus: 'processing',
-        officialOrderAmount: 1,
-        products: [{ ...product, name: 'iPhone 18 Pro Max 256GB 黑色', quantity: 1 }],
-      })
-    );
-    expect((await order.reload()).orderAmount).toBe('10999.00');
-    expect(order.officialOrderAmount).toBe('1.00');
-    expect(order.sourceSnapshot.products[0].quantity).toBe(2);
-    await order.update(
-      mergeOfficialOrder(order, {
-        orderStatus: 'processing',
-        products: [],
-        officialFieldDiagnostics: { amount: 'missing' },
-      })
-    );
-    expect((await order.reload()).orderAmount).toBe('10999.00');
-    const { mergeBrowserOrder } = require('../src/services/crawler/browserOrderMerge');
-    await order.update(
-      mergeBrowserOrder(order, {
-        orderStatus: 'processing',
-        products: [product],
-        officialOrderAmount: 999,
-      })
-    );
-    expect((await order.reload()).orderAmount).toBe('21998.00');
-    expect(order.officialOrderAmount).toBe('1.00');
-  });
-
   test('订单、详情、付款两页、付款码、导出统一映射金额，未知保持未知', async () => {
     const known = await create();
     const unknown = await create([{ name: '未映射商品', quantity: 1 }], {

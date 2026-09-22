@@ -20,7 +20,6 @@ export const PERMISSIONS = Object.freeze({
   ORDER_MAIL_MANAGE: 'order_mail.manage',
   ORDERS_EDIT: 'orders.edit',
   ORDERS_EXPORT: 'orders.export',
-  ORDERS_REFRESH: 'orders.refresh',
   ORDERS_PAYER_EDIT: 'orders.payer.edit',
   APPLE_IDS_SECRETS_READ: 'apple_ids.secrets.read',
   RECIPIENTS_EXPORT_SENSITIVE: 'recipients.export_sensitive',
@@ -46,7 +45,6 @@ export const PERMISSIONS = Object.freeze({
   PAYMENT_TASKS_HANDLE_OWN: 'payment_tasks.handle_own',
   PAYMENT_TASKS_PAYER_EDIT_OWN: 'payment_tasks.payer.edit_own',
   PAYMENT_TASKS_LINK_READ_OWN: 'payment_tasks.link.read_own',
-  PAYMENT_TASKS_REFRESH_OWN: 'payment_tasks.refresh_own',
   PAYMENT_DISPATCH_READ: 'payment_dispatch.read',
   PAYMENT_DISPATCH_ASSIGN: 'payment_dispatch.assign',
   PAYMENT_DISPATCH_CONFIGURE: 'payment_dispatch.configure',
@@ -65,5 +63,4 @@ export const PAYMENT_EXECUTION_PERMISSIONS = Object.freeze([
   PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN,
   PERMISSIONS.PAYMENT_TASKS_PAYER_EDIT_OWN,
   PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN,
-  PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN,
 ]);

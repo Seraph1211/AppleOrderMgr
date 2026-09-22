@@ -5,13 +5,13 @@ import { formatPaymentCountdown } from '../src/utils/paymentCountdown.js';
 const now = Date.parse('2026-09-19T21:20:00+08:00');
 const orderDate = '2026-09-19T21:13:59+08:00';
 
-test('官网缺失时使用截图下单时间加30分钟并逐秒递减', () => {
+test('使用来源下单时间加30分钟并逐秒递减', () => {
   const task = { orderDate, deadlineAt: null };
   assert.equal(formatPaymentCountdown(task, now).text, '23 分 59 秒');
   assert.equal(formatPaymentCountdown(task, now + 1000).text, '23 分 58 秒');
   assert.deepEqual(task, { orderDate, deadlineAt: null });
 });
-test('官网截止不覆盖来源时间', () => {
+test('历史官网截止不覆盖来源时间', () => {
   assert.equal(
     formatPaymentCountdown({ orderDate, deadlineAt: '2026-09-19T21:25:00+08:00' }, new Date(now))
       .text,
@@ -48,18 +48,10 @@ test('最后五分钟按实时预计剩余时间标红', () => {
     /text-red/
   );
 });
-test('终态优先于官方或预计倒计时', () => {
-  for (const [officialOrderStatus, label] of [
-    ['processing', '已付款'],
-    ['cancelled', '订单已取消'],
-    ['payment_expired', '付款已过期'],
-    ['shipped', '无需付款'],
-  ]) {
-    assert.equal(formatPaymentCountdown({ orderDate, officialOrderStatus }, now).text, label);
-  }
+test('邮件已付款优先于来源倒计时', () => {
   assert.equal(
-    formatPaymentCountdown({ orderDate, officialPaymentStatus: 'refunded' }, now).text,
-    '已退款'
+    formatPaymentCountdown({ orderDate, emailPaymentStatus: 'paid' }, now).text,
+    '已付款'
   );
 });
 test('非法官网截止允许来源兜底，非法时钟保持未知', () => {

@@ -244,7 +244,7 @@
   .payment-task-table th[data-column='数据更新时间'] {
     width: 6%;
   }
-  .payment-task-table th[data-column='官网状态'],
+  .payment-task-table th[data-column='邮件状态'],
   .payment-task-table th[data-column='处理状态'] {
     width: 8%;
   }
@@ -290,10 +290,10 @@
     width: 7%;
   }
   .payment-task-table th[data-column='下单时间'],
-  .payment-task-table th[data-column='官网状态'] {
+  .payment-task-table th[data-column='邮件状态'] {
     width: 8%;
   }
-  .payment-task-table th[data-column='官网状态'] {
+  .payment-task-table th[data-column='邮件状态'] {
     width: 9%;
   }
   .payment-task-table th[data-column='付款方式'] {
@@ -334,7 +334,7 @@
   .payment-task-table th[data-column='商品信息'] {
     width: 20%;
   }
-  .payment-task-table th[data-column='官网状态'] {
+  .payment-task-table th[data-column='邮件状态'] {
     width: 12%;
   }
   .payment-task-table th[data-column='付款方式'] {
@@ -432,7 +432,7 @@
   .payment-task-table td {
     grid-column: span 2;
   }
-  .payment-task-table td[data-label='官网状态'] {
+  .payment-task-table td[data-label='邮件状态'] {
     grid-column: span 1;
   }
 }

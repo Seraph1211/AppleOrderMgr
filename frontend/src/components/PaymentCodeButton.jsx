@@ -112,6 +112,11 @@ export default function PaymentCodeButton({ taskId, orderDate, dispatch = false 
                         {warning}，请勿继续付款。
                       </p>
                     )}
+                    {data.paymentAssignmentHoldReason && (
+                      <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-amber-800">
+                        该订单存在历史付款限制；当前读取操作按既有权限保留。
+                      </p>
+                    )}
                     <dl className="text-sm divide-y divide-gray-100 text-gray-700">
                       {[
                         ['订单序号（系统 ID）', data.orderId],

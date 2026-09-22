@@ -2,23 +2,20 @@ const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 const { parseProductKeys, productKeySql } = require('../utils/productFilterQuery');
 const { collectProductOptions } = require('../utils/productFilter');
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
-const { normalizeOrderStatus } = require('../constants/business');
 const logger = require('../utils/logger');
-const { buildOfficialStatusCondition } = require('./paymentStatusFilter');
+const { buildEmailStatusCondition } = require('./paymentStatusFilter');
 const { Op, Sequelize } = require('sequelize');
 const {
   sequelize,
   PaymentTask,
   PaymentTaskEvent,
   OrderPayerEvent,
-  OrderRefreshJob,
   Order,
   User,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { serializePublicProducts, serializeOrderPricing } = require('../utils/orderSerialization');
 const { getPaymentDeadline } = require('./paymentEligibility');
-const refreshJobService = require('./crawler/refreshJobService');
 const { normalizePayerName, updateLockedOrderPayer } = require('./payerService');
 
 const PAYMENT_TASK_STATUSES = Object.freeze(['pending', 'processing', 'completed', 'exception']);
@@ -83,25 +80,20 @@ function includeTaskRelations() {
         'tag',
         'products',
         'productFilterItems',
-        'status',
-        'paymentStatus',
         'emailOrderStatus',
         'emailPaymentStatus',
         'emailStatusNeedsReview',
         'emailStatusEvidenceAt',
+        'emailLifecycleUpdatedAt',
         'emailPickupInfo',
+        'paymentAssignmentHoldReason',
         'paymentMethod',
         'sourceSnapshot',
         'orderAmount',
         'orderAmountPriceVersion',
-        'officialOrderAmount',
-        'officialOrderAmountCurrency',
         'payerName',
         'payerVersion',
         'orderDate',
-        'officialOrderCreatedAt',
-        'officialPaymentExpiresAt',
-        'lastCrawledAt',
         'updatedAt',
       ],
     },
@@ -220,24 +212,17 @@ function serializeTask(task, serverTime = new Date()) {
     orderNumber: plain.order?.orderNumber,
     recipientTag: getOrderRecipientTag(plain.order),
     products: serializePublicProducts(plain.order?.products, plain.order?.productFilterItems),
-    officialOrderStatus: normalizeOrderStatus(plain.order?.status),
-    officialPaymentStatus: plain.order?.paymentStatus || null,
-    officialPaymentConfirmed: plain.order?.paymentStatus === 'paid',
-    officialPaymentDiscrepancy:
-      plain.order?.paymentStatus === 'paid' && plain.processingStatus !== 'completed',
     emailOrderStatus: plain.order?.emailOrderStatus || 'unknown',
     emailPaymentStatus: plain.order?.emailPaymentStatus || 'unknown',
     emailPaymentConfirmed: plain.order?.emailPaymentStatus === 'paid',
     emailStatusNeedsReview: Boolean(plain.order?.emailStatusNeedsReview),
     emailStatusEvidenceAt: plain.order?.emailStatusEvidenceAt || null,
+    emailLifecycleUpdatedAt: plain.order?.emailLifecycleUpdatedAt || null,
     emailPickupInfo: plain.order?.emailPickupInfo || null,
+    paymentAssignmentHoldReason: plain.order?.paymentAssignmentHoldReason || null,
     paymentMethod: getSourcePaymentMethod(plain.order),
     ...serializeOrderPricing(plain.order),
-    officialOrderAmount: plain.order?.officialOrderAmount ?? null,
-    officialOrderAmountCurrency: plain.order?.officialOrderAmountCurrency || null,
-    lastCrawledAt: plain.order?.lastCrawledAt || null,
     orderDate: plain.order?.orderDate || null,
-    officialOrderCreatedAt: plain.order?.officialOrderCreatedAt || null,
     assignee: plain.assignee || null,
     processingStatus: plain.processingStatus,
     processingNotes: plain.processingNotes,
@@ -349,8 +334,8 @@ async function listOwnTasks(userId, query = {}) {
       orderWhere.orderNumber = { [Op.iLike]: `%${orderNumber}%` };
     }
     const productCondition = buildProductCondition(query);
-    const officialStatusCondition = buildOfficialStatusCondition(query);
-    if (officialStatusCondition) orderWhere.status = officialStatusCondition;
+    const emailStatusCondition = buildEmailStatusCondition(query);
+    if (emailStatusCondition) orderWhere.emailOrderStatus = emailStatusCondition;
     const orderDateCondition = buildOrderDateCondition(query);
     if (orderDateCondition) orderWhere.orderDate = orderDateCondition;
     const recipientTagCondition = buildRecipientTagCondition(
@@ -471,7 +456,7 @@ async function updateOwnTask(
     if (!task) throw ApiError.notFound('付款任务不存在或已转派');
 
     const order = await Order.findByPk(task.orderId, {
-      attributes: ['id', 'paymentStatus', 'payerName', 'payerVersion'],
+      attributes: ['id', 'payerName', 'payerVersion'],
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
@@ -598,58 +583,6 @@ async function getOwnPaymentLink(taskId, userId) {
   return { paymentUrl, serverTime: now, deadlineAt: getPaymentDeadline(task.order) };
 }
 
-/**
- * 为本人任务提交订单官网刷新队列。
- * @param {number} taskId - 任务 ID
- * @param {number} userId - 用户 ID
- * @returns {Promise<Object>} 入队结果
- */
-async function refreshOwnTask(taskId, userId) {
-  const task = await PaymentTask.findOne({ where: { id: taskId, assigneeUserId: userId } });
-  if (!task) throw ApiError.notFound('付款任务不存在或已转派');
-  const result = await refreshJobService.enqueueOrderRefresh(task.orderId, {
-    trigger: 'manual_single',
-    requestedBy: userId,
-  });
-  if (!result.job) throw ApiError.notFound('关联订单不存在');
-  return {
-    jobId: result.job.id,
-    status: result.job.status,
-    created: result.created,
-    merged: !result.created,
-  };
-}
-
-/**
- * 查询本人任务关联订单的刷新任务状态。
- * @param {number} taskId - 付款任务 ID
- * @param {number} jobId - 刷新任务 ID
- * @param {number} userId - 当前用户 ID
- * @returns {Promise<Object>} 非敏感刷新进度
- */
-async function getOwnRefreshJob(taskId, jobId, userId) {
-  const task = await PaymentTask.findOne({
-    where: { id: taskId, assigneeUserId: userId },
-    attributes: ['id', 'orderId'],
-  });
-  if (!task) throw ApiError.notFound('付款任务不存在或已转派');
-  const job = await OrderRefreshJob.findOne({
-    where: { id: jobId, orderId: task.orderId },
-    include: [{ model: Order, as: 'order', attributes: ['lastCrawledAt'] }],
-  });
-  if (!job) throw ApiError.notFound('刷新任务不存在或不属于当前任务');
-  return {
-    id: job.id,
-    status: job.status,
-    attemptCount: job.attemptCount,
-    lastErrorCode: job.lastErrorCode,
-    lastErrorMessage: job.lastErrorMessage,
-    startedAt: job.startedAt,
-    finishedAt: job.finishedAt,
-    lastCrawledAt: job.order?.lastCrawledAt || null,
-  };
-}
-
 module.exports = {
   PAYMENT_TASK_STATUSES,
   ACTIVE_PAYMENT_TASK_STATUSES,
@@ -662,6 +595,4 @@ module.exports = {
   getOwnTask,
   updateOwnTask,
   getOwnPaymentLink,
-  refreshOwnTask,
-  getOwnRefreshJob,
 };

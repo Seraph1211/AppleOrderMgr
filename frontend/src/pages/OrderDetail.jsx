@@ -1,30 +1,10 @@
 import OrderAmount from '../components/OrderAmount';
-import { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import {
-  AlertTriangle,
-  ArrowLeft,
-  Calendar,
-  CreditCard,
-  Mail,
-  MapPin,
-  RefreshCw,
-  User,
-} from 'lucide-react';
-import { getOrderDetail, refreshOrder, getRefreshJob } from '../api';
-import { useAuth } from '../contexts/AuthContext';
 import OrderSources from '../components/OrderSources';
-import OfficialOrderSummary from '../components/OfficialOrderSummary';
-import { ORDER_STATUS_BADGES as STATUS_BADGES } from '../constants/orderStatus';
-import { PERMISSIONS } from '../constants/permissions';
-
-const FRESHNESS_BADGES = {
-  pending: { text: '排队中', className: 'badge-info' },
-  refreshing: { text: '刷新中', className: 'badge-info' },
-  fresh: { text: '数据最新', className: 'badge-success' },
-  stale: { text: '数据已过期', className: 'badge-warning' },
-  failed: { text: '刷新失败', className: 'badge-error' },
-};
+import { getOrderDetail } from '../api';
+import { getEmailOrderStatusBadge } from '../constants/orderStatus';
+import { useCallback, useEffect, useState } from 'react';
+import { AlertTriangle, ArrowLeft, CreditCard, Mail, User } from 'lucide-react';
+import { useNavigate, useParams } from 'react-router-dom';
 
 function formatDate(value) {
   if (!value) return '-';
@@ -32,24 +12,26 @@ function formatDate(value) {
   return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN');
 }
 
+function formatPickup(pickup) {
+  if (!pickup) return '尚无邮件取货信息';
+  if (pickup.appointmentMode === 'business_hours') return '营业时间内到店';
+  const range = [pickup.startTime, pickup.endTime].filter(Boolean).join('–');
+  return [pickup.pickupDate, range].filter(Boolean).join(' ') || '时间待确认';
+}
+
 export default function OrderDetail() {
-  const { can } = useAuth();
   const { id } = useParams();
   const navigate = useNavigate();
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [refreshJob, setRefreshJob] = useState(null);
-  const [refreshing, setRefreshing] = useState(false);
 
   const loadOrderDetail = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const response = await getOrderDetail(id);
-      if (!response?.success || !response.data) {
-        throw new Error('订单详情响应格式异常');
-      }
+      if (!response?.success || !response.data) throw new Error('订单详情响应格式异常');
       setOrder(response.data);
     } catch (loadError) {
       setOrder(null);
@@ -62,45 +44,6 @@ export default function OrderDetail() {
   useEffect(() => {
     loadOrderDetail();
   }, [loadOrderDetail]);
-
-  useEffect(() => {
-    if (!refreshJob?.id || ['succeeded', 'failed', 'skipped'].includes(refreshJob.status)) {
-      return undefined;
-    }
-    const timer = window.setInterval(async () => {
-      try {
-        const response = await getRefreshJob(refreshJob.id);
-        if (!response.success) return;
-        setRefreshJob(response.data);
-        if (response.data.status === 'succeeded') {
-          window.clearInterval(timer);
-          setRefreshing(false);
-          await loadOrderDetail();
-        } else if (['failed', 'skipped'].includes(response.data.status)) {
-          window.clearInterval(timer);
-          setRefreshing(false);
-          setError(response.data.lastErrorMessage || '订单刷新失败');
-        }
-      } catch (pollError) {
-        window.clearInterval(timer);
-        setRefreshing(false);
-        setError(pollError.message || '刷新进度查询失败');
-      }
-    }, 2000);
-    return () => window.clearInterval(timer);
-  }, [refreshJob?.id, refreshJob?.status, loadOrderDetail]);
-
-  const handleManualRefresh = async () => {
-    setRefreshing(true);
-    setError('');
-    try {
-      const response = await refreshOrder(Number(id));
-      setRefreshJob({ id: response.data.jobId, status: response.data.status });
-    } catch (refreshError) {
-      setRefreshing(false);
-      setError(refreshError.message || '提交刷新任务失败');
-    }
-  };
 
   if (loading) {
     return (
@@ -131,17 +74,11 @@ export default function OrderDetail() {
     );
   }
 
-  const badge = STATUS_BADGES[order.status] || STATUS_BADGES.unknown;
-  const activeRefreshStatus = refreshJob?.status || order.refresh?.job?.status;
-  const freshnessStatus =
-    activeRefreshStatus === 'pending'
-      ? 'pending'
-      : activeRefreshStatus === 'running'
-        ? 'refreshing'
-        : order.refresh?.freshness_status || 'stale';
-  const freshnessBadge = FRESHNESS_BADGES[freshnessStatus] || FRESHNESS_BADGES.stale;
+  const statusBadge = getEmailOrderStatusBadge(order.email_order_status);
   const products = Array.isArray(order.products) ? order.products : [];
-  const validationIssues = Array.isArray(order.validation_issues) ? order.validation_issues : [];
+  const reviewReasons = Array.isArray(order.email_status_review_reasons)
+    ? order.email_status_review_reasons
+    : [];
 
   return (
     <div className="space-y-6">
@@ -152,102 +89,48 @@ export default function OrderDetail() {
         <ArrowLeft className="h-4 w-4" />
         <span>返回订单列表</span>
       </button>
-
       <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">订单详情</h1>
           <p className="mt-1 font-mono text-sm text-gray-500">{order.order_number}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <span className={`badge ${freshnessBadge.className}`}>{freshnessBadge.text}</span>
-          <span className={`badge ${badge.class}`}>{badge.text}</span>
-          {can(PERMISSIONS.ORDERS_REFRESH) && (
-            <button
-              onClick={handleManualRefresh}
-              disabled={refreshing}
-              className="btn btn-primary flex items-center gap-2"
-            >
-              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-              <span>{refreshing ? '刷新中' : '刷新官网状态'}</span>
-            </button>
-          )}
-        </div>
+        <span className={`badge ${statusBadge.class}`}>{statusBadge.text}</span>
       </div>
 
-      <OfficialOrderSummary order={order} />
       <div className="card border-blue-100 bg-blue-50/40">
         <h2 className="mb-4 text-lg font-semibold text-gray-900">官方订单邮件状态</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <p className="text-sm text-gray-500">订单状态</p>
+            <p className="mt-1 font-medium text-gray-900">{statusBadge.text}</p>
+          </div>
+          <div>
+            <p className="text-sm text-gray-500">付款状态</p>
             <p className="mt-1 font-medium text-gray-900">
-              {{
-                unknown: '待确认',
-                confirmed: '订单已确认',
-                processing: '处理中',
-                ready_for_pickup: '可取货',
-              }[order.email_order_status] || '待确认'}
+              {order.email_payment_status === 'paid' ? '已付款' : '待确认'}
             </p>
           </div>
           <div>
             <p className="text-sm text-gray-500">邮件证据时间</p>
-            <p className="mt-1 text-gray-900">
-              {order.email_status_evidence_at ? formatDate(order.email_status_evidence_at) : '-'}
-            </p>
+            <p className="mt-1 text-gray-900">{formatDate(order.email_status_evidence_at)}</p>
           </div>
         </div>
         {order.email_status_needs_review && (
           <p className="mt-3 text-sm text-amber-700">
-            邮件结论待核对，请查看关联邮件。
-            {!!order.email_status_review_reasons?.length && (
-              <span className="block text-xs break-all">
-                {order.email_status_review_reasons.join('、')}
-              </span>
-            )}
+            邮件结论待核对{reviewReasons.length ? `：${reviewReasons.join('、')}` : ''}
           </p>
         )}
-        {order.email_pickup_info && (
-          <div className="mt-4 border-t border-blue-100 pt-4 text-sm text-gray-700">
-            <p className="font-medium text-gray-900">
-              {order.email_pickup_info.storeName || '门店待确认'}
-            </p>
-            <p>{order.email_pickup_info.storeAddress || ''}</p>
-            <p className="mt-1">
-              {order.email_pickup_info.appointmentMode === 'business_hours'
-                ? '营业时间内到店'
-                : [
-                    order.email_pickup_info.pickupDate,
-                    [order.email_pickup_info.startTime, order.email_pickup_info.endTime]
-                      .filter(Boolean)
-                      .join('–'),
-                  ]
-                    .filter(Boolean)
-                    .join(' ') || '时间待确认'}
-            </p>
-          </div>
+        {order.payment_assignment_hold_reason && (
+          <p className="mt-3 text-sm text-amber-700">历史付款限制：禁止重新分配付款任务</p>
         )}
+        <div className="mt-4 border-t border-blue-100 pt-4 text-sm text-gray-700">
+          <p className="font-medium text-gray-900">
+            {order.email_pickup_info?.storeName || '门店待确认'}
+          </p>
+          <p>{order.email_pickup_info?.storeAddress || ''}</p>
+          <p className="mt-1">{formatPickup(order.email_pickup_info)}</p>
+        </div>
       </div>
-      {validationIssues.length > 0 && (
-        <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-sm text-yellow-800">
-          <div className="flex items-center gap-2 font-medium">
-            <AlertTriangle className="h-4 w-4" />
-            <span>官网数据校验发现 {validationIssues.length} 项异常</span>
-          </div>
-          <ul className="mt-2 list-disc space-y-1 pl-6">
-            {validationIssues.map((issue, index) => (
-              <li key={`${issue.type || 'issue'}-${index}`}>
-                {issue.message || issue.type || '未知异常'}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-          {error}
-        </div>
-      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -265,7 +148,7 @@ export default function OrderDetail() {
                   </tr>
                 </thead>
                 <tbody className="bg-white">
-                  {products.length > 0 ? (
+                  {products.length ? (
                     products.map((product, index) => (
                       <tr
                         key={`${product.model || product.name || 'product'}-${index}`}
@@ -292,60 +175,43 @@ export default function OrderDetail() {
             </div>
             <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-6 py-4">
               <span className="text-sm font-medium text-gray-600">订单金额</span>
-              <span className="text-xl font-bold text-primary">
-                <OrderAmount amount={order.order_amount} />
-              </span>
+              <OrderAmount amount={order.order_amount} />
             </div>
           </div>
-
           <div className="card">
-            <h2 className="mb-4 text-lg font-semibold text-gray-900">取货信息</h2>
-            <div className="space-y-4">
-              <div className="flex items-start gap-3">
-                <MapPin className="mt-0.5 h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium text-gray-900">
-                    {order.pickup_store || order.pickup_store_code || '-'}
-                  </p>
-                </div>
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">来源与时间</h2>
+            <OrderSources orderId={order.id} />
+            <dl className="mt-4 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-gray-500">下单时间</dt>
+                <dd>{formatDate(order.order_date)}</dd>
               </div>
-              <div className="flex items-start gap-3">
-                <Calendar className="mt-0.5 h-5 w-5 text-primary" />
-                <div>
-                  <p className="font-medium text-gray-900">预约取货日期</p>
-                  <p className="mt-1 text-sm text-gray-500">{order.official_pickup_date || '-'}</p>
-                  <p className="mt-1 text-sm text-gray-500">
-                    预约时段：{order.official_pickup_time_slot || '-'}
-                  </p>
-                </div>
+              <div>
+                <dt className="text-gray-500">邮件状态更新时间</dt>
+                <dd>{formatDate(order.email_lifecycle_updated_at)}</dd>
               </div>
-              {order.actual_pickup_date && (
-                <div className="flex items-start gap-3">
-                  <Calendar className="mt-0.5 h-5 w-5 text-primary" />
-                  <div>
-                    <p className="font-medium text-gray-900">实际取货日期（业务记录）</p>
-                    <p className="mt-1 text-sm text-gray-500">
-                      {formatDate(order.actual_pickup_date)}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
+              <div>
+                <dt className="text-gray-500">创建时间</dt>
+                <dd>{formatDate(order.created_at)}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">更新时间</dt>
+                <dd>{formatDate(order.updated_at)}</dd>
+              </div>
+            </dl>
           </div>
         </div>
-
         <div className="space-y-6">
           <div className="card">
-            <OrderSources orderId={order.id} />
-            <h2 className="mb-4 mt-4 text-lg font-semibold text-gray-900">订单信息</h2>
+            <h2 className="mb-4 text-lg font-semibold text-gray-900">订单信息</h2>
             <dl className="space-y-3 text-sm">
               <div>
                 <dt className="text-gray-500">订单号</dt>
-                <dd className="mt-1 font-mono text-gray-900">{order.order_number}</dd>
+                <dd className="font-mono">{order.order_number}</dd>
               </div>
               <div>
                 <dt className="text-gray-500">创建来源</dt>
-                <dd className="mt-1 text-gray-900">
+                <dd>
                   {order.ingestion_source === 'aos'
                     ? 'AOS 文件'
                     : order.ingestion_source === 'email'
@@ -355,81 +221,33 @@ export default function OrderDetail() {
               </div>
               <div>
                 <dt className="text-gray-500">来源 TAG</dt>
-                <dd className="mt-1 text-gray-900">
-                  {order.source_recipient_tag || '—'}
-                  {order.recipient_tag_conflict && (
-                    <p className="text-amber-700">
-                      档案 TAG：{order.recipient_profile_tag}（存在差异）
-                    </p>
-                  )}
-                  {order.ingestion_source === 'aos' && !order.recipient_linked && (
-                    <p className="text-amber-700">取机人待关联</p>
-                  )}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">创建时间</dt>
-                <dd className="mt-1 text-gray-900">{formatDate(order.created_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">更新时间</dt>
-                <dd className="mt-1 text-gray-900">{formatDate(order.updated_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">最后爬取</dt>
-                <dd className="mt-1 text-gray-900">{formatDate(order.last_crawled_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">最后成功刷新</dt>
-                <dd className="mt-1 text-gray-900">{formatDate(order.refresh?.last_success_at)}</dd>
+                <dd>{order.source_recipient_tag || '—'}</dd>
               </div>
             </dl>
           </div>
-
           <div className="card">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
               <Mail className="h-5 w-5 text-primary" />
               Apple ID
             </h2>
             <p className="break-all text-sm text-gray-900">{order.apple_id?.apple_id || '-'}</p>
-            {order.apple_id?.nickname && (
-              <p className="mt-1 text-sm text-gray-500">{order.apple_id.nickname}</p>
-            )}
           </div>
-
           <div className="card">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
               <User className="h-5 w-5 text-primary" />
               取机人
             </h2>
-            <dl className="space-y-3 text-sm">
-              <div>
-                <dt className="text-gray-500">姓名</dt>
-                <dd className="mt-1 text-gray-900">{order.recipient?.name || '-'}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">身份证后四位</dt>
-                <dd className="mt-1 font-mono text-gray-900">
-                  {order.recipient?.id_card_last4 || '-'}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">下单手机号</dt>
-                <dd className="mt-1 text-gray-900">{order.recipient_phone || '-'}</dd>
-              </div>
-              <div>
-                <dt className="text-gray-500">下单邮箱</dt>
-                <dd className="mt-1 break-all text-gray-900">{order.recipient_email || '-'}</dd>
-              </div>
-            </dl>
+            <p className="text-sm text-gray-900">{order.recipient?.name || '-'}</p>
+            <p className="mt-1 text-sm text-gray-500">{order.recipient_phone || '-'}</p>
+            <p className="mt-1 break-all text-sm text-gray-500">{order.recipient_email || '-'}</p>
           </div>
-
           <div className="card">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
               <CreditCard className="h-5 w-5 text-primary" />
               付款信息
             </h2>
             <p className="text-sm text-gray-900">{order.payment_method || '-'}</p>
+            <p className="mt-2 text-sm text-gray-500">付款人：{order.payer_name || '-'}</p>
           </div>
         </div>
       </div>

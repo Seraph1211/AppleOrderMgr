@@ -13,7 +13,7 @@ const { scopeOrderWhere, getOrderTagBind } = require('../services/orderAccessSer
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 
-const { ORDER_STATUSES } = require('../constants/business');
+const { EMAIL_ORDER_STATUSES } = require('../services/paymentStatusFilter');
 
 const START_OF_TODAY = () => {
   return parseOrderTimeBoundary(formatOrderTime(new Date()).slice(0, 10).replace(/\//g, '-'));
@@ -77,16 +77,16 @@ async function getOverview(req, res) {
     // 状态分布
     const statusRows = await Order.findAll({
       where: scopeOrderWhere(req.user),
-      attributes: ['status', [fn('COUNT', col('id')), 'count']],
-      group: ['status'],
+      attributes: ['emailOrderStatus', [fn('COUNT', col('id')), 'count']],
+      group: ['emailOrderStatus'],
       raw: true,
     });
-    const statusDistribution = ORDER_STATUSES.reduce((acc, s) => {
+    const statusDistribution = EMAIL_ORDER_STATUSES.reduce((acc, s) => {
       acc[s] = 0;
       return acc;
     }, {});
     statusRows.forEach(r => {
-      statusDistribution[r.status] = parseInt(r.count, 10);
+      statusDistribution[r.emailOrderStatus] = parseInt(r.count, 10);
     });
 
     const todayStart = START_OF_TODAY();

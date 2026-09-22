@@ -168,70 +168,7 @@ module.exports = sequelize => {
         field: 'source_snapshot',
         allowNull: true,
         defaultValue: null,
-        comment: '首次官网合并前的非敏感导入来源快照',
-      },
-      officialRawStatus: {
-        type: DataTypes.STRING(100),
-        field: 'official_raw_status',
-        allowNull: true,
-        defaultValue: null,
-        comment: 'Apple 原始状态',
-      },
-      officialStatusDescription: {
-        type: DataTypes.STRING(255),
-        field: 'official_status_description',
-        allowNull: true,
-        defaultValue: null,
-        comment: 'Apple 场景码',
-      },
-      officialStatusObservedAt: {
-        type: DataTypes.DATE,
-        field: 'official_status_observed_at',
-        allowNull: true,
-        defaultValue: null,
-        comment: '最近状态观测时间',
-      },
-      officialFulfillmentMessage: {
-        type: DataTypes.TEXT,
-        field: 'official_fulfillment_message',
-        allowNull: true,
-        defaultValue: null,
-        comment: '官网履约提示文案',
-      },
-      officialPaymentExpiresAt: {
-        type: DataTypes.DATE,
-        field: 'official_payment_expires_at',
-        allowNull: true,
-        defaultValue: null,
-        comment: '官网准确付款截止时间',
-      },
-      officialPaymentMethod: {
-        type: DataTypes.STRING(50),
-        field: 'official_payment_method',
-        allowNull: true,
-        defaultValue: null,
-        comment: '官网付款方式',
-      },
-      officialStatusNeedsReview: {
-        type: DataTypes.BOOLEAN,
-        field: 'official_status_needs_review',
-        allowNull: false,
-        defaultValue: false,
-        comment: '官网阶段需要核对',
-      },
-      officialAllItemsTerminal: {
-        type: DataTypes.BOOLEAN,
-        field: 'official_all_items_terminal',
-        allowNull: false,
-        defaultValue: false,
-        comment: '全部商品处于已确认终态',
-      },
-      officialFieldDiagnostics: {
-        type: DataTypes.JSONB,
-        field: 'official_field_diagnostics',
-        allowNull: false,
-        defaultValue: {},
-        comment: '阶段字段存在性诊断',
+        comment: '入库来源的非敏感快照',
       },
       // 订单状态
       status: {
@@ -263,12 +200,6 @@ module.exports = sequelize => {
         allowNull: true,
         field: 'payment_method',
         comment: '付款方式',
-      },
-      paymentStatus: {
-        type: DataTypes.STRING(50),
-        allowNull: true,
-        field: 'payment_status',
-        comment: '官网支付状态',
       },
       emailOrderStatus: {
         type: DataTypes.STRING(30),
@@ -331,6 +262,19 @@ module.exports = sequelize => {
         field: 'email_lifecycle_updated_at',
         comment: '最近一次邮件归并应用时间',
       },
+      paymentAssignmentHoldReason: {
+        type: DataTypes.STRING(50),
+        allowNull: true,
+        field: 'payment_assignment_hold_reason',
+        comment: '独立付款分配限制原因；不得由通用订单编辑接口清除',
+        validate: { isIn: [['legacy_payment_restriction']] },
+      },
+      paymentAssignmentHoldEvidence: {
+        type: DataTypes.JSONB,
+        allowNull: true,
+        field: 'payment_assignment_hold_evidence',
+        comment: '付款限制的非敏感迁移证据和归档引用',
+      },
       orderAmount: {
         type: DataTypes.DECIMAL(12, 2),
         allowNull: true,
@@ -342,24 +286,6 @@ module.exports = sequelize => {
         allowNull: true,
         field: 'order_amount_price_version',
         comment: '订单金额所用价格映射版本',
-      },
-      officialOrderAmount: {
-        type: DataTypes.DECIMAL(12, 2),
-        allowNull: true,
-        field: 'official_order_amount',
-        comment: '官网订单金额',
-      },
-      officialOrderAmountCurrency: {
-        type: DataTypes.STRING(10),
-        allowNull: true,
-        field: 'official_order_amount_currency',
-        comment: '官网订单金额币种',
-      },
-      officialOrderAmountParseError: {
-        type: DataTypes.TEXT,
-        allowNull: true,
-        field: 'official_order_amount_parse_error',
-        comment: '官网订单金额解析失败原因',
       },
       payerName: {
         type: DataTypes.STRING(100),
@@ -389,29 +315,11 @@ module.exports = sequelize => {
         field: 'pickup_store',
         comment: '取货门店',
       },
-      pickupStatus: {
-        type: DataTypes.STRING(50),
-        allowNull: true,
-        field: 'pickup_status',
-        comment: '官网取货状态',
-      },
       pickupStoreCode: {
         type: DataTypes.STRING(50),
         allowNull: true,
         field: 'pickup_store_code',
         comment: '取货门店代码（如 R638）',
-      },
-      pickupCode: {
-        type: DataTypes.STRING(50),
-        allowNull: true,
-        field: 'pickup_code',
-        comment: '取货码',
-      },
-      pickupTimeSlot: {
-        type: DataTypes.STRING(50),
-        allowNull: true,
-        field: 'pickup_time_slot',
-        comment: '取货时间段（如 25-18:30-18:45）',
       },
       // 时间信息
       orderDate: {
@@ -419,84 +327,6 @@ module.exports = sequelize => {
         allowNull: true,
         field: 'order_date',
         comment: '下单时间（来自邮件）',
-      },
-      officialOrderCreatedAt: {
-        type: DataTypes.DATE,
-        allowNull: true,
-        field: 'official_order_created_at',
-        comment: '官网订单创建时间（必须包含时分）',
-      },
-      actualPickupDate: {
-        type: DataTypes.DATEONLY,
-        allowNull: true,
-        field: 'actual_pickup_date',
-        comment: '实际取货日期',
-      },
-      // 爬虫相关
-      lastCrawledAt: {
-        type: DataTypes.DATE,
-        allowNull: true,
-        field: 'last_crawled_at',
-        comment: '最后爬取时间',
-      },
-      crawlFailCount: {
-        type: DataTypes.INTEGER,
-        allowNull: false,
-        defaultValue: 0,
-        field: 'crawl_fail_count',
-        comment: '爬取失败次数',
-      },
-      officialProducts: {
-        type: DataTypes.JSONB,
-        allowNull: false,
-        defaultValue: [],
-        field: 'official_products',
-        comment: '官网商品列表（不含图片）',
-      },
-      validationStatus: {
-        type: DataTypes.STRING(50),
-        allowNull: false,
-        defaultValue: 'unchecked',
-        field: 'validation_status',
-        comment: '商品校验状态：unchecked/valid/abnormal/unavailable',
-        validate: {
-          isIn: {
-            args: [['unchecked', 'valid', 'abnormal', 'unavailable']],
-            msg: '商品校验状态必须是有效值',
-          },
-        },
-      },
-      validationIssues: {
-        type: DataTypes.JSONB,
-        allowNull: false,
-        defaultValue: [],
-        field: 'validation_issues',
-        comment: '商品校验异常明细',
-      },
-      anomalyDetectedAt: {
-        type: DataTypes.DATE,
-        allowNull: true,
-        field: 'anomaly_detected_at',
-        comment: '异常订单发现时间',
-      },
-      autoRefreshEnabled: {
-        type: DataTypes.BOOLEAN,
-        allowNull: false,
-        defaultValue: true,
-        field: 'auto_refresh_enabled',
-        comment: '是否允许自动刷新',
-      },
-      autoRefreshStopReason: {
-        type: DataTypes.STRING(100),
-        allowNull: true,
-        field: 'auto_refresh_stop_reason',
-        comment: '自动刷新停止原因',
-      },
-      autoRefreshStoppedAt: {
-        type: DataTypes.DATE,
-        allowNull: true,
-        field: 'auto_refresh_stopped_at',
-        comment: '自动刷新停止时间',
       },
       // 业务字段
       tag: {
@@ -601,32 +431,12 @@ module.exports = sequelize => {
           fields: ['status'],
           name: 'idx_orders_status',
         },
-        {
-          fields: ['payment_status'],
-          name: 'idx_orders_payment_status',
-        },
         { fields: ['email_order_status'], name: 'idx_orders_email_order_status' },
         { fields: ['email_payment_status'], name: 'idx_orders_email_payment_status' },
         { fields: ['email_pickup_date'], name: 'idx_orders_email_pickup_date' },
         {
-          fields: ['pickup_status'],
-          name: 'idx_orders_pickup_status',
-        },
-        {
-          fields: ['validation_status'],
-          name: 'idx_orders_validation_status',
-        },
-        {
-          fields: ['auto_refresh_enabled'],
-          name: 'idx_orders_auto_refresh_enabled',
-        },
-        {
           fields: ['order_date'],
           name: 'idx_orders_order_date',
-        },
-        {
-          fields: ['actual_pickup_date'],
-          name: 'idx_orders_actual_pickup_date',
         },
         {
           fields: ['pickup_store_code'],
@@ -637,18 +447,9 @@ module.exports = sequelize => {
           name: 'idx_orders_tag',
         },
         {
-          fields: ['last_crawled_at'],
-          name: 'idx_orders_last_crawled_at',
-        },
-        {
           using: 'GIN',
           fields: ['products'],
           name: 'idx_orders_products_gin',
-        },
-        {
-          using: 'GIN',
-          fields: ['official_products'],
-          name: 'idx_orders_official_products_gin',
         },
       ],
       comment: '订单管理表',
@@ -672,19 +473,6 @@ module.exports = sequelize => {
       as: 'recipient',
     });
 
-    // 订单有多个爬虫日志
-    Order.hasMany(models.CrawlLog, {
-      foreignKey: 'orderId',
-      as: 'crawlLogs',
-    });
-    Order.hasOne(models.OrderRefreshSchedule, {
-      foreignKey: 'orderId',
-      as: 'refreshSchedule',
-    });
-    Order.hasMany(models.OrderRefreshJob, {
-      foreignKey: 'orderId',
-      as: 'refreshJobs',
-    });
     Order.hasMany(models.EmailLog, {
       foreignKey: 'orderId',
       as: 'emailLogs',

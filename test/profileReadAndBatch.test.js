@@ -19,12 +19,9 @@ jest.mock('../src/models', () => ({
   Order: { findAll: jest.fn(), count: jest.fn() },
   User: {},
 }));
-jest.mock('../src/services/crawler/refreshJobService', () => ({ enqueueMany: jest.fn() }));
 const models = require('../src/models');
 const appleController = require('../src/controllers/appleIdController');
 const recipientController = require('../src/controllers/recipientController');
-const orderController = require('../src/controllers/orderController');
-const jobs = require('../src/services/crawler/refreshJobService');
 const { normalizeRecipientPhone } = require('../src/utils/recipientPhone');
 const { requirePermission } = require('../src/middleware/authMiddleware');
 const { Op } = require('sequelize');
@@ -101,7 +98,7 @@ describe('基础资料读取权限与选填联系电话', () => {
     }
   );
 
-  test.each(['apple_ids.read', 'recipients.read', 'orders.refresh'])(
+  test.each(['apple_ids.read', 'recipients.read'])(
     '无 %s 权限被后端拒绝',
     permission => {
       const next = jest.fn();
@@ -222,46 +219,5 @@ describe('基础资料读取权限与选填联系电话', () => {
         response()
       )
     ).rejects.toMatchObject({ statusCode: 400 });
-  });
-});
-
-describe('订单勾选批量刷新', () => {
-  beforeEach(() => jest.clearAllMocks());
-  test('缺失或不可见 ID 整批拒绝，不泄露逐项存在性', async () => {
-    models.Order.findAll.mockResolvedValue([{ id: 1 }]);
-    models.Order.count.mockResolvedValue(1);
-    await expect(
-      orderController.batchRefresh(
-        {
-          body: { orderIds: [1, '1', 9] },
-          user: { id: 2, orderAccess: { mode: 'tags', tags: ['A'] } },
-        },
-        response()
-      )
-    ).rejects.toMatchObject({ statusCode: 404 });
-    expect(jobs.enqueueMany).not.toHaveBeenCalled();
-  });
-  test('完整可见集合去重后入队', async () => {
-    models.Order.findAll.mockResolvedValue([{ id: 1 }]);
-    models.Order.count.mockResolvedValue(1);
-    jobs.enqueueMany.mockResolvedValue({ total: 1, created: 1, results: [] });
-    await orderController.batchRefresh(
-      { body: { orderIds: [1, '1'] }, user: { id: 2, orderAccess: { mode: 'tags', tags: ['A'] } } },
-      response()
-    );
-    expect(jobs.enqueueMany).toHaveBeenCalledWith([1], {
-      trigger: 'manual_single',
-      requestedBy: 2,
-    });
-  });
-  test.each(
-    [[], [0], ['1oops'], [1.2], [true], [null], Array(101).fill(1), 0, null].map(orderIds => [
-      orderIds,
-    ])
-  )('非法 ID 拒绝入队 %#', async orderIds => {
-    await expect(
-      orderController.batchRefresh({ body: { orderIds }, user: { id: 2 } }, response())
-    ).rejects.toMatchObject({ statusCode: 400 });
-    expect(jobs.enqueueMany).not.toHaveBeenCalled();
   });
 });

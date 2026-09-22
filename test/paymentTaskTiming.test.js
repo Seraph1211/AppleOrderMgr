@@ -17,12 +17,11 @@ describe('付款窗口时间契约', () => {
         order: {
           orderNumber: 'W1234567890',
           products: [],
-          status: 'pending',
-          paymentStatus: 'unpaid',
+          emailOrderStatus: 'confirmed',
+          emailPaymentStatus: 'unpaid',
           paymentMethod: '支付宝',
           orderDate: new Date('2026-09-08T10:00:00.000Z'),
-          officialOrderCreatedAt: new Date('2026-09-08T09:00:00.000Z'),
-          lastCrawledAt: new Date('2026-09-08T10:04:30.000Z'),
+          emailLifecycleUpdatedAt: new Date('2026-09-08T10:04:30.000Z'),
           updatedAt: new Date('2026-09-08T10:01:00.000Z'),
         },
       }),
@@ -33,7 +32,7 @@ describe('付款窗口时间契约', () => {
     expect(result.deadlineAt.toISOString()).toBe('2026-09-08T10:30:00.000Z');
     expect(result.deadlineSource).toBe('source_order');
     expect(result.remainingSeconds).toBe(25 * 60);
-    expect(result.lastCrawledAt.toISOString()).toBe('2026-09-08T10:04:30.000Z');
+    expect(result.emailLifecycleUpdatedAt.toISOString()).toBe('2026-09-08T10:04:30.000Z');
     expect(result.paymentMethod).toBe('支付宝');
   });
 
@@ -47,7 +46,7 @@ describe('付款窗口时间契约', () => {
         version: 0,
         createdAt: new Date('2026-09-08T10:00:00.000Z'),
         updatedAt: new Date('2026-09-08T10:00:00.000Z'),
-        order: { orderNumber: 'W1234567890', products: [], officialOrderCreatedAt: null },
+        order: { orderNumber: 'W1234567890', products: [], orderDate: null },
       }),
     };
 

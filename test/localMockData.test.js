@@ -88,7 +88,7 @@ describe('本地 Mock 数据脚本', () => {
     expect(new Set(result.paymentTasks.map(task => task.processingStatus))).toEqual(
       new Set(['pending', 'processing', 'completed', 'exception'])
     );
-    expect(result.staff[0].permissions).toHaveLength(5);
+    expect(result.staff[0].permissions).toHaveLength(4);
     expect(result.staff[2].permissions).toEqual(['payment_tasks.read_own']);
   });
 });

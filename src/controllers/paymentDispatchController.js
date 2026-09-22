@@ -129,18 +129,6 @@ async function updateTaskNotes(req, res) {
   return res.json({ success: true, data });
 }
 
-/** 提交单个任务官网刷新。 */
-async function refreshTask(req, res) {
-  const data = await paymentDispatchService.refreshTask(Number(req.params.id), req.user.id);
-  return res.status(202).json({ success: true, message: '刷新任务已提交', data });
-}
-
-/** 提交选中任务批量官网刷新。 */
-async function refreshTasks(req, res) {
-  const data = await paymentDispatchService.refreshTasks(req.body.taskIds, req.user.id);
-  return res.status(202).json({ success: true, message: '批量刷新任务已提交', data });
-}
-
 /** 重开已完成任务。 */
 async function reopenTask(req, res) {
   const data = await paymentDispatchService.reopenTask(
@@ -169,8 +157,6 @@ module.exports = {
   assignTasks,
   assignTask,
   updateTaskNotes,
-  refreshTasks,
-  refreshTask,
   reopenTask,
   runScan,
 };

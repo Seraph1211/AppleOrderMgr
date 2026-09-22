@@ -25,19 +25,18 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
       ingestionSource: 'aos',
       sourceRecipientTag: tag,
       tag: '档案不匹配',
-      status: 'payment_due',
-      paymentStatus: 'unpaid',
+      emailOrderStatus: 'confirmed',
+      emailPaymentStatus: 'unknown',
       products: [{ name: '合成手机', model: 'TEST-PHONE', quantity: 1 }],
       orderUrl: `https://www.apple.com.cn/xc/cn/vieworder/${orderNumber}/synthetic`,
       orderDate: new Date(),
-      officialOrderCreatedAt: new Date(),
       ...extra,
     });
     return await m.PaymentTask.create({
       orderId: order.id,
       processingStatus: 'pending',
       deadlineAt: new Date(Date.now() + 1800000),
-      deadlineSource: 'official',
+      deadlineSource: 'source_order',
       paymentLinkSource: 'order_url',
     });
   }
@@ -187,50 +186,16 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     await m.Order.update({ orderUrl: null }, { where: { id: task.orderId } });
     expect((await request('GET', `/rules/tasks/${task.id}/payment-link`)).status).toBe(404);
   });
-  test('首次刷新 Migration down/up 保留首次队列，后续自动队列不改成首次', async () => {
-    const migration = require('../migrations/20260913000001-add-initial-refresh-trigger');
-    const task = await makeTask('A');
-    const another = await makeTask('B');
-    const initial = await m.OrderRefreshJob.create({
-      orderId: task.orderId,
-      trigger: 'initial',
-      scheduledAt: new Date(),
-    });
-    await m.OrderRefreshJob.create({
-      orderId: another.orderId,
-      trigger: 'auto',
-      status: 'failed',
-      scheduledAt: new Date(),
-    });
-    const repeated = await m.OrderRefreshJob.create({
-      orderId: another.orderId,
-      trigger: 'auto',
-      scheduledAt: new Date(),
-    });
-    await migration.down(m.sequelize.getQueryInterface());
-    expect((await initial.reload()).trigger).toBe('auto');
-    await migration.up(m.sequelize.getQueryInterface());
-    expect((await initial.reload()).trigger).toBe('initial');
-    expect((await repeated.reload()).trigger).toBe('auto');
-    await expect(
-      m.OrderRefreshJob.create({
-        orderId: task.orderId,
-        trigger: 'bogus',
-        scheduledAt: new Date(),
-      })
-    ).rejects.toThrow();
-  });
-
-  test('两页官网状态多选在分页前过滤，与 TAG 条件交集且本人范围隔离', async () => {
+  test('两页邮件状态多选在分页前过滤，与 TAG 条件交集且本人范围隔离', async () => {
     const tasks = [];
     for (let i = 0; i < 9; i++) {
       const task = await makeTask(i < 6 ? 'FILTER-A' : 'FILTER-B', {
-        status: ['payment_due', 'processing', 'cancelled'][i % 3],
+        emailOrderStatus: ['confirmed', 'processing', 'ready_for_pickup'][i % 3],
       });
       await task.update({ assigneeUserId: i % 2 ? people[1].id : people[0].id });
       tasks.push(task);
     }
-    const query = { officialOrderStatuses: '["payment_due","processing"]', limit: 2 };
+    const query = { emailOrderStatuses: '["confirmed","processing"]', limit: 2 };
     const first = await dispatch.listDispatchTasks(query);
     const second = await dispatch.listDispatchTasks({ ...query, page: 2 });
     expect(first.pagination.total).toBe(6);
@@ -238,7 +203,7 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     expect(new Set([...first.items, ...second.items].map(t => t.id)).size).toBe(4);
     expect(
       [...first.items, ...second.items].every(t =>
-        ['payment_due', 'processing'].includes(t.officialOrderStatus)
+        ['confirmed', 'processing'].includes(t.emailOrderStatus)
       )
     ).toBe(true);
     expect(
@@ -252,19 +217,19 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     expect(own.pagination.total).toBe(3);
     expect(own.items.every(t => t.assignee.id === people[0].id)).toBe(true);
     expect(
-      (await dispatch.listDispatchTasks({ officialOrderStatus: 'cancelled' })).pagination.total
+      (await dispatch.listDispatchTasks({ emailOrderStatus: 'ready_for_pickup' })).pagination.total
     ).toBe(3);
     expect(
-      (await dispatch.listDispatchTasks({ officialOrderStatuses: '[]' })).pagination.total
+      (await dispatch.listDispatchTasks({ emailOrderStatuses: '[]' })).pagination.total
     ).toBe(9);
     expect(
-      (await dispatch.listDispatchTasks({ officialOrderStatuses: '["shipped"]' })).pagination.total
+      (await dispatch.listDispatchTasks({ emailOrderStatuses: '["picked_up"]' })).pagination.total
     ).toBe(0);
-    const invalid = await request('GET', '/rules/tasks?officialOrderStatuses=bad');
+    const invalid = await request('GET', '/rules/tasks?emailOrderStatuses=bad');
     expect(invalid.status).toBe(400);
     await expect(
       require('../src/services/paymentTaskService').listOwnTasks(people[0].id, {
-        officialOrderStatuses: '["bad"]',
+        emailOrderStatuses: '["bad"]',
       })
     ).rejects.toMatchObject({ statusCode: 400 });
   });
@@ -501,7 +466,7 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
   test('模式及付款资格不被 TAG 绕过，多实例扫描无重复分配', async () => {
     await createRule(['A'], [people[0].id]);
     const due = await makeTask('A');
-    const paid = await makeTask('A', { paymentStatus: 'paid' });
+    const paid = await makeTask('A', { emailPaymentStatus: 'paid' });
     const expired = await makeTask('A', { orderDate: new Date(Date.now() - 3600000) });
     const unknown = await makeTask('A', { orderDate: null });
     await m.PaymentDispatchSetting.update({ mode: 'manual' }, { where: { id: 1 } });

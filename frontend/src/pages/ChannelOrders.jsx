@@ -1,9 +1,9 @@
 import OrderDateFilter from '../components/OrderDateFilter';
 import { formatOrderTime } from '../utils/orderTime';
-import { ORDER_STATUS_BADGES, ORDER_STATUS_LABELS } from '../constants/orderStatus';
+import { EMAIL_ORDER_STATUS_BADGES, EMAIL_ORDER_STATUS_LABELS } from '../constants/orderStatus';
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { ArrowLeft, Search, Filter, ExternalLink } from 'lucide-react';
+import { ArrowLeft, Search, Filter } from 'lucide-react';
 import { getChannelOrders, getChannelStats } from '../api';
 
 export default function ChannelOrders() {
@@ -77,9 +77,9 @@ export default function ChannelOrders() {
   };
 
   const getStatusBadgeClass = status =>
-    `badge ${ORDER_STATUS_BADGES[status]?.class || 'badge-warning'}`;
+    `badge ${EMAIL_ORDER_STATUS_BADGES[status]?.class || 'badge-warning'}`;
 
-  const getStatusText = status => ORDER_STATUS_LABELS[status] || status;
+  const getStatusText = status => EMAIL_ORDER_STATUS_LABELS[status] || status;
 
   return (
     <div className="space-y-6">
@@ -104,16 +104,16 @@ export default function ChannelOrders() {
             <p className="text-2xl font-bold text-gray-900 mt-2">{stats.totalOrders}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-500">待取货</p>
-            <p className="text-2xl font-bold text-yellow-600 mt-2">{stats.readyOrders}</p>
+            <p className="text-sm text-gray-500">待确认</p>
+            <p className="text-2xl font-bold text-yellow-600 mt-2">{stats.pendingOrders}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-500">已完成</p>
-            <p className="text-2xl font-bold text-green-600 mt-2">{stats.completedOrders}</p>
+            <p className="text-sm text-gray-500">处理中</p>
+            <p className="text-2xl font-bold text-blue-600 mt-2">{stats.processingOrders}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-500">已取消</p>
-            <p className="text-2xl font-bold text-red-600 mt-2">{stats.cancelledOrders}</p>
+            <p className="text-sm text-gray-500">可取货</p>
+            <p className="text-2xl font-bold text-green-600 mt-2">{stats.readyOrders}</p>
           </div>
         </div>
       )}
@@ -140,7 +140,7 @@ export default function ChannelOrders() {
               className="input"
             >
               <option value="">全部状态</option>
-              {Object.entries(ORDER_STATUS_LABELS).map(([value, label]) => (
+              {Object.entries(EMAIL_ORDER_STATUS_LABELS).map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>

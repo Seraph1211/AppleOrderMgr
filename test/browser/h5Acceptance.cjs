@@ -23,7 +23,6 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       'payment_tasks.read_own',
       'payment_tasks.handle_own',
       'payment_tasks.link.read_own',
-      'payment_tasks.refresh_own',
     ];
     let failSecond = true;
     let lastTaskQuery = {};

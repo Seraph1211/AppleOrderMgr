@@ -40,25 +40,106 @@ test('多商品、重复合并、AOS TAG 优先与空值', () => {
   expect(text).toContain('335 || 新TAG || A x 5、B x 1 || 支付宝');
   expect(content.buildNotificationText({ id: 1 }, 'link')).toBe('1 || - || - || - || - || link');
 });
+test('代抢消息在完整 TAG 后插入取机人姓名，其他字段保持顺序', () => {
+  expect(
+    content.buildNotificationText(
+      {
+        ...order,
+        id: 717,
+        tag: '代抢 老钟',
+        recipientName: ' 罗利 ',
+        products: [{ name: 'iPhone 18 Pro Max 勃艮第酒红色 256G', quantity: 2 }],
+        orderDate: '2026-09-21T12:39:00.000Z',
+      },
+      fixture.payload
+    )
+  ).toBe(
+    `717 || 代抢 老钟 || 罗利 || iPhone 18 Pro Max 勃艮第酒红色 256G x 2 || 微信 || 26/09/21 21:09 || ${fixture.payload}`
+  );
+});
+test.each(['代抢', '广州 代抢 老钟', '老钟代抢'])(
+  'TAG %s 任意位置包含连续代抢关键词时增加姓名',
+  tag => {
+    const fields = content
+      .buildNotificationText({ ...order, tag, recipientName: '测试姓名' }, fixture.payload)
+      .split(' || ');
+    expect(fields).toHaveLength(7);
+    expect(fields.slice(1, 3)).toEqual([tag, '测试姓名']);
+  }
+);
+test.each(['广州 刘炎', '代 抢', '', null])('普通或空 TAG %s 不增加姓名', tag => {
+  const text = content.buildNotificationText(
+    { ...order, tag, recipientName: '不应出现的姓名' },
+    fixture.payload
+  );
+  expect(text.split(' || ')).toHaveLength(6);
+  expect(text).not.toContain('不应出现的姓名');
+});
+test.each([undefined, null, '', ' \n\t '])('代抢姓名缺失或空白 %s 用短横线占位', recipientName => {
+  const fields = content
+    .buildNotificationText({ ...order, tag: '代抢 老钟', recipientName }, fixture.payload)
+    .split(' || ');
+  expect(fields).toHaveLength(7);
+  expect(fields[2]).toBe('-');
+});
+test('代抢关键词按 AOS 实际推送 TAG 判断，沿用来源优先与空值回退', () => {
+  const aosOrder = { ...order, ingestionSource: 'aos', recipientName: '测试姓名' };
+  expect(
+    content.buildNotificationText(
+      { ...aosOrder, tag: '普通TAG', sourceRecipientTag: '代抢 来源TAG' },
+      fixture.payload
+    )
+  ).toContain('335 || 代抢 来源TAG || 测试姓名 || ');
+  expect(
+    content
+      .buildNotificationText(
+        { ...aosOrder, tag: '代抢 旧TAG', sourceRecipientTag: '普通来源TAG' },
+        fixture.payload
+      )
+      .split(' || ')
+  ).toHaveLength(6);
+  expect(
+    content.buildNotificationText(
+      { ...aosOrder, tag: '代抢 回退TAG', sourceRecipientTag: null },
+      fixture.payload
+    )
+  ).toContain('335 || 代抢 回退TAG || 测试姓名 || ');
+});
+test('取机人姓名清理控制字符与分隔符，保留付款链接完整', () => {
+  const fields = content
+    .buildNotificationText(
+      { ...order, tag: '代抢 老钟', recipientName: ' 罗\n利 || 测试\t' },
+      fixture.payload
+    )
+    .split(' || ');
+  expect(fields).toHaveLength(7);
+  expect(fields[2]).toBe('罗 利 ｜｜ 测试');
+  expect(fields[6]).toBe(fixture.payload);
+});
 test('服务器识读合成支付码、坏图与非支付码', () => {
   expect(content.decodePaymentQr(fixture.valid)).toBe(fixture.payload);
   expect(content.decodePaymentQr(fixture.nonPayment)).toBeNull();
   expect(content.decodePaymentQr('data:image/png;base64,bad')).toBeNull();
   expect(content.decodePaymentQr(null)).toBeNull();
 });
-test.each(['paid', 'refunded'])('付款状态 %s 跳过', paymentStatus => {
-  expect(content.orderBlockReason({ ...order, paymentStatus }, new Date(order.orderDate))).toBe(
+test('邮件已付款跳过', () => {
+  expect(
+    content.orderBlockReason(
+      { ...order, emailPaymentStatus: 'paid' },
+      new Date(order.orderDate)
+    )
+  ).toBe(
     'ORDER_TERMINAL'
   );
 });
-test.each(['cancelled', 'pickup_cancelled', 'payment_expired', 'payment_received'])(
-  '订单状态 %s 跳过',
-  status => {
-    expect(content.orderBlockReason({ ...order, status }, new Date(order.orderDate))).toBe(
-      'ORDER_TERMINAL'
-    );
-  }
-);
+test('历史付款限制跳过', () => {
+  expect(
+    content.orderBlockReason(
+      { ...order, paymentAssignmentHoldReason: 'legacy_payment_restriction' },
+      new Date(order.orderDate)
+    )
+  ).toBe('ORDER_TERMINAL');
+});
 test('截止时刻、缺失时间及无订单不推送', () => {
   expect(content.orderBlockReason(order, new Date('2026-09-19T20:21:00Z'))).toBe('ORDER_EXPIRED');
   expect(content.orderBlockReason({ orderDate: '2026-09-20' }, new Date())).toBe(

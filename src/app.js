@@ -36,7 +36,6 @@ const paymentDispatchRouter = require('./routes/paymentDispatch');
 const { sequelize } = require('./models');
 const emailService = require('./services/emailService');
 const monitorNotificationSender = require('./services/monitorNotificationSender');
-const refreshWorkerService = require('./services/crawler/refreshWorkerService');
 const paymentDispatchScheduler = require('./services/paymentDispatchScheduler');
 const identityVerificationRunner = require('./services/identityVerificationRunner');
 const ingestionScheduler = require('./services/ingestionScheduler');
@@ -72,12 +71,10 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Webhook 请求的 JSON 解析错误可能含输入片段，禁止传播到通用错误日志。
 app.use('/api/wecom-notifications', (error, _req, res, next) => {
   if (error.type === 'entity.parse.failed' || error.type === 'entity.too.large')
-    return res
-      .status(400)
-      .json({
-        success: false,
-        error: { code: 'VALIDATION_ERROR', message: '请求体格式或大小无效' },
-      });
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: '请求体格式或大小无效' },
+    });
   return next(error);
 });
 
@@ -176,9 +173,6 @@ const server = app.listen(DEFAULT_PORT, () => {
     } catch (error) {
       logger.error('邮件监听服务启动失败', { error: error.message });
     }
-    refreshWorkerService.start().catch(error => {
-      logger.error('自动刷新调度器启动失败', { error: error.message });
-    });
   }
 });
 
@@ -187,7 +181,6 @@ function shutdown(signal) {
   logger.info(`收到 ${signal} 信号，准备关闭服务`);
 
   // 停止领取新的后台任务；邮件在途处理在关闭数据库前等待完成。
-  const crawlerStopped = refreshWorkerService.stop();
   paymentDispatchScheduler.stop();
   const identityStopped = identityVerificationRunner.stop();
   const ingestionStopped = ingestionScheduler.stop();
@@ -200,7 +193,6 @@ function shutdown(signal) {
     }
 
     try {
-      await crawlerStopped;
       await identityStopped;
       await ingestionStopped;
       await monitorStopped;

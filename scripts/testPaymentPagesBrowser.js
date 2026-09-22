@@ -4,13 +4,13 @@ const logger = require('../src/utils/logger');
 
 function getSyntheticPermissions(mode, permitted, copyPermitted) {
   if (mode === 'payment-dispatch') {
-    return ['payment_dispatch.read', 'payment_dispatch.assign', 'orders.refresh'];
+    return ['payment_dispatch.read', 'payment_dispatch.assign'];
   }
   return [
     'payment_tasks.read_own',
     'payment_tasks.handle_own',
     ...(copyPermitted ? ['payment_tasks.link.read_own'] : []),
-    ...(permitted ? ['payment_tasks.refresh_own'] : []),
+    ...(permitted ? ['payment_tasks.handle_own'] : []),
   ];
 }
 

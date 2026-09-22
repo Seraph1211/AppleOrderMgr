@@ -1,16 +1,6 @@
 const ApiError = require('../utils/ApiError');
 const PAYMENT_WINDOW_MS = 30 * 60 * 1000;
 const PRECISE_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:\d{2})$/;
-const BLOCKED_STATUSES = new Set([
-  'payment_received',
-  'processing',
-  'ready_for_pickup',
-  'picked_up',
-  'shipped',
-  'delivered',
-  'cancelled',
-  'pickup_cancelled',
-]);
 
 /** 仅以精确来源下单时间计算付款截止，不回退官网或入库时间。 */
 function getPaymentDeadline(order) {
@@ -20,15 +10,11 @@ function getPaymentDeadline(order) {
   return Number.isFinite(time) ? new Date(time + PAYMENT_WINDOW_MS) : null;
 }
 
-/** 身份异常及状态待核实不拦截；保留明确已付、退款和终态限制。 */
-function isAssignmentBlocked(order = {}, manual = false) {
-  return (
-    order.emailPaymentStatus === 'paid' ||
-    ['paid', 'refunded'].includes(order.paymentStatus) ||
-    BLOCKED_STATUSES.has(order.status) ||
-    (order.officialAllItemsTerminal === true && !(manual && order.status === 'payment_expired')) ||
-    (!manual && order.status === 'payment_expired')
-  );
+/** 邮件付款证据和一次性历史限制阻止重新分配；单纯过期仅限制自动分配。 */
+function isAssignmentBlocked(order = {}, manual = false, now = new Date()) {
+  if (order.emailPaymentStatus === 'paid' || order.paymentAssignmentHoldReason) return true;
+  const deadline = getPaymentDeadline(order);
+  return !manual && deadline instanceof Date && deadline <= now;
 }
 
 /** 校验付款入口域名、协议和订单号，不依赖官网身份核验结果。 */
@@ -74,11 +60,11 @@ function assessAssignment(task, expectedVersion, now = new Date()) {
   if (task.processingStatus === 'completed')
     return reject('INVALID_STATE', '任务已完成', '先重开任务再分配');
   const order = task.order || {};
-  if (isAssignmentBlocked(order, true))
+  if (isAssignmentBlocked(order, true, now))
     return reject(
       'PAYMENT_NOT_ELIGIBLE',
-      '订单已付款、退款、取消或已结束',
-      '核对订单状态，此类订单无需分配付款'
+      order.paymentAssignmentHoldReason ? '订单存在历史付款限制' : '邮件已确认付款',
+      '核对邮件证据或历史归档；限制解除需单独审计'
     );
   const deadline = getPaymentDeadline(order);
   if (!deadline)
@@ -88,11 +74,9 @@ function assessAssignment(task, expectedVersion, now = new Date()) {
   } catch (_error) {
     return reject('PAYMENT_LINK_INVALID', '付款链接无效或订单号不匹配', '核对并修正原始订单链接');
   }
-  result.expired = deadline <= now || order.status === 'payment_expired';
-  if (!order.lastCrawledAt || order.officialStatusNeedsReview || order.status === 'unknown')
-    result.warnings.push('官网状态尚未核实');
-  if ((order.validationIssues || []).some(issue => issue.type === 'order_identity'))
-    result.warnings.push('存在身份异常提示，请核对订单');
+  result.expired = deadline <= now;
+  if (order.emailOrderStatus === 'unknown') result.warnings.push('邮件订单状态待确认');
+  if (order.emailStatusNeedsReview) result.warnings.push('邮件状态需要人工核对');
   return { ...result, eligible: true };
 }
 

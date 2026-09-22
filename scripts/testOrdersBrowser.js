@@ -46,7 +46,7 @@ async function main() {
             role: 'readOnly',
             permissions:
               permissionMode === 'refresh'
-                ? ['orders.read', 'orders.refresh', 'order_mail.manage']
+                ? ['orders.read', 'order_mail.manage']
                 : permissionMode === 'export'
                   ? ['orders.read', 'orders.export']
                   : ['orders.read'],
@@ -130,9 +130,7 @@ async function main() {
           mailSubmits += 1;
           data = {
             mode: 'shadow',
-            results: [
-              { orderId: 1, messageCount: 3, enqueued: 3, active: 0, expired: 0 },
-            ],
+            results: [{ orderId: 1, messageCount: 3, enqueued: 3, active: 0, expired: 0 }],
             totals: {
               orders: 1,
               messages: 3,
@@ -147,9 +145,7 @@ async function main() {
           assert.deepEqual(JSON.parse(route.request().postData()).orderIds, [1]);
           data = {
             mode: 'shadow',
-            results: [
-              { orderId: 1, messageCount: 3, enqueued: 3, active: 0, expired: 0 },
-            ],
+            results: [{ orderId: 1, messageCount: 3, enqueued: 3, active: 0, expired: 0 }],
             totals: {
               orders: 1,
               messages: 3,
@@ -284,11 +280,24 @@ async function main() {
     assert.equal(await page.getByRole('button', { name: '官网状态筛选' }).count(), 0);
     for (const width of [1280, 1440, 1920]) {
       await page.setViewportSize({ width, height: 1000 });
-      const fields = await page.locator('.order-filter-fields > div').evaluateAll(elements =>
-        elements.filter(element => !element.classList.contains('order-date-filter')).map(element => ({ top: element.getBoundingClientRect().top, text: element.textContent }))
+      const fields = await page
+        .locator('.order-filter-fields > div')
+        .evaluateAll(elements =>
+          elements
+            .filter(element => !element.classList.contains('order-date-filter'))
+            .map(element => ({
+              top: element.getBoundingClientRect().top,
+              text: element.textContent,
+            }))
+        );
+      const pickupTop = await page
+        .locator('input[aria-label="取货日期筛选"]')
+        .evaluate(element => element.parentElement.getBoundingClientRect().top);
+      assert.equal(
+        fields.filter(field => Math.abs(field.top - pickupTop) < 2).length,
+        6,
+        width + 'px 六项筛选应在同一行'
       );
-      const pickupTop = await page.locator('input[aria-label="取货日期筛选"]').evaluate(element => element.parentElement.getBoundingClientRect().top);
-      assert.equal(fields.filter(field => Math.abs(field.top - pickupTop) < 2).length, 6, width + 'px 六项筛选应在同一行');
     }
     await page.getByRole('button', { name: '邮件订单状态筛选' }).click();
     await page.getByRole('option', { name: '可取货', exact: true }).click();
@@ -370,6 +379,8 @@ async function main() {
     await selection.check();
     await page.getByRole('button', { name: '导出选中订单' }).click();
     await page.getByRole('heading', { name: '导出选中订单' }).waitFor();
+    assert.equal(await page.getByText('邮件付款状态', { exact: true }).count(), 0);
+    assert.equal(await page.getByText('官网支付状态', { exact: true }).count(), 0);
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: '导出 Excel' }).click();
     await download;
@@ -414,6 +425,8 @@ async function main() {
         '窄屏固定操作',
         '系统订单 ID 搜索',
         '官网订单号复制链接',
+        '单笔和批量邮件状态刷新',
+        '订单管理不展示付款状态',
         '导出权限独立于刷新权限',
         '只读权限',
       ],

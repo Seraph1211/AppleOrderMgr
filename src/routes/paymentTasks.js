@@ -4,6 +4,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const { requireAnyPermission, requirePermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
 const controller = require('../controllers/paymentTaskController');
+const retiredFeature = require('../middleware/retiredFeature');
 
 const router = express.Router();
 
@@ -35,16 +36,8 @@ router.get(
   requirePermission(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN),
   asyncHandler(controller.getOwnPaymentLink)
 );
-router.post(
-  '/:id/refresh',
-  requirePermission(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN),
-  asyncHandler(controller.refreshOwnTask)
-);
-router.get(
-  '/:id/refresh/:jobId',
-  requirePermission(PERMISSIONS.PAYMENT_TASKS_REFRESH_OWN),
-  asyncHandler(controller.getOwnRefreshJob)
-);
+router.post('/:id/refresh', retiredFeature('付款任务官网刷新'));
+router.get('/:id/refresh/:jobId', retiredFeature('付款任务官网刷新进度'));
 
 router.get(
   '/:id/payment-code',

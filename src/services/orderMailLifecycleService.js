@@ -15,7 +15,6 @@ const logger = require('../utils/logger');
 const { scopeOrderWhere } = require('./orderAccessService');
 const { parseOrderMail } = require('./orderMailContent');
 const { getOrderMailConfig } = require('./orderMailConfig');
-const { verifyOrderMailAuthenticity } = require('./orderMailAuthentication');
 const {
   RULE_VERSION,
   TEMPLATE_TYPES,
@@ -35,6 +34,28 @@ const ORDER_STATUS_SEQUENCE = Object.freeze([
   'ready_for_pickup',
 ]);
 const orderStatusRank = status => Math.max(0, ORDER_STATUS_SEQUENCE.indexOf(status));
+
+/**
+ * 以归档、解析及系统订单的完整订单号精确一致作为生命周期邮件来源条件。
+ * @param {Object} message 归档邮件
+ * @param {Object} parsedResult 生命周期解析结果
+ * @param {Object|null} order 系统订单
+ * @returns {Object} 订单号核对结论
+ */
+function verifyOrderNumberMatch(message, parsedResult, order) {
+  const archivedOrderNumber = String(message?.orderNumber || '').trim();
+  const parsedOrderNumber = String(parsedResult?.orderNumber || '').trim();
+  const systemOrderNumber = String(order?.orderNumber || '').trim();
+  const evidence = { method: 'order_number_match' };
+  if (!archivedOrderNumber || !parsedOrderNumber || archivedOrderNumber !== parsedOrderNumber) {
+    return { status: 'failed', reason: 'ORDER_NUMBER_MISMATCH', evidence };
+  }
+  if (!order) return { status: 'not_checked', reason: 'ORDER_NOT_AVAILABLE', evidence };
+  if (systemOrderNumber !== parsedOrderNumber) {
+    return { status: 'failed', reason: 'ORDER_NUMBER_MISMATCH', evidence };
+  }
+  return { status: 'verified', reason: null, evidence: { ...evidence, matched: true } };
+}
 
 function normalizeReplayOrderIds(orderIds) {
   if (
@@ -164,7 +185,7 @@ function pickEffectiveEvents(events) {
   return [...byMessage.values()];
 }
 
-/** 按邮件来源、商品范围和状态单调性归并同一订单的当前有效事件。 */
+/** 按订单号、商品范围和状态单调性归并同一订单的当前有效事件。 */
 function aggregateOrderLifecycle(order, events) {
   const effective = pickEffectiveEvents(events);
   let orderStatus = 'unknown';
@@ -175,16 +196,14 @@ function aggregateOrderLifecycle(order, events) {
 
   for (const event of effective) {
     if (event.templateType === TEMPLATE_TYPES.EXCLUDED) continue;
-    const authenticationAccepted =
-      event.source === 'manual' ||
-      ['verified', 'manually_verified'].includes(event.authenticityStatus);
+    const orderNumberMatched = event.message?.orderNumber === order.orderNumber;
     const scope = evaluateProductScope(event.products, order.products);
-    if (!authenticationAccepted) reviewReasons.add('AUTHENTICITY_NOT_VERIFIED');
+    if (!orderNumberMatched) reviewReasons.add('ORDER_NUMBER_MISMATCH');
     if (!scope.matched) reviewReasons.add(scope.reason);
     for (const reason of event.reviewReasons || []) reviewReasons.add(reason);
     if (event.needsReview)
       for (const reason of event.reviewReasons || []) reviewReasons.add(reason);
-    if (!authenticationAccepted || !scope.matched || event.needsReview) continue;
+    if (!orderNumberMatched || !scope.matched || event.needsReview) continue;
     applicable.push(event);
     if (orderStatusRank(event.orderStatus) > orderStatusRank(orderStatus)) {
       orderStatus = event.orderStatus;
@@ -296,7 +315,7 @@ function applyOrderLifecycle(orderId, transaction, config = getOrderMailConfig()
         {
           model: OrderMailMessage,
           as: 'message',
-          attributes: ['id', 'emailDate', 'receivedAt', 'createdAt'],
+          attributes: ['id', 'orderNumber', 'emailDate', 'receivedAt', 'createdAt'],
         },
       ],
       transaction: currentTransaction,
@@ -352,7 +371,7 @@ function applyOrderLifecycle(orderId, transaction, config = getOrderMailConfig()
   return transaction ? apply(transaction) : sequelize.transaction(apply);
 }
 
-async function processClaimedJob(job, config, dependencies = {}) {
+async function processClaimedJob(job, config) {
   try {
     return await sequelize.transaction(async transaction => {
       const lockedJob = await OrderMailProcessingJob.findByPk(job.id, {
@@ -372,21 +391,13 @@ async function processClaimedJob(job, config, dependencies = {}) {
       const rawBuffer = Buffer.from(message.rawContent, 'base64');
       const parsed = await parseOrderMail(rawBuffer);
       const parsedResult = parseOrderMailLifecycle(parsed);
-      let authentication = { status: 'not_checked', reason: null, evidence: {} };
-      if (parsedResult.templateType !== TEMPLATE_TYPES.EXCLUDED) {
-        authentication = await verifyOrderMailAuthenticity(rawBuffer, parsed, {
-          senderDomains: config.senderDomains,
-          verifier: dependencies.verifier,
-        });
-        if (authentication.status === 'temporary_failure') {
-          const error = new Error('DKIM verification temporarily unavailable');
-          error.code = 'DKIM_TEMPORARY';
-          throw error;
-        }
-      }
       const order = parsedResult.orderNumber
         ? await Order.findOne({ where: { orderNumber: parsedResult.orderNumber }, transaction })
         : null;
+      let authentication = { status: 'not_checked', reason: null, evidence: {} };
+      if (parsedResult.templateType !== TEMPLATE_TYPES.EXCLUDED) {
+        authentication = verifyOrderNumberMatch(message, parsedResult, order);
+      }
       const event = await appendParserEvent(
         message,
         order,
@@ -441,7 +452,7 @@ async function processNextLifecycleJob(options = {}) {
   if (!config.lifecycle.parseEnabled) return false;
   const job = await claimLifecycleJob(config);
   if (!job) return false;
-  return processClaimedJob(job, config, options);
+  return processClaimedJob(job, config);
 }
 
 /** 订单晚于邮件创建时，在订单创建事务内关联并应用已有解析结论。 */
@@ -463,7 +474,7 @@ async function applyWaitingOrderLifecycle(order, transaction, config = getOrderM
   const eventIds = events.map(event => event.id);
   const messageIds = [...new Set(events.map(event => event.messageId))];
   await OrderMailEvent.update(
-    { orderId: order.id },
+    { orderId: order.id, authenticityStatus: 'verified' },
     { where: { id: { [Op.in]: eventIds } }, transaction }
   );
   const result = await applyOrderLifecycle(order.id, transaction, config);
@@ -719,4 +730,5 @@ module.exports = {
   enqueueReplay,
   enqueueOrderReplay,
   reviewLifecycleEvent,
+  verifyOrderNumberMatch,
 };

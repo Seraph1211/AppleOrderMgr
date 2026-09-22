@@ -19,10 +19,6 @@ export const updatePaymentDispatchTaskNotes = (taskId, payload, idempotencyKey) 
   client.put(`/payment-dispatch/tasks/${taskId}/notes`, payload, {
     headers: { 'Idempotency-Key': idempotencyKey },
   });
-export const refreshPaymentDispatchTask = taskId =>
-  client.post(`/payment-dispatch/tasks/${taskId}/refresh`);
-export const refreshPaymentDispatchTasks = taskIds =>
-  client.post('/payment-dispatch/tasks/refresh', { taskIds });
 export const reopenPaymentTask = (taskId, payload, idempotencyKey) =>
   client.post(`/payment-dispatch/tasks/${taskId}/reopen`, payload, {
     headers: { 'Idempotency-Key': idempotencyKey },

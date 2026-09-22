@@ -479,33 +479,6 @@ describeIntegration('账号管理隔离库验收', () => {
           path: '/tmp/account-artifacts/account-operation-logs.png',
           fullPage: true,
         });
-        const logOrder = await models.Order.create({
-          orderNumber: `W${String(++sequence).slice(-10)}`,
-          products: [{ name: '合成日志商品', quantity: 1 }],
-          status: 'pending',
-          paymentStatus: 'unpaid',
-          orderDate: new Date(),
-        });
-        await models.CrawlLog.create({
-          orderId: logOrder.id,
-          event: 'order_sync_failed',
-          eventType: 'crawler',
-          severity: 'error',
-          result: 'failed',
-          success: false,
-          errorMessage: 'Request failed with status code 403',
-          httpStatus: 403,
-        });
-        await manager.goto('http://127.0.0.1:5173/system-logs');
-        await manager.getByRole('cell', { name: '订单同步失败', exact: true }).first().waitFor();
-        await manager
-          .getByRole('cell', { name: '官网拒绝访问，请检查风控和代理状态', exact: true })
-          .first()
-          .waitFor();
-        await manager.screenshot({
-          path: '/tmp/account-artifacts/account-system-logs.png',
-          fullPage: true,
-        });
         await manager.setViewportSize({ width: 390, height: 844 });
         await manager.goto('http://127.0.0.1:5173/profile');
         await manager.getByRole('heading', { name: '个人设置' }).waitFor();
