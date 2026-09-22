@@ -29,6 +29,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
     district: clean(item?.district),
     streetAddress: clean(item?.streetAddress),
     tag: clean(item?.tag),
+    channel: clean(item?.channel),
     question1: '',
     answer1: '',
     question2: '',
@@ -79,7 +80,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
         required={required}
         disabled={disabled}
         autoComplete="off"
-        maxLength={key === 'idCardNumber' ? 18 : 1000}
+        maxLength={key === 'idCardNumber' ? 18 : key === 'channel' ? 100 : 1000}
       />
     </label>
   );
@@ -120,6 +121,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
             'district',
             'streetAddress',
             'tag',
+            'channel',
             'status',
             'notes',
           ].map(key => [key, form[key]])
@@ -181,6 +183,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
                 {field('district', '区')}
                 {field('streetAddress', '街道地址')}
                 {field('tag', 'TAG')}
+                {field('channel', '渠道')}
                 {canBind && field('appleId', '绑定 Apple ID（留空解除绑定）', false, 'email')}
               </>
             )}

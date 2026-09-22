@@ -179,6 +179,18 @@ module.exports = sequelize => {
           },
         },
       },
+      channel: {
+        type: DataTypes.STRING(100),
+        allowNull: true,
+        defaultValue: null,
+        comment: '取机人渠道标签；独立于订单和取机人 TAG',
+        validate: {
+          len: {
+            args: [0, 100],
+            msg: '渠道长度不能超过100个字符',
+          },
+        },
+      },
       status: {
         type: DataTypes.STRING(20),
         allowNull: false,
@@ -235,6 +247,10 @@ module.exports = sequelize => {
         {
           fields: ['tag'],
           name: 'idx_recipients_tag',
+        },
+        {
+          fields: ['channel'],
+          name: 'idx_recipients_channel',
         },
         {
           fields: ['status'],

@@ -95,6 +95,11 @@ export default function ProfileDetailsModal({ kind, item, onClose }) {
                   : detail?.apple_id || '未绑定'}{' '}
                 · 使用状态：{detail?.status}
               </p>
+              {!account && (
+                <p className="text-sm text-gray-700">
+                  TAG：{detail?.tag || '—'} · 渠道：{detail?.channel || '—'}
+                </p>
+              )}
               {account && can('apple_ids.secrets.read') && (
                 <div className="space-y-2">
                   <button

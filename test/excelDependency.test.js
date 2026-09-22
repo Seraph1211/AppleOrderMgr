@@ -89,6 +89,14 @@ describe('固定 SheetJS 制品与读写兼容', () => {
     expect(parsed[0].rowNumber).toBe(2);
   });
 
+  test('取机人模板包含独立渠道列且示例渠道保持空白', () => {
+    const filePath = path.join(__dirname, '../templates/recipients_import_template.xlsx');
+    const book = XLSX.readFile(filePath);
+    const rows = XLSX.utils.sheet_to_json(book.Sheets.Recipients, { header: 1, defval: '' });
+    expect(rows[0]).toEqual(['姓', '名', '身份证号', '标签', '渠道']);
+    expect(rows.slice(1).every(row => row[4] === '')).toBe(true);
+  });
+
   test('中文表头、前导零、空值和原始行号保持不变', () => {
     const file = workbookFile([
       ['Apple ID', '密码', '备注名称', '国家地区', '未知列'],
@@ -163,7 +171,7 @@ describe('固定 SheetJS 制品与读写兼容', () => {
   test('取机人中文列映射和联系方式、身份证、枚举校验保持不变', () => {
     const file = workbookFile(
       [
-        ['姓', '名', '身份证号', '手机号', '邮箱', '绑定 Apple ID', '状态'],
+        ['姓', '名', '身份证号', '手机号', '邮箱', '绑定 Apple ID', '渠道', '状态'],
         [
           '测',
           '试',
@@ -171,6 +179,7 @@ describe('固定 SheetJS 制品与读写兼容', () => {
           '13800000000',
           'sample@example.invalid',
           'sample@example.invalid',
+          '合作渠道甲',
           '未使用',
         ],
       ],
@@ -179,6 +188,7 @@ describe('固定 SheetJS 制品与读写兼容', () => {
     const valid = previewImportData(file, 'recipients');
     expect(valid.summary).toEqual({ total: 1, valid: 1, invalid: 0 });
     expect(valid.preview[0].data.idCardNumber).toBe('110101199001010001');
+    expect(valid.preview[0].data.channel).toBe('合作渠道甲');
     expect(validateRecipient({}).map(item => item.field)).toEqual([
       'lastName',
       'firstName',
@@ -192,9 +202,19 @@ describe('固定 SheetJS 制品与读写兼容', () => {
         phone: 'bad',
         email: 'bad',
         appleId: 'bad',
+        channel: '渠'.repeat(101),
         status: 'bad',
       }).map(item => item.field)
-    ).toEqual(['lastName', 'firstName', 'idCardNumber', 'phone', 'email', 'appleId', 'status']);
+    ).toEqual([
+      'lastName',
+      'firstName',
+      'idCardNumber',
+      'phone',
+      'email',
+      'appleId',
+      'channel',
+      'status',
+    ]);
   });
 
   test('Apple ID 必填和枚举校验保持不变', () => {
@@ -441,6 +461,7 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
         idCardNumber: '110101199001010001',
         streetAddress: 'synthetic-address',
         tag: '=1+1',
+        channel: '=2+2',
         appleAccount: { appleId: 'sample@example.invalid', password: 'synthetic-secret' },
       },
     ]);
@@ -457,6 +478,7 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     expect(data[0]['密码']).toBe('******');
     expect(data[0]['街道地址']).toBe('详细地址已隐藏');
     expect(data[0].TAG).toBe("'=1+1");
+    expect(data[0]['渠道']).toBe("'=2+2");
     expect(JSON.stringify(data)).not.toMatch(
       /synthetic-secret|synthetic-address|110101199001010001/
     );

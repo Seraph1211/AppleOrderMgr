@@ -40,6 +40,7 @@ const COLUMN_MAPPING = {
     AppleID: 'appleId',
     密码: 'password',
     TAG: 'tag',
+    渠道: 'channel',
     使用状态: 'status',
     手机号: 'phone',
     邮箱: 'email',
@@ -239,6 +240,10 @@ function validateRecipient(data) {
       field: 'appleId',
       message: '绑定的 Apple ID 必须是有效邮箱格式',
     });
+  }
+
+  if (data.channel && data.channel.length > 100) {
+    errors.push({ field: 'channel', message: '渠道不能超过100个字符' });
   }
 
   // 枚举值校验

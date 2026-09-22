@@ -59,6 +59,7 @@ describe('基础资料读取权限与选填联系电话', () => {
         idCardNumber: '110101199001011234',
         phone: '13800000000',
         streetAddress: '合成地址',
+        channel: '合作渠道甲',
         password: 'hidden',
       };
       const appleRow = { id: 1, toJSON: () => ({ ...apple }) };
@@ -78,12 +79,22 @@ describe('基础资料读取权限与选填联系电话', () => {
         [
           recipientController.listRecipients,
           'recipients',
-          { id_card_number: recipient.idCardNumber, phone: recipient.phone, street_address: null },
+          {
+            id_card_number: recipient.idCardNumber,
+            phone: recipient.phone,
+            channel: recipient.channel,
+            street_address: null,
+          },
         ],
         [
           recipientController.getRecipientDetail,
           null,
-          { id_card_number: recipient.idCardNumber, phone: recipient.phone, street_address: null },
+          {
+            id_card_number: recipient.idCardNumber,
+            phone: recipient.phone,
+            channel: recipient.channel,
+            street_address: null,
+          },
         ],
       ]) {
         const res = response();
@@ -146,30 +157,41 @@ describe('基础资料读取权限与选填联系电话', () => {
       expect(() => normalizeRecipientPhone(value)).toThrow();
   });
 
-  test('取机人筛选项返回去重排序后的真实 TAG', async () => {
-    models.Recipient.findAll.mockResolvedValue([
-      { tag: '北京-负责人甲' },
-      { tag: '上海-负责人乙' },
-      { tag: '' },
-    ]);
+  test('取机人筛选项返回去重排序后的真实 TAG 和渠道', async () => {
+    models.Recipient.findAll
+      .mockResolvedValueOnce([{ tag: '北京-负责人甲' }, { tag: '上海-负责人乙' }, { tag: '' }])
+      .mockResolvedValueOnce([{ channel: '直营网' }, { channel: '合作方' }, { channel: '' }]);
     const res = response();
     await recipientController.getFilterOptions({}, res);
-    expect(models.Recipient.findAll).toHaveBeenCalledWith(
+    expect(models.Recipient.findAll).toHaveBeenNthCalledWith(
+      1,
       expect.objectContaining({ group: ['tag'], order: [['tag', 'ASC']], raw: true })
+    );
+    expect(models.Recipient.findAll).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        group: ['channel'],
+        order: [['channel', 'ASC']],
+        raw: true,
+      })
     );
     expect(res.json).toHaveBeenCalledWith({
       success: true,
-      data: { tags: ['北京-负责人甲', '上海-负责人乙'] },
+      data: {
+        tags: ['北京-负责人甲', '上海-负责人乙'],
+        channels: ['直营网', '合作方'],
+      },
     });
   });
 
-  test('取机人列表支持多个 TAG、Apple ID 与身份证后四位关键词', async () => {
+  test('取机人列表支持多个 TAG、多个渠道、Apple ID 与身份证后四位关键词', async () => {
     models.Recipient.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
     const res = response();
     await recipientController.listRecipients(
       {
         query: {
           tags: ['北京-负责人甲', '上海-负责人乙'],
+          channels: ['直营网', '合作方'],
           keyword: 'a@example.invalid',
         },
         user: { permissions: ['recipients.read'] },
@@ -178,6 +200,7 @@ describe('基础资料读取权限与选填联系电话', () => {
     );
     let where = models.Recipient.findAndCountAll.mock.lastCall[0].where;
     expect(where.tag[Op.in]).toEqual(['北京-负责人甲', '上海-负责人乙']);
+    expect(where.channel[Op.in]).toEqual(['直营网', '合作方']);
     expect(where[Op.or]).toEqual(
       expect.arrayContaining([{ appleId: { [Op.iLike]: '%a@example.invalid%' } }])
     );
@@ -205,6 +228,15 @@ describe('基础资料读取权限与选填联系电话', () => {
       recipientController.listRecipients(
         {
           query: { tags: { invalid: true } },
+          user: { permissions: ['recipients.read'] },
+        },
+        response()
+      )
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      recipientController.listRecipients(
+        {
+          query: { channels: { invalid: true } },
           user: { permissions: ['recipients.read'] },
         },
         response()

@@ -58,6 +58,8 @@ export default function Recipients() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTags, setFilterTags] = useState([]);
   const [tagOptions, setTagOptions] = useState([]);
+  const [filterChannels, setFilterChannels] = useState([]);
+  const [channelOptions, setChannelOptions] = useState([]);
   const [filterStatus, setFilterStatus] = useState('');
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -95,16 +97,33 @@ export default function Recipients() {
 
   useEffect(() => {
     loadRecipients();
-  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterTags, filterStatus]);
+  }, [
+    pagination.currentPage,
+    pagination.pageSize,
+    searchTerm,
+    filterTags,
+    filterChannels,
+    filterStatus,
+  ]);
 
   useEffect(() => {
     setSelectedIds([]);
-  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterTags, filterStatus]);
+  }, [
+    pagination.currentPage,
+    pagination.pageSize,
+    searchTerm,
+    filterTags,
+    filterChannels,
+    filterStatus,
+  ]);
 
   useEffect(() => {
     getRecipientFilterOptions()
-      .then(response => setTagOptions(response.data?.tags || []))
-      .catch(error => setPageError(error.message || '加载 TAG 选项失败'));
+      .then(response => {
+        setTagOptions(response.data?.tags || []);
+        setChannelOptions(response.data?.channels || []);
+      })
+      .catch(error => setPageError(error.message || '加载 TAG／渠道选项失败'));
   }, []);
 
   const loadRecipients = async () => {
@@ -116,6 +135,7 @@ export default function Recipients() {
         limit: pagination.pageSize,
         keyword: searchTerm || undefined,
         tags: filterTags.length ? filterTags : undefined,
+        channels: filterChannels.length ? filterChannels : undefined,
         status: filterStatus || undefined,
       };
       const res = await getRecipients(params);
@@ -145,6 +165,7 @@ export default function Recipients() {
             district: item.district || '',
             boundAppleId: item.apple_id || '-',
             tag: item.tag || '-',
+            channel: item.channel || '-',
             status: item.status,
             orderCount: item.order_count || 0,
             createdAt: item.created_at,
@@ -403,6 +424,7 @@ export default function Recipients() {
         : {
             keyword: searchTerm || undefined,
             tags: filterTags.length ? filterTags : undefined,
+            channels: filterChannels.length ? filterChannels : undefined,
             status: filterStatus || undefined,
           };
       const blob = await exportRecipients({
@@ -509,6 +531,12 @@ export default function Recipients() {
       case 'tag':
         return item.tag !== '-' ? (
           <span className="badge badge-info">{item.tag}</span>
+        ) : (
+          <span className="text-sm text-gray-400">-</span>
+        );
+      case 'channel':
+        return item.channel !== '-' ? (
+          <span className="badge badge-info">{item.channel}</span>
         ) : (
           <span className="text-sm text-gray-400">-</span>
         );
@@ -647,6 +675,19 @@ export default function Recipients() {
               }}
               ariaLabel="TAG 筛选"
               placeholder="全部 TAG"
+            />
+          </div>
+          <div className="w-full sm:w-[220px]">
+            <TagMultiSelect
+              options={channelOptions}
+              value={filterChannels}
+              onChange={value => {
+                setFilterChannels(value);
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+              ariaLabel="渠道筛选"
+              placeholder="全部渠道"
+              itemLabel="渠道"
             />
           </div>
           <select

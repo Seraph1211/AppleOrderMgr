@@ -63,3 +63,9 @@ for (const [name, columns] of [
     );
   });
 }
+
+test('取机人默认列在 TAG 后展示独立渠道', () => {
+  const keys = recipientsColumns.map(column => column.key);
+  assert.equal(keys[keys.indexOf('tag') + 1], 'channel');
+  assert.equal(recipientsColumns.find(column => column.key === 'channel').defaultVisible, true);
+});

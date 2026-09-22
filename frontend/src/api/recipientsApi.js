@@ -12,6 +12,7 @@ import client from './client';
  * @param {number} params.limit - 每页数量
  * @param {string} params.status - 状态
  * @param {string[]} params.tags - TAG 精确多选值
+ * @param {string[]} params.channels - 渠道精确多选值
  * @param {string} params.keyword - 搜索关键词
  * @returns {Promise<Object>} 取机人列表
  */
@@ -20,8 +21,8 @@ export const getRecipients = (params = {}) => {
 };
 
 /**
- * 获取取机人筛选区的真实 TAG 选项
- * @returns {Promise<Object>} TAG 选项响应
+ * 获取取机人筛选区的真实 TAG 和渠道选项
+ * @returns {Promise<Object>} TAG 和渠道选项响应
  */
 export const getRecipientFilterOptions = () => client.get('/recipients/filter-options');
 
@@ -47,6 +48,7 @@ export const getRecipientDetail = id => {
  * @param {string} data.district - 区
  * @param {string} data.street_address - 街道地址
  * @param {string} data.tag - 标签
+ * @param {string} data.channel - 渠道标签
  * @returns {Promise<Object>} 创建结果
  */
 export const createRecipient = data => {

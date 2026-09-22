@@ -57,6 +57,7 @@ function recipientInput(payload, creating = false) {
     district: 50,
     streetAddress: 255,
     tag: 100,
+    channel: 100,
     notes: 10000,
   };
   for (const [key, max] of Object.entries(lengths)) {

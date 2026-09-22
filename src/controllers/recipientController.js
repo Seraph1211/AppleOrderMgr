@@ -71,6 +71,7 @@ function serializeRecipient(
     street_address: includeAddress ? recipient.streetAddress : null,
     masked_address: maskAddress(recipient),
     tag: recipient.tag,
+    channel: recipient.channel,
     status: recipient.status,
     notes: recipient.notes,
     order_count: stats.orderCount || 0,
@@ -155,10 +156,29 @@ function parseTagFilters(value) {
   return tags;
 }
 
+function parseChannelFilters(value) {
+  if (value === undefined || value === null || value === '') return [];
+  if (!Array.isArray(value) && typeof value !== 'string') {
+    throw ApiError.badRequest('channels 必须是字符串或字符串数组');
+  }
+  const values = Array.isArray(value) ? value : value.split(',');
+  if (values.some(channel => typeof channel !== 'string')) {
+    throw ApiError.badRequest('channels 必须是字符串或字符串数组');
+  }
+  const channels = [...new Set(values.filter(channel => channel.length > 0))];
+  if (channels.length > 100 || channels.some(channel => channel.length > 100)) {
+    throw ApiError.badRequest('channels 最多包含 100 个渠道，且每项不超过 100 个字符');
+  }
+  return channels;
+}
+
 function applyRecipientFilters(where, query) {
   const tags = parseTagFilters(query.tags ?? query.tag);
   if (tags.length === 1) where.tag = tags[0];
   if (tags.length > 1) where.tag = { [Op.in]: tags };
+  const channels = parseChannelFilters(query.channels ?? query.channel);
+  if (channels.length === 1) where.channel = channels[0];
+  if (channels.length > 1) where.channel = { [Op.in]: channels };
   if (query.status) {
     if (!ACCOUNT_STATUSES.includes(query.status)) {
       throw ApiError.badRequest(`status 非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
@@ -190,11 +210,11 @@ function applyRecipientFilters(where, query) {
         where[Op.or].push({ idCardHash: blindIndex(keyword) });
     }
   }
-  return tags;
+  return { tags, channels };
 }
 
 /**
- * GET /api/recipients?page=1&limit=20&tags=北京&keyword=李&status=使用中&apple_id_ref=1
+ * GET /api/recipients?page=1&limit=20&tags=北京&channels=直营网&keyword=李&status=使用中
  */
 async function listRecipients(req, res) {
   try {
@@ -260,23 +280,35 @@ async function listRecipients(req, res) {
 }
 
 /**
- * 返回取机人筛选区使用的真实 TAG 选项。
+ * 返回取机人筛选区使用的真实 TAG 和渠道选项。
  * @param {Object} _req - Express 请求
  * @param {Object} res - Express 响应
  * @returns {Promise<void>}
  */
 async function getFilterOptions(_req, res) {
   try {
-    const rows = await Recipient.findAll({
-      attributes: ['tag'],
-      where: { tag: { [Op.ne]: null } },
-      group: ['tag'],
-      order: [['tag', 'ASC']],
-      raw: true,
-    });
+    const [tagRows, channelRows] = await Promise.all([
+      Recipient.findAll({
+        attributes: ['tag'],
+        where: { tag: { [Op.ne]: null } },
+        group: ['tag'],
+        order: [['tag', 'ASC']],
+        raw: true,
+      }),
+      Recipient.findAll({
+        attributes: ['channel'],
+        where: { channel: { [Op.ne]: null } },
+        group: ['channel'],
+        order: [['channel', 'ASC']],
+        raw: true,
+      }),
+    ]);
     res.json({
       success: true,
-      data: { tags: rows.map(row => row.tag).filter(tag => tag !== '') },
+      data: {
+        tags: tagRows.map(row => row.tag).filter(tag => tag !== ''),
+        channels: channelRows.map(row => row.channel).filter(channel => channel !== ''),
+      },
     });
   } catch (error) {
     logger.error('获取取机人筛选项失败', { error: error.message });
@@ -824,6 +856,7 @@ async function exportRecipients(req, res) {
           ? recipient.idCardNumber || ''
           : maskIdCard(recipient.idCardNumber) || '',
         TAG: escapeSpreadsheetFormula(recipient.tag || ''),
+        渠道: escapeSpreadsheetFormula(recipient.channel || ''),
         信息导入模板: '',
         真实联系电话: includeSensitive
           ? recipient.realPhone || ''
@@ -838,7 +871,7 @@ async function exportRecipients(req, res) {
     XLSX.utils.book_append_sheet(workbook, worksheet, '取机人数据');
 
     // 设置列宽
-    worksheet['!cols'] = [30, 18, 18, 28, 12, 12, 12, 35, 12, 10, 10, 22, 20, 80, 18, 30].map(
+    worksheet['!cols'] = [30, 18, 18, 28, 12, 12, 12, 35, 12, 10, 10, 22, 20, 18, 80, 18, 30].map(
       wch => ({ wch })
     );
     for (const [key, cell] of Object.entries(worksheet)) {
@@ -863,6 +896,7 @@ async function exportRecipients(req, res) {
       filters: {
         hasStatus: Boolean(status),
         hasTag: Boolean(req.query.tags || req.query.tag),
+        hasChannel: Boolean(req.query.channels || req.query.channel),
         hasKeyword: Boolean(keyword),
         hasAppleIdFilter: Boolean(appleIdFilter),
       },

@@ -299,6 +299,14 @@ export const recipientsColumns = [
     pinned: false,
   },
   {
+    key: 'channel',
+    label: '渠道',
+    width: '140px',
+    defaultVisible: true,
+    sortable: true,
+    pinned: false,
+  },
+  {
     key: 'boundAppleId',
     label: '绑定 Apple ID',
     width: '240px',

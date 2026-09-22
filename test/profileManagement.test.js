@@ -133,6 +133,30 @@ describe('跨表去重和差异裁定', () => {
     );
     expect(rows[0].data.tag).toBe(tag);
   });
+  test('渠道是独立单值字段，去除首尾空白且空值不覆盖已有档案', () => {
+    expect(recipientInput({ ...data, channel: '  合作渠道甲  ' }, true).channel).toBe('合作渠道甲');
+    expect(recipientInput({ ...data, channel: '   ' }, true).channel).toBeNull();
+    expect(() => recipientInput({ ...data, channel: '渠'.repeat(101) }, true)).toThrow(
+      'channel 格式或长度无效'
+    );
+    const rows = readBook(
+      {
+        北京: [
+          ['姓', '名', '身份证号', 'TAG', '渠道'],
+          ['欧阳', '明', idCard, '原TAG', '  合作渠道甲  '],
+        ],
+      },
+      'recipients'
+    );
+    expect(rows[0].data).toMatchObject({ tag: '原TAG', channel: '合作渠道甲' });
+
+    const profiles = {
+      accounts: [],
+      recipients: [{ id: 1, ...data, idCardHash: blindIndex(idCard), channel: '已有渠道' }],
+    };
+    const plan = buildImportPlan([row({ ...data, channel: '' })], 'recipients', profiles);
+    expect(plan.writes[0].data.channel).toBe('已有渠道');
+  });
   test('账号输入边界在预览及手工写入前拒绝', () => {
     for (const payload of [
       { country: {} },
