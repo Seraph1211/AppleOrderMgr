@@ -190,7 +190,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - `GET /api/order-refresh/batches/:id` 返回批次六类计数和完成时间；只能查询本人批次，admin 可查询全部。
 - 列表和详情新增 `refresh` 对象：`freshness_status`、`last_attempt_at`、`last_success_at`、`last_failure_at`、`last_error_code`、`last_error_message` 和当前活动 `job`。超过 90 秒没有成功结果的待付款/未知订单由服务端序列化为 `stale`。
 - PUT /api/orders/:id 只允许 paymentScreenshot，不再接受 payerName。付款人必须经 `PUT /api/orders/:id/payer` 或本人任务入口更新，body 为 `{ payerName: string | null, expectedVersion, reason? }`，幂等键通过请求头传入。`payerName` 去除首尾空白后最长 100 个字符，空字符串按 null 清空；付款人不是系统账号，也不存在候选目录。
-- 官网金额、支付与取货状态是独立字段。列表、详情不返回 Apple 密码/原始订单链接，身份证和地址保持脱敏；详情顶层 `recipient_email`、`recipient_phone` 表示订单入库时保存的下单联系方式，不使用之后变更的取机人档案覆盖，其中 `recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
+- 官网金额、支付与取货状态是独立字段。列表不返回 Apple 密码或原始订单链接；`GET /api/orders/:id` 仅在当前用户具有管理员保留权限 `orders.secrets.read` 时返回订单密码快照 `apple_password` 明文，否则为 `null`，并统一设置 `Cache-Control: no-store`。详情响应不直接携带原始订单链接，页面打开详情后另经 `GET /api/orders/:id/link` 按订单范围读取。身份证和地址保持脱敏；详情顶层 `recipient_email`、`recipient_phone` 表示订单入库时保存的下单联系方式，不使用之后变更的取机人档案覆盖，其中 `recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
 - 导出使用当前筛选条件，下载按 Blob 处理；订单金额改用已确认价格映射，无法完整映射时显示待确认，不回退官网金额。
 
 ## 邮件处理
@@ -263,7 +263,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `GET /api/orders/filter-options` 新增 `recipientTags`，来自当前账号可见的全部订单展示 TAG，排除空值、去重排序，不受分页或前 5000 条订单限制。返回 `productNames` 和 `stores`，候选来自订单完整 `products[].name` 与 `pickup_store`，不从当前分页临时拼接。兼容返回 `productModels`，但订单管理页面不再使用型号筛选。
 - 订单管理主表不展示 `validation_status` 和 `apple_id` 列；校验问题仍通过行首提示图标进入原异常说明，异常行不使用整行红色背景。上述字段仍保留在既有 DTO、搜索和详情能力中。
 - `keyword` 为纯正整数且不超过 PostgreSQL `INTEGER` 上限时，额外对系统订单 `orders.id` 做精确匹配；官网订单号、Apple ID、取机人和商品等既有模糊搜索保持不变。
-- `GET /api/orders/:id/link` 要求 `orders.read`，同时叠加订单数据范围；只在用户点击官网订单号时按需返回 `{ id, orderNumber, orderUrl }`，响应 `Cache-Control: no-store`，列表、详情和导出仍不常驻返回链接。
+- `GET /api/orders/:id/link` 要求 `orders.read`，同时叠加订单数据范围；用户点击官网订单号或打开订单详情时按需返回 `{ id, orderNumber, orderUrl }`，响应 `Cache-Control: no-store`。链接只临时进入当前详情视图，不进入列表响应、导出或浏览器持久化存储。
 - `GET /api/orders/export` 继续要求独立的 `orders.export`，不依赖 `orders.refresh`。可选 `orderIds` 为 1–100 个不重复正整数的 JSON 数组，表示导出当前页明确勾选的订单；可选 `fields` 为服务端白名单字段键 JSON 数组且至少一项。范围外、缺失订单整批拒绝；未知字段、密码、身份证号、订单链接和付款截图不能通过请求加入导出。未传 `orderIds`／`fields` 时保留原筛选导出和原字段契约。
 
 ### 下单时间精度与时区（2026-09-09 修复）

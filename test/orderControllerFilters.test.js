@@ -17,6 +17,7 @@ jest.mock('../src/utils/logger', () => ({
 
 const {
   buildListFilters,
+  getOrderDetail,
   getOrderLink,
   serializeOrderListItem,
   serializeOrderDetail,
@@ -83,6 +84,54 @@ test('订单 DTO 只返回邮件生命周期和历史限制', () => {
   });
   expect(list).not.toHaveProperty('official_order_status');
   expect(detail).not.toHaveProperty('official_order_status');
+});
+
+test('订单详情仅在订单敏感字段权限通过后返回密码快照', () => {
+  const order = {
+    toJSON: () => ({
+      id: 1,
+      orderNumber: 'W1234567890',
+      appleId: 'account@example.test',
+      applePassword: 'synthetic-password',
+      products: [],
+    }),
+  };
+
+  expect(serializeOrderDetail(order).apple_password).toBeNull();
+  expect(serializeOrderDetail(order, false, true).apple_password).toBe('synthetic-password');
+});
+
+test('订单详情按权限返回密码并禁止缓存', async () => {
+  const { Order } = require('../src/models');
+  Order.findOne = jest.fn().mockResolvedValue({
+    toJSON: () => ({
+      id: 1,
+      orderNumber: 'W1234567890',
+      appleId: 'account@example.test',
+      applePassword: 'synthetic-password',
+      products: [],
+    }),
+  });
+  const res = { set: jest.fn(), json: jest.fn() };
+
+  await getOrderDetail(
+    {
+      params: { id: '1' },
+      user: {
+        role: 'admin',
+        permissions: ['orders.read', 'orders.secrets.read'],
+        orderAccess: { mode: 'all' },
+      },
+    },
+    res
+  );
+
+  expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
+  expect(res.json).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({ apple_password: 'synthetic-password' }),
+    })
+  );
 });
 
 test('订单链接按订单范围单独读取且禁止缓存', async () => {

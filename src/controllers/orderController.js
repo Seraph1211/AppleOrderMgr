@@ -187,9 +187,10 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
  * 完整订单详情序列化
  * @param {Order} order - Sequelize Order 实例
  * @param {boolean} includeRecipientPhone - 是否包含取机人手机号明文
+ * @param {boolean} includeOrderSecrets - 是否包含订单敏感字段明文
  * @returns {Object} 详情对象
  */
-function serializeOrderDetail(order, includeRecipientPhone = false) {
+function serializeOrderDetail(order, includeRecipientPhone = false, includeOrderSecrets = false) {
   const plain = order.toJSON();
   let appleId = null;
   if (plain.appleAccount) {
@@ -236,6 +237,7 @@ function serializeOrderDetail(order, includeRecipientPhone = false) {
       plain.recipient.tag !== plain.sourceRecipientTag
     ),
     apple_id: appleId,
+    apple_password: includeOrderSecrets ? plain.applePassword || null : null,
     recipient_email: plain.recipientEmail,
     recipient_phone: includeRecipientPhone ? plain.recipientPhone : maskPhone(plain.recipientPhone),
     recipient,
@@ -564,11 +566,13 @@ async function getOrderDetail(req, res) {
       throw ApiError.notFound('订单不存在', { orderId });
     }
 
+    res.set('Cache-Control', 'no-store');
     res.json({
       success: true,
       data: serializeOrderDetail(
         order,
-        canDisplayLocalSensitiveFields(req, PERMISSIONS.ORDERS_SECRETS_READ)
+        canDisplayLocalSensitiveFields(req, PERMISSIONS.ORDERS_SECRETS_READ),
+        Boolean(req.user?.permissions?.includes(PERMISSIONS.ORDERS_SECRETS_READ))
       ),
     });
   } catch (error) {

@@ -2,6 +2,7 @@ import client from './client';
 import {
   getOrders,
   getOrderDetail,
+  getOrderDetailWithLink,
   getOrderLink,
   getOrderFilterOptions,
   exportOrders,
@@ -43,6 +44,7 @@ export {
   // Orders
   getOrders,
   getOrderDetail,
+  getOrderDetailWithLink,
   getOrderLink,
   getOrderFilterOptions,
   exportOrders,

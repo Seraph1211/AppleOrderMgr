@@ -1,7 +1,7 @@
 import AlertModal from './AlertModal';
 import OrderAmount from './OrderAmount';
 import OrderSources from './OrderSources';
-import { updateOrder, updateOrderPayer } from '../api/ordersApi';
+import { getOrderDetailWithLink, updateOrder, updateOrderPayer } from '../api/ordersApi';
 import { getEmailOrderStatusBadge } from '../constants/orderStatus';
 import { PERMISSIONS } from '../constants/permissions';
 import { useAuth } from '../contexts/AuthContext';
@@ -29,6 +29,12 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [alertInfo, setAlertInfo] = useState(null);
+  const [detailExtras, setDetailExtras] = useState({
+    applePassword: null,
+    orderUrl: null,
+    orderLinkError: null,
+  });
+  const [detailLoading, setDetailLoading] = useState(false);
 
   useEffect(() => {
     if (!order) return;
@@ -37,6 +43,36 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
       paymentScreenshots: readScreenshots(order),
     });
   }, [order]);
+
+  useEffect(() => {
+    if (!isOpen || !order?.id) return undefined;
+    let active = true;
+    setDetailLoading(true);
+    setDetailExtras({ applePassword: null, orderUrl: null, orderLinkError: null });
+    getOrderDetailWithLink(order.id)
+      .then(response => {
+        if (!active) return;
+        setDetailExtras({
+          applePassword: response.data?.apple_password || null,
+          orderUrl: response.data?.order_url || null,
+          orderLinkError: response.data?.order_link_error || null,
+        });
+      })
+      .catch(error => {
+        if (!active) return;
+        setDetailExtras({
+          applePassword: null,
+          orderUrl: null,
+          orderLinkError: error.message || '订单详情加载失败',
+        });
+      })
+      .finally(() => {
+        if (active) setDetailLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen, order?.id]);
 
   if (!isOpen || !order) return null;
 
@@ -173,6 +209,10 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
               <div>
                 <p className="text-sm text-gray-600">Apple ID</p>
                 <p className="mt-1 break-all text-sm">{order.appleId}</p>
+                <p className="mt-3 text-sm text-gray-600">密码</p>
+                <p className="mt-1 break-all font-mono text-sm">
+                  {detailLoading ? '加载中...' : detailExtras.applePassword || '-'}
+                </p>
               </div>
               <div>
                 <p className="text-sm text-gray-600">订单来源</p>
@@ -186,17 +226,21 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
               </div>
               <div>
                 <p className="text-sm text-gray-600">订单链接</p>
-                {order.orderUrl !== '-' ? (
+                {detailExtras.orderUrl ? (
                   <a
-                    href={order.orderUrl}
+                    href={detailExtras.orderUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="mt-1 inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                    className="mt-1 inline-flex max-w-full items-start gap-1 break-all text-sm text-primary hover:underline"
                   >
-                    查看订单 <ExternalLink className="h-3 w-3" />
+                    <span>{detailExtras.orderUrl}</span>
+                    <ExternalLink className="mt-0.5 h-3 w-3 shrink-0" />
                   </a>
                 ) : (
-                  <p className="mt-1 text-sm text-gray-400">-</p>
+                  <p className="mt-1 text-sm text-gray-400">{detailLoading ? '加载中...' : '-'}</p>
+                )}
+                {!detailLoading && detailExtras.orderLinkError && (
+                  <p className="mt-1 text-xs text-amber-700">{detailExtras.orderLinkError}</p>
                 )}
               </div>
             </div>

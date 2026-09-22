@@ -1,9 +1,9 @@
 import OrderAmount from '../components/OrderAmount';
 import OrderSources from '../components/OrderSources';
-import { getOrderDetail } from '../api';
+import { getOrderDetailWithLink } from '../api';
 import { getEmailOrderStatusBadge } from '../constants/orderStatus';
 import { useCallback, useEffect, useState } from 'react';
-import { AlertTriangle, ArrowLeft, CreditCard, Mail, User } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CreditCard, ExternalLink, Mail, User } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 
 function formatDate(value) {
@@ -30,7 +30,7 @@ export default function OrderDetail() {
     setLoading(true);
     setError('');
     try {
-      const response = await getOrderDetail(id);
+      const response = await getOrderDetailWithLink(id);
       if (!response?.success || !response.data) throw new Error('订单详情响应格式异常');
       setOrder(response.data);
     } catch (loadError) {
@@ -223,6 +223,27 @@ export default function OrderDetail() {
                 <dt className="text-gray-500">来源 TAG</dt>
                 <dd>{order.source_recipient_tag || '—'}</dd>
               </div>
+              <div>
+                <dt className="text-gray-500">订单链接</dt>
+                {order.order_url ? (
+                  <dd>
+                    <a
+                      href={order.order_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex max-w-full items-start gap-1 break-all text-primary hover:underline"
+                    >
+                      <span>{order.order_url}</span>
+                      <ExternalLink className="mt-0.5 h-3 w-3 shrink-0" />
+                    </a>
+                  </dd>
+                ) : (
+                  <dd className="text-gray-400">-</dd>
+                )}
+                {order.order_link_error && (
+                  <dd className="mt-1 text-xs text-amber-700">{order.order_link_error}</dd>
+                )}
+              </div>
             </dl>
           </div>
           <div className="card">
@@ -230,7 +251,16 @@ export default function OrderDetail() {
               <Mail className="h-5 w-5 text-primary" />
               Apple ID
             </h2>
-            <p className="break-all text-sm text-gray-900">{order.apple_id?.apple_id || '-'}</p>
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-gray-500">账号</dt>
+                <dd className="break-all text-gray-900">{order.apple_id?.apple_id || '-'}</dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">密码</dt>
+                <dd className="break-all font-mono text-gray-900">{order.apple_password || '-'}</dd>
+              </div>
+            </dl>
           </div>
           <div className="card">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
