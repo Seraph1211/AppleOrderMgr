@@ -32,6 +32,8 @@ router.get('/product-distribution', dashboardController.getProductDistribution);
  * @desc 获取取货门店分布
  * @access Public
  */
+router.get('/city-distribution', dashboardController.getCityDistribution);
+
 router.get('/store-distribution', dashboardController.getStoreDistribution);
 
 /**

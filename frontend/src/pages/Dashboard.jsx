@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Package, Clock, DollarSign, Users } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Package, CheckCircle, DollarSign, Users, RefreshCw } from 'lucide-react';
 import {
   LineChart,
   Line,
@@ -11,538 +11,352 @@ import {
   CartesianGrid,
   Tooltip,
   ResponsiveContainer,
-  Legend,
 } from 'recharts';
 import {
   getDashboardStats,
   getDailyOrderTrend,
   getProductModelDistribution,
-  getStoreDistribution,
+  getCityDistribution,
   getFilterOptions,
 } from '../api/dashboard';
+import OrderDateFilter from '../components/OrderDateFilter';
+import ProductFilter from '../components/ProductFilter';
+import TagMultiSelect from '../components/TagMultiSelect';
+import { EMAIL_ORDER_STATUS_BADGES } from '../constants/orderStatus';
 
-// 图表配色方案
-const CHART_COLORS = {
-  primary: '#1E3A8A',
-  secondary: '#8B5CF6',
-  success: '#10B981',
-  warning: '#F59E0B',
-  error: '#EF4444',
-  gradient: ['#8B5CF6', '#6366F1', '#3B82F6', '#06B6D4', '#10B981'],
+const STATUS_LABELS = Object.fromEntries(
+  Object.entries(EMAIL_ORDER_STATUS_BADGES).map(([key, badge]) => [key, badge.text])
+);
+const COLORS = ['#8B5CF6', '#6366F1', '#3B82F6', '#06B6D4', '#10B981'];
+const METRIC_COLORS = {
+  blue: 'bg-blue-50 text-blue-600',
+  orange: 'bg-orange-50 text-orange-600',
+  green: 'bg-green-50 text-green-600',
+  purple: 'bg-purple-50 text-purple-600',
 };
+const DAY_MS = 86400000;
+const formatNumber = value =>
+  new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value || 0);
 
-const Dashboard = () => {
-  // 状态管理
-  const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({
-    totalOrders: 0,
-    totalAmount: 0,
-    pendingOrders: 0,
-    availableRecipients: 0,
-    orderGrowth: 0,
-    amountGrowth: 0,
-  });
-  const [dailyTrend, setDailyTrend] = useState([]);
-  const [productDistribution, setProductDistribution] = useState([]);
-  const [storeDistribution, setStoreDistribution] = useState([]);
-  const [filterOptions, setFilterOptions] = useState({
-    productModels: [],
-    stores: [],
-  });
-
-  // 筛选参数
-  const [filters, setFilters] = useState({
-    startDate: getDefaultStartDate(),
-    endDate: getDefaultEndDate(),
-    status: '',
-    productModel: '',
-    store: '',
-  });
-
-  // 获取默认日期（近7天）
-  function getDefaultStartDate() {
-    const date = new Date();
-    date.setDate(date.getDate() - 6);
-    return date.toISOString().split('T')[0];
-  }
-
-  function getDefaultEndDate() {
-    return new Date().toISOString().split('T')[0];
-  }
-
-  // 加载数据
-  useEffect(() => {
-    loadDashboardData();
-  }, [filters]);
-
-  // 加载筛选器选项
-  useEffect(() => {
-    loadFilterOptions();
-  }, []);
-
-  const loadDashboardData = async () => {
-    try {
-      setLoading(true);
-
-      const [statsData, trendData, productData, storeData] = await Promise.all([
-        getDashboardStats(filters),
-        getDailyOrderTrend(filters),
-        getProductModelDistribution(filters),
-        getStoreDistribution(filters),
-      ]);
-
-      setStats(statsData.data);
-      setDailyTrend(trendData.data);
-      setProductDistribution(productData.data);
-      setStoreDistribution(storeData.data);
-    } catch (error) {
-      console.error('加载仪表板数据失败:', error);
-    } finally {
-      setLoading(false);
-    }
+function defaultFilters() {
+  const today = new Date(Date.now() + 8 * 3600000);
+  return {
+    startDate: new Date(today.getTime() - 6 * DAY_MS).toISOString().slice(0, 10),
+    endDate: today.toISOString().slice(0, 10),
+    emailOrderStatuses: [],
+    productKeys: [],
+    recipientTags: [],
   };
+}
 
-  const loadFilterOptions = async () => {
-    try {
-      const response = await getFilterOptions();
-      setFilterOptions(response.data);
-    } catch (error) {
-      console.error('加载筛选器选项失败:', error);
-    }
-  };
-
-  const handleFilterChange = (key, value) => {
-    setFilters(prev => ({ ...prev, [key]: value }));
-  };
-
-  const resetFilters = () => {
-    setFilters({
-      startDate: getDefaultStartDate(),
-      endDate: getDefaultEndDate(),
-      status: '',
-      productModel: '',
-      store: '',
-    });
-  };
-
-  // 格式化金额
-  const formatAmount = amount => {
-    return new Intl.NumberFormat('zh-CN').format(amount);
-  };
-
-  // 格式化百分比
-  const formatPercent = value => {
-    const sign = value >= 0 ? '+' : '';
-    return `${sign}${value.toFixed(1)}%`;
-  };
-
-  // 自定义 Tooltip
-  const CustomTooltip = ({ active, payload, label }) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-white px-4 py-3 rounded-lg shadow-lg border border-gray-200">
-          <p className="text-sm font-medium text-gray-600 mb-1">{label}</p>
-          <p className="text-lg font-bold text-purple-600">订单数: {payload[0].value}</p>
-        </div>
-      );
-    }
-    return null;
-  };
-
-  // 自定义饼图标签
-  const renderCustomLabel = ({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-    const RADIAN = Math.PI / 180;
-    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-    const x = cx + radius * Math.cos(-midAngle * RADIAN);
-    const y = cy + radius * Math.sin(-midAngle * RADIAN);
-
-    if (percent < 0.05) return null; // 小于5%不显示标签
-
-    return (
-      <text
-        x={x}
-        y={y}
-        fill="white"
-        textAnchor={x > cx ? 'start' : 'end'}
-        dominantBaseline="central"
-        className="text-sm font-bold"
-        style={{ textShadow: '0 1px 2px rgba(0,0,0,0.3)' }}
-      >
-        {`${(percent * 100).toFixed(0)}%`}
-      </text>
-    );
-  };
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
+function Metric({ title, value, hint, icon: Icon, growth, tone }) {
   return (
-    <div className="space-y-6">
-      {/* 筛选区域 - 优化后的 UI */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex flex-wrap items-end gap-4">
-          {/* 日期范围（合并开始日期和结束日期） */}
-          <div className="flex-1 min-w-[280px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">日期范围</label>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={filters.startDate}
-                onChange={e => handleFilterChange('startDate', e.target.value)}
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-              />
-              <span className="text-gray-400">-</span>
-              <input
-                type="date"
-                value={filters.endDate}
-                onChange={e => handleFilterChange('endDate', e.target.value)}
-                className="flex-1 px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-              />
-            </div>
-          </div>
-
-          {/* 订单状态 */}
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">订单状态</label>
-            <select
-              value={filters.status}
-              onChange={e => handleFilterChange('status', e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white"
-            >
-              <option value="">全部状态</option>
-              <option value="待确认">待确认</option>
-              <option value="已确认">已确认</option>
-              <option value="处理中">处理中</option>
-              <option value="可取货">可取货</option>
-            </select>
-          </div>
-
-          {/* 产品型号 */}
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">产品型号</label>
-            <select
-              value={filters.productModel}
-              onChange={e => handleFilterChange('productModel', e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white"
-            >
-              <option value="">全部型号</option>
-              {filterOptions.productModels.map(model => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 取机门店 */}
-          <div className="flex-1 min-w-[180px]">
-            <label className="block text-sm font-medium text-gray-700 mb-2">取机门店</label>
-            <select
-              value={filters.store}
-              onChange={e => handleFilterChange('store', e.target.value)}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary focus:border-transparent transition-all bg-white"
-            >
-              <option value="">全部门店</option>
-              {filterOptions.stores.map(store => (
-                <option key={store} value={store}>
-                  {store}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* 重置按钮 - 与筛选项在同一行 */}
-          <div>
-            <button
-              onClick={resetFilters}
-              className="px-6 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors whitespace-nowrap"
-            >
-              重置筛选
-            </button>
-          </div>
+    <section className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm min-w-0">
+      <div className="flex items-start justify-between gap-2">
+        <h2 className="text-sm font-medium text-gray-600">{title}</h2>
+        <div
+          className={`w-10 h-10 shrink-0 rounded-lg flex items-center justify-center ${METRIC_COLORS[tone]}`}
+        >
+          <Icon className="w-5 h-5" />
         </div>
       </div>
+      <p className="text-3xl font-bold text-gray-900 mt-2 break-all tabular-nums">{value}</p>
+      <p className="text-xs text-gray-500 mt-2">{hint}</p>
+      {growth !== null && growth !== undefined && (
+        <p className="text-xs text-gray-500 mt-1">
+          较上一周期{' '}
+          <span className={growth >= 0 ? 'text-green-700' : 'text-red-600'}>
+            {growth >= 0 ? '+' : ''}
+            {growth.toFixed(1)}%
+          </span>
+        </p>
+      )}
+    </section>
+  );
+}
 
-      {/* 统计卡片 - 优化后的 UI */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {/* 总订单量 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-gray-500 mb-2">总订单量</p>
-              <div className="flex items-baseline gap-3 mb-2">
-                <h3 className="text-3xl font-bold text-gray-900">
-                  {formatAmount(stats.totalOrders)}
-                </h3>
-                {stats.orderGrowth !== 0 && (
-                  <span
-                    className={`text-sm font-semibold flex items-center ${
-                      stats.orderGrowth > 0 ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  >
-                    {stats.orderGrowth > 0 ? (
-                      <TrendingUp className="w-4 h-4 mr-1" />
-                    ) : (
-                      <TrendingDown className="w-4 h-4 mr-1" />
-                    )}
-                    {formatPercent(stats.orderGrowth)}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Package className="w-6 h-6 text-blue-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* 待处理订单 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-gray-500 mb-2">待处理订单</p>
-              <div className="flex items-baseline gap-3 mb-2">
-                <h3 className="text-3xl font-bold text-gray-900">
-                  {formatAmount(stats.pendingOrders)}
-                </h3>
-                <span className="px-2 py-1 text-xs font-semibold text-orange-700 bg-orange-100 rounded-md">
-                  需处理
-                </span>
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-orange-50 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Clock className="w-6 h-6 text-orange-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* 订单总额 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-gray-500 mb-2">订单总额</p>
-              <p className="text-xs text-gray-500 mb-2">
-                按官方售价计算 · {stats.missingAmountOrders || 0} 笔待确认
-              </p>
-              <div className="flex items-baseline gap-3 mb-2">
-                <h3 className="text-3xl font-bold text-gray-900">
-                  {formatAmount(stats.totalAmount)}
-                </h3>
-                {stats.amountGrowth !== 0 && (
-                  <span
-                    className={`text-sm font-semibold flex items-center ${
-                      stats.amountGrowth > 0 ? 'text-green-600' : 'text-red-600'
-                    }`}
-                  >
-                    {stats.amountGrowth > 0 ? (
-                      <TrendingUp className="w-4 h-4 mr-1" />
-                    ) : (
-                      <TrendingDown className="w-4 h-4 mr-1" />
-                    )}
-                    {formatPercent(stats.amountGrowth)}
-                  </span>
-                )}
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-green-50 rounded-xl flex items-center justify-center flex-shrink-0">
-              <DollarSign className="w-6 h-6 text-green-600" />
-            </div>
-          </div>
-        </div>
-
-        {/* 可用取机人 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-shadow">
-          <div className="flex items-start justify-between">
-            <div className="flex-1">
-              <p className="text-sm font-medium text-gray-500 mb-2">可用取机人</p>
-              <div className="flex items-baseline gap-3 mb-2">
-                <h3 className="text-3xl font-bold text-gray-900">
-                  {formatAmount(stats.availableRecipients)}
-                </h3>
-                <span className="px-2 py-1 text-xs font-semibold text-green-700 bg-green-100 rounded-md">
-                  可用
-                </span>
-              </div>
-            </div>
-            <div className="w-12 h-12 bg-purple-50 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Users className="w-6 h-6 text-purple-600" />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* 近7日订单趋势 - 优化后的 UI */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-        <div className="flex items-center justify-between mb-6">
-          <h2 className="text-lg font-bold text-gray-900">近7日订单趋势</h2>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-purple-600"></div>
-            <span className="text-sm font-medium text-gray-600">订单总数</span>
-          </div>
-        </div>
-        <ResponsiveContainer width="100%" height={320}>
-          <LineChart data={dailyTrend}>
-            <defs>
-              <linearGradient id="colorOrders" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#8B5CF6" stopOpacity={0.3} />
-                <stop offset="95%" stopColor="#8B5CF6" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-            <XAxis
-              dataKey="date"
-              stroke="#6B7280"
-              style={{ fontSize: '12px', fontWeight: '500' }}
-              tickLine={false}
-            />
-            <YAxis
-              stroke="#6B7280"
-              style={{ fontSize: '12px', fontWeight: '500' }}
-              tickLine={false}
-            />
-            <Tooltip content={<CustomTooltip />} />
-            <Line
-              type="monotone"
-              dataKey="count"
-              stroke="#8B5CF6"
-              strokeWidth={3}
-              dot={{ fill: '#8B5CF6', strokeWidth: 2, r: 5 }}
-              activeDot={{ r: 7, strokeWidth: 0 }}
-              fill="url(#colorOrders)"
-            />
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-
-      {/* 分布图 - 优化后的 UI */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 产品型号分布 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-6">订单产品型号分布</h2>
-          {productDistribution.length > 0 ? (
-            <ResponsiveContainer width="100%" height={320}>
+function Distribution({ title, rows, description }) {
+  const total = rows.reduce((sum, item) => sum + item.value, 0);
+  return (
+    <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 shadow-sm min-w-0">
+      <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
+      <p className="text-xs text-gray-500 mt-1">{description}</p>
+      {total === 0 ? (
+        <p className="h-64 flex items-center justify-center text-gray-500">暂无符合条件的订单</p>
+      ) : (
+        <>
+          <div className="h-64 w-full" aria-label={`${title}饼图`}>
+            <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={productDistribution}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={renderCustomLabel}
-                  outerRadius={110}
-                  innerRadius={70}
-                  fill="#8884d8"
+                  data={rows}
                   dataKey="value"
-                  paddingAngle={2}
+                  nameKey="name"
+                  innerRadius={65}
+                  outerRadius={100}
+                  paddingAngle={1}
+                  isAnimationActive={false}
                 >
-                  {productDistribution.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={CHART_COLORS.gradient[index % CHART_COLORS.gradient.length]}
-                    />
+                  {rows.map((row, index) => (
+                    <Cell key={row.key || row.name} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(value, name, props) => [
-                    `${value} (${((props.percent || 0) * 100).toFixed(1)}%)`,
-                    props.payload.name,
-                  ]}
-                  contentStyle={{
-                    backgroundColor: 'white',
-                    border: '1px solid #E5E7EB',
-                    borderRadius: '8px',
-                    padding: '12px',
-                  }}
-                />
-                <Legend
-                  verticalAlign="bottom"
-                  height={50}
-                  formatter={(value, entry) => (
-                    <span className="text-sm font-medium text-gray-700">
-                      {entry.payload.name}{' '}
-                      <span className="text-gray-500">({entry.payload.value})</span>
-                    </span>
-                  )}
-                  iconType="circle"
+                  formatter={value => [`${formatNumber(value)} 单`, '订单数']}
+                  contentStyle={{ maxWidth: 280, whiteSpace: 'normal', overflowWrap: 'anywhere' }}
                 />
               </PieChart>
             </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-80 text-gray-400">
-              <div className="text-center">
-                <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">暂无数据</p>
-              </div>
-            </div>
-          )}
-        </div>
+          </div>
+          <div className="max-h-72 overflow-y-auto">
+            <table className="w-full text-sm table-fixed">
+              <thead className="text-gray-500">
+                <tr>
+                  <th className="text-left font-normal pb-2">
+                    {title === '商品分布' ? '商品' : '城市'}
+                  </th>
+                  <th className="w-16 text-right font-normal">订单数</th>
+                  <th className="w-16 text-right font-normal">占比</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row, index) => (
+                  <tr key={row.key || row.name} className="border-t border-gray-100">
+                    <td className="py-2 pr-2">
+                      <div className="flex items-start gap-2">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0 mt-1.5"
+                          style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                        />
+                        <span className="break-words">{row.name}</span>
+                      </div>
+                    </td>
+                    <td className="text-right tabular-nums">{formatNumber(row.value)}</td>
+                    <td className="text-right tabular-nums">
+                      {((row.value / total) * 100).toFixed(1)}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </section>
+  );
+}
 
-        {/* 取货门店分布 */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-6">取货门店分布</h2>
-          {storeDistribution.length > 0 ? (
-            <ResponsiveContainer width="100%" height={320}>
-              <PieChart>
-                <Pie
-                  data={storeDistribution}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={renderCustomLabel}
-                  outerRadius={110}
-                  innerRadius={70}
-                  fill="#8884d8"
-                  dataKey="value"
-                  paddingAngle={2}
-                >
-                  {storeDistribution.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={CHART_COLORS.gradient[index % CHART_COLORS.gradient.length]}
-                    />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value, name, props) => [
-                    `${value} (${((props.percent || 0) * 100).toFixed(1)}%)`,
-                    props.payload.name,
-                  ]}
-                  contentStyle={{
-                    backgroundColor: 'white',
-                    border: '1px solid #E5E7EB',
-                    borderRadius: '8px',
-                    padding: '12px',
-                  }}
-                />
-                <Legend
-                  verticalAlign="bottom"
-                  height={50}
-                  formatter={(value, entry) => (
-                    <span className="text-sm font-medium text-gray-700">
-                      {entry.payload.name}{' '}
-                      <span className="text-gray-500">({entry.payload.value})</span>
-                    </span>
-                  )}
-                  iconType="circle"
-                />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="flex items-center justify-center h-80 text-gray-400">
-              <div className="text-center">
-                <Package className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                <p className="text-sm">暂无数据</p>
-              </div>
-            </div>
-          )}
+/** 仪表板：筛选后订单指标和分布，取机人独立按 TAG 统计。 */
+export default function Dashboard() {
+  const [filters, setFilters] = useState(defaultFilters);
+  const [retry, setRetry] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [data, setData] = useState(null);
+  const [options, setOptions] = useState({ productOptions: [], recipientTags: [] });
+  const invalidDate = filters.startDate && filters.endDate && filters.startDate > filters.endDate;
+
+  useEffect(() => {
+    let active = true;
+    if (invalidDate) {
+      setLoading(false);
+      return () => {
+        active = false;
+      };
+    }
+    const load = async () => {
+      try {
+        setLoading(true);
+        setError('');
+        const [stats, trend, products, cities, candidates] = await Promise.all([
+          getDashboardStats(filters),
+          getDailyOrderTrend(filters),
+          getProductModelDistribution(filters),
+          getCityDistribution(filters),
+          getFilterOptions(filters),
+        ]);
+        if (active) {
+          setData({
+            stats: stats.data,
+            trend: trend.data,
+            products: products.data,
+            cities: cities.data,
+          });
+          setOptions(candidates.data);
+        }
+      } catch (failure) {
+        if (active) setError(failure.message || '加载仪表板失败，请重试');
+      } finally {
+        if (active) setLoading(false);
+      }
+    };
+    load();
+    return () => {
+      active = false;
+    };
+  }, [filters, retry, invalidDate]);
+
+  const change = (key, value) => setFilters(previous => ({ ...previous, [key]: value }));
+  const stats = data?.stats;
+  const rangeLabel =
+    filters.startDate || filters.endDate
+      ? `${filters.startDate || '最早'} 至 ${filters.endDate || '至今'}`
+      : '全部日期';
+  return (
+    <div className="space-y-6 min-w-0">
+      <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 shadow-sm space-y-4">
+        <div className="[&>div]:grid-cols-1 [&_input]:min-w-0">
+          <OrderDateFilter
+            dateFrom={filters.startDate}
+            dateTo={filters.endDate}
+            onChange={({ dateFrom, dateTo }) =>
+              setFilters(previous => ({ ...previous, startDate: dateFrom, endDate: dateTo }))
+            }
+          />
         </div>
-      </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-[1fr_2fr_1fr_auto] gap-4 items-end">
+          <div className="min-w-0">
+            <label className="block text-sm font-medium text-gray-700 mb-2">订单状态（邮件）</label>
+            <TagMultiSelect
+              options={Object.keys(STATUS_LABELS)}
+              optionLabels={STATUS_LABELS}
+              value={filters.emailOrderStatuses}
+              onChange={value => change('emailOrderStatuses', value)}
+              ariaLabel="邮件订单状态筛选"
+              placeholder="全部状态"
+              itemLabel="状态"
+            />
+          </div>
+          <div className="min-w-0">
+            <label className="block text-sm font-medium text-gray-700 mb-2">商品</label>
+            <ProductFilter
+              options={options.productOptions}
+              value={filters.productKeys}
+              onChange={value => change('productKeys', value)}
+            />
+          </div>
+          <div className="min-w-0">
+            <label className="block text-sm font-medium text-gray-700 mb-2">取机人 TAG</label>
+            <TagMultiSelect
+              options={options.recipientTags}
+              value={filters.recipientTags}
+              onChange={value => change('recipientTags', value)}
+              ariaLabel="取机人 TAG 筛选"
+              placeholder="全部 TAG"
+              itemLabel="TAG"
+            />
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => setFilters(defaultFilters())}
+          >
+            重置筛选
+          </button>
+        </div>
+      </section>
+      {invalidDate ? (
+        <p role="alert" className="text-red-600">
+          开始日期不能晚于结束日期
+        </p>
+      ) : loading ? (
+        <div role="status" className="h-64 flex items-center justify-center gap-2 text-gray-500">
+          <RefreshCw className="w-4 h-4 animate-spin" />
+          正在加载仪表板…
+        </div>
+      ) : error ? (
+        <div role="alert" className="bg-white border border-red-200 rounded-xl p-6">
+          <p className="text-red-600">{error}</p>
+          <button className="btn btn-secondary mt-3" onClick={() => setRetry(value => value + 1)}>
+            重试
+          </button>
+        </div>
+      ) : (
+        data && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+              <Metric
+                title="订单总数"
+                value={formatNumber(stats.totalOrders)}
+                hint="当前筛选范围内的订单"
+                icon={Package}
+                tone="blue"
+                growth={stats.orderGrowth}
+              />
+              <Metric
+                title="已付款订单数"
+                value={formatNumber(stats.paidOrders)}
+                hint="邮件状态：处理中、可取货"
+                icon={CheckCircle}
+                tone="orange"
+              />
+              <Metric
+                title="订单总金额"
+                value={`¥${formatNumber(stats.totalAmount)}`}
+                hint={`按官方售价计算${stats.missingAmountOrders ? ` · ${stats.missingAmountOrders} 笔待售价确认` : ''}`}
+                icon={DollarSign}
+                tone="green"
+                growth={stats.amountGrowth}
+              />
+              <Metric
+                title="可用取机人"
+                value={formatNumber(stats.availableRecipients)}
+                hint={`${filters.recipientTags.length ? '所选 TAG' : '全部 TAG'} · 使用中、未使用`}
+                icon={Users}
+                tone="purple"
+              />
+            </div>
+            <section className="bg-white rounded-xl border border-gray-200 p-4 sm:p-6 shadow-sm min-w-0">
+              <h2 className="text-lg font-semibold text-gray-900">订单趋势</h2>
+              <p className="text-xs text-gray-500 mt-1">{rangeLabel} · 北京时间 · 订单数</p>
+              {stats.totalOrders === 0 ? (
+                <p className="h-64 flex items-center justify-center text-gray-500">
+                  暂无符合条件的订单
+                </p>
+              ) : (
+                <div className="h-72 sm:h-80 mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart
+                      data={data.trend}
+                      margin={{ top: 10, right: 12, left: -20, bottom: 10 }}
+                    >
+                      <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                      <XAxis
+                        dataKey="date"
+                        tickFormatter={date => date.slice(5).replace('-', '/')}
+                        tick={{ fontSize: 12 }}
+                        minTickGap={24}
+                      />
+                      <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                      <Tooltip formatter={value => [`${formatNumber(value)} 单`, '订单数']} />
+                      <Line
+                        type="linear"
+                        dataKey="count"
+                        stroke="#8B5CF6"
+                        strokeWidth={2}
+                        dot={data.trend.length <= 31}
+                        isAnimationActive={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </section>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+              <Distribution
+                title="商品分布"
+                rows={data.products}
+                description="按订单数统计；同单同款去重，多商品订单可分别计入各组"
+              />
+              <Distribution
+                title="城市分布"
+                rows={data.cities}
+                description="按取货门店所在城市统计订单数"
+              />
+            </div>
+          </>
+        )
+      )}
     </div>
   );
-};
-
-export default Dashboard;
+}

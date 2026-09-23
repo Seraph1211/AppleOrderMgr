@@ -1,468 +1,277 @@
+const { Op, fn, col, literal } = require('sequelize');
+const { Order, Recipient, PickupStore } = require('../models');
+const { buildDashboardWhere, RECIPIENT_TAG_SQL } = require('./dashboardFilters');
+const { collectProductOptions } = require('../utils/productFilter');
 const { parseOrderTimeBoundary } = require('../utils/orderTime');
-/* eslint-disable no-unused-vars, require-await, camelcase */
-const { Op, fn, col, literal, Sequelize } = require('sequelize');
-const { Order, AppleId, Recipient, sequelize } = require('../models');
-const { getOrderTagBind } = require('./orderAccessService');
 const logger = require('../utils/logger');
 
-/**
- * 构建订单查询条件
- * @param {Object} filters - 筛选参数
- * @returns {Object} Sequelize where 条件
- */
-const buildWhereClause = filters => {
-  const where = {};
+const MAX_FILL_DAYS = 3660;
+const ISO_DATE_LENGTH = 10;
+const DAY_MS = 86400000;
+const PERCENT = 100;
+const PRODUCT_ATTRIBUTES = ['products', 'productFilterItems', 'sourceSnapshot'];
+const growth = (current, previous) =>
+  previous ? ((current - previous) / previous) * PERCENT : current ? PERCENT : 0;
 
-  // 日期范围
-  if (filters.startDate || filters.endDate) {
-    where.orderDate = {};
-    if (filters.startDate) {
-      where.orderDate[Op.gte] = parseOrderTimeBoundary(filters.startDate);
-    }
-    if (filters.endDate) {
-      const endDate = parseOrderTimeBoundary(filters.endDate, true);
-      where.orderDate[Op.lte] = endDate;
-    }
-  }
-
-  // 订单状态（转换中文为英文）
-  if (filters.status) {
-    const englishStatus = STATUS_MAP[filters.status] || filters.status;
-    where.emailOrderStatus = englishStatus;
-  }
-
-  // 产品型号（需要在 JSONB products 数组中搜索）
-  if (filters.productModel) {
-    where[Op.and] = literal(
-      `EXISTS (
-        SELECT 1 FROM jsonb_array_elements(products) AS product
-        WHERE product->>'model' = '${filters.productModel.replace(/'/g, '\x27\x27')}'
-      )`
-    );
-  }
-
-  // 取货门店
-  if (filters.store) {
-    where[Op.and] = (where[Op.and] || []).concat(
-      Sequelize.where(Sequelize.json('emailPickupInfo.storeName'), filters.store)
-    );
-  }
-
-  if (filters.orderUser) {
-    const tags = getOrderTagBind(filters.orderUser);
-    if (tags !== null) where.tag = { [Op.in]: tags };
-  }
-  return where;
-};
-
-/**
- * 状态映射（中文 -> 英文）
- */
-const STATUS_MAP = {
-  待确认: 'unknown',
-  已确认: 'confirmed',
-  处理中: 'processing',
-  可取货: 'ready_for_pickup',
-  unknown: 'unknown',
-};
-
-/**
- * 获取仪表板统计数据
- * @param {Object} filters - 筛选参数
- * @returns {Promise<Object>} 统计数据
- */
-const getStats = async filters => {
+/** 获取订单指标；可用取机人仅按档案 TAG 及可用状态筛选。 */
+async function getStats(filters = {}) {
   try {
-    const where = buildWhereClause(filters);
-
-    // 获取当前周期统计
-    const [totalOrders, pendingOrders, availableRecipients] = await Promise.all([
-      // 总订单量
+    const where = buildDashboardWhere(filters);
+    const recipientWhere = { status: { [Op.in]: ['使用中', '未使用'] } };
+    if (filters.recipientTags?.length) recipientWhere.tag = { [Op.in]: filters.recipientTags };
+    const [
+      totalOrders,
+      paidOrders,
+      pendingOrders,
+      availableRecipients,
+      amount,
+      missingAmountOrders,
+    ] = await Promise.all([
       Order.count({ where }),
-
-      // 尚未进入可取货阶段的邮件订单数。
       Order.count({
         where: {
-          ...where,
-          emailOrderStatus: {
-            [Op.in]: ['unknown', 'confirmed', 'processing'],
-          },
+          [Op.and]: [where, { emailOrderStatus: { [Op.in]: ['processing', 'ready_for_pickup'] } }],
         },
       }),
-
-      // 可用取机人数独立于订单筛选，按当前取机人状态统计。
-      Recipient.count({
+      Order.count({
         where: {
-          status: { [Op.in]: ['使用中', '未使用'] },
+          [Op.and]: [
+            where,
+            { emailOrderStatus: { [Op.in]: ['unknown', 'confirmed', 'processing'] } },
+          ],
         },
       }),
+      Recipient.count({ where: recipientWhere }),
+      Order.sum('orderAmount', { where }),
+      Order.count({ where: { ...where, orderAmount: null } }),
     ]);
-
-    // 计算映射价格的订单总额
-    const totalAmount = await calculateTotalAmount(where);
-    const previousAmount = await calculateTotalAmount(buildPreviousPeriodWhere(filters));
-
-    // 计算增长率（与上一周期对比）
-    const previousWhere = buildPreviousPeriodWhere(filters);
-    const previousOrders = await Order.count({ where: previousWhere });
-
-    const orderGrowth = calculateGrowth(totalOrders, previousOrders);
-    const amountGrowth = calculateGrowth(totalAmount, previousAmount);
-
+    const totalAmount = Number(amount || 0);
+    let orderGrowth = null;
+    let amountGrowth = null;
+    if (filters.startDate && filters.endDate) {
+      const start = parseOrderTimeBoundary(filters.startDate);
+      const end = parseOrderTimeBoundary(filters.endDate, true);
+      const duration = end - start + 1;
+      const previousWhere = {
+        ...where,
+        orderDate: {
+          [Op.gte]: new Date(start.getTime() - duration),
+          [Op.lte]: new Date(start.getTime() - 1),
+        },
+      };
+      const [previousOrders, previousAmount] = await Promise.all([
+        Order.count({ where: previousWhere }),
+        Order.sum('orderAmount', { where: previousWhere }),
+      ]);
+      orderGrowth = growth(totalOrders, previousOrders);
+      amountGrowth = growth(totalAmount, Number(previousAmount || 0));
+    }
     return {
-      totalOrders: totalOrders || 0,
-      totalAmount: totalAmount || 0,
+      totalOrders,
+      paidOrders,
+      pendingOrders,
+      availableRecipients,
+      totalAmount,
       amountSource: 'catalog',
-      missingAmountOrders: await Order.count({ where: { ...where, orderAmount: null } }),
-      pendingOrders: pendingOrders || 0,
-      availableRecipients: availableRecipients || 0,
+      missingAmountOrders,
       orderGrowth,
       amountGrowth,
     };
   } catch (error) {
-    logger.error('获取仪表板统计数据失败', {
-      error: error.message,
-      stack: error.stack,
-      filters,
-    });
+    logger.error('获取仪表板统计失败', { error: error.message });
     throw error;
   }
-};
+}
 
-/**
- * 计算映射订单总额
- * @param {Object} where - 查询条件
- * @returns {Promise<number>} 订单总额
- */
-const calculateTotalAmount = async where => {
+/** 按北京时间下单日聚合并补齐所选范围内的空日期。 */
+async function getDailyTrend(filters = {}) {
   try {
-    // 映射金额在订单保存和正式迁移中维护；未知商品不混入总额。
-    const total = await Order.sum('orderAmount', { where });
-    return Number(total || 0);
-  } catch (error) {
-    logger.error('计算订单总额失败', {
-      error: error.message,
-      where,
-    });
-    return 0;
-  }
-};
-
-/**
- * 构建上一周期的查询条件
- * @param {Object} filters - 当前筛选参数
- * @returns {Object} 上一周期的 where 条件
- */
-const buildPreviousPeriodWhere = filters => {
-  const where = { ...buildWhereClause(filters) };
-
-  if (filters.startDate && filters.endDate) {
-    const start = parseOrderTimeBoundary(filters.startDate);
-    const end = parseOrderTimeBoundary(filters.endDate, true);
-    const duration = end - start + 1;
-
-    const previousStart = new Date(start.getTime() - duration);
-    const previousEnd = new Date(start.getTime() - 1);
-
-    where.orderDate = {
-      [Op.gte]: previousStart,
-      [Op.lte]: previousEnd,
-    };
-  }
-
-  return where;
-};
-
-/**
- * 计算增长率
- * @param {number} current - 当前值
- * @param {number} previous - 之前值
- * @returns {number} 增长率百分比
- */
-const calculateGrowth = (current, previous) => {
-  if (!previous || previous === 0) {
-    return current > 0 ? 100 : 0;
-  }
-  return ((current - previous) / previous) * 100;
-};
-
-/**
- * 获取每日订单趋势
- * @param {Object} filters - 筛选参数
- * @returns {Promise<Array>} 每日订单数据
- */
-const getDailyTrend = async filters => {
-  try {
-    const where = buildWhereClause(filters);
-
-    // 按日期分组统计订单数量。使用与其他分布统计一致的过滤参数。
-    const dailyData = await sequelize.query(
-      `
-      SELECT
-        DATE(order_date AT TIME ZONE 'Asia/Shanghai') AS date,
-        COUNT(*) AS count
-      FROM orders
-      WHERE ${buildSqlWhereClause(filters)}
-      GROUP BY DATE(order_date AT TIME ZONE 'Asia/Shanghai')
-      ORDER BY DATE(order_date AT TIME ZONE 'Asia/Shanghai') ASC
-      `,
-      {
-        type: sequelize.QueryTypes.SELECT,
-        replacements: getReplacements(filters),
-      }
-    );
-
-    // 填充缺失日期（确保每天都有数据）
-    const filledData = fillMissingDates(dailyData, filters.startDate, filters.endDate);
-
-    return filledData.map(item => ({
-      date: formatDate(item.date),
-      count: parseInt(item.count) || 0,
-    }));
-  } catch (error) {
-    logger.error('获取每日订单趋势失败', {
-      error: error.message,
-      stack: error.stack,
-      filters,
-    });
-    throw error;
-  }
-};
-
-/**
- * 填充缺失的日期
- * @param {Array} data - 现有数据
- * @param {string} startDate - 开始日期
- * @param {string} endDate - 结束日期
- * @returns {Array} 填充后的数据
- */
-const fillMissingDates = (data, startDate, endDate) => {
-  if (!startDate || !endDate) {
-    return data;
-  }
-
-  const dataMap = new Map(data.map(item => [item.date, item]));
-  const result = [];
-
-  let current = new Date(startDate);
-  const end = new Date(endDate);
-
-  while (current <= end) {
-    const dateStr = current.toISOString().split('T')[0];
-    result.push(dataMap.get(dateStr) || { date: dateStr, count: 0 });
-    current.setUTCDate(current.getUTCDate() + 1);
-  }
-
-  return result;
-};
-
-/**
- * 格式化日期为中文
- * @param {string} dateStr - ISO 日期字符串
- * @returns {string} 格式化后的日期
- */
-const formatDate = dateStr => {
-  const date = new Date(dateStr);
-  const month = date.getUTCMonth() + 1;
-  const day = date.getUTCDate();
-  const weekdays = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
-  const weekday = weekdays[date.getUTCDay()];
-  return `${month}月${day}日`;
-};
-
-/**
- * 获取产品型号分布
- * @param {Object} filters - 筛选参数
- * @returns {Promise<Array>} 产品型号分布数据
- */
-const getProductDistribution = async filters => {
-  try {
-    const where = buildWhereClause(filters);
-
-    // 从 JSONB 数组中提取产品型号并统计
-    const result = await sequelize.query(
-      `
-      SELECT
-        product->>'model' AS name,
-        COUNT(*) AS value
-      FROM
-        orders,
-        jsonb_array_elements(products) AS product
-      WHERE
-        ${buildSqlWhereClause(filters)}
-      GROUP BY
-        product->>'model'
-      ORDER BY
-        value DESC
-      LIMIT 10
-      `,
-      {
-        type: sequelize.QueryTypes.SELECT,
-        replacements: getReplacements(filters),
-      }
-    );
-
-    return result.map(item => ({
-      name: item.name || '未知型号',
-      value: parseInt(item.value),
-    }));
-  } catch (error) {
-    logger.error('获取产品型号分布失败', {
-      error: error.message,
-      stack: error.stack,
-      filters,
-    });
-    throw error;
-  }
-};
-
-/**
- * 获取取货门店分布
- * @param {Object} filters - 筛选参数
- * @returns {Promise<Array>} 门店分布数据
- */
-const getStoreDistribution = async filters => {
-  try {
-    const where = buildWhereClause(filters);
-
-    const result = await Order.findAll({
+    const dateExpression = literal("DATE(order_date AT TIME ZONE 'Asia/Shanghai')");
+    const rows = await Order.findAll({
       attributes: [
-        [literal("email_pickup_info->>'storeName'"), 'storeName'],
-        [fn('COUNT', col('id')), 'value'],
+        [dateExpression, 'date'],
+        [fn('COUNT', col('id')), 'count'],
       ],
-      where: {
-        ...where,
-        emailPickupInfo: { [Op.ne]: null },
-      },
-      group: [literal("email_pickup_info->>'storeName'")],
-      order: [[fn('COUNT', col('id')), 'DESC']],
-      limit: 10,
+      where: buildDashboardWhere(filters),
+      group: [dateExpression],
+      order: [[dateExpression, 'ASC']],
       raw: true,
     });
-
-    return result.map(item => ({
-      name: item.storeName || '未知门店',
-      value: parseInt(item.value),
-    }));
+    const counts = new Map(rows.filter(row => row.date).map(row => [row.date, Number(row.count)]));
+    const dates = [...counts.keys()];
+    // 未指定任一边界时以实际订单范围补齐，最多补 3660 天，避免恶意宽范围耗尽内存。
+    const start = filters.startDate || dates[0];
+    const end = filters.endDate || dates[dates.length - 1];
+    if (start && end && (new Date(end) - new Date(start)) / DAY_MS <= MAX_FILL_DAYS) {
+      for (
+        let day = new Date(start);
+        day <= new Date(end);
+        day = new Date(day.getTime() + DAY_MS)
+      ) {
+        const key = day.toISOString().slice(0, ISO_DATE_LENGTH);
+        if (!counts.has(key)) counts.set(key, 0);
+      }
+    }
+    return [...counts]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count }));
   } catch (error) {
-    logger.error('获取取货门店分布失败', {
-      error: error.message,
-      stack: error.stack,
-      filters,
-    });
+    logger.error('获取仪表板趋势失败', { error: error.message });
     throw error;
   }
-};
+}
 
-/**
- * 构建 SQL WHERE 子句
- * @param {Object} filters - 筛选参数
- * @returns {string} SQL WHERE 子句
- */
-const buildSqlWhereClause = filters => {
-  const conditions = [
-    '(:allowedTags IS NULL OR tag IN (SELECT jsonb_array_elements_text(CAST(:allowedTags AS jsonb))))',
-  ]; // 默认条件
-
-  if (filters.startDate) {
-    conditions.push('order_date >= :startDate');
-  }
-  if (filters.endDate) {
-    conditions.push('order_date <= :endDate');
-  }
-  if (filters.status) {
-    const englishStatus = STATUS_MAP[filters.status] || filters.status;
-    conditions.push('email_order_status = :status');
-  }
-  if (filters.store) {
-    conditions.push("email_pickup_info->>'storeName' = :store");
-  }
-  if (filters.productModel) {
-    conditions.push(`EXISTS (
-      SELECT 1
-      FROM jsonb_array_elements(products) AS product_filter
-      WHERE product_filter->>'model' = :productModel
-    )`);
-  }
-
-  return conditions.join(' AND ');
-};
-
-/**
- * 获取 SQL 参数替换
- * @param {Object} filters - 筛选参数
- * @returns {Object} 参数对象
- */
-const getReplacements = filters => {
-  const tags = filters.orderUser ? getOrderTagBind(filters.orderUser) : null;
-  const replacements = { allowedTags: tags === null ? null : JSON.stringify(tags) };
-
-  if (filters.startDate) {
-    replacements.startDate = parseOrderTimeBoundary(filters.startDate);
-  }
-  if (filters.endDate) {
-    const endDate = parseOrderTimeBoundary(filters.endDate, true);
-    replacements.endDate = endDate;
-  }
-  if (filters.status) {
-    const englishStatus = STATUS_MAP[filters.status] || filters.status;
-    replacements.status = englishStatus;
-  }
-  if (filters.store) {
-    replacements.store = filters.store;
-  }
-  if (filters.productModel) {
-    replacements.productModel = filters.productModel;
-  }
-
-  return replacements;
-};
-
-/**
- * 获取筛选器选项
- * @returns {Promise<Object>} 筛选器选项数据
- */
-const getFilterOptions = async (filters = {}) => {
+/** 按完整商品身份统计，每个订单每种商品最多计一次。 */
+async function getProductDistribution(filters = {}) {
   try {
-    // 获取所有产品型号（从 JSONB 中提取）
-    const productModels = await sequelize.query(
-      `
-      SELECT DISTINCT product->>'model' AS model
-      FROM orders, jsonb_array_elements(products) AS product
-      WHERE product->>'model' IS NOT NULL AND ${buildSqlWhereClause(filters)}
-      ORDER BY model
-      `,
-      { type: sequelize.QueryTypes.SELECT, replacements: getReplacements(filters) }
-    );
+    const rows = await Order.findAll({
+      attributes: PRODUCT_ATTRIBUTES,
+      where: buildDashboardWhere(filters),
+      raw: true,
+    });
+    const result = collectProductOptions(rows).map(item => ({
+      key: item.value,
+      name: item.label.split(' · ')[0],
+      value: item.count,
+    }));
+    const unknown = rows.filter(row => !row.products?.length).length;
+    if (unknown) result.push({ key: 'unknown', name: '未知商品', value: unknown });
+    return result.sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, 'zh-CN'));
+  } catch (error) {
+    logger.error('获取商品分布失败', { error: error.message });
+    throw error;
+  }
+}
 
-    // 获取所有邮件取货门店。
-    const stores = await sequelize.query(
-      `
-      SELECT DISTINCT email_pickup_info->>'storeName' AS store
-      FROM orders
-      WHERE email_pickup_info->>'storeName' IS NOT NULL AND ${buildSqlWhereClause(filters)}
-      ORDER BY store
-      `,
-      { type: sequelize.QueryTypes.SELECT, replacements: getReplacements(filters) }
-    );
+function normalizeStoreName(value) {
+  return String(value || '')
+    .normalize('NFKC')
+    .trim()
+    .replace(/^Apple\s*[,，]?\s*/i, '')
+    .replace(/[›>]+$/g, '')
+    .replace(/\s+/g, '');
+}
 
+/** 门店城市只从已核对字典获取，邮件门店优先；未知和歧义值不猜测。 */
+async function getCityDistribution(filters = {}) {
+  try {
+    const storeExpression = literal("email_pickup_info->>'storeName'");
+    const [rows, stores] = await Promise.all([
+      Order.findAll({
+        attributes: [
+          [storeExpression, 'emailStore'],
+          'pickupStoreCode',
+          'pickupStore',
+          [fn('COUNT', col('id')), 'value'],
+        ],
+        where: buildDashboardWhere(filters),
+        group: [storeExpression, 'pickupStoreCode', 'pickupStore'],
+        raw: true,
+      }),
+      PickupStore.findAll({ attributes: ['code', 'name', 'city'], raw: true }),
+    ]);
+    const byCode = new Map(stores.map(store => [store.code, store.city]));
+    const byName = new Map();
+    for (const store of stores) {
+      const key = normalizeStoreName(store.name);
+      const cities = byName.get(key) || new Set();
+      if (store.city) cities.add(store.city.replace(/市$/, ''));
+      byName.set(key, cities);
+    }
+    const nameCity = name => {
+      const cities = byName.get(normalizeStoreName(name));
+      return cities?.size === 1 ? [...cities][0] : null;
+    };
+    const counts = new Map();
+    for (const row of rows) {
+      const city =
+        (row.emailStore?.trim()
+          ? nameCity(row.emailStore)
+          : byCode.get(row.pickupStoreCode) || nameCity(row.pickupStore)) || '未知城市';
+      const name = city === '未知城市' ? city : city.replace(/市$/, '');
+      counts.set(name, (counts.get(name) || 0) + Number(row.value));
+    }
+    return [...counts]
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value || a.name.localeCompare(b.name, 'zh-CN'));
+  } catch (error) {
+    logger.error('获取城市分布失败', { error: error.message });
+    throw error;
+  }
+}
+
+/** 保留旧门店分布契约，并应用全部订单筛选。 */
+async function getStoreDistribution(filters = {}) {
+  try {
+    const expression = literal("email_pickup_info->>'storeName'");
+    const rows = await Order.findAll({
+      attributes: [
+        [expression, 'name'],
+        [fn('COUNT', col('id')), 'value'],
+      ],
+      where: buildDashboardWhere(filters),
+      group: [expression],
+      order: [[fn('COUNT', col('id')), 'DESC']],
+      raw: true,
+    });
+    return rows.map(row => ({ name: row.name || '未知门店', value: Number(row.value) }));
+  } catch (error) {
+    logger.error('获取门店分布失败', { error: error.message });
+    throw error;
+  }
+}
+
+/** 从完整权限范围获取候选，不受分页截断；分别排除本维度筛选。 */
+async function getFilterOptions(filters = {}) {
+  try {
+    const storeExpression = literal("email_pickup_info->>'storeName'");
+    const tagExpression = literal(RECIPIENT_TAG_SQL);
+    const [products, tags, stores] = await Promise.all([
+      Order.findAll({
+        attributes: PRODUCT_ATTRIBUTES,
+        where: buildDashboardWhere({ ...filters, productKeys: [], productModel: '' }),
+        raw: true,
+      }),
+      Order.findAll({
+        attributes: [[tagExpression, 'recipientTag']],
+        where: buildDashboardWhere({ ...filters, recipientTags: [] }),
+        group: [tagExpression],
+        raw: true,
+      }),
+      Order.findAll({
+        attributes: [[storeExpression, 'store']],
+        where: buildDashboardWhere({ ...filters, store: '' }),
+        group: [storeExpression],
+        raw: true,
+      }),
+    ]);
     return {
-      productModels: productModels.map(item => item.model).filter(Boolean),
-      stores: stores.map(item => item.store).filter(Boolean),
+      productOptions: collectProductOptions(products),
+      recipientTags: tags
+        .map(item => item.recipientTag)
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b, 'zh-CN')),
+      productModels: [
+        ...new Set(
+          products.flatMap(row => (row.products || []).map(item => item.model)).filter(Boolean)
+        ),
+      ].sort(),
+      stores: stores
+        .map(item => item.store)
+        .filter(Boolean)
+        .sort(),
     };
   } catch (error) {
-    logger.error('获取筛选器选项失败', {
-      error: error.message,
-      stack: error.stack,
-    });
+    logger.error('获取仪表板候选失败', { error: error.message });
     throw error;
   }
-};
+}
 
 module.exports = {
   getStats,
   getDailyTrend,
   getProductDistribution,
+  getCityDistribution,
   getStoreDistribution,
   getFilterOptions,
 };

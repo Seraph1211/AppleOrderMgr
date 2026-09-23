@@ -238,7 +238,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - [Excel 导入](Excel导入规范.md)：模板、上传预览、15 分钟用户绑定会话、单次消费令牌。
 - [渠道管理](渠道管理说明.md)：标签聚合、分页、newTag 事务改名。
 - [仪表板](仪表板说明.md)：图表与指标口径；stats 独立统计入口见[statsController.js](../../src/controllers/statsController.js)。
-- 仪表板 `GET /api/dashboard/stats` 返回 `availableRecipients`，统计状态为“使用中”或“未使用”的取机人总数，不受订单筛选影响。
+- 仪表板 `GET /api/dashboard/stats` 返回 `availableRecipients`，统计状态为“使用中”或“未使用”的取机人数；按 `recipientTags` 精确筛选档案 TAG，不受下单日期、订单状态、商品筛选影响。
 - `GET /api/system/auto-refresh` 从持久化系统状态、任务和调度表返回 Worker 心跳、暂停原因、队列计数及新鲜度统计。
 - `POST /api/system/auto-refresh/resume` 仅 admin 可调用；清除持久化断路状态并返回当前状态，不重启 Worker、不改代理配置，也不把 API 进程状态冒充 Worker 状态。
 - `GET /api/system/proxy-provider` 新增 `workerReady` 与 `workerBlockedReason`，依据当前代理初始化结果及 20 秒心跳时效判断；暂停、代理禁用、恢复失败或心跳过期均不显示就绪。`activeProvider` 为最后确认的 Provider，只有 workerReady 才表示当前进程可处理任务。仅返回代理是否启用、`kdl_tunnel`、`kdl_private`、`fanproxy_tunnel`、`yiyou_http` 四个 Provider 是否已配置、环境默认值、管理员请求值、Worker 已确认值、切换状态、时间和脱敏错误；不返回主机鉴权、账号、用户名、密码、提取 API URL 或签名。
@@ -718,3 +718,10 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `POST /api/orders/:id/emails/:messageId/forward-batch`：沿用单封转发的权限、TAG、内容有效期规则。请求 `recipients`（1–50个单邮箱字符串，规范化后去重排序）、`note`（最多2000字）、`idempotencyKey`（16–64位字母数字和连字符）；202 返回 `{items:[发送任务]}`。同一事务创建所有任务，每个邮箱独立发送；同一操作人/key绑定完整目标列表、订单、邮件和备注，重试复用，改变内容409。原单收件人 `/forward` 保持兼容。联系人选择只填充邮箱，提交时形成快照；发信前仍重新检查用户权限。
 
 2026-09-23 门店筛选修复：列表、导出及商品候选均按 `email_pickup_info.storeName` 精确匹配；门店候选来自同一邮件字段，保留其他筛选与订单权限，排除自身门店条件，便于继续多选。
+
+## 仪表板筛选与分布（2026-09-23）
+
+- `/api/dashboard/stats`、`daily-trend`、`product-distribution`、新增 `city-distribution` 及兼容 `store-distribution` 统一接受 `startDate/endDate`（北京时间日期）、`emailOrderStatuses`、`productKeys`、`recipientTags`。多选为 JSON 数组，最多 100 项；TAG 每项最多 500 字符，保留原始空格；状态仅 unknown/confirmed/processing/ready_for_pickup，商品键复用订单筛选校验。非法参数返回 400。兼容旧 `status/productModel/store` 单值参数。
+- stats 新增 `paidOrders`，仅统计当前条件与 processing/ready_for_pickup 的交集；保留 `pendingOrders` 兼容字段但也与当前筛选取交集。`totalOrders/totalAmount/missingAmountOrders/amountSource/orderGrowth/amountGrowth` 保留；无完整日期范围时增长率为 null。金额查询失败返回错误，不伪装成 0。
+- `filter-options` 接受相同参数，返回 `productOptions`、`recipientTags`，分别排除自身维度后从完整可见范围生成；保留 `productModels/stores` 兼容字段。候选和所有订单聚合必须叠加账号订单 TAG 访问范围。
+- `daily-trend` 返回 `{ date, count }`，date 为北京时间 `YYYY-MM-DD`；完整日范围补 0（超过 3660 天只返回实际日期点）。商品／城市分布返回 `{ name, value }` 数组，商品附稳定 `key`，value 为订单数；商品按每订单每身份去重，多商品订单可进入不同组。城市取门店字典、未知归“未知城市”，不截断前 10 项。可用取机人数是独立档案统计，只有 TAG 筛选生效。完整规则见[仪表板说明](仪表板说明.md)。

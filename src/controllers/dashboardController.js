@@ -1,173 +1,36 @@
 const logger = require('../utils/logger');
 const dashboardService = require('../services/dashboardService');
+const { parseDashboardFilters } = require('../services/dashboardFilters');
 
-/**
- * 获取仪表板统计数据
- * @route GET /api/dashboard/stats
- */
-const getStats = async (req, res) => {
-  try {
-    const filters = {
-      orderUser: req.user,
-      startDate: req.query.startDate,
-      endDate: req.query.endDate,
-      status: req.query.status,
-      productModel: req.query.productModel,
-      store: req.query.store,
-    };
+const BAD_REQUEST = 400;
+const INTERNAL_ERROR = 500;
 
-    const stats = await dashboardService.getStats(filters);
-
-    res.json({
-      success: true,
-      data: stats,
-    });
-  } catch (error) {
-    logger.error('获取仪表板统计数据失败', {
-      error: error.message,
-      stack: error.stack,
-      query: req.query,
-    });
-    res.status(500).json({
-      success: false,
-      message: '获取统计数据失败',
-      error: error.message,
-    });
-  }
-};
-
-/**
- * 获取每日订单趋势
- * @route GET /api/dashboard/daily-trend
- */
-const getDailyTrend = async (req, res) => {
-  try {
-    const filters = {
-      orderUser: req.user,
-      startDate: req.query.startDate,
-      endDate: req.query.endDate,
-      status: req.query.status,
-      productModel: req.query.productModel,
-      store: req.query.store,
-    };
-
-    const trend = await dashboardService.getDailyTrend(filters);
-
-    res.json({
-      success: true,
-      data: trend,
-    });
-  } catch (error) {
-    logger.error('获取每日订单趋势失败', {
-      error: error.message,
-      stack: error.stack,
-      query: req.query,
-    });
-    res.status(500).json({
-      success: false,
-      message: '获取趋势数据失败',
-      error: error.message,
-    });
-  }
-};
-
-/**
- * 获取产品型号分布
- * @route GET /api/dashboard/product-distribution
- */
-const getProductDistribution = async (req, res) => {
-  try {
-    const filters = {
-      orderUser: req.user,
-      startDate: req.query.startDate,
-      endDate: req.query.endDate,
-      status: req.query.status,
-      store: req.query.store,
-    };
-
-    const distribution = await dashboardService.getProductDistribution(filters);
-
-    res.json({
-      success: true,
-      data: distribution,
-    });
-  } catch (error) {
-    logger.error('获取产品型号分布失败', {
-      error: error.message,
-      stack: error.stack,
-      query: req.query,
-    });
-    res.status(500).json({
-      success: false,
-      message: '获取产品分布数据失败',
-      error: error.message,
-    });
-  }
-};
-
-/**
- * 获取取货门店分布
- * @route GET /api/dashboard/store-distribution
- */
-const getStoreDistribution = async (req, res) => {
-  try {
-    const filters = {
-      orderUser: req.user,
-      startDate: req.query.startDate,
-      endDate: req.query.endDate,
-      status: req.query.status,
-      productModel: req.query.productModel,
-    };
-
-    const distribution = await dashboardService.getStoreDistribution(filters);
-
-    res.json({
-      success: true,
-      data: distribution,
-    });
-  } catch (error) {
-    logger.error('获取取货门店分布失败', {
-      error: error.message,
-      stack: error.stack,
-      query: req.query,
-    });
-    res.status(500).json({
-      success: false,
-      message: '获取门店分布数据失败',
-      error: error.message,
-    });
-  }
-};
-
-/**
- * 获取筛选器选项
- * @route GET /api/dashboard/filter-options
- */
-const getFilterOptions = async (req, res) => {
-  try {
-    const options = await dashboardService.getFilterOptions({ orderUser: req.user });
-
-    res.json({
-      success: true,
-      data: options,
-    });
-  } catch (error) {
-    logger.error('获取筛选器选项失败', {
-      error: error.message,
-      stack: error.stack,
-    });
-    res.status(500).json({
-      success: false,
-      message: '获取筛选器选项失败',
-      error: error.message,
-    });
-  }
-};
+/** 所有图表共用参数校验、服务端权限注入和错误返回。 */
+function handler(method) {
+  return async (req, res) => {
+    try {
+      const filters = parseDashboardFilters(req.query, req.user);
+      const data = await dashboardService[method](filters);
+      res.json({ success: true, data });
+    } catch (error) {
+      const status = error.statusCode || INTERNAL_ERROR;
+      logger.error('仪表板请求失败', { method, status, error: error.message });
+      res.status(status).json({
+        success: false,
+        error: {
+          code: error.code || 'INTERNAL_ERROR',
+          message: status === BAD_REQUEST ? error.message : '加载仪表板数据失败，请重试',
+        },
+      });
+    }
+  };
+}
 
 module.exports = {
-  getStats,
-  getDailyTrend,
-  getProductDistribution,
-  getStoreDistribution,
-  getFilterOptions,
+  getStats: handler('getStats'),
+  getDailyTrend: handler('getDailyTrend'),
+  getProductDistribution: handler('getProductDistribution'),
+  getCityDistribution: handler('getCityDistribution'),
+  getStoreDistribution: handler('getStoreDistribution'),
+  getFilterOptions: handler('getFilterOptions'),
 };

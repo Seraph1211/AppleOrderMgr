@@ -1,50 +1,28 @@
 import client from './client';
 
-/**
- * 获取仪表板统计数据
- * @param {Object} params - 筛选参数
- * @param {string} params.startDate - 开始日期 (YYYY-MM-DD)
- * @param {string} params.endDate - 结束日期 (YYYY-MM-DD)
- * @param {string} params.status - 订单状态
- * @param {string} params.productModel - 产品型号
- * @param {string} params.store - 取机门店
- * @returns {Promise<Object>} 仪表板数据
- */
-export const getDashboardStats = (params = {}) => {
-  return client.get('/dashboard/stats', { params });
-};
+function queryParams(filters = {}) {
+  const params = { ...filters };
+  for (const key of ['emailOrderStatuses', 'productKeys', 'recipientTags']) {
+    if (Array.isArray(params[key])) params[key] = JSON.stringify(params[key]);
+  }
+  return params;
+}
 
-/**
- * 获取每日订单趋势
- * @param {Object} params - 筛选参数
- * @returns {Promise<Array>} 每日订单数据
- */
-export const getDailyOrderTrend = (params = {}) => {
-  return client.get('/dashboard/daily-trend', { params });
-};
-
-/**
- * 获取产品型号分布
- * @param {Object} params - 筛选参数
- * @returns {Promise<Array>} 产品型号分布数据
- */
-export const getProductModelDistribution = (params = {}) => {
-  return client.get('/dashboard/product-distribution', { params });
-};
-
-/**
- * 获取取货门店分布
- * @param {Object} params - 筛选参数
- * @returns {Promise<Array>} 门店分布数据
- */
-export const getStoreDistribution = (params = {}) => {
-  return client.get('/dashboard/store-distribution', { params });
-};
-
-/**
- * 获取筛选器选项（产品型号、门店列表）
- * @returns {Promise<Object>} 筛选器选项数据
- */
-export const getFilterOptions = () => {
-  return client.get('/dashboard/filter-options');
-};
+/** 获取仪表板汇总，支持北京时间日期及邮件状态、商品、TAG 多选。 */
+export const getDashboardStats = (params = {}) =>
+  client.get('/dashboard/stats', { params: queryParams(params) });
+/** 获取按下单日期统计的订单趋势。 */
+export const getDailyOrderTrend = (params = {}) =>
+  client.get('/dashboard/daily-trend', { params: queryParams(params) });
+/** 获取完整商品规格的订单数分布。 */
+export const getProductModelDistribution = (params = {}) =>
+  client.get('/dashboard/product-distribution', { params: queryParams(params) });
+/** 获取取货门店所在城市的订单数分布。 */
+export const getCityDistribution = (params = {}) =>
+  client.get('/dashboard/city-distribution', { params: queryParams(params) });
+/** 兼容旧门店分布调用。 */
+export const getStoreDistribution = (params = {}) =>
+  client.get('/dashboard/store-distribution', { params: queryParams(params) });
+/** 获取当前权限和其他筛选条件内的商品、TAG 候选。 */
+export const getFilterOptions = (params = {}) =>
+  client.get('/dashboard/filter-options', { params: queryParams(params) });
