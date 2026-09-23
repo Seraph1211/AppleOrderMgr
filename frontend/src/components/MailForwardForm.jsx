@@ -117,7 +117,7 @@ export default function MailForwardForm({ orderId, messageId, onQueued, onSendin
     setError('');
   }
   return (
-    <form onSubmit={send} className="bg-primary-50 rounded-lg p-4 space-y-3">
+    <form onSubmit={send} className="order-mail-forward bg-primary-50 rounded-lg p-4 space-y-3">
       <h3 className="font-semibold text-gray-900">转发这封邮件</h3>
       <p className="text-sm text-gray-600">选择联系人（可多选，最多50个邮箱）</p>
       <div className="flex flex-wrap gap-2">
@@ -201,7 +201,7 @@ export default function MailForwardForm({ orderId, messageId, onQueued, onSendin
             id={dropdownId}
             role="group"
             aria-label="可选联系人"
-            className="absolute left-0 right-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden"
+            className="mt-1 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden"
           >
             <div className="max-h-52 overflow-y-auto">
               {loading ? (

@@ -350,8 +350,33 @@
     width: 38%;
   }
 }
-/* 付款任务手机列表：同一份表格数据与编辑草稿，纵向呈现主字段。 */
+/* 订单手机卡片只显示摘要，桌面继续使用完整表格。 */
 @media (max-width: 767px) {
+  .orders-page .input,
+  .order-mail-forward .input {
+    font-size: 16px;
+  }
+  .order-mail-forward .btn,
+  .order-mail-forward .input {
+    min-height: 44px;
+  }
+  .order-detail-modal .input {
+    font-size: 16px;
+  }
+  .order-detail-modal .btn,
+  .order-detail-modal .input {
+    min-height: 44px;
+  }
+  .orders-page .btn,
+  .orders-page input:not([type='checkbox']) {
+    min-height: 44px;
+  }
+  .orders-page .btn {
+    min-width: 44px;
+  }
+  .orders-mobile-actions > div {
+    justify-content: flex-start;
+  }
   .pickups-page .input {
     font-size: 16px;
     min-height: 44px;

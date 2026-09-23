@@ -147,9 +147,9 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
   const statusBadge = getEmailOrderStatusBadge(order.emailOrderStatus);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="flex max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-lg bg-white shadow-xl">
-        <div className="flex items-center justify-between border-b border-gray-200 p-6">
+    <div className="order-detail-modal fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-0 sm:p-4">
+      <div className="flex h-[100dvh] w-full max-w-4xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[90vh] sm:rounded-lg">
+        <div className="flex items-center justify-between border-b border-gray-200 p-4 sm:p-6">
           <div>
             <h2 className="text-2xl font-bold">订单详情</h2>
             <p className="mt-1 font-mono text-gray-600">{order.orderNumber}</p>
@@ -163,7 +163,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
           </button>
         </div>
 
-        <div className="flex-1 space-y-6 overflow-y-auto p-6">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
           <OrderSources orderId={order.id} />
           <div className="card border-blue-100 bg-blue-50/40">
             <h3 className="mb-4 text-lg font-semibold">官方订单邮件状态</h3>
@@ -205,6 +205,24 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
               <div>
                 <p className="text-sm text-gray-600">下单时间</p>
                 <p className="mt-1 text-sm">{formatOrderTime(order.orderDate)}</p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">取机人 / TAG</p>
+                <p className="mt-1 break-words text-sm">
+                  {order.recipientName || '-'} / {order.recipientTag || '-'}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">Serial No.</p>
+                {order.serialNumbers?.length ? (
+                  order.serialNumbers.map(serial => (
+                    <p key={serial} className="mt-1 break-all font-mono text-sm">
+                      {serial}
+                    </p>
+                  ))
+                ) : (
+                  <p className="mt-1 text-sm">-</p>
+                )}
               </div>
               <div>
                 <p className="text-sm text-gray-600">Apple ID</p>
@@ -352,7 +370,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
           </div>
         </div>
 
-        <div className="flex justify-end gap-3 border-t border-gray-200 p-6">
+        <div className="flex justify-end gap-3 border-t border-gray-200 p-4 sm:p-6">
           <button onClick={onClose} className="btn btn-secondary">
             关闭
           </button>

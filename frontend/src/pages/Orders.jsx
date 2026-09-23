@@ -8,6 +8,7 @@ import ProductSummary from '../components/ProductSummary';
 import TableHeaderHint from '../components/TableHeaderHint';
 import { formatOrderTime } from '../utils/orderTime';
 import { copyDeferredText } from '../utils/copyDeferredText';
+import { groupDisplayProducts } from '../utils/productDisplay';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Filter, Download, RefreshCw, Settings, X, Mail } from 'lucide-react';
 import { getOrders, getOrderLink, getOrderFilterOptions, exportOrders } from '../api';
@@ -73,6 +74,7 @@ export default function Orders() {
   });
 
   const [showColumnConfig, setShowColumnConfig] = useState(false);
+  const [showMobileFilters, setShowMobileFilters] = useState(false);
   const { columns, saveConfig, resetConfig } = useColumnConfig('orders', ordersColumns);
 
   // 筛选选项（从后端获取或硬编码）
@@ -547,7 +549,7 @@ export default function Orders() {
   ).length;
 
   return (
-    <div className="space-y-6">
+    <div className="orders-page min-w-0 space-y-4 md:space-y-6">
       <AutoDismissToast toast={toast} onDismiss={dismissToast} />
       {/* 页面标题 */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -565,9 +567,9 @@ export default function Orders() {
 
       {/* 搜索栏 */}
       <div className="card">
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           {/* 搜索框 */}
-          <div className="flex-1 relative">
+          <div className="relative w-full min-w-0 sm:w-auto sm:flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
@@ -601,7 +603,20 @@ export default function Orders() {
       </div>
 
       {/* 筛选区域 */}
-      <div className="card">
+      <button
+        type="button"
+        className="btn btn-secondary flex w-full items-center justify-between md:hidden"
+        aria-expanded={showMobileFilters}
+        aria-controls="orders-filters"
+        onClick={() => setShowMobileFilters(previous => !previous)}
+      >
+        <span className="inline-flex items-center gap-2">
+          <Filter className="w-4 h-4" />
+          筛选条件 {activeFiltersCount > 0 && `(${activeFiltersCount})`}
+        </span>
+        <span>{showMobileFilters ? '收起' : '展开'}</span>
+      </button>
+      <div id="orders-filters" className={`card ${showMobileFilters ? '' : 'hidden md:block'}`}>
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <Filter className="w-5 h-5 text-gray-600" />
@@ -706,7 +721,7 @@ export default function Orders() {
       </div>
 
       {/* 订单列表 */}
-      <div className="card">
+      <div className="card min-w-0">
         {canSelectOrders && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-gray-600">已选择 {selectedIds.length} 项（当前页）</span>
@@ -746,60 +761,30 @@ export default function Orders() {
             <p className="text-gray-600">未找到订单</p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-max">
-              <thead>
-                <tr className="border-b border-gray-200 bg-gray-50">
-                  {canSelectOrders && (
-                    <th className="py-3 px-3 w-10">
-                      <input
-                        type="checkbox"
-                        aria-label="全选本页订单"
-                        disabled={mailBatchSubmitting || exportingSelected}
-                        checked={
-                          orders.length > 0 && orders.every(order => selectedIds.includes(order.id))
-                        }
-                        onChange={event =>
-                          setSelectedIds(event.target.checked ? orders.map(order => order.id) : [])
-                        }
-                      />
-                    </th>
-                  )}
-                  {visibleColumns.map(col => (
-                    <th
-                      key={col.key}
-                      className={`text-left py-3 px-4 text-sm font-medium text-gray-500 whitespace-nowrap ${
-                        col.key === 'actions' ? 'text-right sticky right-0 bg-gray-50 z-10' : ''
-                      }`}
-                      style={{ minWidth: col.width }}
-                    >
-                      <span className="inline-flex items-center gap-1">
-                        {col.label}
-                        {col.key === 'emailOrderStatus' && (
-                          <TableHeaderHint label="订单状态说明">
-                            <p>订单已确认：已下单，待付款</p>
-                            <p>处理中：订单已付款</p>
-                            <p>可取货：订单可取货</p>
-                          </TableHeaderHint>
-                        )}
-                        {col.key === 'emailPickupInfo' && (
-                          <TableHeaderHint label="取货信息说明">基于邮件数据更新</TableHeaderHint>
-                        )}
-                      </span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody className="bg-white">
-                {orders.map(order => (
-                  <tr
-                    key={order.id}
-                    className="border-b border-gray-200 transition-colors hover:bg-gray-50"
-                  >
-                    {canSelectOrders && (
-                      <td className="py-4 px-3">
+          <>
+            <div className="orders-mobile-list space-y-3 md:hidden">
+              {orders.map(order => {
+                const products = groupDisplayProducts(order.products);
+                const status = getEmailOrderStatusBadge(order.emailOrderStatus);
+                return (
+                  <article key={order.id} className="rounded-lg border border-gray-200 bg-white p-3">
+                    <div className="flex min-w-0 items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs text-gray-500">订单 ID：{order.id}</p>
+                        <button
+                          type="button"
+                          className="mt-1 break-all text-left font-mono text-sm font-semibold text-primary"
+                          disabled={copyingOrderId !== null}
+                          aria-label={`复制订单链接 ${order.orderNumber}`}
+                          onClick={() => handleCopyOrderLink(order)}
+                        >
+                          {copyingOrderId === order.id ? '复制中...' : order.orderNumber}
+                        </button>
+                      </div>
+                      {canSelectOrders && (
                         <input
                           type="checkbox"
+                          className="h-6 w-6 shrink-0"
                           aria-label={`选择订单 ${order.orderNumber}`}
                           disabled={mailBatchSubmitting || exportingSelected}
                           checked={selectedIds.includes(order.id)}
@@ -811,21 +796,117 @@ export default function Orders() {
                             )
                           }
                         />
-                      </td>
+                      )}
+                    </div>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className={`badge ${status.class}`}>{status.text}</span>
+                      {order.emailStatusNeedsReview && (
+                        <span className="text-xs text-amber-700">待核对</span>
+                      )}
+                      <span className="text-xs text-gray-500">
+                        {formatOrderTime(order.orderDate)}
+                      </span>
+                    </div>
+                    <p className="mt-2 line-clamp-2 break-words text-sm text-gray-900">
+                      {products.length
+                        ? `${products[0].name} ×${products[0].quantity ?? '待核实'}`
+                        : '商品待核实'}
+                      {products.length > 1 && `，另 ${products.length - 1} 款`}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-gray-600">
+                      取机人：{order.recipientName || '-'}
+                      {order.recipientTag && order.recipientTag !== '-'
+                        ? ` · ${order.recipientTag}`
+                        : ''}
+                    </p>
+                    <div className="orders-mobile-actions mt-3 border-t border-gray-100 pt-3">
+                      {renderCell(order, { key: 'actions' })}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+            <div className="hidden min-w-0 md:block md:overflow-x-auto">
+              <table className="w-full min-w-max">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    {canSelectOrders && (
+                      <th className="py-3 px-3 w-10">
+                        <input
+                          type="checkbox"
+                          aria-label="全选本页订单"
+                          disabled={mailBatchSubmitting || exportingSelected}
+                          checked={
+                            orders.length > 0 && orders.every(order => selectedIds.includes(order.id))
+                          }
+                          onChange={event =>
+                            setSelectedIds(event.target.checked ? orders.map(order => order.id) : [])
+                          }
+                        />
+                      </th>
                     )}
                     {visibleColumns.map(col => (
-                      <td
+                      <th
                         key={col.key}
-                        className={`py-4 px-4 ${col.key === 'actions' ? 'text-right sticky right-0 bg-white' : ''}`}
+                        className={`text-left py-3 px-4 text-sm font-medium text-gray-500 whitespace-nowrap ${
+                          col.key === 'actions' ? 'text-right sticky right-0 bg-gray-50 z-10' : ''
+                        }`}
+                        style={{ minWidth: col.width }}
                       >
-                        {renderCell(order, col)}
-                      </td>
+                        <span className="inline-flex items-center gap-1">
+                          {col.label}
+                          {col.key === 'emailOrderStatus' && (
+                            <TableHeaderHint label="订单状态说明">
+                              <p>订单已确认：已下单，待付款</p>
+                              <p>处理中：订单已付款</p>
+                              <p>可取货：订单可取货</p>
+                            </TableHeaderHint>
+                          )}
+                          {col.key === 'emailPickupInfo' && (
+                            <TableHeaderHint label="取货信息说明">基于邮件数据更新</TableHeaderHint>
+                          )}
+                        </span>
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="bg-white">
+                  {orders.map(order => (
+                    <tr
+                      key={order.id}
+                      className="border-b border-gray-200 transition-colors hover:bg-gray-50"
+                    >
+                      {canSelectOrders && (
+                        <td className="py-4 px-3">
+                          <input
+                            type="checkbox"
+                            aria-label={`选择订单 ${order.orderNumber}`}
+                            disabled={mailBatchSubmitting || exportingSelected}
+                            checked={selectedIds.includes(order.id)}
+                            onChange={event =>
+                              setSelectedIds(previous =>
+                                event.target.checked
+                                  ? [...previous, order.id]
+                                  : previous.filter(id => id !== order.id)
+                              )
+                            }
+                          />
+                        </td>
+                      )}
+                      {visibleColumns.map(col => (
+                        <td
+                          key={col.key}
+                          className={`py-4 px-4 ${col.key === 'actions' ? 'text-right sticky right-0 bg-white' : ''}`}
+                        >
+                          {renderCell(order, col)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
           </div>
+          </>
         )}
       </div>
 
