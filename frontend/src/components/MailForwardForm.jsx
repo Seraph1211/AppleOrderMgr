@@ -138,10 +138,7 @@ export default function MailForwardForm({ orderId, messageId, onQueued, onSendin
       <div
         ref={selectorRef}
         className="relative"
-        onBlur={event => {
-          if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
-        }}
-        onKeyDown={event => {
+        onKeyDownCapture={event => {
           if (event.key === 'Escape' && open) {
             event.preventDefault();
             event.stopPropagation();

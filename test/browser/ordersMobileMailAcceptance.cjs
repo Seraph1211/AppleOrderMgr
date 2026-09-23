@@ -7,7 +7,7 @@ const { chromium } = require('playwright-core');
 async function main() {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
-    const context = await browser.newContext({ serviceWorkers: 'block' });
+    const context = await browser.newContext({ serviceWorkers: 'block', hasTouch: true });
     await context.addInitScript(() => localStorage.setItem('token', 'synthetic-orders-mobile'));
     const page = await context.newPage();
     const errors = [];
@@ -130,9 +130,17 @@ async function main() {
     const choices = page.getByRole('group', { name: '可选联系人' });
     await choices.getByRole('checkbox', { name: /联系人甲/ }).waitFor();
     assert.equal(await choices.isVisible(), true);
+    await search.evaluate(input => input.blur());
+    assert.equal(await choices.isVisible(), true, '搜索框失焦后联系人列表应保留供触摸选择');
     await page.screenshot({ path: '/tmp/apple-orders-mail-contacts-390.png' });
-    await choices.getByRole('checkbox', { name: /联系人甲/ }).click();
+    await choices.getByRole('checkbox', { name: /联系人甲/ }).tap();
     await page.getByRole('button', { name: '移除 联系人甲' }).waitFor();
+    await page.locator('.order-mail-forward h3').tap();
+    assert.equal(await choices.isVisible(), false, '点击选择器外部应收起联系人列表');
+    await search.focus();
+    await choices.waitFor();
+    await search.press('Escape');
+    assert.equal(await choices.isVisible(), false, 'Escape 应收起联系人列表');
     assert.equal(await page.getByRole('button', { name: '转发邮件' }).isEnabled(), true);
     await page.getByRole('button', { name: '转发邮件' }).click();
     await page.getByText('已提交 1 个转发任务').waitFor();
