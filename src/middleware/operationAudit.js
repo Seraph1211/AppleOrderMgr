@@ -18,6 +18,7 @@ const MODULE_LABELS = {
   'payment-tasks': '本人付款任务',
   'payment-dispatch': '付款调度',
   'order-refresh': '订单刷新任务',
+  'quote-pricing': '公开报价',
   system: '系统',
   import: '导入',
 };
@@ -80,6 +81,12 @@ const ACTION_LABELS = {
   'refresh-all': '刷新全部订单',
   'page-open-refresh': '打开页面刷新订单',
   'filter-options': '筛选选项',
+  availability: '公开状态',
+  'display-order': '展示顺序',
+  adjustments: '商品调价',
+  reset: '恢复原价',
+  versions: '调价版本',
+  restore: '版本回退',
 };
 const VERBS = { GET: '查看', POST: '执行', PUT: '修改', PATCH: '修改', DELETE: '删除' };
 
@@ -135,6 +142,7 @@ function operationAudit(req, res, next) {
   if (
     !path.startsWith('/api/') ||
     path.startsWith('/api/health') ||
+    path.startsWith('/api/public/') ||
     path === '/api/auth/me' ||
     req.method === 'OPTIONS'
   )

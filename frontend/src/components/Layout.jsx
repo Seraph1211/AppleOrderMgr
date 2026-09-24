@@ -19,6 +19,7 @@ import {
   CreditCard,
   ListChecks,
   ClipboardCheck,
+  BadgeDollarSign,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getEmailProcessingMetrics } from '../api';
@@ -46,6 +47,12 @@ const baseNavigation = [
 ];
 
 const adminNavigation = [
+  {
+    name: '公开报价',
+    href: '/quote-pricing',
+    icon: BadgeDollarSign,
+    adminOnly: true,
+  },
   {
     name: '企微订单通知',
     href: '/wecom-notifications',
@@ -104,7 +111,7 @@ export default function Layout({ children }) {
       ? [{ name: '邮件联系人', href: '/mail-contacts', icon: Mail, adminOnly: true }]
       : []),
   ]
-    .filter(item => item.adminOnly || can(item.permission))
+    .filter(item => (item.adminOnly ? user?.role === 'admin' : can(item.permission)))
     .concat({ name: '个人设置', href: '/profile', icon: Settings });
 
   // 处理登出

@@ -118,6 +118,7 @@ app.get('/api/health', (_req, res) => res.redirect(307, '/api/health/ready'));
 
 // ---------- 业务路由 ----------
 app.use('/api/auth', authRouter);
+app.use('/api/public', require('./routes/publicQuotes'));
 app.use('/api', authenticate);
 app.use('/api/users', usersRouter);
 app.use('/api/apple-ids', appleIdsRouter);
@@ -138,6 +139,7 @@ app.use('/api/system', systemRouter);
 app.use('/api/payment-tasks', paymentTasksRouter);
 app.use('/api/payment-dispatch', paymentDispatchRouter);
 app.use('/api/identity-verifications', require('./routes/identityVerifications'));
+app.use('/api/quote-pricing', require('./routes/quotePricing'));
 
 // ---------- 404 兜底 ----------
 app.use((req, _res, next) => {
@@ -200,6 +202,7 @@ function shutdown(signal) {
       await monitorStopped;
       await emailService.stopEmailService();
       await monitorNotificationSender.stop();
+      await require('./repositories/quoteSourceRepository').closeQuoteSourcePool();
       await sequelize.close();
       logger.info('数据库连接已关闭');
     } catch (closeErr) {

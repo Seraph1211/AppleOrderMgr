@@ -38,6 +38,7 @@
     "test:browser:monitor": "node scripts/testServerMonitorBrowser.js",
     "orders:preview-product-filters": "node scripts/previewProductFilters.js",
     "test:browser:product-filters": "node scripts/testProductFiltersBrowser.js",
+    "test:browser:quote-pricing": "node test/browser/quotePricingAcceptance.cjs",
     "start:wecom-worker": "node src/workers/wecomNotificationWorker.js"
   },
   "keywords": [
@@ -63,6 +64,7 @@
     "mailauth": "^4.13.3",
     "mailparser": "^3.7.1",
     "multer": "2.3.0",
+    "mysql2": "3.24.4",
     "node-cron": "^3.0.3",
     "node-imap": "^0.9.6",
     "nodemailer": "^10.0.10",

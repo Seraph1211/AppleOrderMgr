@@ -1,4 +1,4 @@
-import { Routes, Route } from 'react-router-dom';
+import { Navigate, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
@@ -23,13 +23,15 @@ import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
 import IdentityVerifications from './pages/IdentityVerifications';
 import Pickups from './pages/Pickups';
+import PublicIphone18Quotes from './pages/PublicIphone18Quotes';
+import Iphone18QuotePricing from './pages/Iphone18QuotePricing';
 import { PERMISSIONS } from './constants/permissions';
 
 function permissionRoute(permission, element) {
   return <ProtectedRoute requiredPermission={permission}>{element}</ProtectedRoute>;
 }
 
-function App() {
+function ManagementApp() {
   return (
     <AuthProvider>
       <Routes>
@@ -68,6 +70,14 @@ function App() {
                     }
                   />
                   <Route path="/profile" element={<Profile />} />
+                  <Route
+                    path="/quote-pricing"
+                    element={
+                      <ProtectedRoute requiredRole="admin">
+                        <Iphone18QuotePricing />
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route
                     path="/operation-logs"
                     element={permissionRoute(PERMISSIONS.SYSTEM_LOGS_READ, <OperationLogs />)}
@@ -147,6 +157,16 @@ function App() {
         />
       </Routes>
     </AuthProvider>
+  );
+}
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/quote/apple" element={<PublicIphone18Quotes />} />
+      <Route path="/quote/iphone18" element={<Navigate to="/quote/apple" replace />} />
+      <Route path="/*" element={<ManagementApp />} />
+    </Routes>
   );
 }
 

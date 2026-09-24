@@ -38,6 +38,22 @@
 { "success": true, "data": { "total": 0, "page": 1, "limit": 20, "items": [] } }
 ```
 
+## Apple 公开报价接口（2026-09-25）
+
+公开接口在全局认证中间件之前挂载，管理接口仍要求登录管理员。所有接口使用统一 `{success,data}`／`{success:false,error}` 结构。
+
+- `GET /api/public/apple-quotes`：无需登录，每 IP 每分钟最多 120 次，且不写入内部操作日志。公开开关关闭返回 503 `QUOTE_PAGE_PAUSED`；来源不可用或无完整批次返回 503 `QUOTE_SOURCE_UNAVAILABLE`。成功仅返回 `enabled`、`updatedAt`、`stale`、筛选候选及 `items[{productKey,productName,productModel,storageGb,color,quotePrice,officialPrice}]`，不返回明威价、调价字段、规格码、来源地址或操作人。
+- `GET /api/public/iphone18-quotes`：历史兼容别名，返回内容与 `/api/public/apple-quotes` 相同；新客户端不得继续使用该地址。
+- `GET /api/quote-pricing/iphone18`：仅管理员。返回公开设置版本、来源批次、默认顺序、完整商品列表及每项明威价、官网价、百分比、固定金额和最终报价。
+- `PUT /api/quote-pricing/iphone18/availability`：仅管理员；请求 `{enabled:boolean,expectedVersion:integer}`，切换固定公开链接，不改调价规则。
+- `PUT /api/quote-pricing/iphone18/display-order`：仅管理员；请求 `{productKeys:string[1..1000],expectedVersion:integer}`，`productKeys` 必须恰好包含当前全部商品且不得重复。保存后公开页和报价复制立即同序；商品来源变化返回 `QUOTE_PRODUCTS_CHANGED`（409），设置版本冲突返回 `CONCURRENT_MODIFICATION`（409）。
+- `PUT /api/quote-pricing/iphone18/adjustments`：仅管理员；请求 `{productKeys:string[1..100],percentage:number,fixedAmount:number,expectedVersion:integer}`。百分比 -100 至 1000，固定金额 -100000 至 100000；选中商品必须存在于最新完整批次，重复保存覆盖原调整值。
+- `POST /api/quote-pricing/iphone18/adjustments/reset`：仅管理员；请求 `{productKeys:string[1..100],expectedVersion:integer}`，删除选中规则并生成新版本。
+- `GET /api/quote-pricing/iphone18/versions?limit=20`：仅管理员；返回最近价格版本元数据，不直接返回完整快照。
+- `POST /api/quote-pricing/iphone18/versions/:id/restore`：仅管理员；请求 `{expectedVersion:integer}`，恢复目标快照并生成新的恢复版本。
+
+最终报价固定为 `round(basePrice × (1 + percentage / 100) + fixedAmount)`。服务端重新计算且拒绝负值；不接收客户端提交最终价格或明威价格。
+
 公共错误处理中间件返回 success=false 和 error.code/message/details，并通过 X-Request-Id 关联日志。部分认证、仪表板及模板错误仍返回顶层 message 或字符串 error，客户端必须兼容，不能把公共格式当成全量端点已经统一。
 
 文件下载返回 Excel/Blob，不按 JSON 解析。401 为认证失败、403 为权限或账号限制、409 可表示冲突或不支持的跨进程恢复；其余状态按各控制器处理。
