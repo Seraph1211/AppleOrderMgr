@@ -47,8 +47,6 @@ async function login(req, res) {
 
     // 调用服务层处理登录
     const result = await authService.login(username, password, loginIp, {
-      confirmationToken:
-        typeof req.body.confirmationToken === 'string' ? req.body.confirmationToken : undefined,
       currentToken: extractTokenFromHeader(req),
       onIdentify: actor => {
         req.auditActor = actor;

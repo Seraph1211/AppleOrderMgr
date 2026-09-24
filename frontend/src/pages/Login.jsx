@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Apple, Lock, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import client from '../api/client';
-import ConfirmModal from '../components/ConfirmModal';
 import AlertModal from '../components/AlertModal';
 import { MIN_PASSWORD_LENGTH } from '../constants/auth';
 
@@ -19,7 +18,6 @@ export default function Login() {
 
   const [loading, setLoading] = useState(false);
   const [alertModal, setAlertModal] = useState(null);
-  const [confirmation, setConfirmation] = useState(null);
   useEffect(() => {
     const message = sessionStorage.getItem('authNotice');
     if (message) {
@@ -60,7 +58,7 @@ export default function Login() {
     return `${minutes} 分 ${seconds} 秒`;
   };
 
-  const handleSubmit = async (e, confirmationToken) => {
+  const handleSubmit = async e => {
     e?.preventDefault();
     if (loading) return;
 
@@ -97,7 +95,6 @@ export default function Login() {
       const response = await client.post('/auth/login', {
         username: formData.username,
         password: formData.password,
-        confirmationToken,
       });
 
       // 登录成功
@@ -121,10 +118,6 @@ export default function Login() {
         });
       }
     } catch (error) {
-      if (error.code === 'SESSION_CONFIRMATION_REQUIRED') {
-        setConfirmation(error.details?.confirmationToken);
-        return;
-      }
       // 处理登录失败
       let errorMessage = '登录失败，请重试';
       let lockUntil = null;
@@ -257,18 +250,6 @@ export default function Login() {
         <p className="text-center text-sm text-gray-500 mt-8">Apple 订单管理系统 v1.0.0</p>
       </div>
 
-      {confirmation && (
-        <ConfirmModal
-          title="已达到 3 台设备登录上限"
-          message="继续登录将使最早登录的一台设备退出，其余两台不受影响。是否继续？"
-          onCancel={() => setConfirmation(null)}
-          onConfirm={() => {
-            const token = confirmation;
-            setConfirmation(null);
-            handleSubmit(null, token);
-          }}
-        />
-      )}
       {/* 错误提示 Modal */}
       {alertModal && (
         <AlertModal

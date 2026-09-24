@@ -1,15 +1,10 @@
 const { randomUUID } = require('crypto');
-const {
-  MAX_ACCOUNT_SESSIONS,
-  getActiveSessions,
-  sessionFingerprint,
-} = require('../utils/accountSessions');
+const { getActiveSessions } = require('../utils/accountSessions');
 const { User, sequelize } = require('../models');
 const ApiError = require('../utils/ApiError');
 const { accountId, normalizeNickname } = require('../utils/accountIdentity');
 const {
   generateToken,
-  generateConfirmationToken,
   verifyToken,
   decodeToken,
 } = require('../utils/jwtUtils');
@@ -73,23 +68,6 @@ async function login(username, password, loginIp = null, options = {}) {
           current?.userId === user.id
             ? sessions.find(session => session.id === current.sessionId)
             : null;
-        const confirmation = options.confirmationToken
-          ? verifyToken(options.confirmationToken)
-          : null;
-        const confirmed =
-          confirmation?.purpose === 'login_takeover' &&
-          confirmation?.userId === user.id &&
-          confirmation?.previousSessionId === sessions[0]?.id &&
-          confirmation?.sessionFingerprint === sessionFingerprint(sessions);
-        if (sessions.length >= MAX_ACCOUNT_SESSIONS && !sameSession && !confirmed) {
-          return {
-            error: ApiError.conflict(
-              '账号已在 3 台设备登录，继续登录将使最早登录的一台设备退出。',
-              { confirmationToken: generateConfirmationToken(user, sessions) },
-              'SESSION_CONFIRMATION_REQUIRED'
-            ),
-          };
-        }
         const sessionId = randomUUID();
         const token = generateToken({
           userId: user.id,
@@ -99,9 +77,7 @@ async function login(username, password, loginIp = null, options = {}) {
         });
         const retained = sameSession
           ? sessions.filter(session => session.id !== sameSession.id)
-          : sessions.length >= MAX_ACCOUNT_SESSIONS
-            ? sessions.slice(1)
-            : sessions;
+          : sessions;
         user.activeSessions = [
           ...retained,
           {

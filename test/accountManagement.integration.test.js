@@ -51,6 +51,16 @@ describeIntegration('账号管理隔离库验收', () => {
       method: 'POST',
       body: { username: user.username, password, ...extra },
     });
+  const trimSessionsForLegacyConstraint = () =>
+    models.sequelize.query(`
+      UPDATE users u
+      SET active_sessions = COALESCE((
+        SELECT jsonb_agg(session.value ORDER BY session.ordinality)
+        FROM jsonb_array_elements(u.active_sessions) WITH ORDINALITY AS session(value, ordinality)
+        WHERE session.ordinality <= 3
+      ), '[]'::jsonb)
+      WHERE jsonb_array_length(active_sessions) > 3
+    `);
 
   beforeAll(async () => {
     if (!/^apple_order_mgr_accounts_test_\d+$/.test(process.env.DB_NAME || ''))
@@ -101,13 +111,10 @@ describeIntegration('账号管理隔离库验收', () => {
     expect((await request('/api/orders', { token: result.body.data.token })).status).toBe(200);
   });
 
-  test('前三台同时登录；第四台取消确认不影响已有设备，错误密码不签发确认', async () => {
+  test('多个设备均可直接登录；错误密码不创建会话', async () => {
     const user = await freshUser();
-    const sessions = await Promise.all([login(user), login(user), login(user)]);
-    expect(sessions.map(item => item.status)).toEqual([200, 200, 200]);
-    const conflict = await login(user);
-    expect(conflict.status).toBe(409);
-    expect(conflict.body.error.code).toBe('SESSION_CONFIRMATION_REQUIRED');
+    const sessions = await Promise.all(Array.from({ length: 6 }, () => login(user)));
+    expect(sessions.map(item => item.status)).toEqual(Array(6).fill(200));
     const wrong = await login(user, { password: 'Synthetic-wrong' });
     expect(wrong.status).toBe(401);
     expect(wrong.body.error.details).toBeUndefined();
@@ -115,38 +122,27 @@ describeIntegration('账号管理隔离库验收', () => {
       expect((await request('/api/auth/me', { token: session.body.data.token })).status).toBe(200);
   });
 
-  test('第四台只替换最早会话；旧确认凭证不能重复踢出设备', async () => {
+  test('新增设备登录不会替换已有会话', async () => {
     const user = await freshUser();
     const first = await login(user);
     const second = await login(user);
     const third = await login(user);
-    const conflict = await login(user);
-    const confirmationToken = conflict.body.error.details.confirmationToken;
-    const fourth = await login(user, { confirmationToken });
+    const fourth = await login(user);
     expect(fourth.status).toBe(200);
-    expect((await request('/api/auth/me', { token: first.body.data.token })).body.error.code).toBe(
-      'SESSION_REPLACED'
-    );
-    expect((await login(user, { confirmationToken })).status).toBe(409);
-    for (const session of [second, third, fourth])
+    for (const session of [first, second, third, fourth])
       expect((await request('/api/auth/me', { token: session.body.data.token })).status).toBe(200);
   });
 
-  test('并发登录最多三个会话，同一确认并发接管仅一次成功', async () => {
+  test('并发登录全部成功且各会话独立有效', async () => {
     const user = await freshUser();
-    const initial = await Promise.all(Array.from({ length: 5 }, () => login(user)));
-    expect(initial.map(item => item.status).sort()).toEqual([200, 200, 200, 409, 409]);
-    const confirmationToken = initial.find(item => item.status === 409).body.error.details
-      .confirmationToken;
-    const takeover = await Promise.all([
-      login(user, { confirmationToken }),
-      login(user, { confirmationToken }),
-    ]);
-    expect(takeover.map(item => item.status).sort()).toEqual([200, 409]);
-    expect((await user.reload()).activeSessions).toHaveLength(3);
+    const sessions = await Promise.all(Array.from({ length: 8 }, () => login(user)));
+    expect(sessions.map(item => item.status)).toEqual(Array(8).fill(200));
+    expect((await user.reload()).activeSessions).toHaveLength(8);
+    for (const session of sessions)
+      expect((await request('/api/auth/me', { token: session.body.data.token })).status).toBe(200);
   });
 
-  test('退出仅释放本机名额；迟到退出不影响其他设备，空位无需确认', async () => {
+  test('退出仅撤销本机会话；迟到退出不影响其他设备', async () => {
     const user = await freshUser();
     const first = await login(user);
     const second = await login(user);
@@ -270,11 +266,11 @@ describeIntegration('账号管理隔离库验收', () => {
     expect(JSON.stringify(list.body)).not.toMatch(/activeSession|password|\$2[aby]\$/);
   });
 
-  test('普通账号无法重置他人密码或读取运行与操作日志，拒绝也留痕', async () => {
+  test('普通账号无法重置他人密码或读取操作日志，退役运行日志返回 410', async () => {
     const user = await freshUser();
     const token = (await login(user)).body.data.token;
-    for (const path of ['/api/system/operation-logs', '/api/system/logs'])
-      expect((await request(path, { token })).status).toBe(403);
+    expect((await request('/api/system/operation-logs', { token })).status).toBe(403);
+    expect((await request('/api/system/logs', { token })).status).toBe(410);
     expect(
       (
         await request(`/api/users/${user.id}/reset-password`, {
@@ -287,7 +283,7 @@ describeIntegration('账号管理隔离库验收', () => {
     const logs = await models.OperationLog.findAll({
       where: { actorUserId: user.id, statusCode: 403 },
     });
-    expect(logs).toHaveLength(3);
+    expect(logs).toHaveLength(2);
   });
 
   test('审计保留昵称快照、中文动作、IP、时间且没有密码、令牌或查询值', async () => {
@@ -349,7 +345,7 @@ describeIntegration('账号管理隔离库验收', () => {
   });
   const browserTest = process.env.ACCOUNT_BROWSER_WS ? test : test.skip;
   browserTest(
-    '双浏览器真实页面：昵称、接管弹窗、旧端退出、个人改密、管理员编辑重置和日志',
+    '双浏览器真实页面：并行登录、昵称、个人改密、管理员编辑重置和日志',
     async () => {
       const { chromium } = require('playwright-core');
       const browser = await chromium.connectOverCDP(process.env.ACCOUNT_BROWSER_WS, {
@@ -421,25 +417,19 @@ describeIntegration('账号管理隔离库验收', () => {
         await login(employee);
         const second = await open();
         await fillLogin(second, employee);
-        await second.getByText('已达到 3 台设备登录上限', { exact: true }).waitFor();
-        await second.getByRole('button', { name: '取消', exact: true }).click();
+        await second.waitForURL('**/profile');
         expect(new URL(first.url()).pathname).toBe('/profile');
-        await second.getByRole('button', { name: '登录', exact: true }).click();
-        await second.getByText('已达到 3 台设备登录上限', { exact: true }).waitFor();
         await second.screenshot({
-          path: '/tmp/account-artifacts/account-takeover.png',
+          path: '/tmp/account-artifacts/account-multi-device.png',
           fullPage: true,
         });
-        await second.getByRole('button', { name: '确定', exact: true }).click();
-        await second.waitForURL('**/profile');
-        await first.waitForURL('**/login');
-        await first.getByText('当前设备的登录已失效，请重新登录', { exact: true }).waitFor();
         await second.getByRole('link', { name: '修改密码', exact: true }).click();
         await second.getByLabel('旧密码', { exact: true }).fill(password);
         await second.getByLabel('新密码', { exact: true }).fill(newPassword);
         await second.getByLabel('确认密码', { exact: true }).fill(newPassword);
         await second.getByRole('button', { name: '确认修改' }).click();
         await second.waitForURL('**/login');
+        await first.waitForURL('**/login');
         await second.getByRole('button', { name: '确定', exact: true }).click();
         await fillLogin(second, employee, newPassword);
         await second.waitForURL('**/profile');
@@ -645,20 +635,22 @@ describeIntegration('账号管理隔离库验收', () => {
     expect(after).toEqual(before);
   });
 
-  test('三会话迁移回退再升级保留最新登录和用户资料，约束拒绝第四条', async () => {
+  test('取消设备限制迁移允许多个会话，回退在超限时安全失败', async () => {
     const user = await freshUser();
-    await login(user);
-    const latest = await login(user);
-    const migration = require('../migrations/20260909000004-allow-three-account-sessions');
+    const sessions = await Promise.all(Array.from({ length: 5 }, () => login(user)));
+    const migration = require('../migrations/20260924000001-remove-account-session-limit');
     const qi = models.sequelize.getQueryInterface();
-    await migration.down(qi);
-    await migration.up(qi, models.Sequelize);
-    expect((await request('/api/auth/me', { token: latest.body.data.token })).status).toBe(200);
+    expect(sessions.map(item => item.status)).toEqual(Array(5).fill(200));
+    await expect(migration.down(qi)).rejects.toThrow();
+    await trimSessionsForLegacyConstraint();
     await user.reload();
-    expect(user.activeSessions).toHaveLength(1);
+    await migration.down(qi);
     await expect(
       user.update({ activeSessions: Array(4).fill(user.activeSessions[0]) })
     ).rejects.toThrow();
+    await migration.up(qi, models.Sequelize);
+    await user.update({ activeSessions: Array(4).fill(user.activeSessions[0]) });
+    expect((await user.reload()).activeSessions).toHaveLength(4);
   });
 
   test('正式迁移 down/up 保留账号主键、登录名、密码及角色，清除新增会话', async () => {
@@ -666,13 +658,21 @@ describeIntegration('账号管理隔离库验收', () => {
     const fields = 'id, username, password, role';
     const [before] = await models.sequelize.query(`SELECT ${fields} FROM users ORDER BY id`);
     const queryInterface = models.sequelize.getQueryInterface();
-    const threeSessionMigration = require('../migrations/20260909000004-allow-three-account-sessions');
+    const threeSessionMigration = require(
+      '../migrations/20260909000004-allow-three-account-sessions'
+    );
+    const unlimitedSessionMigration = require(
+      '../migrations/20260924000001-remove-account-session-limit'
+    );
+    await trimSessionsForLegacyConstraint();
+    await unlimitedSessionMigration.down(queryInterface);
     await threeSessionMigration.down(queryInterface);
     await migration.down(queryInterface);
     const schema = await queryInterface.describeTable('users');
     expect(schema.nickname).toBeUndefined();
     await migration.up(queryInterface, models.Sequelize);
     await threeSessionMigration.up(queryInterface, models.Sequelize);
+    await unlimitedSessionMigration.up(queryInterface);
     const [after] = await models.sequelize.query(`SELECT ${fields} FROM users ORDER BY id`);
     expect(JSON.stringify(before) === JSON.stringify(after)).toBe(true);
     expect(await models.OperationLog.count()).toBe(0);

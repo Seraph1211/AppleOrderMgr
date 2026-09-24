@@ -75,7 +75,7 @@ function errorHandler(err, req, res, _next) {
         url: req.route?.path || '/unmatched',
         code: err.code,
         message: err.message,
-        details: err.code === 'SESSION_CONFIRMATION_REQUIRED' ? undefined : err.details,
+        details: err.details,
       });
     } else {
       logger.warn('API 业务错误', {
@@ -83,7 +83,7 @@ function errorHandler(err, req, res, _next) {
         url: req.route?.path || '/unmatched',
         code: err.code,
         message: err.message,
-        details: err.code === 'SESSION_CONFIRMATION_REQUIRED' ? undefined : err.details,
+        details: err.details,
       });
     }
 

@@ -16,7 +16,6 @@ jest.mock('../src/utils/jwtUtils', () => ({
   generateToken: mockGenerateToken,
   decodeToken: jest.fn(() => ({ exp: Math.floor(Date.now() / 1000) + 3600 })),
   verifyToken: jest.fn(),
-  generateConfirmationToken: jest.fn(() => 'confirmation'),
 }));
 jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),

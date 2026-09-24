@@ -24,7 +24,7 @@
 
 票据不是登录凭据；跨账号／会话／订单使用或过期返回 409 `BROWSER_TICKET_INVALID`；订单版本／链接变化或已消费后的再次提交返回 409 `BROWSER_ORDER_CHANGED`。成功写入时在 CrawlLog 保存票据随机标识；事务行锁下再次比对初始版本并检查票据是否已消费，避免同一毫秒内的并发重放。任务开始不产生后台自动刷新任务，浏览器断开、失败或超时不提交成功结果；本机在线与浏览器权限是此辅助入口的前提。仍需完成真实采集、权限及生产端到端验收。
 
-前缀为 /api。除登录和健康检查外均需认证；auth 下改密、登出、me 各自经过 authenticate，其余业务统一经过全局认证与最多三个会话校验。Bearer Token 不放入 URL。
+前缀为 /api。除登录和健康检查外均需认证；auth 下改密、登出、me 各自经过 authenticate，其余业务统一经过全局认证与有效会话校验。Bearer Token 不放入 URL。
 
 角色字段继续保留 admin、operator、readOnly，但普通业务授权以数据库 `user_permissions` 为唯一来源。admin 通过受保护身份获得代码目录中的全部有效权限；operator/readOnly 仅作为存量标签，不再在请求时隐式叠加权限。所有业务路由显式声明权限，未登记入口默认拒绝。权限目录与依赖见[用户权限方案](../planning/用户权限分配与访问控制方案.md)。
 
@@ -277,9 +277,8 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `PATCH /api/auth/profile`：所有已登录账号可提交 `{ nickname }`，只更新本人昵称，未知字段返回 400；返回最新本人 DTO。
 - `POST /api/users` 支持 nickname；`PUT /api/users/:id` 支持管理员配置 nickname。账号列表 keyword 支持昵称、登录账号和完整账号 ID。
 - `POST /api/users/:id/reset-password`：仅 `admin` 且具备 users.manage，提交 `{ newPassword, confirmPassword }`，至少 8 位且两次一致。重置后清除该账号全部会话，不自动解锁账号，不强制下次改密；不返回原密码或密码哈希。新密码由管理员当次填写，可在弹窗临时显示。
-- 每个账号最多同时保留 3 个有效设备会话；前三台直接登录，第 4 台登录返回 409 `SESSION_CONFIRMATION_REQUIRED` 与 `error.details.confirmationToken`。客户端展示接管弹窗，确认后重提账号、密码、confirmationToken。短期签名确认凭证绑定当时的会话集合及最早登录会话、两分钟有效；名额仍满且会话改变时须再次确认。确认只替换最早登录的一台，取消不改变现有会话。
-- 同一有效 Bearer 会话重新登录可直接续签；不同浏览器或独立浏览器配置按不同设备会话处理。同一浏览器的多个标签页可共用同一个会话，不使用指纹推断物理设备。
-- JWT 增加 sessionId；每个受保护请求核对数据库有效会话集合。被接管返回 401 `SESSION_REPLACED`；清除或迁移前旧 Token 返回 401 `SESSION_EXPIRED`。旧页面每 5 秒及恢复前台时检查会话并退出，服务端即时拒绝旧凭证。`POST /auth/logout` 只撤销当前服务端会话；本人改密、管理员重置和锁定撤销全部会话。
+- 账号不限制同时登录的设备或有效会话数量；每次在新浏览器登录均新增独立会话，不再返回 `SESSION_CONFIRMATION_REQUIRED`，也不替换其他设备。同一有效 Bearer 会话重新登录时只续签并替换该会话；同一浏览器的多个标签页可共用同一个会话，不使用指纹推断物理设备。
+- JWT 包含 sessionId；每个受保护请求核对数据库有效会话集合。单个会话被撤销后返回 401 `SESSION_REPLACED`；全部会话被清除、旧格式或迁移前 Token 返回 401 `SESSION_EXPIRED`。旧页面每 5 秒及恢复前台时检查会话并退出，服务端即时拒绝已撤销凭证。`POST /auth/logout` 只撤销当前服务端会话；本人改密、管理员重置和锁定仍撤销全部会话。
 - `GET /api/system/operation-logs`：仅管理员具备 system.logs.read，分页 page/limit（最大 100）；筛选 keyword（登录账号／昵称／完整账号 ID）、action、result、dateFrom/dateTo。返回 data.logs、total、page、limit；每条含操作人 ID/账号/昵称、中文动作、目标、IP、时间与中文结果说明。
 - 记录已到达系统的账号 API 操作（包括读取、导入、导出、失败与拒绝），不记录鼠标点击、输入草稿、健康检查和 `/auth/me` 自动心跳。失败登录保留尝试账号。未知路由只记录所属模块；不保存密码、令牌、原始链接、请求正文或查询参数值。新记录从本次迁移启用后开始，历史缺失不能补造。
 - 操作记录保存到数据库；写入失败记录结构化应急运行日志，不能保证数据库故障或进程突然退出时绝对无遗漏。运行环境需正确设置 TRUST_PROXY 才能在反向代理后记录实际客户端 IP。
