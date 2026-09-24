@@ -36,6 +36,11 @@ router.get(
   requirePermission(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN),
   asyncHandler(controller.getOwnPaymentLink)
 );
+router.get(
+  '/:id/alipay-payment-link',
+  requirePermission(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN),
+  asyncHandler(controller.getOwnAlipayPaymentLink)
+);
 router.post('/:id/refresh', retiredFeature('付款任务官网刷新'));
 router.get('/:id/refresh/:jobId', retiredFeature('付款任务官网刷新进度'));
 

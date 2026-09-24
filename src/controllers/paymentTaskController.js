@@ -47,10 +47,21 @@ async function getOwnPaymentLink(req, res) {
   return res.json({ success: true, data });
 }
 
+/** 复制本人付款任务关联的 AOS 支付宝付款链接。 */
+async function getOwnAlipayPaymentLink(req, res) {
+  const data = await require('../services/alipayPaymentLinkService').getOwnAlipayPaymentLink(
+    Number(req.params.id),
+    req.user.id
+  );
+  res.set('Cache-Control', 'no-store');
+  return res.json({ success: true, data });
+}
+
 module.exports = {
   listOwnTasks,
   getOwnTask,
   updateOwnTask,
   assignOwnTaskPayer,
   getOwnPaymentLink,
+  getOwnAlipayPaymentLink,
 };

@@ -1,7 +1,7 @@
 jest.mock('../src/models', () => ({
   AosRecord: { findAll: jest.fn() },
   Order: { findByPk: jest.fn() },
-  PaymentTask: { findByPk: jest.fn() },
+  PaymentTask: { findByPk: jest.fn(), findOne: jest.fn() },
   PaymentTaskEvent: { create: jest.fn() },
   sequelize: { transaction: jest.fn() },
 }));
@@ -18,6 +18,7 @@ const {
   validateAlipayPaymentLink,
   findOrderAlipayPaymentLink,
   getDispatchAlipayPaymentLink,
+  getOwnAlipayPaymentLink,
 } = require('../src/services/alipayPaymentLinkService');
 
 const order = {
@@ -151,6 +152,32 @@ test('调度读取与访问审计同事务完成，审计不保存链接', async
     details: { source: 'payment_dispatch', linkType: 'aos_alipay' },
   });
   expect(JSON.stringify(event)).not.toContain(link);
+});
+
+test('本人付款任务同时校验归属并区分访问来源', async () => {
+  const link = makeAlipayLink();
+  const task = { id: 8, orderId: order.id, assigneeUserId: 3, processingStatus: 'pending' };
+  models.PaymentTask.findOne.mockResolvedValue(task);
+  models.Order.findByPk.mockResolvedValue(order);
+  models.AosRecord.findAll.mockResolvedValue([source(link)]);
+  models.PaymentTaskEvent.create.mockResolvedValue({});
+  await expect(getOwnAlipayPaymentLink(task.id, 3)).resolves.toMatchObject({
+    paymentUrl: link,
+  });
+  expect(models.PaymentTask.findOne).toHaveBeenCalledWith(
+    expect.objectContaining({ where: { id: task.id, assigneeUserId: 3 } })
+  );
+  const event = models.PaymentTaskEvent.create.mock.calls[0][0];
+  expect(event).toMatchObject({
+    paymentTaskId: task.id,
+    actorUserId: 3,
+    eventType: 'payment_link_accessed',
+    details: { source: 'payment_tasks', linkType: 'aos_alipay' },
+  });
+  expect(JSON.stringify(event)).not.toContain(link);
+
+  models.PaymentTask.findOne.mockResolvedValue(null);
+  await expect(getOwnAlipayPaymentLink(task.id, 4)).rejects.toThrow('不存在或已转派');
 });
 
 test('调度端拒绝非支付宝任务及缺失链接', async () => {

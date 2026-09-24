@@ -42,7 +42,7 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       recipientTag: '测试 TAG',
       lastCrawledAt: '2026-09-12T00:20:19Z',
       orderDate: '2026-09-12T00:10:19Z',
-      paymentMethod: 'WECHAT',
+      paymentMethod: id === 2 ? '支付宝' : 'WECHAT',
       deadlineAt: new Date(Date.now() + 20 * 60_000).toISOString(),
     }));
     const user = () => ({
@@ -80,6 +80,11 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
           paymentMethod: 'WECHAT',
           imageDataUrl:
             'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+        };
+      else if (/alipay-payment-link$/.test(path))
+        data = {
+          paymentUrl:
+            'https://openapi.alipay.com/gateway.do?method=alipay.trade.page.pay&sign=synthetic',
         };
       else if (/payment-link$/.test(path))
         data = { paymentUrl: 'https://example.com/synthetic-order' };
@@ -129,6 +134,18 @@ const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
       0
     );
     await page.getByRole('button', { name: '关闭付款码', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: '查看付款码', exact: true }).count(), 1);
+    const alipayButton = page.getByRole('button', {
+      name: '复制支付宝付款链接 W1234567892',
+      exact: true,
+    });
+    assert.equal(await alipayButton.count(), 1);
+    await alipayButton.click();
+    await page.getByText('支付宝付款链接已复制', { exact: true }).waitFor();
+    assert.equal(
+      await page.evaluate(() => navigator.clipboard.readText()),
+      'https://openapi.alipay.com/gateway.do?method=alipay.trade.page.pay&sign=synthetic'
+    );
     for (const width of [375, 430, 768]) {
       await page.setViewportSize({ width, height: 932 });
       await page.locator('header').getByRole('button', { name: '打开导航', exact: true }).click();

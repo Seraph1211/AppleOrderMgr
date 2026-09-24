@@ -167,7 +167,7 @@ const { buildAosLine } = require('./fixtures/aosRecords');
       await source.destroy();
     }
   });
-  test('支付宝第17列签名链接按调度权限读取，原文和审计不泄露链接', async () => {
+  test('支付宝第17列签名链接按调度或本人任务权限读取，原文和审计不泄露链接', async () => {
     const paymentUrl = alipayPaymentLink();
     const date = new Date(new Date(order.orderDate).getTime() + 8 * 3600000)
       .toISOString()
@@ -216,6 +216,28 @@ const { buildAosLine } = require('./fixtures/aosRecords');
         linkType: 'aos_alipay',
       });
       expect(JSON.stringify(latest.details)).not.toContain(paymentUrl);
+      const ownResult =
+        await require('../src/services/alipayPaymentLinkService').getOwnAlipayPaymentLink(
+          Number(task.id),
+          actor.id
+        );
+      expect(ownResult.paymentUrl).toBe(paymentUrl);
+      await expect(
+        require('../src/services/alipayPaymentLinkService').getOwnAlipayPaymentLink(
+          Number(task.id),
+          other.id
+        )
+      ).rejects.toThrow('付款任务不存在或已转派');
+      expect(await models.PaymentTaskEvent.count()).toBe(events + 2);
+      const ownLatest = await models.PaymentTaskEvent.findOne({
+        where: { paymentTaskId: task.id },
+        order: [['id', 'DESC']],
+      });
+      expect(ownLatest.details).toMatchObject({
+        source: 'payment_tasks',
+        linkType: 'aos_alipay',
+      });
+      expect(JSON.stringify(ownLatest.details)).not.toContain(paymentUrl);
       const [raw] = await sequelize.query('SELECT payload::text FROM aos_records WHERE id=:id', {
         replacements: { id: source.id },
       });
@@ -335,9 +357,19 @@ const { buildAosLine } = require('./fixtures/aosRecords');
     ).rejects.toThrow();
   });
   test('正式路由权限、管理员角色和 no-store', async () => {
+    await task.update({ assigneeUserId: other.id });
+    await order.update({ paymentMethod: '支付宝', sourceSnapshot: { paymentMethod: '支付宝' } });
     const alipayService = require('../src/services/alipayPaymentLinkService');
     const alipayLinkRead = jest
       .spyOn(alipayService, 'getDispatchAlipayPaymentLink')
+      .mockResolvedValue({
+        paymentUrl:
+          'https://openapi.alipay.com/gateway.do?method=alipay.trade.page.pay&sign=synthetic',
+        serverTime: new Date(),
+        deadlineAt: null,
+      });
+    const ownAlipayLinkRead = jest
+      .spyOn(alipayService, 'getOwnAlipayPaymentLink')
       .mockResolvedValue({
         paymentUrl:
           'https://openapi.alipay.com/gateway.do?method=alipay.trade.page.pay&sign=synthetic',
@@ -382,6 +414,13 @@ const { buildAosLine } = require('./fixtures/aosRecords');
         availability: 'unsupported',
         message: '支付宝暂无法获取付款码',
       });
+      expect((await send(`/own/${task.id}/alipay-payment-link`)).status).toBe(403);
+      const ownAlipayAllowed = await send(`/own/${task.id}/alipay-payment-link`, {
+        'x-permissions': 'payment_tasks.link.read_own',
+      });
+      expect(ownAlipayAllowed.status).toBe(200);
+      expect(ownAlipayAllowed.headers['cache-control']).toBe('no-store');
+      expect(ownAlipayAllowed.body.data.paymentUrl).toContain('openapi.alipay.com/gateway.do');
       expect(
         (
           await send(`/dispatch/tasks/${task.id}/payment-code`, {
@@ -414,6 +453,7 @@ const { buildAosLine } = require('./fixtures/aosRecords');
     } finally {
       await new Promise(resolve => server.close(resolve));
       alipayLinkRead.mockRestore();
+      ownAlipayLinkRead.mockRestore();
     }
   });
   test('签名发布下发幂等、文件篡改和跨设备下载保护', async () => {

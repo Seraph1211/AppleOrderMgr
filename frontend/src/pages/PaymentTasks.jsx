@@ -1,5 +1,6 @@
 import OrderAmount from '../components/OrderAmount';
 import PaymentCodeButton from '../components/PaymentCodeButton';
+import AlipayPaymentLinkButton from '../components/AlipayPaymentLinkButton';
 import AutoDismissToast from '../components/AutoDismissToast';
 import OrderDateFilter from '../components/OrderDateFilter';
 import ProductFilter from '../components/ProductFilter';
@@ -16,12 +17,18 @@ import { formatOrderTime } from '../utils/orderTime';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
 import { formatPaymentCountdown } from '../utils/paymentCountdown';
+import { isAlipayPayment } from '../utils/paymentMethod';
 import { getEmailOrderStatusBadge } from '../constants/orderStatus';
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Copy, CreditCard, Pencil, RotateCcw, Save, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
-import { getPaymentTaskLink, getPaymentTasks, updatePaymentTask } from '../api/paymentTasksApi';
+import {
+  getPaymentTaskAlipayLink,
+  getPaymentTaskLink,
+  getPaymentTasks,
+  updatePaymentTask,
+} from '../api/paymentTasksApi';
 
 const STATUS_LABELS = {
   pending: '待处理',
@@ -873,9 +880,16 @@ export default function PaymentTasks() {
                       </td>
                       <td data-label="操作" className="px-4 py-4">
                         <div className="payment-task-actions">
-                          {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) && (
-                            <PaymentCodeButton taskId={task.id} orderDate={task.orderDate} />
-                          )}
+                          {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) &&
+                            (isAlipayPayment(task.paymentMethod) ? (
+                              <AlipayPaymentLinkButton
+                                task={task}
+                                getLink={getPaymentTaskAlipayLink}
+                                onResult={showToast}
+                              />
+                            ) : (
+                              <PaymentCodeButton taskId={task.id} orderDate={task.orderDate} />
+                            ))}
                           {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) && (
                             <button
                               className="btn btn-secondary px-2 inline-flex items-center justify-center gap-2"

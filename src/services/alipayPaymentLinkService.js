@@ -172,22 +172,34 @@ async function findOrderAlipayPaymentLink(order, transaction) {
 }
 
 /**
- * 按付款调度权限读取支付宝付款链接并记录访问事件。
+ * 按调度或本人付款任务范围读取支付宝付款链接并记录访问事件。
  * @param {number} taskId 付款任务 ID
  * @param {number} actorUserId 操作人 ID
+ * @param {boolean} own 是否限制为操作人当前任务
  * @returns {Promise<Object>} 支付宝付款链接与时间
  */
-async function getDispatchAlipayPaymentLink(taskId, actorUserId) {
+async function getTaskAlipayPaymentLink(taskId, actorUserId, own) {
   if (!Number.isSafeInteger(taskId) || taskId <= 0 || taskId > 2147483647) {
     throw ApiError.badRequest('任务 ID 必须是有效正整数');
   }
   try {
     return await sequelize.transaction(async transaction => {
-      const task = await PaymentTask.findByPk(taskId, {
-        transaction,
-        lock: transaction.LOCK.SHARE,
-      });
-      if (!task) throw ApiError.notFound('付款任务不存在');
+      let task;
+      if (own) {
+        task = await PaymentTask.findOne({
+          where: { id: taskId, assigneeUserId: actorUserId },
+          transaction,
+          lock: transaction.LOCK.SHARE,
+        });
+      } else {
+        task = await PaymentTask.findByPk(taskId, {
+          transaction,
+          lock: transaction.LOCK.SHARE,
+        });
+      }
+      if (!task) {
+        throw ApiError.notFound(own ? '付款任务不存在或已转派' : '付款任务不存在');
+      }
       const order = await Order.findByPk(task.orderId, { transaction });
       if (!order) throw ApiError.notFound('订单不存在');
       if (!isAlipayPayment(getSourcePaymentMethod(order))) {
@@ -207,7 +219,7 @@ async function getDispatchAlipayPaymentLink(taskId, actorUserId) {
           afterStatus: task.processingStatus,
           details: {
             accessedAt: now.toISOString(),
-            source: 'payment_dispatch',
+            source: own ? 'payment_tasks' : 'payment_dispatch',
             linkType: 'aos_alipay',
           },
         },
@@ -220,7 +232,7 @@ async function getDispatchAlipayPaymentLink(taskId, actorUserId) {
       };
     });
   } catch (error) {
-    logger.debug('调度支付宝付款链接读取未完成', {
+    logger.debug('支付宝付款链接读取未完成', {
       taskId,
       actorUserId,
       errorCode: error.code || 'TEMPORARILY_UNAVAILABLE',
@@ -229,8 +241,29 @@ async function getDispatchAlipayPaymentLink(taskId, actorUserId) {
   }
 }
 
+/**
+ * 按付款调度权限读取支付宝付款链接。
+ * @param {number} taskId 付款任务 ID
+ * @param {number} actorUserId 操作人 ID
+ * @returns {Promise<Object>} 支付宝付款链接与时间
+ */
+function getDispatchAlipayPaymentLink(taskId, actorUserId) {
+  return getTaskAlipayPaymentLink(taskId, actorUserId, false);
+}
+
+/**
+ * 按本人付款任务当前归属读取支付宝付款链接。
+ * @param {number} taskId 付款任务 ID
+ * @param {number} actorUserId 操作人 ID
+ * @returns {Promise<Object>} 支付宝付款链接与时间
+ */
+function getOwnAlipayPaymentLink(taskId, actorUserId) {
+  return getTaskAlipayPaymentLink(taskId, actorUserId, true);
+}
+
 module.exports = {
   validateAlipayPaymentLink,
   findOrderAlipayPaymentLink,
   getDispatchAlipayPaymentLink,
+  getOwnAlipayPaymentLink,
 };

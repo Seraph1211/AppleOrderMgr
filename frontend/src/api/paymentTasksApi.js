@@ -10,3 +10,6 @@ export const updatePaymentTaskPayer = (taskId, payload, idempotencyKey) =>
     headers: { 'Idempotency-Key': idempotencyKey },
   });
 export const getPaymentTaskLink = taskId => client.get(`/payment-tasks/${taskId}/payment-link`);
+/** 从本人已分配任务的 AOS 原文按权限读取支付宝付款链接。 */
+export const getPaymentTaskAlipayLink = taskId =>
+  client.get(`/payment-tasks/${taskId}/alipay-payment-link`);
