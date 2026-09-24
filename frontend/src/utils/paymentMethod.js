@@ -7,3 +7,13 @@ export function isWechatPayment(value) {
       .toLowerCase()
   );
 }
+
+/** 仅普通支付宝及其明确别名使用 AOS 支付宝付款链接。 */
+export function isAlipayPayment(value) {
+  return ['支付宝', 'alipay'].includes(
+    String(value || '')
+      .normalize('NFKC')
+      .trim()
+      .toLowerCase()
+  );
+}

@@ -172,7 +172,7 @@ jest.mock('../src/services/wecomTransport', () => ({
     );
     expect((await delivery(order)).kind).toBe('order');
   });
-  test('支付宝立即发送，记录脱敏且全局限流跨调用生效', async () => {
+  test('支付宝保持原 Apple 订单链接立即发送，记录脱敏且全局限流生效', async () => {
     const first = await addOrder();
     await addOrder();
     await tick();
@@ -180,6 +180,7 @@ jest.mock('../src/services/wecomTransport', () => ({
     expect(send).toHaveBeenCalledTimes(1);
     expect((await delivery(first)).status).toBe('accepted');
     expect(send.mock.calls[0][1]).toContain(' || 测试TAG || 测试商品 x 1 || 支付宝 || ');
+    expect(send.mock.calls[0][1]).toContain(first.orderUrl);
     const history = JSON.stringify(await service.history());
     expect(history).not.toContain('vieworder');
     expect(history).not.toContain('webhook');

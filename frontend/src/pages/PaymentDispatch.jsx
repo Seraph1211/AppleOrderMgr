@@ -1,6 +1,7 @@
 import OrderAmount from '../components/OrderAmount';
 import PaymentAssignmentModal from '../components/PaymentAssignmentModal';
 import PaymentCodeButton from '../components/PaymentCodeButton';
+import AlipayPaymentLinkButton from '../components/AlipayPaymentLinkButton';
 import AutoDismissToast from '../components/AutoDismissToast';
 import OrderDateFilter from '../components/OrderDateFilter';
 import ProductFilter from '../components/ProductFilter';
@@ -18,6 +19,7 @@ import { formatOrderTime } from '../utils/orderTime';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
 import { formatPaymentCountdown } from '../utils/paymentCountdown';
+import { isAlipayPayment } from '../utils/paymentMethod';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Copy,
@@ -33,6 +35,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
+  getPaymentDispatchAlipayLink,
   getPaymentDispatchLink,
   getPaymentDispatchOverview,
   getPaymentDispatchTasks,
@@ -831,13 +834,20 @@ export default function PaymentDispatch() {
                       </td>
                       <td className="px-4 py-3 text-right">
                         <div className="payment-dispatch-actions">
-                          {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
-                            <PaymentCodeButton
-                              taskId={task.id}
-                              orderDate={task.orderDate}
-                              dispatch
-                            />
-                          )}
+                          {can(PERMISSIONS.PAYMENT_DISPATCH_READ) &&
+                            (isAlipayPayment(task.paymentMethod) ? (
+                              <AlipayPaymentLinkButton
+                                task={task}
+                                getLink={getPaymentDispatchAlipayLink}
+                                onResult={showToast}
+                              />
+                            ) : (
+                              <PaymentCodeButton
+                                taskId={task.id}
+                                orderDate={task.orderDate}
+                                dispatch
+                              />
+                            ))}
                           {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
                             <button
                               className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}

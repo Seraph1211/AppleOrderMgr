@@ -100,6 +100,12 @@ router.get(
 );
 
 router.get(
+  '/tasks/:id/alipay-payment-link',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_READ),
+  asyncHandler(controller.getAlipayPaymentLink)
+);
+
+router.get(
   '/tasks/:id/payment-code',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_READ),
   asyncHandler(async (req, res) => {

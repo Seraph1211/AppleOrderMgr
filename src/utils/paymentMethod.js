@@ -35,6 +35,11 @@ function isWechatPayment(value) {
   return normalizePaymentMethod(value) === '微信';
 }
 
+/** 仅普通支付宝及其明确别名使用 AOS 支付宝付款链接。 @param {*} value 方式 @returns {boolean} 是否支付宝 */
+function isAlipayPayment(value) {
+  return normalizePaymentMethod(value) === '支付宝';
+}
+
 /** 读取完整来源方式，兼容历史已被官网覆盖的订单，不回写数据。 @param {Object} order 订单 @returns {string|null} 方式 */
 function getSourcePaymentMethod(order) {
   const source = order?.sourceSnapshot?.paymentMethod;
@@ -47,5 +52,6 @@ module.exports = {
   PAYMENT_METHODS,
   normalizePaymentMethod,
   isWechatPayment,
+  isAlipayPayment,
   getSourcePaymentMethod,
 };

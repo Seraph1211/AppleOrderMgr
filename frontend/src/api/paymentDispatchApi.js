@@ -48,6 +48,10 @@ export const getPendingPaymentOverview = () => client.get('/payment-dispatch/pen
 export const getPaymentDispatchLink = taskId =>
   client.get(`/payment-dispatch/tasks/${taskId}/payment-link`);
 
+/** 从已关联加密 AOS 原文按权限读取支付宝付款链接。 */
+export const getPaymentDispatchAlipayLink = taskId =>
+  client.get(`/payment-dispatch/tasks/${taskId}/alipay-payment-link`);
+
 /** 只读预检选中任务与接收人的分配条件。 */
 export const previewPaymentAssignment = payload =>
   client.post('/payment-dispatch/tasks/assignment-preview', payload);

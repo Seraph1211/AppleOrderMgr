@@ -70,6 +70,44 @@ const { buildAosLine } = require('./fixtures/aosRecords');
       ...overrides,
     };
   }
+  function alipayPaymentLink() {
+    const params = new URLSearchParams(
+      new Map([
+        ['app_id', 'synthetic-app-id'],
+        [
+          'biz_content',
+          JSON.stringify({
+            ['out_trade_no']: order.orderNumber,
+            ['product_code']: 'FAST_INSTANT_TRADE_PAY',
+            subject: `${order.orderNumber}-synthetic`,
+            ['timeout_express']: '30m',
+            ['total_amount']: '1.00',
+          }),
+        ],
+        ['charset', 'utf-8'],
+        ['method', 'alipay.trade.page.pay'],
+        ['notify_url', 'https://example.test/notify'],
+        ['return_url', 'https://example.test/return'],
+        ['sign', 'synthetic-signature'],
+        ['sign_type', 'RSA2'],
+        [
+          'timestamp',
+          new Intl.DateTimeFormat('sv-SE', {
+            timeZone: 'Asia/Shanghai',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hourCycle: 'h23',
+          }).format(order.orderDate),
+        ],
+        ['version', '1.0'],
+      ])
+    );
+    return `https://openapi.alipay.com/gateway.do?${params}`;
+  }
   test('订单原文第17列直接读取，保留加密、权限、审计且不回填业务数据', async () => {
     const date = new Date(new Date(order.orderDate).getTime() + 8 * 3600000)
       .toISOString()
@@ -127,6 +165,64 @@ const { buildAosLine } = require('./fixtures/aosRecords');
       );
     } finally {
       await source.destroy();
+    }
+  });
+  test('支付宝第17列签名链接按调度权限读取，原文和审计不泄露链接', async () => {
+    const paymentUrl = alipayPaymentLink();
+    const date = new Date(new Date(order.orderDate).getTime() + 8 * 3600000)
+      .toISOString()
+      .replace('T', ' ')
+      .replace('Z', '');
+    const source = await models.AosRecord.create({
+      id: crypto.randomUUID(),
+      deviceId: device.id,
+      eventId: crypto.randomUUID(),
+      payloadHash: 'b'.repeat(64),
+      payload: {
+        rawLine: buildAosLine({
+          0: order.orderNumber,
+          2: order.appleId,
+          11: '支付宝',
+          13: order.orderUrl,
+          14: date,
+          16: paymentUrl,
+        }),
+      },
+      fileName: 'AOS订单记录-0924(test).txt',
+      lineNumber: 1,
+      receivedAt: new Date(),
+      orderId: order.id,
+      orderNumber: order.orderNumber,
+      orderDate: order.orderDate,
+      status: 'succeeded',
+      eligibility: 'allowed',
+    });
+    try {
+      await order.update({ paymentMethod: '支付宝', sourceSnapshot: { paymentMethod: '支付宝' } });
+      const events = await models.PaymentTaskEvent.count();
+      const result =
+        await require('../src/services/alipayPaymentLinkService').getDispatchAlipayPaymentLink(
+          Number(task.id),
+          actor.id
+        );
+      expect(result.paymentUrl).toBe(paymentUrl);
+      expect(await models.PaymentTaskEvent.count()).toBe(events + 1);
+      const latest = await models.PaymentTaskEvent.findOne({
+        where: { paymentTaskId: task.id },
+        order: [['id', 'DESC']],
+      });
+      expect(latest.details).toMatchObject({
+        source: 'payment_dispatch',
+        linkType: 'aos_alipay',
+      });
+      expect(JSON.stringify(latest.details)).not.toContain(paymentUrl);
+      const [raw] = await sequelize.query('SELECT payload::text FROM aos_records WHERE id=:id', {
+        replacements: { id: source.id },
+      });
+      expect(raw[0].payload).not.toContain('openapi.alipay.com');
+    } finally {
+      await source.destroy();
+      await order.update({ paymentMethod: '微信', sourceSnapshot: null });
     }
   });
   test('存量补码不修改订单，重复事件幂等且载荷不可变', async () => {
@@ -239,6 +335,15 @@ const { buildAosLine } = require('./fixtures/aosRecords');
     ).rejects.toThrow();
   });
   test('正式路由权限、管理员角色和 no-store', async () => {
+    const alipayService = require('../src/services/alipayPaymentLinkService');
+    const alipayLinkRead = jest
+      .spyOn(alipayService, 'getDispatchAlipayPaymentLink')
+      .mockResolvedValue({
+        paymentUrl:
+          'https://openapi.alipay.com/gateway.do?method=alipay.trade.page.pay&sign=synthetic',
+        serverTime: new Date(),
+        deadlineAt: null,
+      });
     const express = require('express');
     const app = express();
     app.use(express.json());
@@ -292,8 +397,23 @@ const { buildAosLine } = require('./fixtures/aosRecords');
           })
         ).status
       ).toBe(200);
+      expect(
+        (
+          await send(`/dispatch/tasks/${task.id}/alipay-payment-link`, {
+            'x-permissions': 'payment_dispatch.read',
+          })
+        ).status
+      ).toBe(403);
+      const alipayAllowed = await send(`/dispatch/tasks/${task.id}/alipay-payment-link`, {
+        'x-permissions': 'payment_dispatch.read',
+        'x-role': 'admin',
+      });
+      expect(alipayAllowed.status).toBe(200);
+      expect(alipayAllowed.headers['cache-control']).toBe('no-store');
+      expect(alipayAllowed.body.data.paymentUrl).toContain('openapi.alipay.com/gateway.do');
     } finally {
       await new Promise(resolve => server.close(resolve));
+      alipayLinkRead.mockRestore();
     }
   });
   test('签名发布下发幂等、文件篡改和跨设备下载保护', async () => {

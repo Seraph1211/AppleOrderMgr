@@ -23,6 +23,24 @@ async function getPaymentLink(req, res) {
   }
 }
 
+/** 按权限读取调度任务的 AOS 支付宝付款链接。 */
+async function getAlipayPaymentLink(req, res) {
+  try {
+    const data = await require('../services/alipayPaymentLinkService').getDispatchAlipayPaymentLink(
+      Number(req.params.id),
+      req.user.id
+    );
+    res.set('Cache-Control', 'no-store');
+    return res.json({ success: true, data });
+  } catch (error) {
+    logger.debug('调度支付宝付款链接读取未完成', {
+      actorUserId: req.user.id,
+      errorCode: error.code || 'TEMPORARILY_UNAVAILABLE',
+    });
+    throw error;
+  }
+}
+
 /** 查询调度概览。 */
 async function getOverview(_req, res) {
   return res.json({ success: true, data: await paymentDispatchService.getDispatchOverview() });
@@ -148,6 +166,7 @@ async function runScan(req, res) {
 module.exports = {
   previewAssignment,
   getPaymentLink,
+  getAlipayPaymentLink,
   getPendingOverview,
   getOverview,
   listTasks,
