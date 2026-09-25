@@ -10,6 +10,9 @@ test('邮件状态多选按 OR 去重，兼容单值，空选不限制', () => {
   expect(buildEmailStatusCondition({ emailOrderStatus: 'ready_for_pickup' })).toEqual({
     [Op.in]: ['ready_for_pickup'],
   });
+  expect(buildEmailStatusCondition({ emailOrderStatus: 'picked_up' })).toEqual({
+    [Op.in]: ['picked_up'],
+  });
   expect(buildEmailStatusCondition({})).toBeNull();
 });
 test.each([
@@ -19,10 +22,9 @@ test.each([
   '"confirmed"',
   '[1]',
   '["bad"]',
-  '["picked_up"]',
   null,
   42,
-  Array(5).fill('confirmed'),
+  Array(6).fill('confirmed'),
 ])('拒绝非法邮件状态多选 %j', emailOrderStatuses => {
   expect(() => buildEmailStatusCondition({ emailOrderStatuses })).toThrow();
 });

@@ -98,7 +98,7 @@ export default function ChannelOrders() {
 
       {/* 统计卡片 */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <div className="card">
             <p className="text-sm text-gray-500">总订单数</p>
             <p className="text-2xl font-bold text-gray-900 mt-2">{stats.totalOrders}</p>
@@ -114,6 +114,10 @@ export default function ChannelOrders() {
           <div className="card">
             <p className="text-sm text-gray-500">可取货</p>
             <p className="text-2xl font-bold text-green-600 mt-2">{stats.readyOrders}</p>
+          </div>
+          <div className="card">
+            <p className="text-sm text-gray-500">已取货（邮件推定）</p>
+            <p className="text-2xl font-bold text-primary mt-2">{stats.completedOrders}</p>
           </div>
         </div>
       )}

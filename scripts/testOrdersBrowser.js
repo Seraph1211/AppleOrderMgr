@@ -233,6 +233,7 @@ async function main() {
     assert.match(await page.getByRole('tooltip').innerText(), /订单已确认：已下单，待付款/);
     assert.match(await page.getByRole('tooltip').innerText(), /处理中：订单已付款/);
     assert.match(await page.getByRole('tooltip').innerText(), /可取货：订单可取货/);
+    assert.match(await page.getByRole('tooltip').innerText(), /已取货（邮件推定）/);
     assert.equal(await statusHint.evaluate(element => getComputedStyle(element).cursor), 'default');
     assert.equal(await statusHint.getAttribute('title'), null);
     await page.keyboard.press('Escape');

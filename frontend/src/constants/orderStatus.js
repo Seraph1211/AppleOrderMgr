@@ -45,6 +45,10 @@ export const EMAIL_ORDER_STATUS_BADGES = {
     class: 'bg-purple-100 text-purple-700 border border-purple-200',
   },
   ready_for_pickup: { text: '可取货', class: 'badge-success' },
+  picked_up: {
+    text: '已取货（邮件推定）',
+    class: 'bg-blue-100 text-blue-800 border border-blue-200',
+  },
 };
 
 export const EMAIL_ORDER_STATUS_LABELS = Object.fromEntries(

@@ -37,4 +37,13 @@ describe('仪表板输入与筛选契约', () => {
     expect(filters.status).toBe('ready_for_pickup');
     expect(buildDashboardWhere(filters).tag[Op.in]).toEqual(['可见']);
   });
+
+  test('应接受邮件推定已取货状态', () => {
+    const filters = parseDashboardFilters({
+      emailOrderStatuses: '["picked_up"]',
+      status: '已取货（邮件推定）',
+    });
+    expect(filters.emailOrderStatuses).toEqual(['picked_up']);
+    expect(filters.status).toBe('picked_up');
+  });
 });

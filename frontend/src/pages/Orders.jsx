@@ -860,6 +860,7 @@ export default function Orders() {
                               <p>订单已确认：已下单，待付款</p>
                               <p>处理中：订单已付款</p>
                               <p>可取货：订单可取货</p>
+                              <p>已取货（邮件推定）：收到 Apple 个人设置辅导邀请</p>
                             </TableHeaderHint>
                           )}
                           {col.key === 'emailPickupInfo' && (

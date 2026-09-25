@@ -20,6 +20,14 @@ const ORDER_STATUSES = Object.freeze([
   'unknown',
 ]);
 
+const EMAIL_ORDER_STATUSES = Object.freeze([
+  'unknown',
+  'confirmed',
+  'processing',
+  'ready_for_pickup',
+  'picked_up',
+]);
+
 const USER_ROLES = Object.freeze(['admin', 'operator', 'pickupStaff', 'readOnly']);
 
 /** 将未识别的存量订单状态归为 unknown，不推断其业务结果。 */
@@ -123,6 +131,7 @@ const ROLE_PERMISSIONS = Object.freeze({
 module.exports = {
   ACCOUNT_STATUSES,
   ORDER_STATUSES,
+  EMAIL_ORDER_STATUSES,
   normalizeOrderStatus,
   USER_ROLES,
   MIN_PASSWORD_LENGTH,

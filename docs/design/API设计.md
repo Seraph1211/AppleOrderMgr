@@ -677,7 +677,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 错误码：ORDER_MAIL_UNAVAILABLE、ORDER_MAIL_EXPIRED、IDEMPOTENCY_CONFLICT；队列 PREPARE_TEMPORARY/SMTP_TEMPORARY/SMTP_REJECTED/SMTP_AUTH/SEND_UNKNOWN/ACCESS_REVOKED。PREPARE_TEMPORARY 表示发信前的临时处理失败，最多尝试 3 次；accepted 仅表示 SMTP 接受。
 
-订单列表和详情响应新增：`email_order_status`、`email_payment_status`、`email_status_needs_review`、`email_status_review_reasons`、`email_status_version`、`email_status_evidence_at`、`email_pickup_info`、`email_pickup_date`、`email_lifecycle_updated_at`。这些字段只表达官方订单邮件结论，原 `status/payment_status/pickup_status/official_*` 继续表达官网观测。列表和导出接受 JSON 数组参数 `emailOrderStatuses`（unknown/confirmed/processing/ready_for_pickup）及 `emailPaymentStatuses`（unknown/paid）；后者和付款状态导出字段作为兼容 API 保留，但订单管理页面的列表、筛选、详情和导出字段弹窗均不展示付款状态。无权访问的订单仍不会因邮件字段泄露。
+订单列表和详情响应新增：`email_order_status`、`email_payment_status`、`email_status_needs_review`、`email_status_review_reasons`、`email_status_version`、`email_status_evidence_at`、`email_pickup_info`、`email_pickup_date`、`email_lifecycle_updated_at`。这些字段只表达官方订单邮件结论，原 `status/payment_status/pickup_status/official_*` 继续表达官网观测。列表和导出接受 JSON 数组参数 `emailOrderStatuses`（unknown/confirmed/processing/ready_for_pickup/picked_up）及 `emailPaymentStatuses`（unknown/paid）；`picked_up` 表示收到精确标题的 Apple 个人设置辅导邮件后的单向推定，不是人工取货记录或实际取货时间。付款状态导出字段作为兼容 API 保留，但订单管理页面的列表、筛选、详情和导出字段弹窗均不展示付款状态。无权访问的订单仍不会因邮件字段泄露。
 
 订单导出字段白名单保留 `emailPickupStore`（“邮件取货门店”），并增加 `emailPickupSchedule`（“邮件取货安排”）；页面显示邮件取货安排列时，两项均作为默认导出字段。固定预约按 `YYYY-MM-DD HH:mm–HH:mm` 输出，例如 `2026-09-21 12:30–12:45`；营业时间预约按“日期 营业时间内到店”输出，日期缺失时只输出已确认的安排，不从下单时间或官网状态推断。
 
@@ -736,7 +736,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ## 仪表板筛选与分布（2026-09-23）
 
-- `/api/dashboard/stats`、`daily-trend`、`product-distribution`、新增 `city-distribution` 及兼容 `store-distribution` 统一接受 `startDate/endDate`（北京时间日期）、`emailOrderStatuses`、`productKeys`、`recipientTags`。多选为 JSON 数组，最多 100 项；TAG 每项最多 500 字符，保留原始空格；状态仅 unknown/confirmed/processing/ready_for_pickup，商品键复用订单筛选校验。非法参数返回 400。兼容旧 `status/productModel/store` 单值参数。
-- stats 新增 `paidOrders`，仅统计当前条件与 processing/ready_for_pickup 的交集；保留 `pendingOrders` 兼容字段但也与当前筛选取交集。`totalOrders/totalAmount/missingAmountOrders/amountSource/orderGrowth/amountGrowth` 保留；无完整日期范围时增长率为 null。金额查询失败返回错误，不伪装成 0。
+- `/api/dashboard/stats`、`daily-trend`、`product-distribution`、新增 `city-distribution` 及兼容 `store-distribution` 统一接受 `startDate/endDate`（北京时间日期）、`emailOrderStatuses`、`productKeys`、`recipientTags`。多选为 JSON 数组，最多 100 项；TAG 每项最多 500 字符，保留原始空格；状态仅 unknown/confirmed/processing/ready_for_pickup/picked_up，商品键复用订单筛选校验。非法参数返回 400。兼容旧 `status/productModel/store` 单值参数。
+- stats 新增 `paidOrders`，仅统计当前条件与 processing/ready_for_pickup/picked_up 的交集；保留 `pendingOrders` 兼容字段但也与当前筛选取交集。`totalOrders/totalAmount/missingAmountOrders/amountSource/orderGrowth/amountGrowth` 保留；无完整日期范围时增长率为 null。金额查询失败返回错误，不伪装成 0。
 - `filter-options` 接受相同参数，返回 `productOptions`、`recipientTags`，分别排除自身维度后从完整可见范围生成；保留 `productModels/stores` 兼容字段。候选和所有订单聚合必须叠加账号订单 TAG 访问范围。
 - `daily-trend` 返回 `{ date, count }`，date 为北京时间 `YYYY-MM-DD`；完整日范围补 0（超过 3660 天只返回实际日期点）。商品／城市分布返回 `{ name, value }` 数组，商品附稳定 `key`，value 为订单数；商品按每订单每身份去重，多商品订单可进入不同组。城市取门店字典、未知归“未知城市”，不截断前 10 项。可用取机人数是独立档案统计，只有 TAG 筛选生效。完整规则见[仪表板说明](仪表板说明.md)。

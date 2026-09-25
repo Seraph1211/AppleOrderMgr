@@ -25,14 +25,26 @@ const enabled = process.env.RUN_ORDER_MAIL_LIFECYCLE_DB === 'true';
     const title =
       type === 'ready'
         ? `关于你的 Apple 订单 ${orderNumber} 的更新信息`
-        : `我们正在处理你的订单 ${orderNumber}`;
-    const lead = type === 'ready' ? '你的订单商品已可取货。' : '你的订单正在处理中。';
+        : type === 'personal_setup'
+          ? '个人设置辅导，帮你上手新 iPhone。'
+          : `我们正在处理你的订单 ${orderNumber}`;
+    const lead =
+      type === 'ready'
+        ? '你的订单商品已可取货。'
+        : type === 'personal_setup'
+          ? `订单号 ${orderNumber}\n个人设置辅导`
+          : '你的订单正在处理中。';
+    if (type === 'personal_setup') products = [];
     const rows = products.flatMap(product => [
       product.name,
       type === 'ready' ? '取货日期： 星期日, 9月 20日, 2026' : '取货日期:',
       type === 'ready' ? '到店时间： 08:00 PM - 08:15 PM' : '签到时间: 16:00 - 16:15',
       `数量 ${product.quantity}`,
     ]);
+    const pickupStoreRows =
+      type === 'personal_setup'
+        ? []
+        : ['取货零售店:', 'Apple', '测试门店', '测试市测试路 1 号', '400000'];
     return Buffer.from(
       [
         'From: Apple <orders@orders.apple.com>',
@@ -44,11 +56,7 @@ const enabled = process.env.RUN_ORDER_MAIL_LIFECYCLE_DB === 'true';
         '',
         lead,
         ...rows,
-        '取货零售店:',
-        'Apple',
-        '测试门店',
-        '测试市测试路 1 号',
-        '400000',
+        ...pickupStoreRows,
       ].join('\r\n')
     );
   }
@@ -166,6 +174,37 @@ const enabled = process.env.RUN_ORDER_MAIL_LIFECYCLE_DB === 'true';
       endTime: '20:15',
     });
     expect(task.processingStatus).toBe('completed');
+  });
+
+  test('辅导邮件推定已取货，不改人工取货记录或实际取货时间', async () => {
+    const order = await models.Order.create({
+      orderNumber: `W${++sequence}`,
+      products: [{ name: 'iPhone 18 Pro Max 256GB 黑色', quantity: 1 }],
+    });
+    const task = await models.PaymentTask.create({ orderId: order.id });
+    const pickup = await models.PickupRecord.create({ orderId: order.id, status: 'pending' });
+    await archive(order.orderNumber, mime(order.orderNumber, [], 'personal_setup'));
+
+    await lifecycle.processNextLifecycleJob({ config, verifier });
+    await Promise.all([order.reload(), task.reload(), pickup.reload()]);
+
+    expect(order).toMatchObject({
+      emailOrderStatus: 'picked_up',
+      emailPaymentStatus: 'paid',
+      emailStatusNeedsReview: false,
+    });
+    expect(order.emailStatusEvidenceAt).toEqual(new Date('2026-09-20T01:00:00Z'));
+    expect(task.processingStatus).toBe('completed');
+    expect(pickup.status).toBe('pending');
+    expect(pickup.pickedUpAt).toBeNull();
+    const event = await models.OrderMailEvent.findOne({ where: { orderId: order.id } });
+    expect(event).toMatchObject({
+      templateType: 'personal_setup',
+      orderStatus: 'picked_up',
+      paymentStatus: 'paid',
+      needsReview: false,
+    });
+    expect(event.evidence).toMatchObject({ productScope: 'not_required_personal_setup' });
   });
 
   test('部分商品范围进入待核对，不更新为已付款也不完成任务', async () => {

@@ -30,7 +30,14 @@ async function getStats(filters = {}) {
       Order.count({ where }),
       Order.count({
         where: {
-          [Op.and]: [where, { emailOrderStatus: { [Op.in]: ['processing', 'ready_for_pickup'] } }],
+          [Op.and]: [
+            where,
+            {
+              emailOrderStatus: {
+                [Op.in]: ['processing', 'ready_for_pickup', 'picked_up'],
+              },
+            },
+          ],
         },
       }),
       Order.count({

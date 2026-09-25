@@ -30,9 +30,9 @@ test('邮件订单与付款状态使用独立受控多选', () => {
   });
   expect(where.emailOrderStatus[Op.in]).toEqual(['processing', 'ready_for_pickup']);
   expect(where.emailPaymentStatus[Op.in]).toEqual(['paid']);
-  expect(() => buildListFilters({ emailOrderStatuses: '["picked_up"]' })).toThrow(
-    'emailOrderStatuses 包含非法值'
-  );
+  expect(
+    buildListFilters({ emailOrderStatuses: '["picked_up"]' }).where.emailOrderStatus[Op.in]
+  ).toEqual(['picked_up']);
 });
 
 test.each([

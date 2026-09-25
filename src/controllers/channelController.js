@@ -7,6 +7,7 @@ const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
 const { Op, fn, col, literal } = require('sequelize');
+const { EMAIL_ORDER_STATUSES } = require('../constants/business');
 const { Order, Recipient, AppleId, sequelize } = require('../models');
 const {
   scopeOrderWhere,
@@ -136,6 +137,10 @@ exports.getChannelStats = async (req, res, next) => {
           fn('COUNT', literal("CASE WHEN email_order_status = 'ready_for_pickup' THEN 1 END")),
           'readyOrders',
         ],
+        [
+          fn('COUNT', literal("CASE WHEN email_order_status = 'picked_up' THEN 1 END")),
+          'pickedUpOrders',
+        ],
       ],
       where: orderWhere,
       raw: true,
@@ -159,7 +164,7 @@ exports.getChannelStats = async (req, res, next) => {
         confirmedOrders: parseInt(stats.confirmedOrders, 10),
         readyOrders: parseInt(stats.readyOrders, 10),
         shippedOrders: null,
-        completedOrders: null,
+        completedOrders: parseInt(stats.pickedUpOrders, 10),
         cancelledOrders: null,
         recipientCount,
       },
@@ -222,7 +227,7 @@ exports.getChannelOrders = async (req, res, next) => {
 
     // 状态筛选
     if (status) {
-      if (!['unknown', 'confirmed', 'processing', 'ready_for_pickup'].includes(status)) {
+      if (!EMAIL_ORDER_STATUSES.includes(status)) {
         throw ApiError.badRequest('status 必须是邮件订单状态');
       }
       whereClause.emailOrderStatus = status;

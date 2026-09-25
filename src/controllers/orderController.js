@@ -16,6 +16,7 @@ const XLSX = require('xlsx');
 const { Order, AppleId, Recipient, EmailLog, sequelize } = require('../models');
 const { scopeOrderWhere } = require('../services/orderAccessService');
 const logger = require('../utils/logger');
+const { EMAIL_ORDER_STATUSES, PERMISSIONS } = require('../constants/business');
 const {
   serializePublicProducts,
   serializeOrderPricingFields,
@@ -23,7 +24,6 @@ const {
 } = require('../utils/orderSerialization');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
-const { PERMISSIONS } = require('../constants/business');
 const { maskIdCard, maskPhone, escapeSpreadsheetFormula } = require('../utils/masking');
 const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
 const { normalizePickupDate } = require('../utils/orderPickupTime');
@@ -356,7 +356,7 @@ function buildListFilters(query) {
     query.emailOrderStatuses,
     'emailOrderStatuses',
     {
-      allowedValues: ['unknown', 'confirmed', 'processing', 'ready_for_pickup'],
+      allowedValues: EMAIL_ORDER_STATUSES,
       maxLength: 30,
     }
   );

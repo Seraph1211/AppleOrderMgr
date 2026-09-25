@@ -180,16 +180,34 @@ describe('订单邮件生命周期模板解析', () => {
     });
   });
 
-  test('电子收据和个人设置辅导不产生业务结论', () => {
-    for (const subject of [
-      'Apple 订单的电子收据 # MD123456',
-      '个人设置辅导，帮你上手新 iPhone。',
-    ]) {
-      const result = parseOrderMailLifecycle(parsed(subject, '付款 取货 取消 W1234567890'));
-      expect(result.templateType).toBe(TEMPLATE_TYPES.EXCLUDED);
-      expect(result.orderStatus).toBeNull();
-      expect(result.paymentStatus).toBeNull();
-    }
+  test('个人设置辅导精确标题单向推定已取货，不伪造实际取货时间', () => {
+    const result = parseOrderMailLifecycle(
+      parsed('个人设置辅导，帮你上手新 iPhone。', '订单号 W1234567890')
+    );
+    expect(result).toMatchObject({
+      templateType: TEMPLATE_TYPES.PERSONAL_SETUP,
+      orderStatus: 'picked_up',
+      paymentStatus: 'paid',
+      needsReview: false,
+      evidence: {
+        pickupRule: 'personal_setup_invitation_implies_picked_up',
+        actualPickupAt: null,
+      },
+    });
+  });
+
+  test('电子收据继续排除，相似辅导标题不得推定已取货', () => {
+    const receipt = parseOrderMailLifecycle(
+      parsed('Apple 订单的电子收据 # MD123456', '付款 取货 W1234567890')
+    );
+    expect(receipt.templateType).toBe(TEMPLATE_TYPES.EXCLUDED);
+    expect(receipt.orderStatus).toBeNull();
+
+    const similar = parseOrderMailLifecycle(
+      parsed('个人设置辅导，帮你上手新 iPhone', '订单号 W1234567890')
+    );
+    expect(similar.templateType).toBe(TEMPLATE_TYPES.UNKNOWN);
+    expect(similar.orderStatus).toBeNull();
   });
 
   test('商品范围按归一化名称和总数量核对，不接受部分履约', () => {
@@ -222,6 +240,23 @@ describe('订单邮件生命周期模板解析', () => {
       endTime: '20:15',
     };
     const aggregate = aggregateOrderLifecycle({ orderNumber, products }, [
+      {
+        id: 'personal-setup',
+        messageId: 'personal-setup-message',
+        revision: 1,
+        source: 'parser',
+        templateType: TEMPLATE_TYPES.PERSONAL_SETUP,
+        authenticityStatus: 'verified',
+        orderStatus: 'picked_up',
+        paymentStatus: 'paid',
+        pickupInfo: null,
+        products: [],
+        needsReview: false,
+        reviewReasons: [],
+        parsedAt: new Date('2026-09-23T02:00:00Z'),
+        ruleVersion: 'test',
+        message: { orderNumber, emailDate: new Date('2026-09-23T01:00:00Z') },
+      },
       {
         id: 'ready',
         messageId: 'ready-message',
@@ -275,7 +310,7 @@ describe('订单邮件生命周期模板解析', () => {
       },
     ]);
     expect(aggregate).toMatchObject({
-      orderStatus: 'ready_for_pickup',
+      orderStatus: 'picked_up',
       paymentStatus: 'paid',
       pickupInfo: readyPickup,
       needsReview: true,

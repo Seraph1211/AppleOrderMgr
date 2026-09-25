@@ -1,5 +1,6 @@
 const { Op, Sequelize } = require('sequelize');
 const { sequelize } = require('../models');
+const { EMAIL_ORDER_STATUSES } = require('../constants/business');
 const { getOrderTagBind } = require('./orderAccessService');
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
 const { parseProductKeys, productKeySql } = require('../utils/productFilterQuery');
@@ -7,12 +8,12 @@ const ApiError = require('../utils/ApiError');
 
 const MAX_FILTER_ITEMS = 100;
 const MAX_FILTER_TEXT_LENGTH = 500;
-const EMAIL_STATUSES = ['unknown', 'confirmed', 'processing', 'ready_for_pickup'];
 const STATUS_MAP = {
   待确认: 'unknown',
   已确认: 'confirmed',
   处理中: 'processing',
   可取货: 'ready_for_pickup',
+  '已取货（邮件推定）': 'picked_up',
 };
 // 与订单管理页 recipient_tag 相同；子查询避免聚合 JOIN 产生重复计数。
 const PROFILE_TAG_SQL = '(SELECT r.tag FROM recipients r WHERE r.id = "Order".recipient_ref)';
@@ -63,12 +64,12 @@ function parseDashboardFilters(query = {}, orderUser) {
   buildOrderDateCondition({ dateFrom: filters.startDate, dateTo: filters.endDate });
   if (filters.status) {
     filters.status = STATUS_MAP[filters.status] || filters.status;
-    if (!EMAIL_STATUSES.includes(filters.status)) throw ApiError.badRequest('订单状态非法');
+    if (!EMAIL_ORDER_STATUSES.includes(filters.status)) throw ApiError.badRequest('订单状态非法');
   }
   filters.emailOrderStatuses = parseList(
     query.emailOrderStatuses,
     'emailOrderStatuses',
-    EMAIL_STATUSES
+    EMAIL_ORDER_STATUSES
   );
   filters.recipientTags = parseList(query.recipientTags, 'recipientTags');
   filters.productKeys = parseProductKeys(query.productKeys);

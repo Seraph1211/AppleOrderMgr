@@ -2,7 +2,7 @@ const { calculateCatalogAmount } = require('../utils/orderCatalogPricingV1');
 const { buildProductFilterItems } = require('../utils/productFilter');
 const { DataTypes } = require('sequelize');
 const { encrypt, decrypt } = require('../utils/fieldEncryption');
-const { ORDER_STATUSES } = require('../constants/business');
+const { EMAIL_ORDER_STATUSES, ORDER_STATUSES } = require('../constants/business');
 
 /**
  * Order 模型 - 订单管理
@@ -207,7 +207,7 @@ module.exports = sequelize => {
         defaultValue: 'unknown',
         field: 'email_order_status',
         comment: '官方订单邮件归并的订单阶段',
-        validate: { isIn: [['unknown', 'confirmed', 'processing', 'ready_for_pickup']] },
+        validate: { isIn: [EMAIL_ORDER_STATUSES] },
       },
       emailPaymentStatus: {
         type: DataTypes.STRING(20),

@@ -1,12 +1,6 @@
 const { Op } = require('sequelize');
+const { EMAIL_ORDER_STATUSES } = require('../constants/business');
 const ApiError = require('../utils/ApiError');
-
-const EMAIL_ORDER_STATUSES = Object.freeze([
-  'unknown',
-  'confirmed',
-  'processing',
-  'ready_for_pickup',
-]);
 
 /**
  * 解析两张付款列表的邮件订单状态筛选。

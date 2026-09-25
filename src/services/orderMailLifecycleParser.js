@@ -1,12 +1,14 @@
 const { normalizeProductName } = require('../utils/productFilter');
 const { extractOrderNumber, htmlToText, mailText } = require('./orderMailContent');
 
-const RULE_VERSION = 'apple-cn-pickup-v3-availability-date';
+const RULE_VERSION = 'apple-cn-pickup-v4-personal-setup';
+const PERSONAL_SETUP_SUBJECT = '个人设置辅导，帮你上手新 iPhone。';
 const TEMPLATE_TYPES = Object.freeze({
   CONFIRMED: 'confirmed',
   PROCESSING: 'processing',
   READY_UPDATE: 'ready_update',
   READY_INFO: 'ready_info',
+  PERSONAL_SETUP: 'personal_setup',
   EXCLUDED: 'excluded',
   UNKNOWN: 'unknown',
 });
@@ -35,7 +37,8 @@ function classifyTemplate(subject) {
   if (/^关于你的\s+Apple\s+订单\s+W\d{10}\s+的更新信息$/i.test(value))
     return TEMPLATE_TYPES.READY_UPDATE;
   if (/^订单\s+W\d{10}\s+的取货信息$/i.test(value)) return TEMPLATE_TYPES.READY_INFO;
-  if (/电子收据|个人设置辅导|广告/i.test(value)) return TEMPLATE_TYPES.EXCLUDED;
+  if (value === cleanText(PERSONAL_SETUP_SUBJECT)) return TEMPLATE_TYPES.PERSONAL_SETUP;
+  if (/电子收据|广告/i.test(value)) return TEMPLATE_TYPES.EXCLUDED;
   return TEMPLATE_TYPES.UNKNOWN;
 }
 
@@ -236,6 +239,13 @@ function parseOrderMailLifecycle(parsed) {
     result.paymentStatus = 'paid';
     result.evidence.bodyEventMatched = true;
     result.evidence.paymentRule = 'ready_for_pickup_implies_prepaid_confirmed';
+  } else if (templateType === TEMPLATE_TYPES.PERSONAL_SETUP) {
+    result.orderStatus = 'picked_up';
+    result.paymentStatus = 'paid';
+    result.evidence.bodyEventMatched = true;
+    result.evidence.pickupRule = 'personal_setup_invitation_implies_picked_up';
+    result.evidence.paymentRule = 'picked_up_implies_prepaid_confirmed';
+    result.evidence.actualPickupAt = null;
   } else if (templateType !== TEMPLATE_TYPES.UNKNOWN) {
     result.needsReview = true;
     result.reviewReasons.push('BODY_EVENT_NOT_CONFIRMED');
@@ -252,6 +262,7 @@ function parseOrderMailLifecycle(parsed) {
 
 module.exports = {
   RULE_VERSION,
+  PERSONAL_SETUP_SUBJECT,
   TEMPLATE_TYPES,
   classifyTemplate,
   evaluateProductScope,

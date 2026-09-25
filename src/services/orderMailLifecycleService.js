@@ -10,7 +10,7 @@ const {
   PaymentTaskEvent,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
-const { PERMISSIONS } = require('../constants/business');
+const { EMAIL_ORDER_STATUSES, PERMISSIONS } = require('../constants/business');
 const logger = require('../utils/logger');
 const { scopeOrderWhere } = require('./orderAccessService');
 const { parseOrderMail } = require('./orderMailContent');
@@ -32,6 +32,7 @@ const ORDER_STATUS_SEQUENCE = Object.freeze([
   'confirmed',
   'processing',
   'ready_for_pickup',
+  'picked_up',
 ]);
 const orderStatusRank = status => Math.max(0, ORDER_STATUS_SEQUENCE.indexOf(status));
 
@@ -74,6 +75,15 @@ function normalizeReplayOrderIds(orderIds) {
     throw ApiError.badRequest('orderIds 包含无效订单 ID');
   }
   return [...new Set(orderIds.map(Number))];
+}
+
+/** 辅导邀请仅以精确订单号作为整单履约证据，其他模板继续核对商品范围。 */
+function evaluateLifecycleScope(templateType, mailProducts, orderProducts) {
+  if (templateType === TEMPLATE_TYPES.PERSONAL_SETUP) {
+    return { matched: true, reason: null, evidence: 'not_required_personal_setup' };
+  }
+  const scope = evaluateProductScope(mailProducts, orderProducts);
+  return { ...scope, evidence: scope.matched ? 'matched' : scope.reason };
 }
 
 /** 为新归档邮件幂等登记解析任务。 */
@@ -136,7 +146,7 @@ async function appendParserEvent(message, order, parsedResult, authentication, t
     }
   );
   const scope = order
-    ? evaluateProductScope(parsedResult.products, order.products)
+    ? evaluateLifecycleScope(parsedResult.templateType, parsedResult.products, order.products)
     : { matched: false, reason: 'ORDER_NOT_AVAILABLE' };
   const reviewReasons = [...parsedResult.reviewReasons];
   if (authentication.status === 'failed') reviewReasons.push(authentication.reason);
@@ -158,7 +168,7 @@ async function appendParserEvent(message, order, parsedResult, authentication, t
       evidence: {
         ...parsedResult.evidence,
         authentication: authentication.evidence,
-        productScope: scope.matched ? 'matched' : scope.reason,
+        productScope: scope.evidence || scope.reason,
         messageEmailDate: message.emailDate,
         messageReceivedAt: message.receivedAt || message.createdAt,
       },
@@ -197,7 +207,7 @@ function aggregateOrderLifecycle(order, events) {
   for (const event of effective) {
     if (event.templateType === TEMPLATE_TYPES.EXCLUDED) continue;
     const orderNumberMatched = event.message?.orderNumber === order.orderNumber;
-    const scope = evaluateProductScope(event.products, order.products);
+    const scope = evaluateLifecycleScope(event.templateType, event.products, order.products);
     if (!orderNumberMatched) reviewReasons.add('ORDER_NUMBER_MISMATCH');
     if (!scope.matched) reviewReasons.add(scope.reason);
     for (const reason of event.reviewReasons || []) reviewReasons.add(reason);
@@ -607,10 +617,7 @@ function reviewLifecycleEvent(user, orderId, messageId, input) {
   if (reason.length < 5 || reason.length > 500) throw ApiError.badRequest('核定原因须为 5-500 字');
   if (!Number.isInteger(expectedVersion) || expectedVersion < 0)
     throw ApiError.badRequest('expectedVersion 必须是非负整数');
-  if (
-    input.orderStatus !== undefined &&
-    !['unknown', 'confirmed', 'processing', 'ready_for_pickup'].includes(input.orderStatus)
-  )
+  if (input.orderStatus !== undefined && !EMAIL_ORDER_STATUSES.includes(input.orderStatus))
     throw ApiError.badRequest('orderStatus 非法');
   if (input.paymentStatus !== undefined && !['unknown', 'paid'].includes(input.paymentStatus))
     throw ApiError.badRequest('paymentStatus 非法');
