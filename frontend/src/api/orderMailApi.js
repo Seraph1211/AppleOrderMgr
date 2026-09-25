@@ -52,6 +52,12 @@ export async function downloadOrderEmailAttachment(orderId, messageId, attachmen
   }
 }
 
+/** 通过鉴权读取内嵌图片，由邮件预览转换为本地data URL。 */
+export const getOrderEmailAttachmentBlob = (orderId, messageId, attachmentIndex) =>
+  client.get('/orders/' + orderId + '/emails/' + messageId + '/attachments/' + attachmentIndex, {
+    responseType: 'blob',
+  });
+
 /** 原子提交多收件人的独立转发任务。 */
 export const forwardOrderEmailBatch = (orderId, messageId, body) =>
   client.post('/orders/' + orderId + '/emails/' + messageId + '/forward-batch', body);

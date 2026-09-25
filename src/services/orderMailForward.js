@@ -1,34 +1,14 @@
 const cheerio = require('cheerio');
-const { mailText } = require('./orderMailContent');
+const { mailText, sanitizeOrderMailHtml } = require('./orderMailContent');
 
 /** 保留邮件排版和图片引用；不执行内容或下载远程资源。 */
 function forwardHtml(parsed, note, metadata) {
-  if (typeof parsed.html !== 'string' || !parsed.html.trim()) return undefined;
-  const $ = cheerio.load(parsed.html);
-  $('script,iframe,object,embed,form,input,button,textarea,select,base,meta,link').remove();
-  $('*').each((_index, element) => {
-    for (const [name, value] of Object.entries(element.attribs || {})) {
-      if (/^on/i.test(name) || ['srcdoc', 'srcset', 'action', 'formaction'].includes(name)) {
-        $(element).removeAttr(name);
-      } else if (['href', 'src', 'background', 'xlink:href'].includes(name)) {
-        const url = value
-          .split('')
-          .filter(character => character > ' ')
-          .join('');
-        if (!/^(?:https?:|mailto:|cid:|#|data:image\/(?:png|gif|jpe?g|webp);base64,)/i.test(url))
-          $(element).removeAttr(name);
-      } else if (
-        name === 'style' &&
-        /expression\s*\(|javascript\s*:|-moz-binding|behavior\s*:/i.test(value)
-      ) {
-        $(element).removeAttr(name);
-      }
-    }
+  const sanitized = sanitizeOrderMailHtml(parsed, {
+    deferRemoteImages: false,
+    mapInlineImages: false,
   });
-  $('style').each((_index, element) => {
-    if (/expression\s*\(|javascript\s*:|-moz-binding|behavior\s*:/i.test($(element).text()))
-      $(element).remove();
-  });
+  if (!sanitized.html) return undefined;
+  const $ = cheerio.load(sanitized.html);
   const header = $('<div></div>').attr(
     'style',
     'color:#333;font:14px/1.5 Arial,sans-serif;margin:0 0 20px;'

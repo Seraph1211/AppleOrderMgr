@@ -2,8 +2,11 @@ const {
   extractOrderNumber,
   isAllowedSender,
   parseOrderMail,
+  mailAttachmentSummaries,
   mailMetadata,
   mailText,
+  mailPreviewText,
+  sanitizeOrderMailHtml,
   validateForwardInput,
 } = require('../src/services/orderMailContent');
 
@@ -38,6 +41,55 @@ describe('订单邮件识别与安全正文', () => {
     });
     expect(text).toContain('订单\n');
     expect(text).not.toMatch(/secret|tracker|<img/);
+  });
+  test('预览优先从HTML提取正文，不显示异常纯文本中的CSS源码', () => {
+    const text = mailPreviewText({
+      text: "@font-face { font-family: 'Broken'; } body { color: red; }",
+      html: [
+        '<html><head><style>@font-face{font-family:Apple}</style></head>',
+        '<body><h1>邮件正文</h1></body></html>',
+      ].join(''),
+    });
+    expect(text).toContain('邮件正文');
+    expect(text).not.toMatch(/font-face|color:\s*red/);
+  });
+  test('安全HTML预览移除活动内容并延迟远程图片', () => {
+    const preview = sanitizeOrderMailHtml({
+      html: '<html><head><style>.title{color:#123}@media(max-width:600px){img{width:100%}}</style></head><body><script>bad()</script><form action="https://evil.test"><input></form><h1 onclick="bad()">标题</h1><img src="https://images.apple.com/phone.png" data-order-mail-remote-src="javascript:bad()" onerror="bad()"><a href="javascript:bad()">危险链接</a><a href="https://apple.com/order" target="_top">查看订单</a></body></html>',
+      attachments: [],
+    });
+    const $ = require('cheerio').load(preview.html);
+    expect($('script,form,input').length).toBe(0);
+    expect($('h1').attr('onclick')).toBeUndefined();
+    expect($('style').text()).toContain('@media');
+    expect($('img').attr('src')).toBeUndefined();
+    expect($('img').attr('data-order-mail-remote-src')).toBe('https://images.apple.com/phone.png');
+    expect($('a').first().attr('href')).toBeUndefined();
+    expect($('a').last().attr('href')).toBe('https://apple.com/order');
+    expect($('a').last().attr('target')).toBe('_blank');
+    expect(preview.remoteImageCount).toBe(1);
+  });
+  test('安全HTML预览把CID图片映射为鉴权附件索引', () => {
+    const parsed = {
+      html: '<p>正文</p><img src="cid:logo@test"><img src="cid:missing@test">',
+      attachments: [
+        {
+          filename: 'logo.png',
+          content: Buffer.from('image'),
+          contentType: 'image/png',
+          contentId: '<logo@test>',
+        },
+      ],
+    };
+    const preview = sanitizeOrderMailHtml(parsed);
+    const $ = require('cheerio').load(preview.html);
+    expect($('img').first().attr('data-order-mail-inline-index')).toBe('0');
+    expect($('img').first().attr('src')).toBeUndefined();
+    expect($('img').last().attr('src')).toBeUndefined();
+    expect(preview.inlineAttachmentIndexes).toEqual([0]);
+    expect(mailAttachmentSummaries(parsed)).toEqual([
+      { index: 0, name: 'logo.png', size: 5, contentType: 'image/png' },
+    ]);
   });
   test('MIME元信息保留原始收件地址', async () => {
     const parsed = await parseOrderMail(

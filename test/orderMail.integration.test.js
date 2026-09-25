@@ -14,9 +14,20 @@ const enabled = process.env.RUN_ORDER_MAIL_INTEGRATION === 'true';
         'Content-Type: multipart/mixed; boundary=boundary123',
         '',
         '--boundary123',
+        'Content-Type: multipart/alternative; boundary=alternative456',
+        '',
+        '--alternative456',
         'Content-Type: text/plain; charset=utf-8',
         '',
-        'Order ' + number + ' body',
+        '@font-face { font-family: Broken; } Order ' + number + ' text body',
+        '--alternative456',
+        'Content-Type: text/html; charset=utf-8',
+        '',
+        '<html><head><style>.order{color:blue}</style></head><body><script>bad()</script>',
+        '<p class="order">Order ' + number + ' body</p>',
+        '<img src="https://images.apple.com/phone.png"></body></html>',
+        '--alternative456--',
+        '',
         '--boundary123',
         'Content-Type: text/plain',
         'Content-Disposition: attachment; filename=receipt.txt',
@@ -314,6 +325,12 @@ const enabled = process.env.RUN_ORDER_MAIL_INTEGRATION === 'true';
     expect(list.headers.get('cache-control')).toBe('no-store');
     const detail = await request('/' + message.id);
     expect(detail.data.data.text).toContain('Order W1234567890 body');
+    expect(detail.data.data.text).not.toContain('@font-face');
+    expect(detail.data.data.html).toContain('data-order-mail-remote-src');
+    expect(detail.data.data.html).not.toContain('<script');
+    expect(detail.data.data.remoteImageCount).toBe(1);
+    expect(detail.data.data.inlineAttachmentIndexes).toEqual([]);
+    expect(detail.data.data.attachments[0].contentType).toBe('text/plain');
     const file = await request('/' + message.id + '/attachments/0');
     expect(file.data.toString()).toContain('synthetic receipt');
     expect(file.headers.get('content-disposition')).toContain('attachment');

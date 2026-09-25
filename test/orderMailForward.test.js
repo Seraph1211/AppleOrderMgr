@@ -55,12 +55,12 @@ describe('普通正文转发与原始EML并存', () => {
       delivery,
       {
         ...original,
-        html: '<script>alert(1)</script><iframe src="https://evil.test"></iframe><img src="javascript:alert(1)" onerror="bad()"><a href="java&#x09;script:bad()">按钮</a><div style="expression(bad())">正文</div>',
+        html: '<script>alert(1)</script><iframe src="https://evil.test"></iframe><svg onload="bad()"></svg><img src="javascript:alert(1)" onerror="bad()"><a href="java&#x09;script:bad()">按钮</a><div style="expression(bad())">正文</div>',
       },
       raw,
       config
     );
-    expect(result.html).not.toMatch(/<script|<iframe|onerror|javascript:|expression\(/i);
+    expect(result.html).not.toMatch(/<script|<iframe|<svg|onerror|javascript:|expression\(/i);
     expect(result.attachments.at(-1).content).toEqual(raw);
   });
 

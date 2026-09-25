@@ -2,17 +2,19 @@ import MailForwardForm from './MailForwardForm';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import { createPortal } from 'react-dom';
-import { useEffect, useRef, useState } from 'react';
-import { ArrowLeft, Download, Mail, RefreshCw, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Download, Image, Mail, RefreshCw, X } from 'lucide-react';
 import {
   getOrderEmails,
   getOrderEmail,
   getOrderEmailForwards,
   downloadOrderEmailAttachment,
+  getOrderEmailAttachmentBlob,
   replayOrderEmailLifecycle,
   reviewOrderEmailLifecycle,
 } from '../api/orderMailApi';
 import { formatOrderTime } from '../utils/orderTime';
+import { blobToDataUrl, buildOrderMailPreviewDocument } from '../utils/orderMailPreview';
 
 const SYNC_LABELS = {
   disabled: '订单邮件同步尚未启用，请联系管理员',
@@ -75,6 +77,10 @@ export default function OrderMailDrawer({ order, onClose }) {
   const [reviewOrderStatus, setReviewOrderStatus] = useState('unknown');
   const [reviewPaymentStatus, setReviewPaymentStatus] = useState('unknown');
   const [statusVersion, setStatusVersion] = useState(order.emailStatusVersion || 0);
+  const [previewMode, setPreviewMode] = useState('text');
+  const [remoteImagesEnabled, setRemoteImagesEnabled] = useState(false);
+  const [inlineImages, setInlineImages] = useState({});
+  const [previewWarning, setPreviewWarning] = useState('');
   const panelRef = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = () => {
@@ -91,6 +97,50 @@ export default function OrderMailDrawer({ order, onClose }) {
     setReviewPaymentStatus(detail.lifecycle.paymentStatus || 'unknown');
     setReviewReason('');
   }, [detail]);
+
+  useEffect(() => {
+    setPreviewMode(detail?.html ? 'html' : 'text');
+    setRemoteImagesEnabled(false);
+    setInlineImages({});
+    setPreviewWarning('');
+  }, [detail?.id, detail?.html]);
+
+  useEffect(() => {
+    const indexes = detail?.inlineAttachmentIndexes || [];
+    if (!detail?.html || !indexes.length) return undefined;
+    let active = true;
+    Promise.allSettled(
+      indexes.map(async index => {
+        const attachment = detail.attachments?.find(item => item.index === index);
+        if (!attachment || !/^image\//i.test(attachment.contentType || ''))
+          throw new Error('内嵌图片类型无效');
+        const blob = await getOrderEmailAttachmentBlob(order.id, detail.id, index);
+        return [String(index), await blobToDataUrl(blob, attachment.contentType)];
+      })
+    ).then(results => {
+      if (!active) return;
+      const loaded = {};
+      let failed = 0;
+      for (const result of results) {
+        if (result.status === 'fulfilled') loaded[result.value[0]] = result.value[1];
+        else failed += 1;
+      }
+      setInlineImages(loaded);
+      if (failed) setPreviewWarning('部分内嵌图片加载失败，正文和附件仍可继续查看。');
+    });
+    return () => {
+      active = false;
+    };
+  }, [detail, order.id]);
+
+  const previewDocument = useMemo(
+    () =>
+      buildOrderMailPreviewDocument(detail?.html, {
+        allowRemoteImages: remoteImagesEnabled,
+        inlineImages,
+      }),
+    [detail?.html, inlineImages, remoteImagesEnabled]
+  );
 
   useEffect(() => {
     const previous = document.activeElement;
@@ -463,8 +513,77 @@ export default function OrderMailDrawer({ order, onClose }) {
                         )}
                       </div>
                     )}
-                    <div className="border-t pt-4 whitespace-pre-wrap break-words text-gray-900">
-                      {detail.text || '此邮件没有可预览的文字正文，可查看附件。'}
+                    <div className="border-t pt-4 space-y-3">
+                      {detail.html && (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div
+                            className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1"
+                            role="group"
+                            aria-label="邮件正文显示方式"
+                          >
+                            <button
+                              type="button"
+                              className={
+                                'rounded-md px-3 py-1.5 text-sm transition-colors ' +
+                                (previewMode === 'html'
+                                  ? 'bg-white text-primary shadow-sm'
+                                  : 'text-gray-600 hover:text-gray-900')
+                              }
+                              aria-pressed={previewMode === 'html'}
+                              onClick={() => setPreviewMode('html')}
+                            >
+                              原始排版
+                            </button>
+                            <button
+                              type="button"
+                              className={
+                                'rounded-md px-3 py-1.5 text-sm transition-colors ' +
+                                (previewMode === 'text'
+                                  ? 'bg-white text-primary shadow-sm'
+                                  : 'text-gray-600 hover:text-gray-900')
+                              }
+                              aria-pressed={previewMode === 'text'}
+                              onClick={() => setPreviewMode('text')}
+                            >
+                              纯文本
+                            </button>
+                          </div>
+                          {previewMode === 'html' && detail.remoteImageCount > 0 && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary inline-flex items-center gap-1"
+                              disabled={remoteImagesEnabled}
+                              onClick={() => setRemoteImagesEnabled(true)}
+                            >
+                              <Image className="w-4 h-4" />
+                              {remoteImagesEnabled
+                                ? '已加载远程图片'
+                                : `加载远程图片（${detail.remoteImageCount}）`}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                      {previewWarning && (
+                        <p
+                          className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700"
+                          role="status"
+                        >
+                          {previewWarning}
+                        </p>
+                      )}
+                      {previewMode === 'html' && previewDocument ? (
+                        <iframe
+                          className="h-[65vh] min-h-96 w-full rounded-lg border border-gray-200 bg-white"
+                          title="邮件原始排版预览"
+                          sandbox="allow-popups allow-popups-to-escape-sandbox"
+                          referrerPolicy="no-referrer"
+                          srcDoc={previewDocument}
+                        />
+                      ) : (
+                        <div className="whitespace-pre-wrap break-words text-gray-900">
+                          {detail.text || '此邮件没有可预览的文字正文，可查看附件。'}
+                        </div>
+                      )}
                     </div>
                   </div>
                   {!!detail.attachments?.length && (

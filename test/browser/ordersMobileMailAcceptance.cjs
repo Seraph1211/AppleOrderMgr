@@ -7,8 +7,10 @@ const { chromium } = require('playwright-core');
 async function main() {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
-    const context = await browser.newContext({ serviceWorkers: 'block', hasTouch: true });
-    await context.addInitScript(() => localStorage.setItem('token', 'synthetic-orders-mobile'));
+    const context = await browser.newContext({ hasTouch: true });
+    await context.addInitScript(() => {
+      if (window.top === window) localStorage.setItem('token', 'synthetic-orders-mobile');
+    });
     const page = await context.newPage();
     const errors = [];
     const writes = [];
@@ -72,7 +74,26 @@ async function main() {
       else if (url.pathname === '/api/orders/101') data = { apple_password: null };
       else if (url.pathname === '/api/orders/101/link') data = { orderUrl: null };
       else if (url.pathname === '/api/orders/101/emails/synthetic-mail')
-        data = { id: 'synthetic-mail', subject: '合成订单邮件', text: '合成正文', attachments: [] };
+        data = {
+          id: 'synthetic-mail',
+          subject: '合成订单邮件',
+          text: '合成纯文本正文',
+          html: '<html><body><h1 id="mail-title">合成排版正文</h1><img alt="内嵌商品图" data-order-mail-inline-index="0"><img alt="远程商品图" data-order-mail-remote-src="https://images.example.test/phone.png"></body></html>',
+          remoteImageCount: 1,
+          inlineAttachmentIndexes: [0],
+          attachments: [{ index: 0, name: 'inline.png', size: 68, contentType: 'image/png' }],
+        };
+      else if (url.pathname === '/api/orders/101/emails/synthetic-mail/attachments/0')
+        return await route.fulfill({
+          contentType: 'image/png',
+          body: Buffer.from(
+            [
+              'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk',
+              '+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+            ].join(''),
+            'base64'
+          ),
+        });
       else if (url.pathname.endsWith('/forwards')) data = [];
       else if (url.pathname === '/api/mail-contacts')
         data = {
@@ -102,7 +123,10 @@ async function main() {
       assert(overflow <= 1, `${width}px 下页面横向溢出 ${overflow}px`);
       if (width < 768) {
         assert.equal(await page.locator('.orders-mobile-list article').count(), 1);
-        assert.equal(await page.locator('.orders-mobile-list').getByText('F12345678901234567890').count(), 0);
+        assert.equal(
+          await page.locator('.orders-mobile-list').getByText('F12345678901234567890').count(),
+          0
+        );
         assert.equal(await page.locator('table thead').first().isVisible(), false);
         const filter = page.getByRole('button', { name: /筛选条件.*展开/ });
         await filter.click();
@@ -124,7 +148,24 @@ async function main() {
     await page.setViewportSize({ width: 390, height: 600 });
     await page.getByRole('button', { name: '订单邮件 W1234567890' }).click();
     await page.getByRole('button', { name: '查看邮件' }).click();
-    await page.getByText('合成正文').waitFor();
+    const preview = page.frameLocator('iframe[title="邮件原始排版预览"]');
+    await preview.locator('#mail-title').waitFor();
+    await preview.getByAltText('内嵌商品图').waitFor();
+    assert.match(
+      await preview.getByAltText('内嵌商品图').getAttribute('src'),
+      /^data:image\/png;base64,/
+    );
+    assert.equal(await preview.getByAltText('远程商品图').getAttribute('src'), null);
+    await page.getByRole('button', { name: '加载远程图片（1）' }).click();
+    await preview.getByAltText('远程商品图').waitFor();
+    assert.equal(
+      await preview.getByAltText('远程商品图').getAttribute('src'),
+      'https://images.example.test/phone.png'
+    );
+    await page.screenshot({ path: '/tmp/apple-orders-mail-preview-390.png' });
+    await page.getByRole('button', { name: '纯文本' }).click();
+    await page.getByText('合成纯文本正文', { exact: true }).waitFor();
+    await page.getByRole('button', { name: '原始排版' }).click();
     const search = page.getByRole('textbox', { name: '搜索转发联系人' });
     await search.click();
     const choices = page.getByRole('group', { name: '可选联系人' });

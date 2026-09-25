@@ -5,7 +5,12 @@ const { requirePermission, requireAnyPermission } = require('../middleware/authM
 const { PERMISSIONS } = require('../constants/business');
 const { OrderMailDelivery } = require('../models');
 const service = require('../services/orderMailService');
-const { parseOrderMail, mailText } = require('../services/orderMailContent');
+const {
+  parseOrderMail,
+  mailAttachmentSummaries,
+  mailPreviewText,
+  sanitizeOrderMailHtml,
+} = require('../services/orderMailContent');
 const ApiError = require('../utils/ApiError');
 
 const router = express.Router({ mergeParams: true });
@@ -41,13 +46,18 @@ router.get(
         { content: true }
       );
       const parsed = await parseOrderMail(Buffer.from(message.rawContent, 'base64'));
+      const preview = sanitizeOrderMailHtml(parsed);
       req.auditTarget = '订单邮件查看；订单ID ' + req.params.id + '；邮件ID ' + message.id;
       res.json({
         success: true,
         data: {
           ...service.messageSummary(message),
           lifecycle: await service.messageLifecycle(message.id),
-          text: mailText(parsed),
+          text: mailPreviewText(parsed),
+          html: preview.html,
+          remoteImageCount: preview.remoteImageCount,
+          inlineAttachmentIndexes: preview.inlineAttachmentIndexes,
+          attachments: mailAttachmentSummaries(parsed),
         },
       });
     } catch (error) {
