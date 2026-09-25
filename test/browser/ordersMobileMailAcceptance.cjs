@@ -50,6 +50,13 @@ async function main() {
               recipient_name: '合成取机人',
               recipient_tag: '北京 测试团队',
               order_date: '2026-09-23T02:00:00Z',
+              email_pickup_info: {
+                storeName: 'Apple 长沙国金中心',
+                pickupDate: '2026-09-25',
+                startTime: '18:30',
+                endTime: '18:45',
+                appointmentMode: 'fixed',
+              },
             },
           ],
         };
@@ -127,6 +134,8 @@ async function main() {
           await page.locator('.orders-mobile-list').getByText('F12345678901234567890').count(),
           0
         );
+        await page.locator('.orders-mobile-list').getByText('Apple 长沙国金中心').waitFor();
+        await page.locator('.orders-mobile-list').getByText('2026-09-25 18:30–18:45').waitFor();
         assert.equal(await page.locator('table thead').first().isVisible(), false);
         const filter = page.getByRole('button', { name: /筛选条件.*展开/ });
         await filter.click();

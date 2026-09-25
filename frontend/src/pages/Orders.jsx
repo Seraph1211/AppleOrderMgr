@@ -9,8 +9,19 @@ import TableHeaderHint from '../components/TableHeaderHint';
 import { formatOrderTime } from '../utils/orderTime';
 import { copyDeferredText } from '../utils/copyDeferredText';
 import { groupDisplayProducts } from '../utils/productDisplay';
+import { getOrderPickupDisplay } from '../utils/orderPickupDisplay';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Filter, Download, RefreshCw, Settings, X, Mail } from 'lucide-react';
+import {
+  Search,
+  Filter,
+  Download,
+  RefreshCw,
+  Settings,
+  X,
+  Mail,
+  MapPin,
+  Clock3,
+} from 'lucide-react';
 import { getOrders, getOrderLink, getOrderFilterOptions, exportOrders } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
 import ColumnConfigModal from '../components/ColumnConfigModal';
@@ -766,8 +777,12 @@ export default function Orders() {
               {orders.map(order => {
                 const products = groupDisplayProducts(order.products);
                 const status = getEmailOrderStatusBadge(order.emailOrderStatus);
+                const pickup = getOrderPickupDisplay(order.emailPickupInfo);
                 return (
-                  <article key={order.id} className="rounded-lg border border-gray-200 bg-white p-3">
+                  <article
+                    key={order.id}
+                    className="rounded-lg border border-gray-200 bg-white p-3"
+                  >
                     <div className="flex min-w-0 items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="text-xs text-gray-500">订单 ID：{order.id}</p>
@@ -819,6 +834,26 @@ export default function Orders() {
                         ? ` · ${order.recipientTag}`
                         : ''}
                     </p>
+                    <div className="mt-2 space-y-1.5 rounded-lg bg-primary-50 px-2.5 py-2 text-xs text-gray-700">
+                      <p className="flex min-w-0 items-start gap-1.5">
+                        <MapPin
+                          className="mt-0.5 h-4 w-4 shrink-0 text-primary"
+                          aria-hidden="true"
+                        />
+                        <span className="shrink-0 text-gray-500">取货门店：</span>
+                        <span className="min-w-0 break-words font-medium text-gray-900">
+                          {pickup.storeName}
+                        </span>
+                      </p>
+                      <p className="flex min-w-0 items-start gap-1.5">
+                        <Clock3
+                          className="mt-0.5 h-4 w-4 shrink-0 text-primary"
+                          aria-hidden="true"
+                        />
+                        <span className="shrink-0 text-gray-500">取货时间：</span>
+                        <span className="min-w-0 break-words text-gray-900">{pickup.schedule}</span>
+                      </p>
+                    </div>
                     <div className="orders-mobile-actions mt-3 border-t border-gray-100 pt-3">
                       {renderCell(order, { key: 'actions' })}
                     </div>
