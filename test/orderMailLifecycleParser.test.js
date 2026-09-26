@@ -78,6 +78,67 @@ describe('订单邮件生命周期模板解析', () => {
     ]);
   });
 
+  test('确认邮件以正文订购日期换算明天并保留换算依据', () => {
+    const result = parseOrderMailLifecycle(
+      parsed(
+        '你的Apple Store在线商店订单 - W1434274482',
+        [
+          '我们收到了你的订单。',
+          '订购日期：2026/09/26',
+          'iPhone 18 Pro Max 256GB 勃艮第酒红色',
+          '取货日期： 明天',
+          '取货时间： 16:00 - 16:15',
+          '数量 1',
+        ].join('\n')
+      )
+    );
+
+    expect(result.pickupInfo).toMatchObject({
+      pickupDate: '2026-09-27',
+      startTime: '16:00',
+      endTime: '16:15',
+      pickupDateEvidence: {
+        raw: '明天',
+        basis: 'order_date',
+        referenceDate: '2026-09-26',
+        offsetDays: 1,
+      },
+    });
+  });
+
+  test.each([
+    ['今天', '2026-12-31'],
+    ['明天', '2027-01-01'],
+    ['后天', '2027-01-02'],
+  ])('取货日期“%s”只基于订购日期换算', (relativeDate, expected) => {
+    expect(parsePickupDate(['订购日期：2026/12/31', `取货日期：${relativeDate}`])).toBe(expected);
+  });
+
+  test('相对取货日期缺少有效订购日期时不使用当前时间猜测', () => {
+    const result = parseOrderMailLifecycle(
+      parsed(
+        '你的Apple Store在线商店订单 - W1234567890',
+        [
+          '我们收到了你的订单。',
+          '取货日期：后天',
+          '取货时间：16:00 - 16:15',
+          'iPhone 18 Pro Max 256GB 黑色',
+          '数量 1',
+        ].join('\n')
+      )
+    );
+
+    expect(result.pickupInfo).toMatchObject({
+      pickupDate: null,
+      pickupDateEvidence: {
+        raw: '后天',
+        basis: 'order_date',
+        referenceDate: null,
+        offsetDays: 2,
+      },
+    });
+  });
+
   test('处理邮件判为处理中和已付款，但未来取货说明不判可取货', () => {
     const result = parseOrderMailLifecycle(
       parsed(
@@ -227,6 +288,7 @@ describe('订单邮件生命周期模板解析', () => {
   test('日期和时段拒绝非法值', () => {
     expect(parsePickupDate(['取货日期： 2026/02/30'])).toBeNull();
     expect(parsePickupDate(['有货： 2026/02/30. 你订购的商品可以取货。'])).toBeNull();
+    expect(parsePickupDate(['订购日期： 2026/02/30', '取货日期： 明天'])).toBeNull();
     expect(parseTimeRange(['到店时间： 13:00 PM - 01:15 PM'])).toBeNull();
   });
 

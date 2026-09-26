@@ -1,8 +1,13 @@
 const { normalizeProductName } = require('../utils/productFilter');
 const { extractOrderNumber, htmlToText, mailText } = require('./orderMailContent');
 
-const RULE_VERSION = 'apple-cn-pickup-v4-personal-setup';
+const RULE_VERSION = 'apple-cn-pickup-v5-relative-pickup-date';
 const PERSONAL_SETUP_SUBJECT = '个人设置辅导，帮你上手新 iPhone。';
+const RELATIVE_PICKUP_DAY_OFFSETS = Object.freeze({
+  今天: 0,
+  明天: 1,
+  后天: 2,
+});
 const TEMPLATE_TYPES = Object.freeze({
   CONFIRMED: 'confirmed',
   PROCESSING: 'processing',
@@ -80,20 +85,75 @@ function validDateString(year, month, day) {
     : null;
 }
 
-function parsePickupDate(lines) {
+function parseExplicitDate(value) {
+  let match = String(value || '').match(/(20\d{2})[/-](\d{1,2})[/-](\d{1,2})/);
+  if (match) return validDateString(match[1], match[2], match[3]);
+  match = String(value || '').match(/(\d{1,2})月\s*(\d{1,2})日[,，]?\s*(20\d{2})/);
+  if (match) return validDateString(match[3], match[1], match[2]);
+  match = String(value || '').match(/(20\d{2})年\s*(\d{1,2})月\s*(\d{1,2})日/);
+  if (match) return validDateString(match[1], match[2], match[3]);
+  return null;
+}
+
+function parseOrderDate(lines) {
+  for (const line of lines) {
+    if (!/^订购日期\s*[:：]/.test(line)) continue;
+    const date = parseExplicitDate(line.replace(/^订购日期\s*[:：]\s*/, ''));
+    if (date) return date;
+  }
+  return null;
+}
+
+function addDateOffset(dateValue, offsetDays) {
+  const match = String(dateValue || '').match(/^(20\d{2})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const date = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  return date.toISOString().slice(0, 10);
+}
+
+function parsePickupDateResult(lines) {
   for (const line of lines) {
     if (!/^取货日期\s*[:：]/.test(line)) continue;
-    let match = line.match(/(20\d{2})[/-](\d{1,2})[/-](\d{1,2})/);
-    if (match) return validDateString(match[1], match[2], match[3]);
-    match = line.match(/(\d{1,2})月\s*(\d{1,2})日[,，]?\s*(20\d{2})/);
-    if (match) return validDateString(match[3], match[1], match[2]);
+    const raw = line.replace(/^取货日期\s*[:：]\s*/, '').trim();
+    const explicitDate = parseExplicitDate(raw);
+    if (explicitDate) {
+      return {
+        date: explicitDate,
+        evidence: { raw, basis: 'explicit', referenceDate: null, offsetDays: 0 },
+      };
+    }
+    const relativeMatch = raw.match(/(?:^|[\s,，])(今天|明天|后天)(?:$|[\s,.，。（(])/);
+    if (relativeMatch) {
+      const orderDate = parseOrderDate(lines);
+      const offsetDays = RELATIVE_PICKUP_DAY_OFFSETS[relativeMatch[1]];
+      return {
+        date: orderDate ? addDateOffset(orderDate, offsetDays) : null,
+        evidence: {
+          raw: relativeMatch[1],
+          basis: 'order_date',
+          referenceDate: orderDate,
+          offsetDays,
+        },
+      };
+    }
   }
   for (const line of lines) {
     if (!/^有货\s*[:：]/.test(line)) continue;
-    const match = line.match(/(20\d{2})[/-](\d{1,2})[/-](\d{1,2})/);
-    if (match) return validDateString(match[1], match[2], match[3]);
+    const raw = line.replace(/^有货\s*[:：]\s*/, '').trim();
+    const explicitDate = parseExplicitDate(raw);
+    if (explicitDate) {
+      return {
+        date: explicitDate,
+        evidence: { raw, basis: 'explicit_availability', referenceDate: null, offsetDays: 0 },
+      };
+    }
   }
-  return null;
+  return { date: null, evidence: null };
+}
+
+function parsePickupDate(lines) {
+  return parsePickupDateResult(lines).date;
 }
 
 function to24Hour(hour, minute, meridiem) {
@@ -188,16 +248,23 @@ function parseOrderMailLifecycle(parsed) {
   const orderNumber = extractOrderNumber(parsed);
   const products = parseProducts(lines);
   const store = parseStore(lines);
-  const date = parsePickupDate(lines);
+  const pickupDateResult = parsePickupDateResult(lines);
+  const date = pickupDateResult.date;
   const range = parseTimeRange(lines);
   const businessHours = /(?:店面|零售店)营业时间[>›]?内前往/.test(body);
   const retentionText = lines.find(line => /最长可?.*保留\s*7\s*天|最多保留\s*7\s*天/.test(line));
   const pickupInfo =
-    store.storeName || store.storeAddress || date || range || businessHours
+    store.storeName ||
+    store.storeAddress ||
+    date ||
+    pickupDateResult.evidence ||
+    range ||
+    businessHours
       ? {
         storeName: store.storeName,
         storeAddress: store.storeAddress,
         pickupDate: date,
+        pickupDateEvidence: pickupDateResult.evidence,
         startTime: range?.start || null,
         endTime: range?.end || null,
         appointmentMode: businessHours ? 'business_hours' : range ? 'scheduled' : 'unknown',
