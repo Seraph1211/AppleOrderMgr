@@ -15,6 +15,11 @@ export const getPickupRecords = params =>
   client.get('/pickups', { params: serializeFilters(params) });
 export const updatePickupRecord = (orderId, payload) => client.put(`/pickups/${orderId}`, payload);
 export const getPickupEvents = orderId => client.get(`/pickups/${orderId}/events`);
+/** 读取当前订单的设备号码清单。 */
+export const getPickupDevices = orderId => client.get(`/pickups/${orderId}/devices`);
+/** 绑定本次识别的序列号，服务端幂等保存。 */
+export const bindPickupDevice = (orderId, payload) =>
+  client.post(`/pickups/${orderId}/devices`, payload);
 export const preparePickupEvidence = (orderId, payload) =>
   client.post(`/pickups/${orderId}/evidence/prepare`, payload);
 export const confirmPickupEvidence = (orderId, payload) =>
@@ -38,4 +43,19 @@ export async function exportPickupRecords(params) {
   anchor.download = `取货清单_${new Date().toISOString().slice(0, 10)}.xlsx`;
   anchor.click();
   URL.revokeObjectURL(url);
+}
+
+/** 解除明确设备的订单绑定，保留服务端操作历史。 */
+export const unbindPickupDevice = (orderId, deviceId) =>
+  client.delete(`/pickups/${orderId}/devices/${deviceId}`);
+
+/** 上传单张标签图片到服务端 OCR，取消只停止等待，不保证撤回已受理调用。 */
+export function recognizePickupSerial(orderId, image, signal) {
+  const form = new FormData();
+  form.append('image', image);
+  return client.post(`/pickups/${orderId}/devices/ocr`, form, {
+    headers: { 'Content-Type': undefined },
+    timeout: 40000,
+    signal,
+  });
 }

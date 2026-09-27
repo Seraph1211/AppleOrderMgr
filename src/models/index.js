@@ -58,6 +58,8 @@ const models = {
   Recipient: require('./Recipient')(sequelize),
   Order: require('./Order')(sequelize),
   PickupRecord: require('./PickupRecord')(sequelize),
+  PickupDevice: require('./PickupDevice')(sequelize),
+  OcrMonthlyUsage: require('./OcrMonthlyUsage')(sequelize),
   QuotePricingSetting: require('./QuotePricingSetting')(sequelize),
   QuotePriceAdjustment: require('./QuotePriceAdjustment')(sequelize),
   QuotePricingVersion: require('./QuotePricingVersion')(sequelize),

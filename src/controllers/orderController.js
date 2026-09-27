@@ -13,7 +13,7 @@ const { formatOrderTime } = require('../utils/orderTime');
 
 const { Op, Sequelize } = require('sequelize');
 const XLSX = require('xlsx');
-const { Order, AppleId, Recipient, EmailLog, sequelize } = require('../models');
+const { Order, AppleId, Recipient, EmailLog, PickupDevice, sequelize } = require('../models');
 const { scopeOrderWhere } = require('../services/orderAccessService');
 const logger = require('../utils/logger');
 const { EMAIL_ORDER_STATUSES, PERMISSIONS } = require('../constants/business');
@@ -148,6 +148,7 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
   return {
     id: plain.id,
     order_number: plain.orderNumber,
+    serial_numbers: plain.serialNumbers || [],
     ingestion_source: plain.ingestionSource || 'unknown',
     source_recipient_tag: plain.sourceRecipientTag || null,
     recipient_profile_tag: plain.recipient?.tag || null,
@@ -169,8 +170,8 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
     products: serializePublicProducts(plain.products, plain.productFilterItems),
     ...serializeOrderPricingFields(plain),
     ...serializeEmailLifecycleFields(plain),
-    payment_assignment_hold_reason: plain.paymentAssignmentHoldReason || null,
     display_order_status: getDisplayOrderStatus(plain),
+    payment_assignment_hold_reason: plain.paymentAssignmentHoldReason || null,
     recipient_id_card: maskIdCard(plain.recipientIdCard),
     recipient_email: plain.recipientEmail,
     recipient_phone: includeRecipientPhone ? plain.recipientPhone : maskPhone(plain.recipientPhone),
@@ -254,8 +255,8 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
     products: serializePublicProducts(plain.products, plain.productFilterItems),
     ...serializeOrderPricingFields(plain),
     ...serializeEmailLifecycleFields(plain),
-    payment_assignment_hold_reason: plain.paymentAssignmentHoldReason || null,
     display_order_status: getDisplayOrderStatus(plain),
+    payment_assignment_hold_reason: plain.paymentAssignmentHoldReason || null,
     order_url: null,
     payment_method: getSourcePaymentMethod(plain),
     payer_name: plain.payerName,
@@ -469,6 +470,9 @@ function buildListFilters(query) {
     if (kw.length > 0) {
       // 系统订单 ID 精确匹配，并保留官网订单号及既有文本模糊搜索。
       where[Op.or] = [
+        Sequelize.literal(`EXISTS (SELECT 1 FROM pickup_devices AS device
+          WHERE device.order_id = "Order".id
+          AND device.serial_number ILIKE ${sequelize.escape(`%${kw.replace(/[\\%_]/g, '\\$&')}%`)})`),
         { orderNumber: { [Op.iLike]: `%${kw}%` } },
         { appleId: { [Op.iLike]: `%${kw}%` } },
         { recipientName: { [Op.iLike]: `%${kw}%` } },
@@ -542,6 +546,27 @@ async function listOrders(req, res) {
       offset: (page - 1) * limit,
       distinct: true,
     });
+
+    // 批量读取当前页序列号，避免 hasMany JOIN 改变分页或产生 N+1。
+    let devices = [];
+    if (rows.length) {
+      devices = await PickupDevice.findAll({
+        where: { orderId: { [Op.in]: rows.map(order => order.id) } },
+        attributes: ['orderId', 'serialNumber'],
+        order: [
+          ['createdAt', 'ASC'],
+          ['id', 'ASC'],
+        ],
+        raw: true,
+      });
+    }
+    const serialNumbersByOrder = new Map();
+    for (const device of devices) {
+      if (!serialNumbersByOrder.has(device.orderId)) serialNumbersByOrder.set(device.orderId, []);
+      serialNumbersByOrder.get(device.orderId).push(device.serialNumber);
+    }
+    for (const order of rows)
+      order.setDataValue('serialNumbers', serialNumbersByOrder.get(order.id) || []);
 
     const includeRecipientPhone = canDisplayLocalSensitiveFields(
       req,

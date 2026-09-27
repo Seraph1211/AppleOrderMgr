@@ -209,14 +209,15 @@ export default function Orders() {
         const mappedOrders = res.data.orders.map(order => ({
           id: order.id,
           orderNumber: order.order_number,
+          serialNumbers: order.serial_numbers || [],
           ingestionSource: order.ingestion_source,
           sourceRecipientTag: order.source_recipient_tag,
           recipientProfileTag: order.recipient_profile_tag,
           recipientTagConflict: order.recipient_tag_conflict,
           recipientLinked: order.recipient_linked,
           emailOrderStatus: order.email_order_status || 'unknown',
-          emailStatusNeedsReview: Boolean(order.email_status_needs_review),
           displayOrderStatus: order.display_order_status || order.email_order_status || 'unknown',
+          emailStatusNeedsReview: Boolean(order.email_status_needs_review),
           emailStatusReviewReasons: order.email_status_review_reasons || [],
           emailStatusEvidenceAt: order.email_status_evidence_at || null,
           emailStatusVersion: order.email_status_version || 0,
@@ -379,6 +380,16 @@ export default function Orders() {
                   : '来源未知'}
             </p>
           </div>
+        );
+      case 'serialNumbers':
+        return value?.length ? (
+          <div className="space-y-1 font-mono text-sm text-gray-900">
+            {value.map(serial => (
+              <div key={serial}>{serial}</div>
+            ))}
+          </div>
+        ) : (
+          <span className="text-gray-400">-</span>
         );
       case 'recipientTag':
         return (
@@ -582,7 +593,7 @@ export default function Orders() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="搜索系统订单 ID、官网订单号、Apple ID 或取机人..."
+              placeholder="搜索订单 ID、订单号、Serial No.、Apple ID 或取机人..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
               className="input pl-10"

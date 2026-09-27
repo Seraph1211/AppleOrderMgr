@@ -50,6 +50,9 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@alicloud/ocr-api20210707": "3.1.3",
+    "@alicloud/openapi-client": "0.4.15",
+    "@alicloud/tea-util": "1.4.11",
     "ali-oss": "^6.23.0",
     "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",

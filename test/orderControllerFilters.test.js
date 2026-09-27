@@ -7,6 +7,7 @@ jest.mock('../src/models', () => ({
   AppleId: {},
   Recipient: {},
   EmailLog: {},
+  PickupDevice: {},
 }));
 jest.mock('../src/utils/logger', () => ({
   debug: jest.fn(),

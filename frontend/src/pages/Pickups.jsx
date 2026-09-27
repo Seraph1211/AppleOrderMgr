@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
   Clock3,
+  Camera,
   Download,
   ExternalLink,
   Eye,
@@ -14,6 +15,7 @@ import {
 } from 'lucide-react';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
+import PickupDeviceScanner from '../components/PickupDeviceScanner';
 import { describePickupEvent, formatPickupHistoryTime } from '../utils/pickupHistory';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
@@ -82,19 +84,20 @@ export default function Pickups() {
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [editing, setEditing] = useState(null);
+  const [scanningOrder, setScanningOrder] = useState(null);
   const [events, setEvents] = useState(null);
   const [evidencePreview, setEvidencePreview] = useState(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState('');
 
   useEffect(() => {
-    if (!editing && !events && !evidencePreview) return undefined;
+    if (!editing && !events && !evidencePreview && !scanningOrder) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [editing, events, evidencePreview]);
+  }, [editing, events, evidencePreview, scanningOrder]);
 
   const load = useCallback(async () => {
     const sequence = ++requestSequence.current;
@@ -374,6 +377,10 @@ export default function Pickups() {
                 </td>
                 <td className="px-3 py-3">
                   <div className="flex gap-2">
+                    <button className="btn btn-secondary" onClick={() => setScanningOrder(item)}>
+                      <Camera className="h-4 w-4" />
+                      {can(PERMISSIONS.PICKUPS_EDIT) ? '设备扫码' : '设备'}
+                    </button>
                     {can(PERMISSIONS.PICKUPS_EDIT) && (
                       <button className="btn btn-secondary" onClick={() => openEdit(item)}>
                         <Pencil className="h-4 w-4" />
@@ -413,6 +420,13 @@ export default function Pickups() {
               {item.pickupStore || '-'} · {pickupSchedule(item)}
             </div>
             <div className="flex gap-2">
+              <button
+                className="btn btn-secondary min-h-[44px]"
+                onClick={() => setScanningOrder(item)}
+              >
+                <Camera className="h-4 w-4" />
+                {can(PERMISSIONS.PICKUPS_EDIT) ? '设备扫码' : '设备'}
+              </button>
               {can(PERMISSIONS.PICKUPS_EDIT) && (
                 <button className="btn btn-primary flex-1" onClick={() => openEdit(item)}>
                   <Pencil className="h-4 w-4" />
@@ -430,6 +444,15 @@ export default function Pickups() {
           </div>
         ))}
       </div>
+      {scanningOrder && (
+        <PickupDeviceScanner
+          key={scanningOrder.orderId}
+          order={scanningOrder}
+          canEdit={can(PERMISSIONS.PICKUPS_EDIT)}
+          onClose={() => setScanningOrder(null)}
+          onSaved={load}
+        />
+      )}
       {loading && <div className="py-8 text-center text-gray-500">正在加载...</div>}
       {!loading && !items.length && (
         <div className="card py-10 text-center text-gray-500">暂无符合条件的订单</div>

@@ -40,6 +40,13 @@ function formatValue(field, value) {
 
 /** 将审计原始变化转换为用户可读文字，不展示内部字段、ID 或 JSON。 */
 export function describePickupEvent(event) {
+  if (event.eventType === 'device_removed') {
+    return [`解除设备绑定：Serial No. ${event.changes?.device?.serialNumber || '-'}`];
+  }
+  if (event.eventType === 'device_added') {
+    const device = event.changes?.device;
+    return [`扫码登记设备：Serial No. ${device?.serialNumber || '-'}`];
+  }
   if (event.eventType === 'evidence_added') {
     const evidence = event.changes?.evidence;
     const label =

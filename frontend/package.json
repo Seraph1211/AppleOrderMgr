@@ -9,6 +9,8 @@
     "lint": "eslint . --ext js,jsx --report-unused-disable-directives --max-warnings 100"
   },
   "dependencies": {
+    "@zxing/browser": "0.1.5",
+    "@zxing/library": "0.21.3",
     "axios": "^1.6.7",
     "date-fns": "^3.3.1",
     "jsqr": "1.4.0",
