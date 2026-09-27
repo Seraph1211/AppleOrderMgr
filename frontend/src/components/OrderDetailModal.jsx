@@ -2,7 +2,7 @@ import AlertModal from './AlertModal';
 import OrderAmount from './OrderAmount';
 import OrderSources from './OrderSources';
 import { getOrderDetailWithLink, updateOrder, updateOrderPayer } from '../api/ordersApi';
-import { getEmailOrderStatusBadge } from '../constants/orderStatus';
+import { getDisplayOrderStatusBadge } from '../constants/orderStatus';
 import { PERMISSIONS } from '../constants/permissions';
 import { useAuth } from '../contexts/AuthContext';
 import { formatOrderTime } from '../utils/orderTime';
@@ -144,7 +144,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
     }
   };
 
-  const statusBadge = getEmailOrderStatusBadge(order.emailOrderStatus);
+  const statusBadge = getDisplayOrderStatusBadge(order.displayOrderStatus);
 
   return (
     <div className="order-detail-modal fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-0 sm:p-4">
@@ -166,7 +166,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
         <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
           <OrderSources orderId={order.id} />
           <div className="card border-blue-100 bg-blue-50/40">
-            <h3 className="mb-4 text-lg font-semibold">官方订单邮件状态</h3>
+            <h3 className="mb-4 text-lg font-semibold">订单状态</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
                 <p className="text-sm text-gray-600">订单状态</p>

@@ -46,10 +46,23 @@ export const EMAIL_ORDER_STATUS_BADGES = {
   },
   ready_for_pickup: { text: '可取货', class: 'badge-success' },
   picked_up: {
-    text: '已取货（邮件推定）',
+    text: '已取货',
     class: 'bg-blue-100 text-blue-800 border border-blue-200',
   },
 };
+
+export const DISPLAY_ORDER_STATUS_BADGES = {
+  unknown: EMAIL_ORDER_STATUS_BADGES.unknown,
+  confirmed: EMAIL_ORDER_STATUS_BADGES.confirmed,
+  expired: { text: '已过期', class: 'badge-error' },
+  processing: EMAIL_ORDER_STATUS_BADGES.processing,
+  ready_for_pickup: EMAIL_ORDER_STATUS_BADGES.ready_for_pickup,
+  picked_up: EMAIL_ORDER_STATUS_BADGES.picked_up,
+};
+
+export const DISPLAY_ORDER_STATUS_LABELS = Object.fromEntries(
+  Object.entries(DISPLAY_ORDER_STATUS_BADGES).map(([key, badge]) => [key, badge.text])
+);
 
 export const EMAIL_ORDER_STATUS_LABELS = Object.fromEntries(
   Object.entries(EMAIL_ORDER_STATUS_BADGES).map(([key, badge]) => [key, badge.text])
@@ -60,4 +73,11 @@ export function getEmailOrderStatusBadge(status) {
   return Object.hasOwn(EMAIL_ORDER_STATUS_BADGES, status)
     ? EMAIL_ORDER_STATUS_BADGES[status]
     : EMAIL_ORDER_STATUS_BADGES.unknown;
+}
+
+/** 获取订单管理展示状态标签。 */
+export function getDisplayOrderStatusBadge(status) {
+  return Object.hasOwn(DISPLAY_ORDER_STATUS_BADGES, status)
+    ? DISPLAY_ORDER_STATUS_BADGES[status]
+    : DISPLAY_ORDER_STATUS_BADGES.unknown;
 }

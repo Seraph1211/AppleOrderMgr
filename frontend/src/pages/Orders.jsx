@@ -26,7 +26,7 @@ import { getOrders, getOrderLink, getOrderFilterOptions, exportOrders } from '..
 import useColumnConfig from '../hooks/useColumnConfig';
 import ColumnConfigModal from '../components/ColumnConfigModal';
 import OrderDetailModal from '../components/OrderDetailModal';
-import { EMAIL_ORDER_STATUS_BADGES, getEmailOrderStatusBadge } from '../constants/orderStatus';
+import { DISPLAY_ORDER_STATUS_LABELS, getDisplayOrderStatusBadge } from '../constants/orderStatus';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
 import { ordersColumns } from '../constants/tableColumns';
@@ -35,9 +35,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import { replayOrderMailLifecycle, replayOrderMailLifecycleBatch } from '../api/orderMailApi';
 
-const EMAIL_ORDER_STATUS_LABELS = Object.fromEntries(
-  Object.entries(EMAIL_ORDER_STATUS_BADGES).map(([key, badge]) => [key, badge.text])
-);
 export default function Orders() {
   const { can } = useAuth();
   const canReadMail = can(PERMISSIONS.ORDER_MAIL_READ) || can(PERMISSIONS.ORDER_MAIL_MANAGE);
@@ -74,7 +71,7 @@ export default function Orders() {
 
   // 筛选条件
   const [filters, setFilters] = useState({
-    emailOrderStatuses: [],
+    displayOrderStatuses: [],
     productKeys: [],
     recipientName: '',
     recipientTags: [],
@@ -116,7 +113,7 @@ export default function Orders() {
     }
   }, [
     searchTerm,
-    filters.emailOrderStatuses,
+    filters.displayOrderStatuses,
     filters.productKeys,
     filters.recipientName,
     filters.recipientTags,
@@ -197,7 +194,7 @@ export default function Orders() {
         keyword: searchTerm || undefined,
         ...filters,
       };
-      for (const key of ['emailOrderStatuses', 'productKeys', 'pickupStores', 'recipientTags']) {
+      for (const key of ['displayOrderStatuses', 'productKeys', 'pickupStores', 'recipientTags']) {
         if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
         else delete params[key];
       }
@@ -219,6 +216,7 @@ export default function Orders() {
           recipientLinked: order.recipient_linked,
           emailOrderStatus: order.email_order_status || 'unknown',
           emailStatusNeedsReview: Boolean(order.email_status_needs_review),
+          displayOrderStatus: order.display_order_status || order.email_order_status || 'unknown',
           emailStatusReviewReasons: order.email_status_review_reasons || [],
           emailStatusEvidenceAt: order.email_status_evidence_at || null,
           emailStatusVersion: order.email_status_version || 0,
@@ -276,7 +274,7 @@ export default function Orders() {
 
   const handleExport = async () => {
     const params = { keyword: searchTerm || undefined, ...filters };
-    for (const key of ['emailOrderStatuses', 'productKeys', 'pickupStores', 'recipientTags']) {
+    for (const key of ['displayOrderStatuses', 'productKeys', 'pickupStores', 'recipientTags']) {
       if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
       else delete params[key];
     }
@@ -323,7 +321,7 @@ export default function Orders() {
 
   const resetFilters = () => {
     setFilters({
-      emailOrderStatuses: [],
+      displayOrderStatuses: [],
       productKeys: [],
       recipientName: '',
       recipientTags: [],
@@ -398,7 +396,7 @@ export default function Orders() {
         );
 
       case 'emailOrderStatus': {
-        const badge = getEmailOrderStatusBadge(value);
+        const badge = getDisplayOrderStatusBadge(order.displayOrderStatus);
         return (
           <div className="text-sm">
             <span className={`badge ${badge.class}`}>{badge.text}</span>
@@ -658,13 +656,13 @@ export default function Orders() {
           />
           {/* 邮件订单状态 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">订单状态（邮件）</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">订单状态</label>
             <TagMultiSelect
-              options={Object.keys(EMAIL_ORDER_STATUS_LABELS)}
-              optionLabels={EMAIL_ORDER_STATUS_LABELS}
-              value={filters.emailOrderStatuses}
-              onChange={value => handleFilterChange('emailOrderStatuses', value)}
-              ariaLabel="邮件订单状态筛选"
+              options={Object.keys(DISPLAY_ORDER_STATUS_LABELS)}
+              optionLabels={DISPLAY_ORDER_STATUS_LABELS}
+              value={filters.displayOrderStatuses}
+              onChange={value => handleFilterChange('displayOrderStatuses', value)}
+              ariaLabel="订单状态筛选"
               placeholder="全部状态"
               itemLabel="状态"
             />
@@ -776,7 +774,7 @@ export default function Orders() {
             <div className="orders-mobile-list space-y-3 md:hidden">
               {orders.map(order => {
                 const products = groupDisplayProducts(order.products);
-                const status = getEmailOrderStatusBadge(order.emailOrderStatus);
+                const status = getDisplayOrderStatusBadge(order.displayOrderStatus);
                 const pickup = getOrderPickupDisplay(order.emailPickupInfo);
                 return (
                   <article
@@ -872,10 +870,13 @@ export default function Orders() {
                           aria-label="全选本页订单"
                           disabled={mailBatchSubmitting || exportingSelected}
                           checked={
-                            orders.length > 0 && orders.every(order => selectedIds.includes(order.id))
+                            orders.length > 0 &&
+                            orders.every(order => selectedIds.includes(order.id))
                           }
                           onChange={event =>
-                            setSelectedIds(event.target.checked ? orders.map(order => order.id) : [])
+                            setSelectedIds(
+                              event.target.checked ? orders.map(order => order.id) : []
+                            )
                           }
                         />
                       </th>
@@ -893,9 +894,10 @@ export default function Orders() {
                           {col.key === 'emailOrderStatus' && (
                             <TableHeaderHint label="订单状态说明">
                               <p>订单已确认：已下单，待付款</p>
+                              <p>已过期：下单满 30 分钟，尚无邮件付款证据</p>
                               <p>处理中：订单已付款</p>
                               <p>可取货：订单可取货</p>
-                              <p>已取货（邮件推定）：收到 Apple 个人设置辅导邀请</p>
+                              <p>已取货：收到 Apple 个人设置辅导邀请（邮件推定）</p>
                             </TableHeaderHint>
                           )}
                           {col.key === 'emailPickupInfo' && (
@@ -941,7 +943,7 @@ export default function Orders() {
                   ))}
                 </tbody>
               </table>
-          </div>
+            </div>
           </>
         )}
       </div>
@@ -971,7 +973,7 @@ export default function Orders() {
 
       {/* 订单详情弹窗 */}
       <OrderDetailModal
-        order={selectedOrder}
+        order={orders.find(order => order.id === selectedOrder?.id) || selectedOrder}
         isOpen={showDetailModal}
         onClose={() => {
           setShowDetailModal(false);

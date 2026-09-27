@@ -13,6 +13,7 @@ const STATUS_MAP = {
   已确认: 'confirmed',
   处理中: 'processing',
   可取货: 'ready_for_pickup',
+  已取货: 'picked_up',
   '已取货（邮件推定）': 'picked_up',
 };
 // 与订单管理页 recipient_tag 相同；子查询避免聚合 JOIN 产生重复计数。

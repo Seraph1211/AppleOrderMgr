@@ -116,7 +116,7 @@ export default function ChannelOrders() {
             <p className="text-2xl font-bold text-green-600 mt-2">{stats.readyOrders}</p>
           </div>
           <div className="card">
-            <p className="text-sm text-gray-500">已取货（邮件推定）</p>
+            <p className="text-sm text-gray-500">已取货</p>
             <p className="text-2xl font-bold text-primary mt-2">{stats.completedOrders}</p>
           </div>
         </div>

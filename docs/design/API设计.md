@@ -679,6 +679,8 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 订单列表和详情响应新增：`email_order_status`、`email_payment_status`、`email_status_needs_review`、`email_status_review_reasons`、`email_status_version`、`email_status_evidence_at`、`email_pickup_info`、`email_pickup_date`、`email_lifecycle_updated_at`。这些字段只表达官方订单邮件结论，原 `status/payment_status/pickup_status/official_*` 继续表达官网观测。列表和导出接受 JSON 数组参数 `emailOrderStatuses`（unknown/confirmed/processing/ready_for_pickup/picked_up）及 `emailPaymentStatuses`（unknown/paid）；`picked_up` 表示收到精确标题的 Apple 个人设置辅导邮件后的单向推定，不是人工取货记录或实际取货时间。付款状态导出字段作为兼容 API 保留，但订单管理页面的列表、筛选、详情和导出字段弹窗均不展示付款状态。无权访问的订单仍不会因邮件字段泄露。
 
+订单管理列表与详情另返回 `display_order_status`，只用于页面显示：邮件状态为 `confirmed`、邮件付款状态不是 `paid` 且完整来源下单时间 `order_date + 30 分钟` 已到时为 `expired`（显示“已过期”）；其他情况沿用 `email_order_status`。缺少有效来源时间不推定过期；后续邮件确认付款或推进订单阶段后立即按新证据显示。该推算不证明 Apple 官网已取消订单，也不改写邮件生命周期、付款任务或人工取货记录。列表和导出新增 `displayOrderStatuses` 多选筛选（unknown/confirmed/expired/processing/ready_for_pickup/picked_up），在数据库分页前按相同规则计算；原 `emailOrderStatuses` 保持纯邮件状态筛选，两个参数同时提供时取交集。导出字段键 `emailOrderStatus` 为兼容保留，列标题改为“订单状态”，值按 `display_order_status` 输出。`picked_up` 的页面短名称为“已取货”，邮件推定的含义仍见订单状态说明，不代表人工实际取货。
+
 订单导出字段白名单保留 `emailPickupStore`（“邮件取货门店”），并增加 `emailPickupSchedule`（“邮件取货安排”）；页面显示邮件取货安排列时，两项均作为默认导出字段。固定预约按 `YYYY-MM-DD HH:mm–HH:mm` 输出，例如 `2026-09-21 12:30–12:45`；营业时间预约按“日期 营业时间内到店”输出，日期缺失时只输出已确认的安排，不从下单时间或官网状态推断。
 
 付款任务与调度摘要保留 `emailPaymentStatus`、`emailPaymentConfirmed` 和必要的邮件订单状态／待核对标记，不开放邮件原文或完整订单详情。付款状态仅在付款调度和本人付款任务页面展示，订单管理列表与详情不展示。自动分配、人工分配预检及直接 SQL 候选统一排除 `email_payment_status='paid'`；邮件未知不额外禁止既有人工操作。

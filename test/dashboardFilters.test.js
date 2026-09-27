@@ -45,5 +45,6 @@ describe('仪表板输入与筛选契约', () => {
     });
     expect(filters.emailOrderStatuses).toEqual(['picked_up']);
     expect(filters.status).toBe('picked_up');
+    expect(parseDashboardFilters({ status: '已取货' }).status).toBe('picked_up');
   });
 });

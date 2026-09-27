@@ -27,6 +27,11 @@ const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
 const { maskIdCard, maskPhone, escapeSpreadsheetFormula } = require('../utils/masking');
 const { canDisplayLocalSensitiveFields } = require('../utils/localSensitiveDisplay');
 const { normalizePickupDate } = require('../utils/orderPickupTime');
+const {
+  DISPLAY_ORDER_STATUSES,
+  DISPLAY_ORDER_STATUS_SQL,
+  getDisplayOrderStatus,
+} = require('../utils/orderDisplayStatus');
 
 const MAX_MULTI_SELECT_ITEMS = 100;
 const MAX_FILTER_VALUE_LENGTH = 255;
@@ -54,7 +59,7 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
         })
         .join('、'),
   },
-  emailOrderStatus: { label: '邮件订单状态', value: item => item.email_order_status || 'unknown' },
+  emailOrderStatus: { label: '订单状态', value: item => item.display_order_status || 'unknown' },
   emailPaymentStatus: {
     label: '邮件付款状态',
     value: item => item.email_payment_status || 'unknown',
@@ -165,6 +170,7 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
     ...serializeOrderPricingFields(plain),
     ...serializeEmailLifecycleFields(plain),
     payment_assignment_hold_reason: plain.paymentAssignmentHoldReason || null,
+    display_order_status: getDisplayOrderStatus(plain),
     recipient_id_card: maskIdCard(plain.recipientIdCard),
     recipient_email: plain.recipientEmail,
     recipient_phone: includeRecipientPhone ? plain.recipientPhone : maskPhone(plain.recipientPhone),
@@ -249,6 +255,7 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
     ...serializeOrderPricingFields(plain),
     ...serializeEmailLifecycleFields(plain),
     payment_assignment_hold_reason: plain.paymentAssignmentHoldReason || null,
+    display_order_status: getDisplayOrderStatus(plain),
     order_url: null,
     payment_method: getSourcePaymentMethod(plain),
     payer_name: plain.payerName,
@@ -361,6 +368,18 @@ function buildListFilters(query) {
     }
   );
   if (emailOrderStatuses.length) where.emailOrderStatus = { [Op.in]: emailOrderStatuses };
+  const displayOrderStatuses = parseMultiSelectFilter(
+    query.displayOrderStatuses,
+    'displayOrderStatuses',
+    { allowedValues: DISPLAY_ORDER_STATUSES, maxLength: 30 }
+  );
+  if (displayOrderStatuses.length) {
+    where[Op.and] = (where[Op.and] || []).concat(
+      Sequelize.where(Sequelize.literal(DISPLAY_ORDER_STATUS_SQL), {
+        [Op.in]: displayOrderStatuses,
+      })
+    );
+  }
   const emailPaymentStatuses = parseMultiSelectFilter(
     query.emailPaymentStatuses,
     'emailPaymentStatuses',

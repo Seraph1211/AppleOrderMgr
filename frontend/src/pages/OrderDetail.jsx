@@ -1,7 +1,7 @@
 import OrderAmount from '../components/OrderAmount';
 import OrderSources from '../components/OrderSources';
 import { getOrderDetailWithLink } from '../api';
-import { getEmailOrderStatusBadge } from '../constants/orderStatus';
+import { getDisplayOrderStatusBadge } from '../constants/orderStatus';
 import { useCallback, useEffect, useState } from 'react';
 import { AlertTriangle, ArrowLeft, CreditCard, ExternalLink, Mail, User } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -77,7 +77,7 @@ export default function OrderDetail() {
     );
   }
 
-  const statusBadge = getEmailOrderStatusBadge(order.email_order_status);
+  const statusBadge = getDisplayOrderStatusBadge(order.display_order_status);
   const products = Array.isArray(order.products) ? order.products : [];
   const reviewReasons = Array.isArray(order.email_status_review_reasons)
     ? order.email_status_review_reasons
@@ -111,7 +111,7 @@ export default function OrderDetail() {
       </div>
 
       <div className="card border-blue-100 bg-blue-50/40">
-        <h2 className="mb-4 text-lg font-semibold text-gray-900">官方订单邮件状态</h2>
+        <h2 className="mb-4 text-lg font-semibold text-gray-900">订单状态</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
           <div>
             <p className="text-sm text-gray-500">订单状态</p>

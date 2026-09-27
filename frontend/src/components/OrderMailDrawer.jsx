@@ -46,7 +46,7 @@ const LIFECYCLE_STATUS_LABELS = {
   confirmed: '订单已确认',
   processing: '处理中',
   ready_for_pickup: '可取货',
-  picked_up: '已取货（邮件推定）',
+  picked_up: '已取货',
   paid: '已付款',
 };
 const AUTHENTICITY_LABELS = {
@@ -474,7 +474,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                                     <option value="confirmed">订单已确认</option>
                                     <option value="processing">处理中</option>
                                     <option value="ready_for_pickup">可取货</option>
-                                    <option value="picked_up">已取货（邮件推定）</option>
+                                    <option value="picked_up">已取货</option>
                                   </select>
                                 </label>
                                 <label className="text-gray-700">

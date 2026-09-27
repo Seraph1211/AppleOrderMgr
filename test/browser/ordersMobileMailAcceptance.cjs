@@ -45,7 +45,9 @@ async function main() {
               id: 101,
               order_number: 'W1234567890',
               serial_numbers: ['F12345678901234567890'],
-              email_order_status: 'processing',
+              email_order_status: 'confirmed',
+              email_payment_status: 'unknown',
+              display_order_status: 'expired',
               products: [{ name: 'iPhone 18 Pro Max 256GB', quantity: 1 }],
               recipient_name: '合成取机人',
               recipient_tag: '北京 测试团队',
@@ -130,6 +132,7 @@ async function main() {
       assert(overflow <= 1, `${width}px 下页面横向溢出 ${overflow}px`);
       if (width < 768) {
         assert.equal(await page.locator('.orders-mobile-list article').count(), 1);
+        await page.locator('.orders-mobile-list').getByText('已过期', { exact: true }).waitFor();
         assert.equal(
           await page.locator('.orders-mobile-list').getByText('F12345678901234567890').count(),
           0
@@ -146,12 +149,16 @@ async function main() {
         if (width === 390) {
           await page.locator('.orders-mobile-list').getByRole('button', { name: '查看' }).click();
           await page.getByRole('heading', { name: '订单详情' }).waitFor();
+          await page.locator('.order-detail-modal').getByText('已过期', { exact: true }).waitFor();
           await page.locator('.order-detail-modal').getByText('F12345678901234567890').waitFor();
           await page.getByRole('button', { name: '关闭订单详情' }).click();
         }
         if (width === 390)
           await page.screenshot({ path: '/tmp/apple-orders-mobile-390.png', fullPage: true });
-      } else assert.equal(await page.locator('table thead').first().isVisible(), true);
+      } else {
+        assert.equal(await page.locator('table thead').first().isVisible(), true);
+        await page.locator('table tbody').first().getByText('已过期', { exact: true }).waitFor();
+      }
     }
 
     await page.setViewportSize({ width: 390, height: 600 });

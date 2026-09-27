@@ -10,7 +10,7 @@ import client from './client';
  * @param {Object} params - 查询参数
  * @param {number} params.page - 页码
  * @param {number} params.limit - 每页数量
- * @param {string[]} params.emailOrderStatuses - 邮件订单状态
+ * @param {string[]} params.displayOrderStatuses - 订单管理展示状态
  * @param {string} params.keyword - 搜索关键词
  * @returns {Promise<Object>} 订单列表
  */

@@ -35,6 +35,32 @@ test('邮件订单与付款状态使用独立受控多选', () => {
   ).toEqual(['picked_up']);
 });
 
+test('订单管理展示状态支持已过期并在数据库分页前筛选', () => {
+  const { where } = buildListFilters({
+    displayOrderStatuses: '["confirmed","expired"]',
+  });
+  expect(where[Op.and][0].attribute.val).toContain("'confirmed'");
+  expect(where[Op.and][0].logic[Op.in]).toEqual(['confirmed', 'expired']);
+  expect(() => buildListFilters({ displayOrderStatuses: '["paid"]' })).toThrow();
+});
+
+test('订单管理展示状态不覆盖原邮件状态', () => {
+  const order = {
+    toJSON: () => ({
+      id: 1,
+      products: [],
+      emailOrderStatus: 'confirmed',
+      emailPaymentStatus: 'unknown',
+      orderDate: new Date('2020-01-01T00:00:00Z'),
+    }),
+  };
+  expect(serializeOrderListItem(order)).toMatchObject({
+    email_order_status: 'confirmed',
+    display_order_status: 'expired',
+  });
+  expect(serializeOrderDetail(order).display_order_status).toBe('expired');
+});
+
 test.each([
   { status: 'processing' },
   { statuses: '["processing"]' },

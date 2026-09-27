@@ -9,7 +9,7 @@ export const orderExportFields = Object.freeze([
   { key: 'orderAmount', label: '订单金额', tableKeys: ['products'] },
   {
     key: 'emailOrderStatus',
-    label: '邮件订单状态',
+    label: '订单状态',
     tableKeys: ['emailOrderStatus'],
   },
   { key: 'emailStatusNeedsReview', label: '邮件状态待核对', tableKeys: [] },
