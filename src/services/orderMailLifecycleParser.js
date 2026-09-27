@@ -1,7 +1,7 @@
 const { normalizeProductName } = require('../utils/productFilter');
 const { extractOrderNumber, htmlToText, mailText } = require('./orderMailContent');
 
-const RULE_VERSION = 'apple-cn-pickup-v5-relative-pickup-date';
+const RULE_VERSION = 'apple-cn-pickup-v6-terminal-statuses';
 const PERSONAL_SETUP_SUBJECT = '个人设置辅导，帮你上手新 iPhone。';
 const RELATIVE_PICKUP_DAY_OFFSETS = Object.freeze({
   今天: 0,
@@ -14,6 +14,8 @@ const TEMPLATE_TYPES = Object.freeze({
   READY_UPDATE: 'ready_update',
   READY_INFO: 'ready_info',
   PERSONAL_SETUP: 'personal_setup',
+  EXPIRED: 'expired',
+  CANCELLED: 'cancelled',
   EXCLUDED: 'excluded',
   UNKNOWN: 'unknown',
 });
@@ -42,6 +44,8 @@ function classifyTemplate(subject) {
   if (/^关于你的\s+Apple\s+订单\s+W\d{10}\s+的更新信息$/i.test(value))
     return TEMPLATE_TYPES.READY_UPDATE;
   if (/^订单\s+W\d{10}\s+的取货信息$/i.test(value)) return TEMPLATE_TYPES.READY_INFO;
+  if (/^订单\s+W\d{10}\s+已过期[。.！!]?$/.test(value)) return TEMPLATE_TYPES.EXPIRED;
+  if (/^订单\s+W\d{10}\s+已取消[。.！!]?$/.test(value)) return TEMPLATE_TYPES.CANCELLED;
   if (value === cleanText(PERSONAL_SETUP_SUBJECT)) return TEMPLATE_TYPES.PERSONAL_SETUP;
   if (/电子收据|广告/i.test(value)) return TEMPLATE_TYPES.EXCLUDED;
   return TEMPLATE_TYPES.UNKNOWN;
@@ -306,6 +310,21 @@ function parseOrderMailLifecycle(parsed) {
     result.paymentStatus = 'paid';
     result.evidence.bodyEventMatched = true;
     result.evidence.paymentRule = 'ready_for_pickup_implies_prepaid_confirmed';
+  } else if (
+    templateType === TEMPLATE_TYPES.EXPIRED &&
+    lines.some(line => /^你的取货安排已过期[。.!！]?$/.test(line)) &&
+    lines.some(line => /^你未在限定的时间内取货[。.!！]/.test(line))
+  ) {
+    result.orderStatus = 'expired';
+    result.evidence.bodyEventMatched = true;
+    result.evidence.terminalRule = 'pickup_deadline_expired';
+  } else if (
+    templateType === TEMPLATE_TYPES.CANCELLED &&
+    lines.some(line => /^你的取货安排已取消[。.!！]?$/.test(line))
+  ) {
+    result.orderStatus = 'cancelled';
+    result.evidence.bodyEventMatched = true;
+    result.evidence.terminalRule = 'pickup_cancellation_confirmed';
   } else if (templateType === TEMPLATE_TYPES.PERSONAL_SETUP) {
     result.orderStatus = 'picked_up';
     result.paymentStatus = 'paid';

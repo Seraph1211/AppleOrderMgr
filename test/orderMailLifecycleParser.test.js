@@ -380,3 +380,140 @@ describe('订单邮件生命周期模板解析', () => {
     expect(aggregate.reviewReasons).toContain('PRODUCT_SCOPE_MISMATCH');
   });
 });
+
+describe('过期与取消邮件终态', () => {
+  const orderNumber = 'W1234567890';
+  const products = [{ name: 'iPhone 18 Pro Max 512GB 冰川蓝色', quantity: 2 }];
+  const productLines = [products[0].name, '数量 1', products[0].name, '数量 1'].join('\n');
+  const leads = {
+    expired:
+      '你的取货安排已过期。\n你未在限定的时间内取货。我们已取消你的订单，并正在为你办理退款。',
+    cancelled: '你的取货安排已取消。\n我们正在为你办理退款。',
+  };
+  const labels = { expired: '已过期', cancelled: '已取消' };
+  const makeEvent = (status, time, id = status) => ({
+    id,
+    messageId: id,
+    revision: 1,
+    source: 'parser',
+    templateType: status,
+    orderStatus: status,
+    paymentStatus: status === 'processing' ? 'paid' : null,
+    products,
+    needsReview: false,
+    reviewReasons: [],
+    parsedAt: new Date('2026-09-28T12:00:00Z'),
+    message: { orderNumber, emailDate: new Date(time) },
+  });
+
+  test.each(['expired', 'cancelled'])('%s 核对标题正文且不推断付款或退款', status => {
+    for (const suffix of ['', '。']) {
+      const result = parseOrderMailLifecycle(
+        parsed(
+          `订单 ${orderNumber} ${labels[status]}${suffix}`,
+          `${leads[status]}\n${productLines}`
+        )
+      );
+      expect(result).toMatchObject({
+        orderNumber,
+        templateType: status,
+        orderStatus: status,
+        paymentStatus: null,
+        needsReview: false,
+        evidence: { bodyEventMatched: true },
+      });
+      expect(evaluateProductScope(result.products, products).matched).toBe(true);
+    }
+  });
+
+  test.each(['expired', 'cancelled'])('%s 缺少明确正文或仅条件式提示须复核', status => {
+    for (const body of ['我们正在为你办理退款。', `如果${leads[status]}`]) {
+      const result = parseOrderMailLifecycle(
+        parsed(`订单 ${orderNumber} ${labels[status]}。`, `${body}\n${productLines}`)
+      );
+      expect(result.orderStatus).toBeNull();
+      expect(result.reviewReasons).toContain('BODY_EVENT_NOT_CONFIRMED');
+    }
+  });
+
+  test('相似标题和不同订单号不得触发整单终态', () => {
+    const similar = parseOrderMailLifecycle(
+      parsed(`提醒：订单 ${orderNumber} 已取消。`, leads.cancelled)
+    );
+    expect(similar.orderStatus).toBeNull();
+    const mismatch = parseOrderMailLifecycle(
+      parsed(`订单 ${orderNumber} 已过期。`, `${leads.expired}\n订单 W0987654321\n${productLines}`)
+    );
+    expect(mismatch.orderNumber).toBeNull();
+    expect(mismatch.reviewReasons).toContain('ORDER_NUMBER_AMBIGUOUS');
+  });
+
+  test.each(['expired', 'cancelled'])('%s 优先普通阶段且旧邮件乱序不回退', status => {
+    const terminal = makeEvent(status, '2026-09-26T01:00:00Z');
+    const processing = makeEvent('processing', '2026-09-25T01:00:00Z');
+    for (const events of [
+      [terminal, processing],
+      [processing, terminal],
+    ]) {
+      expect(aggregateOrderLifecycle({ orderNumber, products }, events)).toMatchObject({
+        orderStatus: status === 'cancelled' ? 'partially_cancelled' : status,
+        paymentStatus: 'paid',
+        needsReview: false,
+      });
+    }
+  });
+
+  test.each([1, 2])('过期优先于 %i 封取消，与发信及接收顺序无关', count => {
+    const events = [
+      makeEvent('expired', '2026-09-24T01:00:00Z'),
+      ...Array.from({ length: count }, (_, index) =>
+        makeEvent('cancelled', '2026-09-26T01:00:00Z', `cancel-${index}`)
+      ),
+    ];
+    for (const ordered of [events, [...events].reverse()]) {
+      expect(aggregateOrderLifecycle({ orderNumber, products }, ordered)).toMatchObject({
+        orderStatus: 'expired',
+        paymentStatus: 'unknown',
+        needsReview: false,
+      });
+    }
+  });
+
+  test('两件订单一封取消为部分取消、两封为已取消，同封重放不重复计数', () => {
+    const first = {
+      ...makeEvent('cancelled', '2026-09-24T06:03:20Z', 'first'),
+      products: [{ ...products[0], quantity: 1 }],
+    };
+    const second = { ...first, id: 'second', messageId: 'second' };
+    for (const events of [[first], [first, { ...first, revision: 2 }], [first, first]]) {
+      expect(aggregateOrderLifecycle({ orderNumber, products }, events)).toMatchObject({
+        orderStatus: 'partially_cancelled',
+        paymentStatus: 'unknown',
+        needsReview: false,
+      });
+    }
+    expect(aggregateOrderLifecycle({ orderNumber, products }, [first, second])).toMatchObject({
+      orderStatus: 'cancelled',
+      paymentStatus: 'unknown',
+      needsReview: false,
+    });
+  });
+
+  test('取消邮件数量与商品总件数比较，未知数量保留部分取消并提示核对', () => {
+    const first = makeEvent('cancelled', '2026-09-24T06:03:20Z', 'first');
+    const second = { ...first, id: 'second', messageId: 'second' };
+    const threeItems = [{ ...products[0], quantity: 3 }];
+    expect(
+      aggregateOrderLifecycle({ orderNumber, products: threeItems }, [first, second]).orderStatus
+    ).toBe('partially_cancelled');
+    expect(aggregateOrderLifecycle({ orderNumber, products: [] }, [first])).toMatchObject({
+      orderStatus: 'partially_cancelled',
+      needsReview: true,
+      reviewReasons: ['ORDER_QUANTITY_UNKNOWN'],
+    });
+    expect(
+      aggregateOrderLifecycle({ orderNumber, products: [{ ...products[0], quantity: 1 }] }, [first])
+        .orderStatus
+    ).toBe('cancelled');
+  });
+});

@@ -35,12 +35,12 @@ test('邮件订单与付款状态使用独立受控多选', () => {
   ).toEqual(['picked_up']);
 });
 
-test('订单管理展示状态支持已过期并在数据库分页前筛选', () => {
+test('订单管理展示状态支持付款超时并在数据库分页前筛选', () => {
   const { where } = buildListFilters({
-    displayOrderStatuses: '["confirmed","expired"]',
+    displayOrderStatuses: '["confirmed","payment_timeout"]',
   });
   expect(where[Op.and][0].attribute.val).toContain("'confirmed'");
-  expect(where[Op.and][0].logic[Op.in]).toEqual(['confirmed', 'expired']);
+  expect(where[Op.and][0].logic[Op.in]).toEqual(['confirmed', 'payment_timeout']);
   expect(() => buildListFilters({ displayOrderStatuses: '["paid"]' })).toThrow();
 });
 
@@ -56,18 +56,17 @@ test('订单管理展示状态不覆盖原邮件状态', () => {
   };
   expect(serializeOrderListItem(order)).toMatchObject({
     email_order_status: 'confirmed',
-    display_order_status: 'expired',
+    display_order_status: 'payment_timeout',
   });
-  expect(serializeOrderDetail(order).display_order_status).toBe('expired');
+  expect(serializeOrderDetail(order).display_order_status).toBe('payment_timeout');
 });
 
-test.each([
-  { status: 'processing' },
-  { statuses: '["processing"]' },
-  { payment_status: 'paid' },
-])('官网状态筛选参数退休 %j', query => {
-  expect(() => buildListFilters(query)).toThrow('官网状态筛选参数已退休');
-});
+test.each([{ status: 'processing' }, { statuses: '["processing"]' }, { payment_status: 'paid' }])(
+  '官网状态筛选参数退休 %j',
+  query => {
+    expect(() => buildListFilters(query)).toThrow('官网状态筛选参数已退休');
+  }
+);
 
 test('TAG、邮件取货门店和日期可组合筛选', () => {
   const tags = ['重庆 邓超', "A,B'O"];
@@ -173,4 +172,22 @@ test('订单链接按订单范围单独读取且禁止缓存', async () => {
   expect(res.json).toHaveBeenCalledWith(
     expect.objectContaining({ success: true, data: expect.objectContaining({ id: 123 }) })
   );
+});
+
+test('付款超时与 Apple 终态分别筛选且兼容邮件原始状态参数', () => {
+  for (const status of ['payment_timeout', 'partially_cancelled', 'expired', 'cancelled']) {
+    const { where } = buildListFilters({ displayOrderStatuses: JSON.stringify([status]) });
+    expect(where[Op.and][0].logic[Op.in]).toEqual([status]);
+  }
+  for (const status of ['partially_cancelled', 'expired', 'cancelled']) {
+    expect(
+      buildListFilters({ emailOrderStatuses: JSON.stringify([status]) }).where.emailOrderStatus[
+        Op.in
+      ]
+    ).toEqual([status]);
+    const order = { toJSON: () => ({ products: [], emailOrderStatus: status }) };
+    expect(serializeOrderListItem(order).display_order_status).toBe(status);
+    expect(serializeOrderDetail(order).display_order_status).toBe(status);
+  }
+  expect(() => buildListFilters({ emailOrderStatuses: '["payment_timeout"]' })).toThrow();
 });

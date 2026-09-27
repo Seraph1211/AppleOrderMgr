@@ -33,6 +33,9 @@ const ORDER_STATUS_SEQUENCE = Object.freeze([
   'processing',
   'ready_for_pickup',
   'picked_up',
+  'partially_cancelled',
+  'cancelled',
+  'expired',
 ]);
 const orderStatusRank = status => Math.max(0, ORDER_STATUS_SEQUENCE.indexOf(status));
 
@@ -77,10 +80,14 @@ function normalizeReplayOrderIds(orderIds) {
   return [...new Set(orderIds.map(Number))];
 }
 
-/** 辅导邀请仅以精确订单号作为整单履约证据，其他模板继续核对商品范围。 */
+/** 辅导与明确终态按订单号和模板事件应用；普通阶段继续核对整单商品。 */
 function evaluateLifecycleScope(templateType, mailProducts, orderProducts) {
   if (templateType === TEMPLATE_TYPES.PERSONAL_SETUP) {
     return { matched: true, reason: null, evidence: 'not_required_personal_setup' };
+  }
+  if ([TEMPLATE_TYPES.EXPIRED, TEMPLATE_TYPES.CANCELLED].includes(templateType)) {
+    // Apple 可逐件发送取消通知；不同消息的数量在归并层与订单商品件数比较。
+    return { matched: true, reason: null, evidence: 'not_required_terminal_notice' };
   }
   const scope = evaluateProductScope(mailProducts, orderProducts);
   return { ...scope, evidence: scope.matched ? 'matched' : scope.reason };
@@ -215,12 +222,30 @@ function aggregateOrderLifecycle(order, events) {
       for (const reason of event.reviewReasons || []) reviewReasons.add(reason);
     if (!orderNumberMatched || !scope.matched || event.needsReview) continue;
     applicable.push(event);
-    if (orderStatusRank(event.orderStatus) > orderStatusRank(orderStatus)) {
+    if (
+      (event.orderStatus !== 'cancelled' || event.source === 'manual') &&
+      orderStatusRank(event.orderStatus) > orderStatusRank(orderStatus)
+    ) {
       orderStatus = event.orderStatus;
     }
     if (event.paymentStatus === 'paid') paymentStatus = 'paid';
     const emailDate = event.message?.emailDate;
     if (emailDate && (!evidenceAt || emailDate > evidenceAt)) evidenceAt = emailDate;
+  }
+
+  // pickEffectiveEvents 已按 messageId 去重；重复解析不会增加取消邮件数。
+  const cancellationCount = applicable.filter(event => event.orderStatus === 'cancelled').length;
+  if (cancellationCount) {
+    const quantities = (order.products || []).map(product => Number(product.quantity));
+    const knownQuantity =
+      quantities.length > 0 &&
+      quantities.every(quantity => Number.isSafeInteger(quantity) && quantity > 0);
+    const totalQuantity = quantities.reduce((total, quantity) => total + quantity, 0);
+    if (!knownQuantity) reviewReasons.add('ORDER_QUANTITY_UNKNOWN');
+    const cancellationStatus =
+      knownQuantity && cancellationCount >= totalQuantity ? 'cancelled' : 'partially_cancelled';
+    if (orderStatusRank(cancellationStatus) > orderStatusRank(orderStatus))
+      orderStatus = cancellationStatus;
   }
 
   const pickupCandidates = applicable

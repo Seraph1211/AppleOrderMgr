@@ -48,3 +48,13 @@ describe('仪表板输入与筛选契约', () => {
     expect(parseDashboardFilters({ status: '已取货' }).status).toBe('picked_up');
   });
 });
+
+test.each([
+  ['partially_cancelled', '部分取消'],
+  ['expired', '已过期'],
+  ['cancelled', '已取消'],
+])('仪表板支持邮件终态 %s', (status, label) => {
+  expect(
+    parseDashboardFilters({ status: label, emailOrderStatuses: JSON.stringify([status]) })
+  ).toMatchObject({ status, emailOrderStatuses: [status] });
+});

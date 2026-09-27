@@ -38,6 +38,8 @@ const TEMPLATE_LABELS = {
   ready_update: '可取货更新',
   ready_info: '取货信息',
   personal_setup: '个人设置辅导',
+  expired: '取货安排已过期',
+  cancelled: '取货安排已取消',
   excluded: '本期排除',
   unknown: '未知模板',
 };
@@ -47,6 +49,9 @@ const LIFECYCLE_STATUS_LABELS = {
   processing: '处理中',
   ready_for_pickup: '可取货',
   picked_up: '已取货',
+  partially_cancelled: '部分取消',
+  expired: '已过期',
+  cancelled: '已取消',
   paid: '已付款',
 };
 const AUTHENTICITY_LABELS = {
@@ -475,6 +480,9 @@ export default function OrderMailDrawer({ order, onClose }) {
                                     <option value="processing">处理中</option>
                                     <option value="ready_for_pickup">可取货</option>
                                     <option value="picked_up">已取货</option>
+                                    <option value="partially_cancelled">部分取消</option>
+                                    <option value="expired">已过期</option>
+                                    <option value="cancelled">已取消</option>
                                   </select>
                                 </label>
                                 <label className="text-gray-700">

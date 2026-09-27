@@ -5,6 +5,7 @@ import {
   ORDER_STATUS_LABELS,
   getEmailOrderStatusBadge,
   getOrderStatusBadge,
+  getDisplayOrderStatusBadge,
 } from '../src/constants/orderStatus.js';
 
 test('官网状态文案与非法值兜底一致，不影响人工四态', () => {
@@ -19,10 +20,20 @@ test('官网状态文案与非法值兜底一致，不影响人工四态', () =>
   assert.equal(getOrderStatusBadge('payment_expired').class, 'badge-error');
 });
 
-test('邮件订单状态五种标签使用不同颜色', () => {
+test('邮件阶段保留既有颜色，新增部分取消与两种终态', () => {
   const classes = Object.values(EMAIL_ORDER_STATUS_BADGES).map(item => item.class);
-  assert.equal(new Set(classes).size, 5);
+  assert.equal(new Set(classes).size, 7);
+  assert.equal(Object.keys(EMAIL_ORDER_STATUS_BADGES).length, 8);
   assert.equal(getEmailOrderStatusBadge('ready_for_pickup').class, 'badge-success');
-  assert.equal(getEmailOrderStatusBadge('picked_up').text, '已取货（邮件推定）');
+  assert.equal(getEmailOrderStatusBadge('picked_up').text, '已取货');
   assert.equal(getEmailOrderStatusBadge('bad').text, '待确认');
+});
+
+test('付款超时与 Apple 邮件过期、取消使用独立状态标签', () => {
+  assert.equal(getDisplayOrderStatusBadge('payment_timeout').text, '付款超时');
+  assert.equal(getDisplayOrderStatusBadge('partially_cancelled').text, '部分取消');
+  assert.equal(getEmailOrderStatusBadge('expired').text, '已过期');
+  assert.equal(getEmailOrderStatusBadge('cancelled').text, '已取消');
+  assert.equal(getDisplayOrderStatusBadge('expired').text, '已过期');
+  assert.equal(getDisplayOrderStatusBadge('cancelled').text, '已取消');
 });

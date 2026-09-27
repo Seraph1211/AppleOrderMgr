@@ -283,7 +283,7 @@ const enabled = process.env.RUN_ORDER_MAIL_LIFECYCLE_DB === 'true';
     await order.reload();
     const expectedVersion = order.emailStatusVersion;
     const user = await models.User.create({
-      username: `mail_review_${sequence}`,
+      username: `mail_review_${sequence}_${crypto.randomBytes(4).toString('hex')}`,
       password: 'SyntheticOnlyPassword123!',
       role: 'admin',
     });
@@ -327,7 +327,7 @@ const enabled = process.env.RUN_ORDER_MAIL_LIFECYCLE_DB === 'true';
       await archive(order.orderNumber, mime(order.orderNumber, products));
     }
     const user = await models.User.create({
-      username: `mail_batch_${sequence}`,
+      username: `mail_batch_${sequence}_${crypto.randomBytes(4).toString('hex')}`,
       password: 'SyntheticOnlyPassword123!',
       role: 'admin',
     });
@@ -363,5 +363,127 @@ const enabled = process.env.RUN_ORDER_MAIL_LIFECYCLE_DB === 'true';
         orders.map(order => order.id)
       )
     ).rejects.toMatchObject({ statusCode: 403 });
+  });
+
+  test.each(['expired', 'cancelled'])('真实事务应用 %s 邮件且重复、旧邮件不回退', async status => {
+    const products = [{ name: 'iPhone 18 Pro Max 512GB 冰川蓝色', quantity: 1 }];
+    const order = await models.Order.create({
+      orderNumber: `W${++sequence}`,
+      products,
+      emailOrderStatus: 'confirmed',
+      orderDate: new Date('2026-09-20T00:30:00Z'),
+    });
+    const task = await models.PaymentTask.create({
+      orderId: order.id,
+      processingStatus: 'processing',
+    });
+    if (status === 'cancelled') await order.update({ products: [{ ...products[0], quantity: 2 }] });
+    const label = status === 'expired' ? '已过期' : '已取消';
+    const raw = Buffer.from(
+      [
+        'From: Apple <orders@orders.apple.com>',
+        'To: archive@example.test',
+        `Subject: 订单 ${order.orderNumber} ${label}。`,
+        'Content-Type: text/plain; charset=utf-8',
+        '',
+        `你的取货安排${label}。`,
+        ...(status === 'expired'
+          ? ['你未在限定的时间内取货。我们已取消你的订单，并正在为你办理退款。']
+          : []),
+        '我们正在为你办理退款。',
+        '已取消的商品',
+        products[0].name,
+        '数量 1',
+      ].join('\r\n')
+    );
+    await archive(order.orderNumber, raw);
+    await lifecycle.processNextLifecycleJob({ config });
+    await Promise.all([order.reload(), task.reload()]);
+    expect(order).toMatchObject({
+      emailOrderStatus: status === 'cancelled' ? 'partially_cancelled' : status,
+      emailPaymentStatus: 'unknown',
+      emailStatusNeedsReview: false,
+    });
+    expect(task.processingStatus).toBe('processing');
+    expect(await models.PaymentTaskEvent.count()).toBe(0);
+    await lifecycle.applyOrderLifecycle(order.id, null, config);
+    await order.reload();
+    expect(order.emailOrderStatus).toBe(status === 'cancelled' ? 'partially_cancelled' : status);
+    if (status === 'cancelled') {
+      await archive(order.orderNumber, Buffer.concat([raw, Buffer.from('\r\n')]));
+      await lifecycle.processNextLifecycleJob({ config });
+      await order.reload();
+      expect(order.emailOrderStatus).toBe('cancelled');
+    }
+    // 迟到的旧付款邮件仅补全付款证据，不能撤销终态。
+    await archive(order.orderNumber, mime(order.orderNumber, order.products));
+    await lifecycle.processNextLifecycleJob({ config });
+    await order.reload();
+    expect(order).toMatchObject({ emailOrderStatus: status, emailPaymentStatus: 'paid' });
+  });
+
+  test('展示 SQL、分页筛选与 JavaScript 对各类状态使用相同口径', async () => {
+    const {
+      DISPLAY_ORDER_STATUS_SQL,
+      getDisplayOrderStatus,
+    } = require('../src/utils/orderDisplayStatus');
+    const { buildListFilters } = require('../src/controllers/orderController');
+    const cases = [
+      ['confirmed', 'unknown', new Date(Date.now() - 31 * 60_000), 'payment_timeout'],
+      ['confirmed', 'unknown', new Date(Date.now() - 29 * 60_000), 'confirmed'],
+      ['confirmed', 'paid', new Date(Date.now() - 31 * 60_000), 'confirmed'],
+      ['confirmed', 'unknown', null, 'confirmed'],
+      ['expired', 'paid', new Date(Date.now() - 31 * 60_000), 'expired'],
+      ['partially_cancelled', 'unknown', new Date(Date.now() - 31 * 60_000), 'partially_cancelled'],
+      ['cancelled', 'unknown', new Date(Date.now() - 31 * 60_000), 'cancelled'],
+    ];
+    for (const [emailOrderStatus, emailPaymentStatus, orderDate, expected] of cases) {
+      const order = await models.Order.create({
+        orderNumber: `W${++sequence}`,
+        products: [{ name: '合成测试商品', quantity: 1 }],
+        emailOrderStatus,
+        emailPaymentStatus,
+        orderDate,
+      });
+      expect(getDisplayOrderStatus(order)).toBe(expected);
+      const [rows] = await models.sequelize.query(
+        `SELECT ${DISPLAY_ORDER_STATUS_SQL} AS status FROM orders AS "Order" WHERE id = :id`,
+        { replacements: { id: order.id } }
+      );
+      expect(rows[0].status).toBe(expected);
+    }
+    for (const status of ['payment_timeout', 'partially_cancelled', 'expired', 'cancelled']) {
+      const { where } = buildListFilters({ displayOrderStatuses: JSON.stringify([status]) });
+      const result = await models.Order.findAndCountAll({ where, limit: 1 });
+      expect(result.count).toBe(1);
+      expect(getDisplayOrderStatus(result.rows[0])).toBe(status);
+    }
+  });
+
+  test('终态 Migration 支持空库 down/up 且拒绝丢失已应用终态', async () => {
+    const migration = require('../migrations/20260928000001-add-mail-terminal-order-statuses');
+    const Sequelize = require('sequelize');
+    const queryInterface = models.sequelize.getQueryInterface();
+    await migration.down(queryInterface, Sequelize);
+    await expect(
+      models.Order.create({
+        orderNumber: `W${++sequence}`,
+        products: [{ name: '合成测试商品', quantity: 1 }],
+        emailOrderStatus: 'expired',
+      })
+    ).rejects.toMatchObject({ original: { constraint: 'orders_email_order_status_valid' } });
+    await migration.up(queryInterface, Sequelize);
+    const order = await models.Order.create({
+      orderNumber: `W${++sequence}`,
+      products: [{ name: '合成测试商品', quantity: 1 }],
+      emailOrderStatus: 'expired',
+    });
+    await expect(migration.down(queryInterface, Sequelize)).rejects.toThrow('不得丢失已有终态');
+    await order.reload();
+    expect(order.emailOrderStatus).toBe('expired');
+    await order.update({ emailOrderStatus: 'partially_cancelled' });
+    await expect(migration.down(queryInterface, Sequelize)).rejects.toThrow('不得丢失已有终态');
+    await order.update({ emailOrderStatus: 'cancelled' });
+    await expect(migration.down(queryInterface, Sequelize)).rejects.toThrow('不得丢失已有终态');
   });
 });

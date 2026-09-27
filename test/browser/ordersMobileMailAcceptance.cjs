@@ -14,6 +14,8 @@ async function main() {
     const page = await context.newPage();
     const errors = [];
     const writes = [];
+    const listQueries = [];
+    let displayedStatus = 'payment_timeout';
     page.on('pageerror', error => errors.push(error.message));
     page.on('dialog', dialog => dialog.accept());
     await context.route('**/*', async route => {
@@ -37,7 +39,8 @@ async function main() {
       else if (url.pathname === '/api/system/auto-refresh') data = { isRunning: false };
       else if (url.pathname === '/api/orders/filter-options')
         data = { productOptions: [], recipientTags: [], stores: [] };
-      else if (url.pathname === '/api/orders')
+      else if (url.pathname === '/api/orders') {
+        listQueries.push(url.searchParams.get('displayOrderStatuses'));
         data = {
           total: 1,
           orders: [
@@ -45,9 +48,10 @@ async function main() {
               id: 101,
               order_number: 'W1234567890',
               serial_numbers: ['F12345678901234567890'],
-              email_order_status: 'confirmed',
+              email_order_status:
+                displayedStatus === 'payment_timeout' ? 'confirmed' : displayedStatus,
               email_payment_status: 'unknown',
-              display_order_status: 'expired',
+              display_order_status: displayedStatus,
               products: [{ name: 'iPhone 18 Pro Max 256GB', quantity: 1 }],
               recipient_name: '合成取机人',
               recipient_tag: '北京 测试团队',
@@ -62,7 +66,7 @@ async function main() {
             },
           ],
         };
-      else if (url.pathname === '/api/orders/101/emails')
+      } else if (url.pathname === '/api/orders/101/emails')
         data = {
           items: [
             {
@@ -132,7 +136,7 @@ async function main() {
       assert(overflow <= 1, `${width}px 下页面横向溢出 ${overflow}px`);
       if (width < 768) {
         assert.equal(await page.locator('.orders-mobile-list article').count(), 1);
-        await page.locator('.orders-mobile-list').getByText('已过期', { exact: true }).waitFor();
+        await page.locator('.orders-mobile-list').getByText('付款超时', { exact: true }).waitFor();
         assert.equal(
           await page.locator('.orders-mobile-list').getByText('F12345678901234567890').count(),
           0
@@ -149,7 +153,10 @@ async function main() {
         if (width === 390) {
           await page.locator('.orders-mobile-list').getByRole('button', { name: '查看' }).click();
           await page.getByRole('heading', { name: '订单详情' }).waitFor();
-          await page.locator('.order-detail-modal').getByText('已过期', { exact: true }).waitFor();
+          await page
+            .locator('.order-detail-modal')
+            .getByText('付款超时', { exact: true })
+            .waitFor();
           await page.locator('.order-detail-modal').getByText('F12345678901234567890').waitFor();
           await page.getByRole('button', { name: '关闭订单详情' }).click();
         }
@@ -157,7 +164,37 @@ async function main() {
           await page.screenshot({ path: '/tmp/apple-orders-mobile-390.png', fullPage: true });
       } else {
         assert.equal(await page.locator('table thead').first().isVisible(), true);
-        await page.locator('table tbody').first().getByText('已过期', { exact: true }).waitFor();
+        await page.locator('table tbody').first().getByText('付款超时', { exact: true }).waitFor();
+      }
+    }
+
+    for (const [status, label] of [
+      ['partially_cancelled', '部分取消'],
+      ['expired', '已过期'],
+      ['cancelled', '已取消'],
+    ]) {
+      displayedStatus = status;
+      for (const width of [390, 1440]) {
+        await page.setViewportSize({ width, height: 720 });
+        await page.goto('http://127.0.0.1:5173/orders');
+        const list = page.locator(width < 768 ? '.orders-mobile-list' : 'table tbody').first();
+        await list.getByText(label, { exact: true }).waitFor();
+        await list.getByRole('button', { name: '查看', exact: true }).click();
+        await page.locator('.order-detail-modal').getByText(label, { exact: true }).waitFor();
+        await page.getByRole('button', { name: '关闭订单详情' }).click();
+        if (width < 768) await page.getByRole('button', { name: /筛选条件.*展开/ }).click();
+        await page.getByRole('button', { name: '订单状态筛选', exact: true }).click();
+        await Promise.all([
+          page.getByRole('option', { name: label, exact: true }).click(),
+          page.waitForResponse(response => {
+            const url = new URL(response.url());
+            return (
+              url.pathname === '/api/orders' &&
+              url.searchParams.get('displayOrderStatuses') === JSON.stringify([status])
+            );
+          }),
+        ]);
+        assert(listQueries.includes(JSON.stringify([status])));
       }
     }
 

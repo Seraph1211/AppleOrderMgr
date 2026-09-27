@@ -376,6 +376,34 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     expect(Object.values(sheet).filter(cell => cell?.f)).toHaveLength(0);
   });
 
+  test.each(['payment_timeout', 'partially_cancelled', 'expired', 'cancelled'])(
+    '订单导出保留独立展示状态 %s',
+    async status => {
+      Order.findAll.mockResolvedValue([
+        {
+          toJSON: () => ({
+            id: 41,
+            orderNumber: 'W1234567890',
+            products: [],
+            emailOrderStatus: status === 'payment_timeout' ? 'confirmed' : status,
+            emailPaymentStatus: 'unknown',
+            orderDate: new Date('2020-01-01T00:00:00Z'),
+          }),
+        },
+      ]);
+      const res = response();
+      await exportOrders(
+        {
+          query: { fields: '["emailOrderStatus"]', displayOrderStatuses: JSON.stringify([status]) },
+          user: { id: 1, role: 'admin' },
+        },
+        res
+      );
+      const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
+      expect(XLSX.utils.sheet_to_json(book.Sheets['订单'])).toEqual([{ 订单状态: status }]);
+    }
+  );
+
   test('选中订单按字段白名单导出且不包含未选择或敏感字段', async () => {
     Order.findAll.mockResolvedValue([
       {

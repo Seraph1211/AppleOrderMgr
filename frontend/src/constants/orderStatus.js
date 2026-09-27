@@ -49,15 +49,21 @@ export const EMAIL_ORDER_STATUS_BADGES = {
     text: '已取货',
     class: 'bg-blue-100 text-blue-800 border border-blue-200',
   },
+  partially_cancelled: { text: '部分取消', class: 'badge-warning' },
+  expired: { text: '已过期', class: 'badge-error' },
+  cancelled: { text: '已取消', class: 'badge-error' },
 };
 
 export const DISPLAY_ORDER_STATUS_BADGES = {
   unknown: EMAIL_ORDER_STATUS_BADGES.unknown,
   confirmed: EMAIL_ORDER_STATUS_BADGES.confirmed,
-  expired: { text: '已过期', class: 'badge-error' },
+  payment_timeout: { text: '付款超时', class: 'badge-warning' },
   processing: EMAIL_ORDER_STATUS_BADGES.processing,
   ready_for_pickup: EMAIL_ORDER_STATUS_BADGES.ready_for_pickup,
   picked_up: EMAIL_ORDER_STATUS_BADGES.picked_up,
+  partially_cancelled: EMAIL_ORDER_STATUS_BADGES.partially_cancelled,
+  expired: EMAIL_ORDER_STATUS_BADGES.expired,
+  cancelled: EMAIL_ORDER_STATUS_BADGES.cancelled,
 };
 
 export const DISPLAY_ORDER_STATUS_LABELS = Object.fromEntries(
