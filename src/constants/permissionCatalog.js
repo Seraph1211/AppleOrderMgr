@@ -23,6 +23,12 @@ const ADMIN_RESERVED_PERMISSIONS = Object.freeze([
 ]);
 
 const PERMISSION_DEPENDENCIES = Object.freeze({
+  [PERMISSIONS.PROXY_EDIT]: [PERMISSIONS.PROXY_READ],
+  [PERMISSIONS.PROXY_STATUS]: [PERMISSIONS.PROXY_READ],
+  [PERMISSIONS.PROXY_COPY]: [PERMISSIONS.PROXY_READ],
+  [PERMISSIONS.PROXY_ACCOUNTS]: [PERMISSIONS.PROXY_READ],
+  [PERMISSIONS.PROXY_LINK]: [PERMISSIONS.PROXY_READ],
+
   [PERMISSIONS.WECOM_CONFIGURE]: [PERMISSIONS.WECOM_READ],
   [PERMISSIONS.WECOM_RETRY]: [PERMISSIONS.WECOM_READ],
   [PERMISSIONS.ORDER_MAIL_READ]: [PERMISSIONS.ORDERS_READ],
@@ -73,6 +79,7 @@ const PERMISSION_DEPENDENCIES = Object.freeze({
 
 /* eslint-disable camelcase -- 权限模块名与对外权限码完全一致 */
 const PERMISSION_MODULE_NAMES = Object.freeze({
+  proxy_orders: '代抢管理',
   wecom: '企微订单通知',
   monitor: '服务器监控',
   ingestion: '订单数据源',
@@ -95,6 +102,13 @@ const PERMISSION_MODULE_NAMES = Object.freeze({
 /* eslint-enable camelcase */
 
 const PERMISSION_LABELS = Object.freeze({
+  [PERMISSIONS.PROXY_READ]: '查看全部代抢订单',
+  [PERMISSIONS.PROXY_EDIT]: '录入和编辑代抢资料',
+  [PERMISSIONS.PROXY_STATUS]: '修改代抢处理状态',
+  [PERMISSIONS.PROXY_COPY]: '复制代抢模板（含账号密码）',
+  [PERMISSIONS.PROXY_ACCOUNTS]: '管理代抢账号池和占用',
+  [PERMISSIONS.PROXY_LINK]: '核对和纠正官方订单关联',
+
   [PERMISSIONS.WECOM_READ]: '查看企微通知配置与投递',
   [PERMISSIONS.WECOM_CONFIGURE]: '配置企微通知及发送测试',
   [PERMISSIONS.WECOM_RETRY]: '重试企微通知',

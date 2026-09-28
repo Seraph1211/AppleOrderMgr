@@ -46,6 +46,12 @@ module.exports = sequelize => {
           return decrypt(this.getDataValue('password'));
         },
       },
+      isProxyPool: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false,
+        field: 'is_proxy_pool',
+      },
       notes: { type: DataTypes.TEXT, allowNull: true, comment: '备注' },
       nickname: {
         type: DataTypes.STRING(255),

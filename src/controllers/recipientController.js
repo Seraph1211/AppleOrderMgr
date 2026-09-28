@@ -931,7 +931,7 @@ async function batchBindAppleIds(req, res) {
         transaction,
       });
       const [accounts] = await sequelize.query(
-        `SELECT a.id FROM apple_ids a WHERE a.status='未使用'
+        `SELECT a.id FROM apple_ids a WHERE a.status='未使用' AND a.is_proxy_pool=false
          AND NOT EXISTS (SELECT 1 FROM recipients r WHERE r.apple_id_ref=a.id)
          ORDER BY a.created_at, a.id LIMIT :limit FOR UPDATE`,
         { replacements: { limit: ids.length }, transaction }

@@ -35,6 +35,7 @@ async function bindRecipient(recipient, appleIdRef, transaction, expectedAppleId
         lock: transaction.LOCK.UPDATE,
       });
       if (!account) throw ApiError.notFound('Apple ID 不存在');
+      if (account.isProxyPool) throw ApiError.conflict('代抢专用账号不可绑定普通取机人');
       const occupied = await Recipient.findOne({
         where: { appleIdRef, id: { [Op.ne]: recipient.id } },
         transaction,

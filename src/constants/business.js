@@ -61,6 +61,12 @@ const EMAIL_TERMINAL_STATUSES = Object.freeze([
 ]);
 
 const PERMISSIONS = Object.freeze({
+  PROXY_READ: 'proxy_orders.read',
+  PROXY_EDIT: 'proxy_orders.edit',
+  PROXY_STATUS: 'proxy_orders.status',
+  PROXY_COPY: 'proxy_orders.copy',
+  PROXY_ACCOUNTS: 'proxy_orders.accounts',
+  PROXY_LINK: 'proxy_orders.link',
   WECOM_READ: 'wecom.read',
   WECOM_CONFIGURE: 'wecom.configure',
   WECOM_RETRY: 'wecom.retry',

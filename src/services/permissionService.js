@@ -284,6 +284,7 @@ function resolveAvailableHome(permissions) {
   const candidates = [
     [PERMISSIONS.DASHBOARD_READ, '/'],
     [PERMISSIONS.ORDERS_READ, '/orders'],
+    [PERMISSIONS.PROXY_READ, '/proxy-orders'],
     [PERMISSIONS.APPLE_IDS_READ, '/apple-ids'],
     [PERMISSIONS.RECIPIENTS_READ, '/recipients'],
     [PERMISSIONS.IDENTITY_READ, '/identity-verifications'],

@@ -7,6 +7,7 @@ import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
 import AppleIds from './pages/AppleIds';
+import ProxyOrders from './pages/ProxyOrders';
 import Recipients from './pages/Recipients';
 import Channels from './pages/Channels';
 import ChannelOrders from './pages/ChannelOrders';
@@ -97,6 +98,10 @@ function ManagementApp() {
                   <Route
                     path="/orders/:id"
                     element={permissionRoute(PERMISSIONS.ORDERS_READ, <OrderDetail />)}
+                  />
+                  <Route
+                    path="/proxy-orders"
+                    element={permissionRoute(PERMISSIONS.PROXY_READ, <ProxyOrders />)}
                   />
                   <Route
                     path="/apple-ids"

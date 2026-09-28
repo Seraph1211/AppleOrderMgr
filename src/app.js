@@ -124,6 +124,7 @@ app.use('/api/users', usersRouter);
 app.use('/api/apple-ids', appleIdsRouter);
 app.use('/api/recipients', recipientsRouter);
 app.use('/api/orders', ordersRouter);
+app.use('/api/proxy-orders', require('./routes/proxyOrders'));
 app.use('/api/pickups', require('./routes/pickups'));
 app.use('/api/order-refresh', orderRefreshRouter);
 app.use('/api/email-processing', emailProcessingRouter);
@@ -167,6 +168,7 @@ const server = app.listen(DEFAULT_PORT, () => {
   paymentDispatchScheduler.start();
   identityVerificationRunner.start();
   ingestionScheduler.start();
+  require('./services/proxyOrderScheduler').start();
   require('./services/monitorService').start();
 
   if (process.env.RUN_WORKERS_IN_API === 'true') {
@@ -188,6 +190,7 @@ function shutdown(signal) {
   paymentDispatchScheduler.stop();
   const identityStopped = identityVerificationRunner.stop();
   const ingestionStopped = ingestionScheduler.stop();
+  const proxyStopped = require('./services/proxyOrderScheduler').stop();
   const monitorStopped = require('./services/monitorService').stop();
 
   server.close(async err => {
@@ -199,6 +202,7 @@ function shutdown(signal) {
     try {
       await identityStopped;
       await ingestionStopped;
+      await proxyStopped;
       await monitorStopped;
       await emailService.stopEmailService();
       await monitorNotificationSender.stop();

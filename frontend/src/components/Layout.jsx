@@ -29,6 +29,7 @@ import { PERMISSIONS } from '../constants/permissions';
 const baseNavigation = [
   { name: '仪表板', href: '/', icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD_READ },
   { name: '订单管理', href: '/orders', icon: Package, permission: PERMISSIONS.ORDERS_READ },
+  { name: '代抢管理', href: '/proxy-orders', icon: Package, permission: PERMISSIONS.PROXY_READ },
   {
     name: '取货记录',
     href: '/pickups',

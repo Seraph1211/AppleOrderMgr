@@ -24,6 +24,9 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  ProxyOrder: require('./ProxyOrder')(sequelize),
+  ProxyAssignment: require('./ProxyAssignment')(sequelize),
+  ProxyEvent: require('./ProxyEvent')(sequelize),
   MailContact: require('./MailContact')(sequelize),
   WecomNotificationSetting: require('./WecomNotificationSetting')(sequelize),
   WecomNotificationDelivery: require('./WecomNotificationDelivery')(sequelize),
