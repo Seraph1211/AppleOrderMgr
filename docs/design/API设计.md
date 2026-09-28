@@ -808,7 +808,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 - GET `/api/server-monitor/logs/states`：设备、实例和最新完整日志扫描状态；设备凭证和本地路径不返回。兼容未升级设备显示等待接入。
 - GET `/api/server-monitor/logs/accounts?deviceId=&localId=&date=&search=&after=`：指定实例日期的账号编号候选，每页最多100个，返回 items/nextCursor；search 为字面包含。
-- GET `/api/server-monitor/logs?deviceId=&localId=&date=&account=&fromTime=&toTime=&keyword=&cursor=&limit=`：必填设备／实例／日期，可选账号（`__unassigned__` 表示未识别）、HH:mm:ss 时间段、字面关键词；limit 默认50、最大100。按 sort_at/file_id/byte_offset/id 稳定升序游标分页，返回 items/nextCursor，不承诺历史补采期间结果快照固定。片段按 fileId/lineNumber/partIndex 还原，超长行分段不截断。
+- GET `/api/server-monitor/logs?deviceId=&localId=&date=&account=&fromTime=&toTime=&keyword=&cursor=&limit=`：必填设备／实例／日期，可选账号（`__unassigned__` 表示未识别）、HH:mm:ss 时间段、字面关键词；limit 默认50、最大100。cursor 缺省或空字符串表示首页；非空游标必须有效并绑定相同筛选。按 sort_at/file_id/byte_offset/id 稳定升序游标分页，返回 items/nextCursor，不承诺历史补采期间结果快照固定。片段按 fileId/lineNumber/partIndex 还原，超长行分段不截断。
 - GET `/api/server-monitor/logs/:id/context?scope=account|instance`：前后各20个片段，限定同设备、实例、业务日；账号上下文要求有已识别账号，实例上下文包含未识别行。
 
 设备协议使用已有设备认证与解压后1MiB请求限制（完整日志上传使用gzip），`/logs` 独立60次／分钟限流，不消耗原订单及监控请求配额，不接受 body.deviceId。完整日志请求必须带 `X-AOS-Device-Id`，其值必须等于凭证认证设备ID，防止误配凭证把旧队列归到另一设备：

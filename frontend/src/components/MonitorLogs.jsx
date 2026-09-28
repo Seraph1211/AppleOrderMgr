@@ -109,7 +109,7 @@ export default function MonitorLogs() {
     async function read() {
       try {
         const response = await client.get(BASE, {
-          params: { ...JSON.parse(filterKey), cursor, limit: 50 },
+          params: { ...JSON.parse(filterKey), cursor: cursor || undefined, limit: 50 },
           signal: controller.signal,
         });
         if (active) setResult(response.data);

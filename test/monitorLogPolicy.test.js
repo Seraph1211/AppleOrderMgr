@@ -55,6 +55,13 @@ describe('完整日志协议边界', () => {
       }).rawBase64
     ).toBe('/w==');
   });
+  test('首页缺省和显式空游标一致，其他非法游标仍拒绝', () => {
+    const query = { deviceId: randomUUID(), localId: randomUUID(), date: '2026-09-29' };
+    for (const cursor of [undefined, null, ''])
+      expect(p.query({ ...query, cursor }, now)).toEqual(p.query(query, now));
+    for (const cursor of [false, 0, [], {}, ' ', 'x'.repeat(2001)])
+      expect(() => p.query({ ...query, cursor }, now)).toThrow();
+  });
   test('查询限制和字面通配符', () => {
     const query = { deviceId: randomUUID(), localId: randomUUID(), date: '2026-09-29' };
     expect(p.query(query, now).limit).toBe(50);

@@ -151,7 +151,8 @@ function query(value, now = new Date()) {
     throw ApiError.badRequest('开始时间不能晚于结束时间');
   result.keyword = value.keyword == null ? '' : p.shortText(value.keyword, 200, true);
   result.limit = p.integer(Number(value.limit ?? 50), 1, 100);
-  result.cursor = value.cursor == null ? '' : p.shortText(value.cursor, 2000);
+  result.cursor =
+    value.cursor == null || value.cursor === '' ? '' : p.shortText(value.cursor, 2000);
   return result;
 }
 module.exports = { retention, date, instant, digest, literalSearch, entry, query };

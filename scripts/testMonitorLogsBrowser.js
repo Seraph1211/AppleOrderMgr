@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright-core');
 const logger = require('../src/utils/logger');
+const logPolicy = require('../src/services/monitorLogPolicy');
 /** 合成浏览器验收，拦截所有API，不访问业务数据。 */
 async function main() {
   let browser;
@@ -113,6 +114,9 @@ async function main() {
               ],
             };
           else if (url.pathname === '/api/server-monitor/logs') {
+            const query = Object.fromEntries(url.searchParams);
+            assert.notEqual(query.cursor, '', '首页请求应省略空游标');
+            logPolicy.query(query);
             if (fail) {
               await route.fulfill({
                 status: 503,

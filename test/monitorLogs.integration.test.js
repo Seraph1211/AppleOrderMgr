@@ -110,7 +110,15 @@ const { randomUUID, createHash } = require('crypto');
     expect((await fetch(base + '/api/aos-collector/v1/logs/context', { headers })).status).toBe(
       200
     );
-    expect((await post('/api/aos-collector/v1/logs/entries', { entries: [entry()] }, { ...headers, 'x-aos-device-id': second.id })).status).toBe(403);
+    expect(
+      (
+        await post(
+          '/api/aos-collector/v1/logs/entries',
+          { entries: [entry()] },
+          { ...headers, 'x-aos-device-id': second.id }
+        )
+      ).status
+    ).toBe(403);
     await device.update({ enabled: false });
     expect((await post('/api/aos-collector/v1/logs/entries', { entries: [entry()] })).status).toBe(
       403
@@ -185,6 +193,42 @@ const { randomUUID, createHash } = require('crypto');
     );
     expect(response.status).toBe(200);
     expect(response.headers.get('cache-control')).toBe('no-store');
+  });
+  test('页面同形Axios参数：空游标首页、缺省首页和下一页真实HTTP', async () => {
+    await service.receive(device.id, { entries: Array.from({ length: 55 }, (_, i) => entry(i)) });
+    const axios = require('axios');
+    const query = params({ account: '', fromTime: '', toTime: '', keyword: '', limit: 50 });
+    const pages = [];
+    for (const cursor of ['', undefined]) {
+      const url = axios.getUri({
+        url: base + '/api/server-monitor/logs',
+        params: { ...query, cursor },
+      });
+      const response = await fetch(url, { headers: website });
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      pages.push((await response.json()).data);
+    }
+    expect(pages[0]).toEqual(pages[1]);
+    expect(pages[0].items).toHaveLength(50);
+    const nextUrl = axios.getUri({
+      url: base + '/api/server-monitor/logs',
+      params: { ...query, cursor: pages[0].nextCursor },
+    });
+    const response = await fetch(nextUrl, { headers: website });
+    expect(response.status).toBe(200);
+    const next = (await response.json()).data;
+    expect(next.items).toHaveLength(5);
+    expect(next.nextCursor).toBeNull();
+    expect(new Set([...pages[0].items, ...next.items].map(row => row.id)).size).toBe(55);
+    const invalid = await fetch(
+      axios.getUri({
+        url: base + '/api/server-monitor/logs',
+        params: { ...query, cursor: 'invalid' },
+      }),
+      { headers: website }
+    );
+    expect(invalid.status).toBe(400);
   });
   test('同毫秒150行稳定游标，改变筛选拒绝旧游标', async () => {
     await service.receive(device.id, { entries: Array.from({ length: 150 }, (_, i) => entry(i)) });
