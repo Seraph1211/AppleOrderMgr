@@ -190,6 +190,7 @@ async function listOrders(query) {
       count: result.count,
       rows: rows.map(r => ({
         ...r,
+        ...input.normalizeProxyProduct(r.productModel, r.color),
         assignments: assignments.filter(a => a.proxyOrderId === r.id),
         officialOrder: summary(orders.find(o => o.id === r.orderId)),
       })),
@@ -221,7 +222,13 @@ async function detail(orderId) {
     ]);
     const data = row.toJSON();
     delete data.rejectedOrderIds;
-    return { ...data, assignments, events, officialOrder: summary(order) };
+    return {
+      ...data,
+      ...input.normalizeProxyProduct(data.productModel, data.color),
+      assignments,
+      events,
+      officialOrder: summary(order),
+    };
   } catch (error) {
     logger.debug('代抢操作错误由统一中间件处理', { errorType: error.name });
     throw error;
@@ -270,7 +277,12 @@ async function changeOrder(action, orderId, body, actorId) {
       try {
         const row = await lockedOrder(orderId, body.expectedVersion, transaction);
         let audit = {};
-        if (action === 'status') {
+        if (action === 'notes') {
+          if (typeof body.notes !== 'string' || body.notes.length > 10000)
+            throw ApiError.badRequest('备注格式不正确');
+          row.notes = body.notes;
+          audit = { changed: true };
+        } else if (action === 'status') {
           if (!['pending', 'rushing', 'cancelled'].includes(body.status))
             throw ApiError.badRequest('抢购成功只能通过官方订单关联产生');
           if (['succeeded', 'cancelled'].includes(row.status))
@@ -390,8 +402,15 @@ async function listAccounts(query) {
         }),
       ])
       : [[], []];
+    const [[availability]] = await sequelize.query(
+      `SELECT COUNT(*)::integer AS count FROM apple_ids a
+       WHERE a.is_proxy_pool=true AND a.status='未使用'
+       AND NOT EXISTS(SELECT 1 FROM proxy_assignments p WHERE p.apple_id_ref=a.id AND p.ended_at IS NULL)
+       AND NOT EXISTS(SELECT 1 FROM recipients r WHERE r.apple_id_ref=a.id)`
+    );
     return {
       count: result.count,
+      availableCount: availability.count,
       rows: result.rows.map(a => ({
         ...a.toJSON(),
         assignment: assignments.find(s => s.appleIdRef === a.id) || null,

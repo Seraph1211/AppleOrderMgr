@@ -5,10 +5,10 @@ import {
   RefreshCw,
   Search,
   X,
-  Users,
-  FileText,
   Loader2,
   AlertCircle,
+  Pencil,
+  Save,
 } from "lucide-react";
 import client from "../api/client";
 import { useAuth } from "../contexts/AuthContext";
@@ -167,6 +167,8 @@ export default function ProxyOrders() {
   const [warnings, setWarnings] = useState([]);
   const [current, setCurrent] = useState(null);
   const [available, setAvailable] = useState([]);
+  const [availableCount, setAvailableCount] = useState(null);
+  const [noteEditor, setNoteEditor] = useState(null);
   const [manualAccount, setManualAccount] = useState("");
   const [count, setCount] = useState(1);
   const [orderNumber, setOrderNumber] = useState("");
@@ -237,10 +239,10 @@ export default function ProxyOrders() {
   }, [tab, scope, keyword, status, page, revision]);
   useEffect(() => {
     const timer = setInterval(() => {
-      if (!modal && !busy) setRevision((value) => value + 1);
+      if (!modal && !busy && !noteEditor) setRevision((value) => value + 1);
     }, 20000);
     return () => clearInterval(timer);
-  }, [modal, busy]);
+  }, [modal, busy, noteEditor]);
 
   async function run(work, success) {
     if (busy) return;
@@ -358,7 +360,17 @@ export default function ProxyOrders() {
       refresh();
     }, "操作已保存");
   }
-  async function openAssignments() {
+  async function changeFromList(row, action, body) {
+    await run(async () => {
+      await client.post(`/proxy-orders/${row.id}/${action}`, {
+        ...body,
+        expectedVersion: row.version,
+      });
+      if (action === "notes") setNoteEditor(null);
+      refresh();
+    }, action === "notes" ? "备注已保存" : "状态已更新");
+  }
+  async function openAssignments(row = current) {
     await run(async () => {
       const response = await client.get("/proxy-orders/accounts", {
         params: { limit: 100 },
@@ -368,6 +380,8 @@ export default function ProxyOrders() {
           (a) => !a.assignment && a.status === "未使用",
         ),
       );
+      setAvailableCount(response.data.availableCount);
+      setCurrent(row);
       setManualAccount("");
       setCount(1);
       setModal("assign");
@@ -380,6 +394,8 @@ export default function ProxyOrders() {
         : [...values, id],
     );
   const switchTab = (value) => {
+    setNoteEditor(null);
+    setNotice("");
     setData({ rows: [], count: 0 });
     setLoading(true);
     setTab(value);
@@ -616,20 +632,18 @@ export default function ProxyOrders() {
           </button>
         </div>
       </div>
-      <div className="flex gap-2 border-b pb-3">
+      <div className="flex gap-1 overflow-x-auto border-b border-gray-200">
         <button
-          className={`btn ${tab === "orders" ? "btn-primary" : "btn-secondary"} flex items-center gap-2`}
+          className={`shrink-0 px-5 py-3 text-sm transition-colors ${tab === "orders" ? "border-b-2 border-primary font-medium text-primary" : "text-gray-500 hover:text-gray-900"}`}
           onClick={() => switchTab("orders")}
         >
-          <FileText className="w-4 h-4" />
           代抢订单
         </button>
         {can(PERMISSIONS.PROXY_ACCOUNTS) && (
           <button
-            className={`btn ${tab === "accounts" ? "btn-primary" : "btn-secondary"} flex items-center gap-2`}
+            className={`shrink-0 px-5 py-3 text-sm transition-colors ${tab === "accounts" ? "border-b-2 border-primary font-medium text-primary" : "text-gray-500 hover:text-gray-900"}`}
             onClick={() => switchTab("accounts")}
           >
-            <Users className="w-4 h-4" />
             专用 AppleID 池
           </button>
         )}
@@ -648,6 +662,17 @@ export default function ProxyOrders() {
           {notice}
         </div>
       )}
+      {tab === "orders" && !loading && data.rows.some((row) => !row.assignments.length) && can(PERMISSIONS.PROXY_ACCOUNTS) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          <span>有代抢单待分配账号。只有专用池内“未使用”且未占用的账号可分配，分配后才能复制模板。</span>
+          <button className="font-medium underline underline-offset-2" onClick={() => switchTab("accounts")}>查看专用账号池</button>
+        </div>
+      )}
+      {tab === "accounts" && scope === "pool" && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+          当前可分配 {data.availableCount ?? "—"} 个账号。新导入账号默认为“未使用”；历史“使用中”账号需先确认抢购软件任务已停止，再修改为“未使用”。
+        </div>
+      )}
       <div className="flex flex-wrap gap-2 items-center">
         <div className="relative flex-1 min-w-[180px]">
           <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
@@ -659,6 +684,7 @@ export default function ProxyOrders() {
             }
             value={keyword}
             onChange={(event) => {
+              setNoteEditor(null);
               setKeyword(event.target.value);
               setPage(1);
             }}
@@ -671,6 +697,7 @@ export default function ProxyOrders() {
               className="input w-auto"
               value={status}
               onChange={(event) => {
+                setNoteEditor(null);
                 setStatus(event.target.value);
                 setPage(1);
               }}
@@ -776,8 +803,9 @@ export default function ProxyOrders() {
                     ? [
                         "代抢单 / 客户",
                         "抢购需求",
-                        "门店 / 备注",
+                        "目标门店",
                         "状态",
+                        "备注",
                         "账号 / 官方订单",
                         "登记时间",
                         "操作",
@@ -827,18 +855,69 @@ export default function ProxyOrders() {
                             {row.paymentMethod || "支付要求未填"}
                           </p>
                         </td>
-                        <td className="p-3 min-w-48 max-w-72 whitespace-normal">
+                        <td className="p-3 min-w-48 max-w-64 whitespace-normal">
                           <p>{storeNames(row.storeCodes)}</p>
-                          {row.notes && (
-                            <p className="mt-1 text-amber-800">{row.notes}</p>
-                          )}
                         </td>
-                        <td className="p-3">
-                          <Badge status={row.status} />
+                        <td className="p-3 align-top">
+                          {can(PERMISSIONS.PROXY_STATUS) && ["pending", "rushing"].includes(row.status) ? (
+                            <select
+                              aria-label={`代抢 #${row.id} 状态`}
+                              className={`input min-w-28 font-medium ${row.status === "pending" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-blue-200 bg-blue-50 text-blue-900"}`}
+                              value={row.status}
+                              disabled={busy}
+                              onChange={(event) => {
+                                const next = event.target.value;
+                                if (next === "cancelled") {
+                                  setConfirmation({
+                                    message: `取消代抢 #${row.id}？请另行停止抢购软件任务，再确认释放账号。`,
+                                    execute: () => changeFromList(row, "status", { status: next }),
+                                  });
+                                } else changeFromList(row, "status", { status: next });
+                              }}
+                            >
+                              <option value="pending">待处理</option>
+                              <option value="rushing">抢购中</option>
+                              <option value="cancelled">已取消</option>
+                            </select>
+                          ) : <Badge status={row.status} />}
                           {row.anomaly && (
                             <p className="text-xs text-red-600 whitespace-normal max-w-48 mt-2">
                               {row.anomaly}
                             </p>
+                          )}
+                        </td>
+                        <td className="p-3 align-top min-w-56 max-w-80 whitespace-normal">
+                          {noteEditor?.id === row.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                aria-label={`代抢 #${row.id} 备注`}
+                                className="input w-full min-h-24"
+                                value={noteEditor.notes}
+                                maxLength={10000}
+                                disabled={busy}
+                                onChange={(event) => setNoteEditor({ id: row.id, notes: event.target.value })}
+                                onKeyDown={(event) => {
+                                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") changeFromList(row, "notes", { notes: noteEditor.notes });
+                                }}
+                              />
+                              <div className="flex gap-2">
+                                <button className="btn btn-primary inline-flex items-center gap-1" disabled={busy} onClick={() => changeFromList(row, "notes", { notes: noteEditor.notes })}><Save className="w-4 h-4" />保存</button>
+                                <button className="btn btn-secondary" disabled={busy} onClick={() => setNoteEditor(null)}>取消</button>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="group flex items-start gap-2">
+                              <p className="flex-1 min-w-0 break-words text-gray-700 whitespace-pre-wrap">{row.notes || <span className="text-gray-400">暂无备注</span>}</p>
+                              {can(PERMISSIONS.PROXY_EDIT) && (
+                                <button
+                                  className="shrink-0 rounded-md p-1.5 text-primary hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-primary"
+                                  aria-label={`编辑代抢 #${row.id} 备注`}
+                                  title="编辑备注"
+                                  disabled={busy}
+                                  onClick={() => setNoteEditor({ id: row.id, notes: row.notes || "" })}
+                                ><Pencil className="w-4 h-4" /></button>
+                              )}
+                            </div>
                           )}
                         </td>
                         <td className="p-3">
@@ -847,6 +926,11 @@ export default function ProxyOrders() {
                               ? `${row.assignments.length} 个账号占用中`
                               : "待分配账号"}
                           </p>
+                          {can(PERMISSIONS.PROXY_ACCOUNTS) && ["pending", "rushing"].includes(row.status) && (
+                            <button className="mt-1 text-primary text-xs font-medium underline underline-offset-2" disabled={busy} onClick={() => openAssignments(row)}>
+                              {row.assignments.length ? "追加账号" : "分配账号"}
+                            </button>
+                          )}
                           {row.officialOrder && (
                             <p className="font-mono text-primary mt-1">
                               {row.officialOrder.orderNumber}
@@ -869,7 +953,7 @@ export default function ProxyOrders() {
                               ["pending", "rushing"].includes(row.status) && (
                                 <button
                                   className="btn btn-secondary"
-                                  disabled={busy}
+                                  disabled={busy || !row.assignments.length}
                                   onClick={() => copyOrders([row.id])}
                                 >
                                   复制模板
@@ -921,14 +1005,14 @@ export default function ProxyOrders() {
             <button
               className="btn btn-secondary"
               disabled={page === 1 || loading}
-              onClick={() => setPage(page - 1)}
+              onClick={() => { setNoteEditor(null); setPage(page - 1); }}
             >
               上一页
             </button>
             <button
               className="btn btn-secondary"
               disabled={page * 30 >= data.count || loading}
-              onClick={() => setPage(page + 1)}
+              onClick={() => { setNoteEditor(null); setPage(page + 1); }}
             >
               下一页
             </button>
@@ -1024,7 +1108,7 @@ export default function ProxyOrders() {
                   <button
                     className="btn btn-secondary"
                     onClick={() => copyOrders([current.id])}
-                    disabled={busy}
+                    disabled={busy || !current.assignments.some((assignment) => !assignment.endedAt)}
                   >
                     复制模板
                   </button>
@@ -1110,10 +1194,10 @@ export default function ProxyOrders() {
                   ["pending", "rushing"].includes(current.status) && (
                     <button
                       className="btn btn-secondary"
-                      onClick={openAssignments}
+                      onClick={() => openAssignments()}
                       disabled={busy}
                     >
-                      追加账号
+                      {current.assignments.some((assignment) => !assignment.endedAt) ? "追加账号" : "分配账号"}
                     </button>
                   )}
               </div>
@@ -1227,12 +1311,18 @@ export default function ProxyOrders() {
         </Dialog>
       )}
       {modal === "assign" && (
-        <Dialog title="追加抢购账号" close={close} busy={busy}>
+        <Dialog title={current?.assignments?.length ? "追加抢购账号" : "分配抢购账号"} close={close} busy={busy}>
           {modalMessage}
           <div className="space-y-4">
             <p className="text-sm text-gray-500">
               每个账号生成一行导入模板；同时只能由一笔代抢单占用。
             </p>
+            <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
+              专用池当前可分配 {availableCount ?? "—"} 个账号。历史账号如仍标为“使用中”，请先核实抢购软件已停抢，再到专用池改为“未使用”；也可以导入新账号。
+              {availableCount === 0 && (
+                <button className="ml-2 font-medium underline underline-offset-2" onClick={() => { close(); switchTab("accounts"); }}>前往账号池</button>
+              )}
+            </div>
             <label className="block text-sm">
               账号选择
               <select
@@ -1258,7 +1348,7 @@ export default function ProxyOrders() {
             )}
             <button
               className="btn btn-primary"
-              disabled={busy}
+              disabled={busy || availableCount === 0}
               onClick={() =>
                 change(
                   "accounts",

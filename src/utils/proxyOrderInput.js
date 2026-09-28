@@ -23,6 +23,35 @@ const norm = value =>
     .normalize('NFKC')
     .trim();
 const compact = value => norm(value).replace(/\s/g, '').toLowerCase();
+const IPHONE_18_PRO_COLOR_ALIASES = {
+  红: '勃艮第酒红色',
+  红色: '勃艮第酒红色',
+  酒红: '勃艮第酒红色',
+  酒红色: '勃艮第酒红色',
+  勃艮第酒红: '勃艮第酒红色',
+  勃艮第酒红色: '勃艮第酒红色',
+  黑: '黑色',
+  黑色: '黑色',
+  银: '银色',
+  银色: '银色',
+  蓝: '冰川蓝色',
+  蓝色: '冰川蓝色',
+  冰川蓝: '冰川蓝色',
+  冰川蓝色: '冰川蓝色',
+};
+
+/** 只对当前已核实的 iPhone 18 Pro 系列颜色应用别名。 @param {string} value 客户颜色 @param {string} model 规范机型 @returns {string} 颜色 */
+function normalizeColor(value, model) {
+  const color = norm(value);
+  if (!/^iPhone 18 Pro(?: Max)?$/i.test(model)) return color;
+  return IPHONE_18_PRO_COLOR_ALIASES[compact(color)] || color;
+}
+
+/** 规范已识别的机型和颜色，其余客户原文保留待人工核对。 @param {string} model 机型 @param {string} color 颜色 @returns {Object} 商品 */
+function normalizeProxyProduct(model, color) {
+  const normalizedModel = parseProduct(model).productModel || norm(model);
+  return { productModel: normalizedModel, color: normalizeColor(color, normalizedModel) };
+}
 
 /** 规范化机型、容量与颜色，不猜测未知型号。 @param {string} value 商品文字 @returns {Object} 商品 */
 function parseProduct(value) {
@@ -31,7 +60,7 @@ function parseProduct(value) {
   const capacity = input.match(/\b(\d+)\s*(gb|g|tb|t)\b/i);
   const quantity = input.match(/(\d+)\s*(台|部|件)/);
   const color = input.match(
-    /勃艮第酒红色|酒红色?|银色?|冰川蓝色?|黑色?|深蓝色?|白色?|沙漠色?|原色|蓝色?|橙色?|星宇橙色?|绿色?|粉色?|紫色?/
+    /勃艮第酒红色?|酒红色?|红色?|冰川蓝色?|深蓝色?|蓝色?|银色?|黑色?|白色?|沙漠色?|原色|星宇橙色?|橙色?|绿色?|粉色?|紫色?/
   );
   const suffix = model
     ? { pm: 'Pro Max', promax: 'Pro Max', pro: 'Pro', p: 'Pro', plus: 'Plus', air: 'Air' }[
@@ -42,7 +71,7 @@ function parseProduct(value) {
     productModel: model ? `iPhone ${model[1]}${suffix ? ` ${suffix}` : ''}` : '',
     storage: capacity ? `${capacity[1]}${capacity[2].startsWith('t') ? 'TB' : 'GB'}` : '',
     color: color
-      ? { 酒红: '酒红色', 银: '银色', 勃艮第酒红色: '酒红色' }[color[0]] || color[0]
+      ? normalizeColor(color[0], model ? `iPhone ${model[1]}${suffix ? ` ${suffix}` : ''}` : '')
       : '',
     quantity: quantity ? Number(quantity[1]) : 1,
   };
@@ -71,7 +100,7 @@ function parseProxyText(text) {
   const firstName = parts.length > 1 ? parts.slice(1).join('') : name.slice(lastName.length);
   const productText = fields['机型'] || fields['型号'] || '';
   const product = parseProduct(productText);
-  if (fields['颜色']) product.color = fields['颜色'];
+  if (fields['颜色']) product.color = normalizeColor(fields['颜色'], product.productModel);
   if (fields['容量'] || fields['内存'])
     product.storage = parseProduct(`18pm ${fields['容量'] || fields['内存']}`).storage;
   if (fields['数量']) product.quantity = Number(fields['数量'].replace(/\s*(台|部|件)$/, ''));
@@ -150,6 +179,7 @@ function validateProxyInput(input) {
     ['storage', '容量', 20],
   ])
     result[key] = field(input[key], label, max);
+  Object.assign(result, normalizeProxyProduct(result.productModel, result.color));
   if (!/^1[3-9]\d{9}$/.test(result.phone)) throw ApiError.badRequest('手机号须为 11 位大陆手机号');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result.email)) throw ApiError.badRequest('邮箱格式不正确');
   if (!/^\d{3}[\dXx]$/.test(result.idLast4))
@@ -279,6 +309,7 @@ function isProxyMatch(request, order, assignments) {
 module.exports = {
   STORES,
   parseProduct,
+  normalizeProxyProduct,
   parseProxyText,
   validateProxyInput,
   generateProxyAddress,

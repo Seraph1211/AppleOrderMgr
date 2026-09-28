@@ -75,6 +75,7 @@ router.put(
 );
 for (const [action, permission] of [
   ['status', PERMISSIONS.PROXY_STATUS],
+  ['notes', PERMISSIONS.PROXY_EDIT],
   ['accounts', PERMISSIONS.PROXY_ACCOUNTS],
   ['release', PERMISSIONS.PROXY_ACCOUNTS],
   ['link', PERMISSIONS.PROXY_LINK],

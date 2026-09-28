@@ -124,6 +124,25 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
     expect(await m.ProxyOrder.count()).toBe(1);
     expect(await m.ProxyEvent.count()).toBe(1);
   });
+  test('列表显示历史颜色规范名；备注独立保存保留加密原文和状态', async () => {
+    const row = await create({ productModel: '18PM', color: '红色' });
+    expect(row.productModel).toBe('iPhone 18 Pro Max');
+    expect(row.color).toBe('勃艮第酒红色');
+    await row.update({ color: '酒红色' });
+    expect((await service.listOrders({})).rows[0].color).toBe('勃艮第酒红色');
+    expect((await service.detail(row.id)).color).toBe('勃艮第酒红色');
+    const rawBefore = row.getDataValue('rawText');
+    await service.changeOrder(
+      'notes', row.id, { expectedVersion: row.version, notes: '用户可接受门店任选' }, actor.id
+    );
+    await row.reload();
+    expect(row.notes).toBe('用户可接受门店任选');
+    expect(row.status).toBe('pending');
+    expect(row.getDataValue('rawText')).toBe(rawBefore);
+    await expect(
+      service.changeOrder('notes', row.id, { expectedVersion: row.version - 1, notes: '' }, actor.id)
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
   test('默认占用、自动追加、多行模板且复制不改状态；池状态不覆盖历史', async () => {
     await pool(3);
     const row = await create();
@@ -140,6 +159,7 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
     expect(copied.text).toContain(',0020,代抢 网店,,,');
     expect((await row.reload()).status).toBe('pending');
     const list = await service.listAccounts({});
+    expect(list.availableCount).toBe(0);
     expect(JSON.stringify(list)).not.toContain('Synthetic-Pass');
     expect(list.rows.every(a => a.assignment)).toBe(true);
   });
@@ -397,10 +417,17 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
         403
       );
     expect((await fetch(`${base}/accounts`, { headers })).status).toBe(403);
-    for (const action of ['status', 'accounts', 'release', 'link'])
+    for (const action of ['status', 'notes', 'accounts', 'release', 'link'])
       expect(
         (await fetch(`${base}/${row.id}/${action}`, { method: 'POST', headers, body: '{}' })).status
       ).toBe(403);
+    const changed = await fetch(`${base}/${row.id}/notes`, {
+      method: 'POST',
+      headers: { ...headers, 'x-test-permissions': 'proxy_orders.read,proxy_orders.edit' },
+      body: JSON.stringify({ expectedVersion: (await row.reload()).version, notes: '终态人工备注' }),
+    });
+    expect(changed.status).toBe(200);
+    expect((await row.reload()).notes).toBe('终态人工备注');
   });
   test('分页筛选、客户查询、编辑冲突和已结束只改备注', async () => {
     const row = await create({ platformOrderNumber: 'abc' });

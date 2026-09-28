@@ -1,6 +1,7 @@
 const {
   parseProxyText,
   parseProduct,
+  normalizeProxyProduct,
   validateProxyInput,
   buildProxyTemplate,
   parsePoolAccounts,
@@ -42,7 +43,7 @@ describe('代抢文本与软件模板', () => {
         firstName: '三',
         idLast4: '0020',
         productModel: 'iPhone 18 Pro Max',
-        color: '酒红色',
+        color: '勃艮第酒红色',
         storage: '256GB',
         quantity: 1,
         storeCodes: ['R572'],
@@ -70,6 +71,27 @@ describe('代抢文本与软件模板', () => {
       quantity: 2,
       idLast4: '000X',
     });
+  });
+  test.each(['红', '红色', '酒红', '酒红色', '勃艮第酒红色'])(
+    'iPhone 18 Pro Max 的颜色别名 %s 统一为官网颜色',
+    color => {
+      expect(parseProduct(`18PM/${color}/256G/1台`)).toMatchObject({
+        productModel: 'iPhone 18 Pro Max',
+        color: '勃艮第酒红色',
+      });
+      expect(validateProxyInput(draft({ productModel: '18PM', color }))).toMatchObject({
+        productModel: 'iPhone 18 Pro Max',
+        color: '勃艮第酒红色',
+      });
+    }
+  );
+  test('独立颜色字段及历史资料规范显示；未知颜色保留人工核对', () => {
+    expect(parseProxyText(`${source('18PM/红色/256G/1台')}\n颜色：酒红色`).draft.color).toBe(
+      '勃艮第酒红色'
+    );
+    expect(normalizeProxyProduct('iPhone 18 Pro Max', '酒红色').color).toBe('勃艮第酒红色');
+    expect(normalizeProxyProduct('iPhone 17 Pro', '红色').color).toBe('红色');
+    expect(normalizeProxyProduct('18PM', '未知新颜色').color).toBe('未知新颜色');
   });
   test('拒绝多位客户和过长原文', () => {
     expect(() => parseProxyText('姓名：张三\n姓名：李四')).toThrow('一位');

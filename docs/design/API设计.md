@@ -773,27 +773,30 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `filter-options` 接受相同参数，返回 `productOptions`、`recipientTags`，分别排除自身维度后从完整可见范围生成；保留 `productModels/stores` 兼容字段。候选和所有订单聚合必须叠加账号订单 TAG 访问范围。
 - `daily-trend` 返回 `{ date, count }`，date 为北京时间 `YYYY-MM-DD`；完整日范围补 0（超过 3660 天只返回实际日期点）。商品／城市分布返回 `{ name, value }` 数组，商品附稳定 `key`，value 为订单数；商品按每订单每身份去重，多商品订单可进入不同组。城市取门店字典、未知归“未知城市”，不截断前 10 项。可用取机人数是独立档案统计，只有 TAG 筛选生效。完整规则见[仪表板说明](仪表板说明.md)。
 
-## 代抢管理（2026-09-28 已批准，实施中）
+## 代抢管理（2026-09-28 已生产发布）
 
 所有 `/api/proxy-orders` 接口需认证与 proxy_orders.read。独立动作权限为 edit/status/copy/accounts/link，均依赖 read。普通列表/详情不返回 Apple 密码，no-store；相关系统订单仅返回必要摘要，不要求 orders.read，不含支付链接和账号秘密。
 
 | 方法与路径 | 权限 | 契约 |
 | --- | --- | --- |
-| GET /api/proxy-orders | read | page/limit/keyword/status 分页，返回 rows/count；keyword 姓名/平台单号/委托编号 |
+| GET /api/proxy-orders | read | page/limit/keyword/status 分页，返回 rows/count；keyword 姓名/平台单号/委托编号；已知机型和颜色别名在响应中规范显示 |
 | GET /api/proxy-orders/stores | read | 已核实门店及省市区 |
-| POST /api/proxy-orders/parse | edit | text 单人文本；返回 draft/warnings，缺数量默认 1、门店必须人工确认 |
+| POST /api/proxy-orders/parse | edit | text 单人文本；返回 draft/warnings；18PM → iPhone 18 Pro Max，iPhone 18 Pro/Pro Max 的红色、酒红色 → 勃艮第酒红色；缺数量默认 1、门店必须人工确认 |
 | POST /api/proxy-orders/address | edit | storeCode；生成账单地址，不写入订单 |
 | POST /api/proxy-orders | edit | 完整确认资料；pending，默认尝试分配一个账号；无账号仍保存 |
 | GET /api/proxy-orders/:id | read | 详情、分配历史、脱敏事件、官方订单摘要 |
 | PUT /api/proxy-orders/:id | edit | expectedVersion + 确认资料；成功/取消只允许改备注 |
 | POST /api/proxy-orders/:id/status | status | expectedVersion,status；手动禁止 succeeded |
+| POST /api/proxy-orders/:id/notes | edit | expectedVersion,notes；仅修改备注，保留加密原文及其他资料；所有状态可修改 |
 | POST /api/proxy-orders/:id/accounts | accounts | expectedVersion，accountIds 或 count；追加占用 |
 | POST /api/proxy-orders/:id/release | accounts | expectedVersion,assignmentIds,confirmedStopped=true；释放占用 |
 | POST /api/proxy-orders/:id/link | link | expectedVersion,orderNumber,reason；人工核对关联，不覆盖已有关系；orderNumber=null 为解除 |
 | POST /api/proxy-orders/copy | copy | ids 1–100；原子生成当前活跃账号模板，多行字符串；不更新状态 |
-| GET /api/proxy-orders/accounts | accounts | page/limit/keyword，scope=pool/candidates；无密码 |
+| GET /api/proxy-orders/accounts | accounts | page/limit/keyword，scope=pool/candidates；返回 rows/count/availableCount，其中 availableCount 为整个专用池中状态“未使用”、未占用且未绑定普通取机人的数量；无密码 |
 | POST /api/proxy-orders/accounts/import | accounts | text，每行邮箱+密码；全量先验证，同账号密码差异拒绝不回显 |
 | POST /api/proxy-orders/accounts/adopt | accounts | ids，核对后纳入已有账号；有普通绑定拒绝 |
 | PUT /api/proxy-orders/accounts/:id | accounts | status,notes,expectedUpdatedAt，原账号更新冲突拒绝 |
 
 业务校验返回 400；不存在 404；占用/重复/版本冲突 409；无权限 403。复制拒绝未确认门店/不完整资料/异常账号/终态订单，错误不回显密码。读接口无隐式自动变更；匹配由 API 内可恢复的 20 秒周期扫描触发，跨进程使用事务锁，最多每批 100 个委托，分页游标循环扫描防饥饿。
+
+代抢列表在原有权限内支持就地修改状态和备注、请求自动追加一个可用账号。仅 pending/rushing 可人工切换为 pending/rushing/cancelled；成功及取消保持只读状态。备注独立更新接口不覆盖客户原文。历史账号备注为“代抢”但状态仍为“使用中”时不算可用，须由工作人员确认软件停抢，再在账号池改为“未使用”或导入新账号。
