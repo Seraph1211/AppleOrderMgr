@@ -163,6 +163,10 @@ export default function ProxyOrders() {
   const [notice, setNotice] = useState("");
   const [modal, setModal] = useState(null);
   const [draft, setDraft] = useState(null);
+  const [accountOriginalStatus, setAccountOriginalStatus] = useState(null);
+  const [accountStopped, setAccountStopped] = useState(false);
+  const [batchAccountStatus, setBatchAccountStatus] = useState("");
+  const [batchStopped, setBatchStopped] = useState(false);
   const [text, setText] = useState("");
   const [warnings, setWarnings] = useState([]);
   const [current, setCurrent] = useState(null);
@@ -177,6 +181,7 @@ export default function ProxyOrders() {
   const [confirmation, setConfirmation] = useState(null);
   const [modalError, setModalError] = useState("");
   const ended = ["succeeded", "cancelled"].includes(draft?.status);
+  const selectedAccounts = data.rows.filter((row) => selected.includes(row.id));
   const cities = [...new Set(stores.map((s) => s.city))];
   const refresh = () => {
     setSelected([]);
@@ -189,6 +194,10 @@ export default function ProxyOrders() {
     setText("");
     setDraft(null);
     setCurrent(null);
+    setAccountOriginalStatus(null);
+    setAccountStopped(false);
+    setBatchAccountStatus("");
+    setBatchStopped(false);
   };
   useEffect(() => {
     let active = true;
@@ -427,7 +436,7 @@ export default function ProxyOrders() {
       )}
     </>
   );
-  const form = draft && (
+  const form = ["new", "edit"].includes(modal) && draft && (
     <div className="space-y-4">
       {!!warnings.length && (
         <div className="rounded-lg bg-amber-50 text-amber-800 p-3 text-sm">
@@ -729,6 +738,7 @@ export default function ProxyOrders() {
               onChange={(event) => {
                 setScope(event.target.value);
                 setPage(1);
+                setSelected([]);
               }}
             >
               <option value="pool">专用池</option>
@@ -743,6 +753,21 @@ export default function ProxyOrders() {
             >
               粘贴导入
             </button>
+            {scope === "pool" && (
+              <button
+                className="btn btn-secondary inline-flex items-center gap-2"
+                disabled={!selected.length || busy}
+                onClick={() => {
+                  setNotice("");
+                  setBatchAccountStatus("");
+                  setBatchStopped(false);
+                  setModal("batchStatus");
+                }}
+              >
+                <Pencil className="w-4 h-4" />
+                批量修改状态（{selected.length}）
+              </button>
+            )}
             {scope === "candidates" && (
               <button
                 className="btn btn-secondary"
@@ -981,7 +1006,10 @@ export default function ProxyOrders() {
                             <button
                               className="btn btn-secondary"
                               onClick={() => {
+                                setNotice("");
                                 setDraft(row);
+                                setAccountOriginalStatus(row.status);
+                                setAccountStopped(false);
                                 setModal("account");
                               }}
                             >
@@ -1462,15 +1490,29 @@ export default function ProxyOrders() {
             <p className="text-xs text-gray-500">
               修改状态不会解除占用，释放账号请进入对应代抢单。
             </p>
+            {draft.status === "未使用" && accountOriginalStatus !== "未使用" && (
+              <label className="flex items-start gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={accountStopped}
+                  onChange={(event) => setAccountStopped(event.target.checked)}
+                />
+                已确认此账号的抢购软件任务已停止
+              </label>
+            )}
+            {draft.status === "未使用" && draft.assignment && (
+              <p className="text-sm text-red-700">账号仍被代抢单占用，请先在对应代抢单确认停抢并释放。</p>
+            )}
             <button
               className="btn btn-primary"
-              disabled={busy}
+              disabled={busy || (draft.status === "未使用" && accountOriginalStatus !== "未使用" && !accountStopped) || (draft.status === "未使用" && !!draft.assignment)}
               onClick={() =>
                 run(async () => {
                   await client.put(`/proxy-orders/accounts/${draft.id}`, {
                     status: draft.status,
                     notes: draft.notes || "",
                     expectedUpdatedAt: draft.updatedAt,
+                    confirmedStopped: accountStopped,
                   });
                   close();
                   refresh();
@@ -1479,6 +1521,67 @@ export default function ProxyOrders() {
             >
               保存
             </button>
+          </div>
+        </Dialog>
+      )}
+      {modal === "batchStatus" && (
+        <Dialog title={`批量修改账号状态（${selectedAccounts.length}）`} close={close} busy={busy}>
+          {modalMessage}
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">仅修改下列专用池账号的状态，保留备注、密码和占用记录；任一账号资料已变化时整批不保存。</p>
+            <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
+              {selectedAccounts.map((account) => (
+                <div key={account.id} className="flex flex-wrap justify-between gap-2 px-3 py-2">
+                  <span className="font-mono break-all">{account.appleId}</span>
+                  <span className="text-gray-500">{account.status}{account.assignment ? " · 占用中" : ""}</span>
+                </div>
+              ))}
+            </div>
+            <label className="block text-sm text-gray-700">
+              目标状态
+              <select
+                aria-label="批量目标状态"
+                className="input w-full mt-1"
+                value={batchAccountStatus}
+                onChange={(event) => setBatchAccountStatus(event.target.value)}
+              >
+                <option value="">请选择目标状态</option>
+                {["未使用", "使用中", "已下架", "异常"].map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+            </label>
+            {batchAccountStatus === "未使用" && (
+              <>
+                <label className="flex items-start gap-2 text-sm text-gray-700">
+                  <input type="checkbox" checked={batchStopped} onChange={(event) => setBatchStopped(event.target.checked)} />
+                  已逐一确认所选账号的抢购软件任务已停止
+                </label>
+                {selectedAccounts.some((account) => account.assignment) && (
+                  <p className="text-sm text-red-700">所选账号仍有代抢占用，请先在对应代抢单确认停抢并释放。</p>
+                )}
+              </>
+            )}
+            {["已下架", "异常"].includes(batchAccountStatus) && (
+              <p className="text-sm text-amber-800">此状态会阻止已分配账号生成新模板，但不会自动释放占用。</p>
+            )}
+            <div className="flex justify-end gap-2">
+              <button className="btn btn-secondary" disabled={busy} onClick={close}>取消</button>
+              <button
+                className="btn btn-primary"
+                disabled={busy || !selectedAccounts.length || !batchAccountStatus || (batchAccountStatus === "未使用" && (!batchStopped || selectedAccounts.some((account) => account.assignment)))}
+                onClick={() => run(async () => {
+                  const response = await client.post("/proxy-orders/accounts/status", {
+                    accounts: selectedAccounts.map((account) => ({ id: account.id, expectedUpdatedAt: account.updatedAt })),
+                    status: batchAccountStatus,
+                    confirmedStopped: batchStopped,
+                  });
+                  close();
+                  refresh();
+                  return response.data;
+                }, `已更新 ${selectedAccounts.length} 个账号的状态`)}
+              >确认修改</button>
+            </div>
           </div>
         </Dialog>
       )}

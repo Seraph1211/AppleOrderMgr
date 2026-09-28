@@ -795,8 +795,9 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 | GET /api/proxy-orders/accounts | accounts | page/limit/keyword，scope=pool/candidates；返回 rows/count/availableCount，其中 availableCount 为整个专用池中状态“未使用”、未占用且未绑定普通取机人的数量；无密码 |
 | POST /api/proxy-orders/accounts/import | accounts | text，每行邮箱+密码；全量先验证，同账号密码差异拒绝不回显 |
 | POST /api/proxy-orders/accounts/adopt | accounts | ids，核对后纳入已有账号；有普通绑定拒绝 |
-| PUT /api/proxy-orders/accounts/:id | accounts | status,notes,expectedUpdatedAt，原账号更新冲突拒绝 |
+| POST /api/proxy-orders/accounts/status | accounts | accounts=[{id,expectedUpdatedAt}] 1–100 个专用池账号、status=未使用/使用中/已下架/异常；改为未使用须 confirmedStopped=true。整批行锁、版本校验与事务，任一账号不存在、非专用池或仍被代抢占用时整批拒绝；仅更新状态，保留备注和占用历史 |
+| PUT /api/proxy-orders/accounts/:id | accounts | status,notes,expectedUpdatedAt；改为未使用须 confirmedStopped=true，仍被代抢占用的账号拒绝；原账号更新冲突拒绝 |
 
 业务校验返回 400；不存在 404；占用/重复/版本冲突 409；无权限 403。复制拒绝未确认门店/不完整资料/异常账号/终态订单，错误不回显密码。读接口无隐式自动变更；匹配由 API 内可恢复的 20 秒周期扫描触发，跨进程使用事务锁，最多每批 100 个委托，分页游标循环扫描防饥饿。
 
-代抢列表在原有权限内支持就地修改状态和备注、请求自动追加一个可用账号。仅 pending/rushing 可人工切换为 pending/rushing/cancelled；成功及取消保持只读状态。备注独立更新接口不覆盖客户原文。历史账号备注为“代抢”但状态仍为“使用中”时不算可用，须由工作人员确认软件停抢，再在账号池改为“未使用”或导入新账号。
+代抢列表在原有权限内支持就地修改状态和备注、请求自动追加一个可用账号。仅 pending/rushing 可人工切换为 pending/rushing/cancelled；成功及取消保持只读状态。备注独立更新接口不覆盖客户原文。账号池可单条编辑或勾选当前页账号后批量修改状态；批量操作不改变备注、池归属或代抢占用，任一失败不部分提交。历史账号备注为“代抢”但状态仍为“使用中”时不算可用，须由工作人员确认软件停抢，再在账号池改为“未使用”或导入新账号。

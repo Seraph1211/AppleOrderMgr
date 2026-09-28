@@ -12,6 +12,7 @@ const { lockProfiles } = require('./profileBindingService');
 const input = require('../utils/proxyOrderInput');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
+const { ACCOUNT_STATUSES } = require('../constants/business');
 
 function id(value) {
   const parsed = Number(value);
@@ -423,10 +424,34 @@ async function listAccounts(query) {
   }
 }
 
-/** 导入、核对纳入或更新池账号。 @param {string} action 动作 @param {Object} body 输入 @param {number} actorId 操作人 @param {number} accountId 账号 @returns {Promise<Object>} 结果 */
+/**
+ * 导入、核对纳入、单条编辑或批量更新池账号。
+ * @param {string} action 动作
+ * @param {Object} body 输入
+ * @param {number} actorId 操作人
+ * @param {number} accountId 账号
+ * @returns {Promise<Object>} 结果
+ */
 async function changeAccounts(action, body, actorId, accountId) {
   try {
     const parsed = action === 'import' ? input.parsePoolAccounts(body.text) : null;
+    let requestedAccounts = null;
+    if (action === 'status') {
+      if (!Array.isArray(body.accounts) || !body.accounts.length || body.accounts.length > 100)
+        throw ApiError.badRequest('请选择 1–100 个专用账号');
+      if (!ACCOUNT_STATUSES.includes(body.status)) throw ApiError.badRequest('账号状态不正确');
+      if (body.status === '未使用' && body.confirmedStopped !== true)
+        throw ApiError.badRequest('请先确认所选账号的软件任务已停止');
+      requestedAccounts = body.accounts.map(account => ({
+        id: id(account?.id),
+        expectedUpdatedAt: new Date(account?.expectedUpdatedAt).getTime(),
+      }));
+      if (
+        new Set(requestedAccounts.map(account => account.id)).size !== requestedAccounts.length ||
+        requestedAccounts.some(account => !Number.isFinite(account.expectedUpdatedAt))
+      )
+        throw ApiError.badRequest('账号选择或版本信息不正确');
+    }
     return await transact(actorId, async transaction => {
       try {
         let accountIds = [];
@@ -472,13 +497,58 @@ async function changeAccounts(action, body, actorId, accountId) {
           if (new Date(body.expectedUpdatedAt).getTime() !== row.updatedAt.getTime())
             throw ApiError.conflict('账号已更新，请刷新');
           if (
-            !['未使用', '使用中', '已下架', '异常'].includes(body.status) ||
+            !ACCOUNT_STATUSES.includes(body.status) ||
             typeof body.notes !== 'string' ||
             body.notes.length > 10000
           )
             throw ApiError.badRequest('状态或备注不正确');
+          if (body.status === '未使用' && row.status !== '未使用') {
+            if (body.confirmedStopped !== true)
+              throw ApiError.badRequest('请先确认账号的软件任务已停止');
+            const occupied = await ProxyAssignment.count({
+              where: { appleIdRef: row.id, endedAt: null }, transaction,
+            });
+            if (occupied) throw ApiError.conflict('账号仍被代抢单占用，请先确认停抢并释放');
+          }
           await row.update({ status: body.status, notes: body.notes }, { transaction });
           accountIds = [row.id];
+        } else if (action === 'status') {
+          accountIds = requestedAccounts
+            .map(account => account.id)
+            .sort((left, right) => left - right);
+          const accounts = await AppleId.findAll({
+            where: { id: accountIds },
+            order: [['id', 'ASC']],
+            transaction,
+            lock: transaction.LOCK.UPDATE,
+          });
+          if (
+            accounts.length !== accountIds.length ||
+            accounts.some(account => !account.isProxyPool)
+          )
+            throw ApiError.conflict('部分账号已不在代抢专用池，请刷新后重试');
+          const versions = new Map(
+            requestedAccounts.map(account => [account.id, account.expectedUpdatedAt])
+          );
+          if (accounts.some(account => account.updatedAt.getTime() !== versions.get(account.id)))
+            throw ApiError.conflict('部分账号已更新，请刷新后重试');
+          if (body.status === '未使用') {
+            const occupied = await ProxyAssignment.count({
+              where: { appleIdRef: accountIds, endedAt: null }, transaction,
+            });
+            if (occupied) throw ApiError.conflict('部分账号仍被代抢单占用，请先确认停抢并释放');
+          }
+          const changedIds = accounts
+            .filter(account => account.status !== body.status)
+            .map(account => account.id);
+          if (changedIds.length)
+            await AppleId.update({ status: body.status }, {
+              where: { id: changedIds }, transaction,
+            });
+          await event('pool_status', null, actorId, {
+            accountIds, status: body.status, changedCount: changedIds.length,
+          }, transaction);
+          return { count: accountIds.length, changedCount: changedIds.length };
         }
         await event(`pool_${action}`, null, actorId, { accountIds }, transaction);
         return { count: accountIds.length };

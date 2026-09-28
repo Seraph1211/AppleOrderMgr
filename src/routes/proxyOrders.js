@@ -50,6 +50,11 @@ for (const action of ['import', 'adopt'])
     requirePermission(PERMISSIONS.PROXY_ACCOUNTS),
     handle(req => service.changeAccounts(action, req.body, req.user.id))
   );
+router.post(
+  '/accounts/status',
+  requirePermission(PERMISSIONS.PROXY_ACCOUNTS),
+  handle(req => service.changeAccounts('status', req.body, req.user.id))
+);
 router.put(
   '/accounts/:id',
   requirePermission(PERMISSIONS.PROXY_ACCOUNTS),

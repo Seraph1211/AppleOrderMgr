@@ -378,7 +378,10 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
     });
     await service.changeAccounts(
       'update',
-      { status: '未使用', notes: '已核对', expectedUpdatedAt: existing.updatedAt.toISOString() },
+      {
+        status: '未使用', notes: '已核对',
+        expectedUpdatedAt: existing.updatedAt.toISOString(), confirmedStopped: true,
+      },
       actor.id,
       existing.id
     );
@@ -390,6 +393,89 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
         existing.id
       )
     ).rejects.toMatchObject({ statusCode: 409 });
+  });
+  test('批量状态原子更新、保留备注密码并记录操作；版本和专用池校验', async () => {
+    const accounts = await pool(2, { status: '使用中', notes: '历史代抢' });
+    const beforePassword = accounts[0].getDataValue('password');
+    const versions = accounts.map(account => ({
+      id: account.id, expectedUpdatedAt: account.updatedAt.toISOString(),
+    }));
+    await expect(
+      service.changeAccounts('status', { accounts: versions, status: '未使用' }, actor.id)
+    ).rejects.toMatchObject({ statusCode: 400 });
+    const result = await service.changeAccounts(
+      'status', { accounts: versions, status: '未使用', confirmedStopped: true }, actor.id
+    );
+    expect(result).toEqual({ count: 2, changedCount: 2 });
+    for (const account of accounts) {
+      await account.reload();
+      expect(account.status).toBe('未使用');
+      expect(account.notes).toBe('历史代抢');
+    }
+    expect(accounts[0].getDataValue('password')).toBe(beforePassword);
+    expect((await service.listAccounts({})).availableCount).toBe(2);
+    expect((await m.ProxyEvent.findOne({ where: { action: 'pool_status' } })).detail).toMatchObject({
+      accountIds: accounts.map(account => account.id), status: '未使用', changedCount: 2,
+    });
+    const invalidVersion = accounts.map(account => ({
+      id: account.id, expectedUpdatedAt: account.updatedAt.toISOString(),
+    }));
+    invalidVersion[1].expectedUpdatedAt = '2000-01-01T00:00:00.000Z';
+    await expect(service.changeAccounts(
+      'status', { accounts: invalidVersion, status: '异常' }, actor.id
+    )).rejects.toMatchObject({ statusCode: 409 });
+    expect((await accounts[0].reload()).status).toBe('未使用');
+    const ordinary = await m.AppleId.create({
+      appleId: 'ordinary@example.com', password: 'Synthetic-Pass',
+    });
+    await expect(service.changeAccounts('status', {
+      accounts: [
+        { id: accounts[0].id, expectedUpdatedAt: accounts[0].updatedAt.toISOString() },
+        { id: ordinary.id, expectedUpdatedAt: ordinary.updatedAt.toISOString() },
+      ],
+      status: '异常',
+    }, actor.id)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await accounts[0].reload()).status).toBe('未使用');
+    await expect(service.changeAccounts('status', {
+      accounts: [versions[0], versions[0]], status: '异常',
+    }, actor.id)).rejects.toMatchObject({ statusCode: 400 });
+    await expect(service.changeAccounts('status', {
+      accounts: Array.from({ length: 101 }, (_, index) => ({
+        id: index + 1, expectedUpdatedAt: accounts[0].updatedAt.toISOString(),
+      })),
+      status: '异常',
+    }, actor.id)).rejects.toMatchObject({ statusCode: 400 });
+    const response = await fetch(`${base}/accounts/status`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-test-permissions': 'proxy_orders.read,proxy_orders.accounts',
+      },
+      body: JSON.stringify({
+        accounts: [{ id: accounts[0].id, expectedUpdatedAt: accounts[0].updatedAt.toISOString() }],
+        status: '异常',
+      }),
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { count: 1, changedCount: 1 } });
+    expect((await accounts[0].reload()).status).toBe('异常');
+  });
+  test('仍有代抢占用的账号不可单条或批量改为未使用', async () => {
+    const [account, other] = await pool(2);
+    await create();
+    await other.update({ status: '异常' });
+    const versions = [account, other].map(row => ({
+      id: row.id, expectedUpdatedAt: row.updatedAt.toISOString(),
+    }));
+    await expect(service.changeAccounts('status', {
+      accounts: versions, status: '未使用', confirmedStopped: true,
+    }, actor.id)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await other.reload()).status).toBe('异常');
+    await expect(service.changeAccounts('update', {
+      status: '未使用', notes: account.notes || '',
+      expectedUpdatedAt: account.updatedAt.toISOString(), confirmedStopped: true,
+    }, actor.id, account.id)).rejects.toMatchObject({ statusCode: 409 });
+    expect((await account.reload()).status).toBe('使用中');
   });
   test('独立接口鉴权；代抢只读可读官方摘要，不能复制或操作池', async () => {
     await pool();
@@ -412,7 +498,7 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
     expect(text).not.toContain('secret-official');
     expect(text).not.toContain('private');
     expect(text).not.toContain('Synthetic-Pass');
-    for (const path of ['copy', 'parse', 'accounts/import'])
+    for (const path of ['copy', 'parse', 'accounts/import', 'accounts/status'])
       expect((await fetch(`${base}/${path}`, { method: 'POST', headers, body: '{}' })).status).toBe(
         403
       );
