@@ -801,3 +801,20 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 业务校验返回 400；不存在 404；占用/重复/版本冲突 409；无权限 403。复制拒绝未确认门店/不完整资料/异常账号/终态订单，错误不回显密码。读接口无隐式自动变更；匹配由 API 内可恢复的 20 秒周期扫描触发，跨进程使用事务锁，最多每批 100 个委托，分页游标循环扫描防饥饿。
 
 代抢列表在原有权限内支持就地修改状态和备注、请求自动追加一个可用账号。仅 pending/rushing 可人工切换为 pending/rushing/cancelled；成功及取消保持只读状态。备注独立更新接口不覆盖客户原文。账号池可单条编辑或勾选当前页账号后批量修改状态；批量操作不改变备注、池归属或代抢占用，任一失败不部分提交。历史账号备注为“代抢”但状态仍为“使用中”时不算可用，须由工作人员确认软件停抢，再在账号池改为“未使用”或导入新账号。
+
+## 完整运行日志查询（2026-09-29）
+
+网站均要求 `monitor.manage`，返回 `Cache-Control: no-store`。日期按北京时间今天及之前29天校验，非法日期、范围、游标返回400，缺资源404。
+
+- GET `/api/server-monitor/logs/states`：设备、实例和最新完整日志扫描状态；设备凭证和本地路径不返回。兼容未升级设备显示等待接入。
+- GET `/api/server-monitor/logs/accounts?deviceId=&localId=&date=&search=&after=`：指定实例日期的账号编号候选，每页最多100个，返回 items/nextCursor；search 为字面包含。
+- GET `/api/server-monitor/logs?deviceId=&localId=&date=&account=&fromTime=&toTime=&keyword=&cursor=&limit=`：必填设备／实例／日期，可选账号（`__unassigned__` 表示未识别）、HH:mm:ss 时间段、字面关键词；limit 默认50、最大100。按 sort_at/file_id/byte_offset/id 稳定升序游标分页，返回 items/nextCursor，不承诺历史补采期间结果快照固定。片段按 fileId/lineNumber/partIndex 还原，超长行分段不截断。
+- GET `/api/server-monitor/logs/:id/context?scope=account|instance`：前后各20个片段，限定同设备、实例、业务日；账号上下文要求有已识别账号，实例上下文包含未识别行。
+
+设备协议使用已有设备认证与解压后1MiB请求限制（完整日志上传使用gzip），`/logs` 独立60次／分钟限流，不消耗原订单及监控请求配额，不接受 body.deviceId。完整日志请求必须带 `X-AOS-Device-Id`，其值必须等于凭证认证设备ID，防止误配凭证把旧队列归到另一设备：
+
+- GET `/api/aos-collector/v1/logs/context`：返回 enabled=true、retentionDays=30，供新版采集器探测服务端能力；旧服务端未支持时保持原订单／监控循环。
+- POST `/api/aos-collector/v1/logs/entries`：`{entries:[...]}`，每批最多200片段。字段 id/localId/fileId/fileName/businessDate/loggedAt/accountNumber/lineNumber/partIndex/byteOffset/message/rawBase64/parseState/contextAt。contextAt为可空的同文件前文排序时间，不冒充原行时间；必须同业务日，原行有时间时两者必须一致。正文每片最多16000字符；同ID或文件位置且同载荷幂等，不同载荷409整批回滚。30天外事件以 expired 回执终结，未来日期拒绝；返回 accepted/expired UUID数组。
+- POST `/api/aos-collector/v1/logs/states`：`{observedAt,instances:[{localId,label,state,dates,fileCount,totalBytes,scannedBytes,pending,issues,expired}]}`，最多20实例。state=ready/catching_up/backpressure/missing/unreadable/error；日期最多30项。旧状态不覆盖新状态。
+
+原始日志属于受限正文，接口错误及应用日志不记录正文。已有告警上报协议保持不变。

@@ -19,6 +19,8 @@ internal sealed class CollectorService : ServiceBase
   private CollectorEngine? engine;
   private MonitorEngine? monitor;
   private Task? monitorTask;
+  private FullLogEngine? fullLogs;
+  private Task? fullLogTask;
   private QueueStore? queue;
   public CollectorService() { ServiceName = NameValue; CanStop = true; AutoLog = false; }
   protected override void OnStart(string[] args)
@@ -33,12 +35,13 @@ internal sealed class CollectorService : ServiceBase
     engineCancellation = new(); engine = new CollectorEngine(config, queue!);
     engineTask = Task.Run(() => engine.Run(engineCancellation.Token));
     monitor = new MonitorEngine(config, queue!); monitorTask = Task.Run(() => monitor.Run(engineCancellation.Token));
+    fullLogs = new FullLogEngine(config, queue!); fullLogTask = Task.Run(() => fullLogs.Run(engineCancellation.Token));
   }
   private async Task StopEngine()
   {
-    try { engineCancellation?.Cancel(); await Task.WhenAll(new[] { engineTask, monitorTask }.OfType<Task>()); }
+    try { engineCancellation?.Cancel(); await Task.WhenAll(new[] { engineTask, monitorTask, fullLogTask }.OfType<Task>()); }
     catch (OperationCanceledException) { }
-    finally { monitor?.Dispose(); monitor = null; monitorTask = null; engine?.Dispose(); engine = null; engineTask = null; engineCancellation?.Dispose(); engineCancellation = null; }
+    finally { fullLogs?.Dispose(); fullLogs = null; fullLogTask = null; monitor?.Dispose(); monitor = null; monitorTask = null; engine?.Dispose(); engine = null; engineTask = null; engineCancellation?.Dispose(); engineCancellation = null; }
   }
   protected override void OnStop()
   {

@@ -35,6 +35,8 @@ const models = {
   OrderMailState: require('./OrderMailState')(sequelize),
   OrderMailProcessingJob: require('./OrderMailProcessingJob')(sequelize),
   OrderMailEvent: require('./OrderMailEvent')(sequelize),
+  MonitorLogEntry: require('./MonitorLogEntry')(sequelize),
+  MonitorLogState: require('./MonitorLogState')(sequelize),
   MonitorRule: require('./MonitorRule')(sequelize),
   MonitorInstance: require('./MonitorInstance')(sequelize),
   MonitorTraffic: require('./MonitorTraffic')(sequelize),

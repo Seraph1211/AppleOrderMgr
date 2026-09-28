@@ -90,3 +90,11 @@ npm run collector:package -- /path/AosCollector.exe /secure/signing-private.pem 
 命中告警规则时，采集器随监控报告回传最近 3 条命中记录的文件名、行号和原始日志正文。单条正文最多 4,000 字符，超出部分截断并显式标记；数据仅通过设备认证接口进入服务器监控，按 90 天保留策略清理。
 
 文件开头的 XML、普通无时间戳文本、超过 100 行的续行、无效编码和超长行仍会标记解析异常。该边界用于避免掩盖真正损坏的日志；告警只统计具有标准 `yyyy-MM-dd HH:mm:ss.fff` 行首时间的记录。
+
+## 1.3.0 完整运行日志查询（本地候选）
+
+复用“日志实例配置”目录，首次补采最近30天 `LogyyyyMMdd_*.txt`。30秒增量扫描、gzip分批上传，长行分段、重复原行保留、第二组方括号账号索引；XML续行及无账号行保留。独立加密队列与事务游标，断网补传、原文过期计数和队列反压；服务器迁移与API先就绪，新端点未部署时原订单／告警循环继续。首次能力同步成功后缓存能力，断网重启仍可采集。
+
+全量查询位于网站“服务器监控 → 日志查询”，详细保留、上下文、缺口和容量边界见 [服务器监控](../docs/design/服务器监控.md#完整运行日志查询2026-09-29本地实现)。本候选仅本地编译及合成验证，不代表已自动升级任何Windows机器。旧客户端可继续使用原接口。
+
+构建仍使用 .NET 10，`dotnet restore collector/AosCollector.Windows -r win-x64 --locked-mode` 后执行 `dotnet build collector/AosCollector.Windows -c Release -r win-x64 --no-restore`。Core锁文件包含win-x64；跨平台测试可复制collector源码到独立临时目录，以真实路径（macOS用 `/private/tmp`）还原和执行，不能为本机测试改写生产锁文件。`dotnet run --project collector/AosCollector.Tests -- --full-logs-only` 执行完整日志专项，其余验收入口保持。

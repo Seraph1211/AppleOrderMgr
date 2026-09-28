@@ -36,7 +36,6 @@ function limiter(max) {
       }),
   });
 }
-router.use(limiter(120));
 function respond(work) {
   return asyncHandler(async (req, res) => {
     try {
@@ -47,6 +46,26 @@ function respond(work) {
     }
   });
 }
+router.use('/logs', limiter(60), (req, _res, next) => {
+  if (req.get('X-AOS-Device-Id') !== req.collectorDevice.id)
+    return next(new ApiError(403, 'DEVICE_IDENTITY_CHANGED', '采集器配置与凭证所属设备不一致'));
+  next();
+});
+router.get(
+  '/logs/context',
+  respond(() => ({ enabled: true, retentionDays: 30 }))
+);
+router.post(
+  '/logs/entries',
+  respond(req => require('../services/monitorLogService').receive(req.collectorDevice.id, req.body))
+);
+router.post(
+  '/logs/states',
+  respond(req =>
+    require('../services/monitorLogService').receiveStates(req.collectorDevice.id, req.body)
+  )
+);
+router.use(limiter(120));
 router.get(
   '/monitor/context',
   respond(req => require('../services/monitorService').context(req.collectorDevice.id))

@@ -9,9 +9,10 @@ public sealed class CollectorClient : IDisposable
 {
   private readonly HttpClient client;
   private readonly QueueStore? accounting;
+  private readonly string deviceIdentity;
   public CollectorClient(CollectorConfig config, HttpMessageHandler? handler = null, QueueStore? accounting = null)
   {
-    this.accounting = accounting;
+    this.accounting = accounting; deviceIdentity = config.DeviceId;
     if (!Uri.TryCreate(config.ServerUrl, UriKind.Absolute, out var uri) || uri.Scheme != "https" ||
       !string.IsNullOrEmpty(uri.UserInfo) || !string.IsNullOrEmpty(uri.Query) || !string.IsNullOrEmpty(uri.Fragment) || uri.AbsolutePath != "/") throw new CollectorException("SERVER_URL_INVALID");
     // 不跟随重定向向另一个主机发送设备凭据，保留默认 TLS 证书校验。
@@ -22,7 +23,17 @@ public sealed class CollectorClient : IDisposable
   {
     try {
       using var request = new HttpRequestMessage(body == null ? HttpMethod.Get : HttpMethod.Post, "api/aos-collector/v1/" + path);
-      if (body != null) { var bytes = JsonSerializer.SerializeToUtf8Bytes(body, Protocol.Json); request.Content = new ByteArrayContent(bytes); request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json"); accounting?.AddTransport(0, bytes.Length); }
+      if (path.StartsWith("logs/", StringComparison.Ordinal)) request.Headers.Add("X-AOS-Device-Id", deviceIdentity);
+      if (body != null) {
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(body, Protocol.Json);
+        if (path == "logs/entries") {
+          using var compressed = new MemoryStream();
+          using (var gzip = new System.IO.Compression.GZipStream(compressed, System.IO.Compression.CompressionLevel.Fastest, true)) gzip.Write(bytes);
+          bytes = compressed.ToArray(); request.Content = new ByteArrayContent(bytes);
+          request.Content.Headers.ContentEncoding.Add("gzip");
+        } else request.Content = new ByteArrayContent(bytes);
+        request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json"); accounting?.AddTransport(0, bytes.Length);
+      }
       using var response = await client.SendAsync(request, token);
       var responseBytes = await response.Content.ReadAsByteArrayAsync(token); accounting?.AddTransport(responseBytes.Length, 0);
       if (!response.IsSuccessStatusCode) {
@@ -37,6 +48,9 @@ public sealed class CollectorClient : IDisposable
     catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
     catch (Exception) { throw new CollectorException("CONNECTION_FAILED"); }
   }
+  public Task<FullLogContext> FullLogContext(CancellationToken token) => Request<FullLogContext>("logs/context", null, token);
+  public Task<FullLogReceipt> SendFullLogs(List<FullLogEntry> entries, CancellationToken token) => Request<FullLogReceipt>("logs/entries", new { entries }, token);
+  public Task<System.Text.Json.JsonElement> SendFullLogStates(FullLogStates states, CancellationToken token) => Request<System.Text.Json.JsonElement>("logs/states", states, token);
   public Task<MonitorContext> MonitorContext(CancellationToken token) => Request<MonitorContext>("monitor/context", null, token);
   public Task<MonitorReceipt> SendMonitor(List<MonitorReport> reports, CancellationToken token) => Request<MonitorReceipt>("monitor/reports", new { reports }, token);
   public Task<CollectorContext> Context(CancellationToken token) => Request<CollectorContext>("context", null, token);

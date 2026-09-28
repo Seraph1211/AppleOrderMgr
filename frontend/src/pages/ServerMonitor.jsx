@@ -22,6 +22,7 @@ import {
 } from 'recharts';
 import client from '../api/client';
 import TagMultiSelect from '../components/TagMultiSelect';
+import MonitorLogs from '../components/MonitorLogs';
 
 const BASE = '/server-monitor';
 const TODAY = () => new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
@@ -444,7 +445,7 @@ export default function ServerMonitor() {
             服务器监控
           </h1>
           <p className="text-sm text-gray-500 mt-1">
-            北京时间 · 历史保留90天 · {actionable} 个实例待核实
+            北京时间 · 告警历史90天 · 完整日志30天 · {actionable} 个实例待核实
           </p>
         </div>
         <button
@@ -474,6 +475,7 @@ export default function ServerMonitor() {
         {[
           ['traffic', '流量统计'],
           ['instances', '实例监控'],
+          ['logs', '日志查询'],
           ['rules', '告警规则'],
           ['notifications', '通知设置'],
         ].map(([id, label]) => (
@@ -497,6 +499,7 @@ export default function ServerMonitor() {
         ))}
       </div>
       {!data && !error && <p className="p-8 text-center text-gray-500">正在读取监控数据…</p>}
+      {tab === 'logs' && <MonitorLogs />}
       {tab === 'traffic' && (
         <>
           <section className="card hover:shadow-sm">

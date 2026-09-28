@@ -23,6 +23,7 @@ public sealed partial class QueueStore : IDisposable
     if (!paymentColumns.Contains("attempts")) Execute("ALTER TABLE payment_events ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0");
     if (!paymentColumns.Contains("next_attempt")) Execute("ALTER TABLE payment_events ADD COLUMN next_attempt TEXT");
     InitializeMonitor();
+    InitializeFullLogs();
     fingerprintKey = GetState<byte[]>("fingerprintKey") ?? RandomNumberGenerator.GetBytes(32);
     SetState("fingerprintKey", fingerprintKey);
   }
@@ -97,7 +98,7 @@ public sealed partial class QueueStore : IDisposable
       return new(scanId, error != null ? "failed" : scanned && total == received ? "completed" : "running", total, received, total - received, error);
     }
   }
-  public bool HasEvents() { lock (sync) { using var cmd = Command("SELECT EXISTS(SELECT 1 FROM events UNION ALL SELECT 1 FROM payment_events UNION ALL SELECT 1 FROM monitor_reports)"); return Convert.ToInt32(cmd.ExecuteScalar()) == 1; } }
+  public bool HasEvents() { lock (sync) { using var cmd = Command("SELECT EXISTS(SELECT 1 FROM events UNION ALL SELECT 1 FROM payment_events UNION ALL SELECT 1 FROM monitor_reports UNION ALL SELECT 1 FROM full_log_events UNION ALL SELECT 1 FROM full_log_sources)"); return Convert.ToInt32(cmd.ExecuteScalar()) == 1; } }
   public void RetryPending() { lock (sync) Execute("UPDATE events SET next_attempt=NULL WHERE state='pending'"); }
   public (int Pending, int Errors) CodeCounts()
   {

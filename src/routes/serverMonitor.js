@@ -3,6 +3,7 @@ const express = require('express');
 const { requirePermission } = require('../middleware/authMiddleware');
 const asyncHandler = require('../utils/asyncHandler');
 const service = require('../services/monitorService');
+const logs = require('../services/monitorLogService');
 const notifications = require('../services/monitorNotificationService');
 const router = express.Router();
 router.use(requirePermission('monitor.manage'));
@@ -20,6 +21,22 @@ function respond(work) {
     }
   });
 }
+router.get(
+  '/logs/states',
+  respond(() => logs.states())
+);
+router.get(
+  '/logs/accounts',
+  respond(req => logs.accounts(req.query))
+);
+router.get(
+  '/logs/:id/context',
+  respond(req => logs.context(req.params.id, req.query))
+);
+router.get(
+  '/logs',
+  respond(req => logs.list(req.query))
+);
 router.get(
   '/overview',
   respond(() => service.overview())

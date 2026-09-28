@@ -669,6 +669,7 @@ async function cleanup() {
         throw error;
       }
     });
+    await require('./monitorLogService').cleanup();
   } catch (error) {
     logger.warn('监控历史清理未完成', { errorCode: error.name });
   }

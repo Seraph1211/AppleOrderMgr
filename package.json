@@ -36,6 +36,7 @@
     "orders:restore-times": "node scripts/restoreOrderTimes.js",
     "collector:package": "node scripts/packageCollectorRelease.js",
     "test:browser:monitor": "node scripts/testServerMonitorBrowser.js",
+    "test:browser:monitor-logs": "node scripts/testMonitorLogsBrowser.js",
     "orders:preview-product-filters": "node scripts/previewProductFilters.js",
     "test:browser:product-filters": "node scripts/testProductFiltersBrowser.js",
     "test:browser:quote-pricing": "node test/browser/quotePricingAcceptance.cjs",
