@@ -85,9 +85,10 @@ function productName(item) {
  * @param {number|string} basePrice 明威原价
  * @param {number|string} percentage 百分比
  * @param {number|string} fixedAmount 固定金额
- * @returns {number} 最终报价
+ * @returns {number|null} 最终报价，无基价时不生成报价
  */
 function calculateQuotePrice(basePrice, percentage = 0, fixedAmount = 0) {
+  if (basePrice === null || basePrice === undefined) return null;
   const base = Number(basePrice);
   const percent = Number(percentage);
   const fixed = Number(fixedAmount);
@@ -99,21 +100,33 @@ function calculateQuotePrice(basePrice, percentage = 0, fixedAmount = 0) {
   return result;
 }
 
+function normalizeSourcePrice(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'number' && typeof value !== 'string') {
+    throw new ApiError(503, 'QUOTE_SOURCE_UNAVAILABLE', '报价数据暂不可用');
+  }
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const price = Number(value);
+  if (!Number.isFinite(price) || price < 0) {
+    throw new ApiError(503, 'QUOTE_SOURCE_UNAVAILABLE', '报价数据暂不可用');
+  }
+  return price === 0 ? null : price;
+}
+
 /** 校验并规范化来源行。 @param {Object[]} rows 来源数据 @returns {Object[]} 商品 */
 function normalizeSourceItems(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
     throw new ApiError(503, 'QUOTE_SOURCE_UNAVAILABLE', '报价数据暂不可用');
   }
   const seen = new Set();
-  const models = new Set();
   const items = rows.map(row => {
     const item = {
       productModel: String(row.productModel || '').trim(),
       storageGb: Number(row.storageGb),
       color: String(row.color || '').trim(),
       specCode: row.specCode ? String(row.specCode) : null,
-      basePrice: Number(row.basePrice),
-      officialPrice: row.officialPrice === null ? null : Number(row.officialPrice),
+      basePrice: normalizeSourcePrice(row.basePrice),
+      officialPrice: normalizeSourcePrice(row.officialPrice),
       sourceUpdatedAt: row.sourceUpdatedAt,
       crawledAt: row.crawledAt,
     };
@@ -121,15 +134,7 @@ function normalizeSourceItems(rows) {
       !PRODUCT_MODELS.includes(item.productModel) ||
       !Number.isSafeInteger(item.storageGb) ||
       item.storageGb <= 0 ||
-      !item.color ||
-      row.basePrice === null ||
-      row.basePrice === undefined ||
-      !Number.isFinite(item.basePrice) ||
-      item.basePrice < 0 ||
-      row.officialPrice === null ||
-      row.officialPrice === undefined ||
-      !Number.isFinite(item.officialPrice) ||
-      item.officialPrice < 0
+      !item.color
     ) {
       throw new ApiError(503, 'QUOTE_SOURCE_UNAVAILABLE', '报价数据暂不可用');
     }
@@ -139,31 +144,7 @@ function normalizeSourceItems(rows) {
       throw new ApiError(503, 'QUOTE_SOURCE_UNAVAILABLE', '报价数据暂不可用');
     }
     seen.add(item.productKey);
-    models.add(item.productModel);
     return item;
-  });
-  if (models.size !== PRODUCT_MODELS.length) {
-    throw new ApiError(503, 'QUOTE_SOURCE_UNAVAILABLE', '报价数据暂不可用');
-  }
-  const colorsByModelAndStorage = new Map();
-  items.forEach(item => {
-    const modelGroups = colorsByModelAndStorage.get(item.productModel) || new Map();
-    const colors = modelGroups.get(item.storageGb) || new Set();
-    colors.add(item.color);
-    modelGroups.set(item.storageGb, colors);
-    colorsByModelAndStorage.set(item.productModel, modelGroups);
-  });
-  colorsByModelAndStorage.forEach(modelGroups => {
-    const expectedColors = new Set();
-    modelGroups.forEach(colors => colors.forEach(color => expectedColors.add(color)));
-    modelGroups.forEach(colors => {
-      if (
-        colors.size !== expectedColors.size ||
-        [...expectedColors].some(color => !colors.has(color))
-      ) {
-        throw new ApiError(503, 'QUOTE_SOURCE_UNAVAILABLE', '报价数据暂不可用');
-      }
-    });
   });
   return items.sort(compareQuoteItems);
 }

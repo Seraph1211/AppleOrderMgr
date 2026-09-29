@@ -42,7 +42,7 @@ describe('iPhone 18 公开报价计算', () => {
     expect(formatStorage(2048)).toBe('2TB');
   });
 
-  test('只接受同时包含 Pro 与 Pro Max 的无重复完整批次', () => {
+  test('接纳来源实际商品列表并拒绝重复商品', () => {
     const rows = [sourceRow(), sourceRow({ productModel: '18 Pro Max', color: '银色' })];
     const normalized = normalizeSourceItems(rows);
     expect(normalized).toHaveLength(2);
@@ -50,14 +50,26 @@ describe('iPhone 18 公开报价计算', () => {
       productName: 'iPhone 18 Pro 256GB 黑色',
       productKey: expect.stringMatching(/^[a-f0-9]{40}$/),
     });
-    expect(() => normalizeSourceItems([sourceRow()])).toThrow('报价数据暂不可用');
+    expect(normalizeSourceItems([sourceRow()])).toHaveLength(1);
     expect(() => normalizeSourceItems([...rows, sourceRow()])).toThrow('报价数据暂不可用');
-    expect(() => normalizeSourceItems([sourceRow({ basePrice: null }), rows[1]])).toThrow(
-      '报价数据暂不可用'
-    );
-    expect(() => normalizeSourceItems([sourceRow({ officialPrice: null }), rows[1]])).toThrow(
-      '报价数据暂不可用'
-    );
+  });
+
+  test.each([null, undefined, '', '  ', 0, '0.00'])('缺失价格 %p 不转换为零元报价', value => {
+    const [item] = normalizeSourceItems([sourceRow({ basePrice: value, officialPrice: value })]);
+    expect(item).toMatchObject({ basePrice: null, officialPrice: null });
+    expect(calculateQuotePrice(item.basePrice, 5, 200)).toBeNull();
+    expect(calculateQuotePrice(item.basePrice, 0, -200)).toBeNull();
+  });
+
+  test.each([-1, 'invalid', Infinity, NaN, true, []])('非法数字价格 %p 仍受控拒绝', value => {
+    expect(() => normalizeSourceItems([sourceRow({ basePrice: value })])).toThrow(ApiError);
+    expect(() => normalizeSourceItems([sourceRow({ officialPrice: value })])).toThrow(ApiError);
+  });
+
+  test('空批次或无效商品身份仍拒绝', () => {
+    for (const rows of [[], [sourceRow({ color: '' })], [sourceRow({ storageGb: 0 })]]) {
+      expect(() => normalizeSourceItems(rows)).toThrow(ApiError);
+    }
   });
 
   test('新增容量时按动态结构接纳批次，不限制固定商品数量', () => {
@@ -73,7 +85,7 @@ describe('iPhone 18 公开报价计算', () => {
     expect(normalizeSourceItems(rows)).toHaveLength(32);
   });
 
-  test('拒绝某个型号容量组缺失颜色的最新批次', () => {
+  test('来源某容量只有部分颜色时仍展示当期商品', () => {
     const rows = [
       sourceRow(),
       sourceRow({ color: '银色' }),
@@ -81,7 +93,7 @@ describe('iPhone 18 公开报价计算', () => {
       sourceRow({ productModel: '18 Pro Max', color: '黑色' }),
     ];
 
-    expect(() => normalizeSourceItems(rows)).toThrow('报价数据暂不可用');
+    expect(normalizeSourceItems(rows)).toHaveLength(rows.length);
   });
 
   test('所有容量均按黑色、银色、冰川蓝色、勃艮第酒红色排列', () => {

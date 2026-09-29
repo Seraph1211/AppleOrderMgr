@@ -128,10 +128,7 @@ async function main() {
       adjustments = { black: { percentage: 5, fixedAmount: -100 } };
       version += 1;
       data = { version, selectedCount: 2 };
-    } else if (
-      url.pathname === '/api/quote-pricing/iphone18/display-order' &&
-      method === 'PUT'
-    ) {
+    } else if (url.pathname === '/api/quote-pricing/iphone18/display-order' && method === 'PUT') {
       const body = request.postDataJSON();
       assert.equal(body.expectedVersion, version);
       assert.deepEqual(body.productKeys, ['b'.repeat(40), 'a'.repeat(40)]);
@@ -197,6 +194,21 @@ async function main() {
   await page.getByRole('heading', { name: 'Apple 实时报价' }).waitFor();
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await page.screenshot({ path: `${OUTPUT_DIR}/public-mobile.png`, fullPage: true });
+
+  publicItems[1].quotePrice = null;
+  publicItems[1].officialPrice = null;
+  await page.reload();
+  await page.getByText('暂未报价', { exact: true }).waitFor();
+  const unavailableRow = page.locator('tbody tr').filter({ hasText: publicItems[1].productName });
+  await unavailableRow.getByRole('button', { name: '复制', exact: true }).click();
+  assert.ok((await page.evaluate(() => navigator.clipboard.readText())).includes('暂未报价'));
+  assert.equal(await unavailableRow.getByText('¥0', { exact: true }).count(), 0);
+  await page.getByRole('button', { name: '复制当前报价' }).click();
+  assert.ok((await page.evaluate(() => navigator.clipboard.readText())).includes('暂未报价'));
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  await page.screenshot({ path: `${OUTPUT_DIR}/public-null-prices.png`, fullPage: true });
+  publicItems[1].quotePrice = 11200;
+  publicItems[1].officialPrice = 10999;
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto(`${BASE_URL}/quote-pricing`);

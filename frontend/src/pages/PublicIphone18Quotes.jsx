@@ -2,9 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Apple, Check, Copy, RefreshCw, Search } from 'lucide-react';
 import { getPublicAppleQuotes } from '../api/quotePricingApi';
 
-const formatCurrency = value =>
+const formatCurrency = (value, emptyLabel = '—') =>
   value === null || value === undefined
-    ? '-'
+    ? emptyLabel
     : new Intl.NumberFormat('zh-CN', {
         style: 'currency',
         currency: 'CNY',
@@ -78,7 +78,7 @@ export default function PublicIphone18Quotes() {
 
   function copyCurrentList() {
     const text = items
-      .map(item => `${item.productName}｜报价 ${formatCurrency(item.quotePrice)}`)
+      .map(item => `${item.productName}｜报价 ${formatCurrency(item.quotePrice, '暂未报价')}`)
       .join('\n');
     return copyText('list', text);
   }
@@ -228,7 +228,7 @@ export default function PublicIphone18Quotes() {
                           </p>
                         </td>
                         <td className="whitespace-nowrap px-4 pb-4 pt-1 text-lg font-bold text-primary sm:table-cell sm:py-4">
-                          {formatCurrency(item.quotePrice)}
+                          {formatCurrency(item.quotePrice, '暂未报价')}
                         </td>
                         <td className="hidden whitespace-nowrap px-4 py-4 text-sm text-gray-500 sm:table-cell">
                           {formatCurrency(item.officialPrice)}
@@ -240,7 +240,7 @@ export default function PublicIphone18Quotes() {
                             onClick={() =>
                               copyText(
                                 item.productKey,
-                                `${item.productName}｜报价 ${formatCurrency(item.quotePrice)}`
+                                `${item.productName}｜报价 ${formatCurrency(item.quotePrice, '暂未报价')}`
                               )
                             }
                           >

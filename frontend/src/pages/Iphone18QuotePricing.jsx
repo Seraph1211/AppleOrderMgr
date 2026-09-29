@@ -21,9 +21,9 @@ import {
   setIphone18QuoteAvailability,
 } from '../api/quotePricingApi';
 
-const formatCurrency = value =>
+const formatCurrency = (value, emptyLabel = '—') =>
   value === null || value === undefined
-    ? '-'
+    ? emptyLabel
     : new Intl.NumberFormat('zh-CN', {
         style: 'currency',
         currency: 'CNY',
@@ -572,7 +572,7 @@ export default function Iphone18QuotePricing() {
                         {item.specCode || '-'}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3">
-                        {formatCurrency(item.basePrice)}
+                        {formatCurrency(item.basePrice, '暂未报价')}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-gray-500">
                         {formatCurrency(item.officialPrice)}
@@ -586,7 +586,7 @@ export default function Iphone18QuotePricing() {
                         {formatCurrency(item.fixedAmount)}
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 font-semibold text-primary">
-                        {formatCurrency(item.quotePrice)}
+                        {formatCurrency(item.quotePrice, '暂未报价')}
                       </td>
                     </tr>
                   ))}

@@ -135,6 +135,43 @@ describe('iPhone 18 公开报价字段边界', () => {
     await expect(service.getPublicQuotes()).resolves.toMatchObject({ stale: true });
   });
 
+  test('电询和无官网价商品不阻断其他报价，已有调价不生成伪价格', async () => {
+    sourceRepository.fetchLatestIphone18Batch.mockResolvedValue({
+      items: [
+        { ...rows[0], basePrice: null, officialPrice: null },
+        { ...rows[1], officialPrice: null },
+      ],
+      sourceUpdatedAt: updatedAt,
+      lastCheckedAt: updatedAt,
+    });
+    const result = await service.getPublicQuotes();
+    expect(result.stale).toBe(false);
+    expect(result.items.find(item => item.productKey === createProductKey(rows[0]))).toMatchObject({
+      quotePrice: null,
+      officialPrice: null,
+    });
+    expect(result.items.find(item => item.productKey === createProductKey(rows[1]))).toMatchObject({
+      quotePrice: 11000,
+      officialPrice: null,
+    });
+    const admin = await service.getAdminQuotes();
+    expect(admin.items.find(item => item.productKey === createProductKey(rows[0]))).toMatchObject({
+      basePrice: null,
+      quotePrice: null,
+      percentage: 5,
+      fixedAmount: -100,
+    });
+    sourceRepository.fetchLatestIphone18Batch.mockResolvedValue({
+      items: rows,
+      sourceUpdatedAt: updatedAt,
+      lastCheckedAt: updatedAt,
+    });
+    const restored = await service.getPublicQuotes();
+    expect(
+      restored.items.find(item => item.productKey === createProductKey(rows[0]))
+    ).toMatchObject({ quotePrice: 10400 });
+  });
+
   test('公开开关关闭时不访问来源库', async () => {
     Setting.findByPk.mockResolvedValue({ publicEnabled: false, updatedAt, version: 4 });
     await expect(service.getPublicQuotes()).rejects.toMatchObject({ code: 'QUOTE_PAGE_PAUSED' });

@@ -73,8 +73,8 @@ async function fetchLatestIphone18Batch() {
       storageGb: Number(row.storage_gb),
       color: row.color,
       specCode: row.spec_code,
-      basePrice: Number(row.wholesale_price),
-      officialPrice: Number(row.official_price),
+      basePrice: row.wholesale_price,
+      officialPrice: row.official_price,
       sourceUpdatedAt: row.site_update_time,
       crawledAt: row.crawl_time,
     }));

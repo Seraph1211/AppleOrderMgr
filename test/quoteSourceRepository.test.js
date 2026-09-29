@@ -66,9 +66,28 @@ describe('iPhone 18 报价来源仓库', () => {
     expect(sourceSql).toContain('SELECT MAX(site_update_time)');
     expect(sourceSql).not.toMatch(/COUNT\(\*\)|HAVING|SUM\(product_model/);
     expect(sourceSql).toContain("FIELD(color, '黑色', '银色', '冰川蓝色', '勃艮第酒红色')");
-    expect(result.items[0]).toMatchObject({ basePrice: 10000, officialPrice: 9999 });
+    expect(result.items[0]).toMatchObject({ basePrice: '10000', officialPrice: '9999' });
     expect(result.latestObservedAt).toEqual(new Date('2026-09-24T10:01:21.000Z'));
     expect(mockConnection.rollback).toHaveBeenCalledTimes(1);
     expect(mockConnection.release).toHaveBeenCalledTimes(1);
+  });
+
+  test('数据库 NULL 价格原样交给业务层，不能在仓库转换成 0', async () => {
+    mockConnection.execute.mockReset();
+    mockConnection.execute
+      .mockResolvedValueOnce([
+        [
+          {
+            product_model: '18 Pro Max',
+            storage_gb: 512,
+            color: '冰川蓝色',
+            wholesale_price: null,
+            official_price: null,
+          },
+        ],
+      ])
+      .mockResolvedValueOnce([[]]);
+    const result = await repository.fetchLatestIphone18Batch();
+    expect(result.items[0]).toMatchObject({ basePrice: null, officialPrice: null });
   });
 });

@@ -52,7 +52,7 @@
 - `GET /api/quote-pricing/iphone18/versions?limit=20`：仅管理员；返回最近价格版本元数据，不直接返回完整快照。
 - `POST /api/quote-pricing/iphone18/versions/:id/restore`：仅管理员；请求 `{expectedVersion:integer}`，恢复目标快照并生成新的恢复版本。
 
-最终报价固定为 `round(basePrice × (1 + percentage / 100) + fixedAmount)`。服务端重新计算且拒绝负值；不接收客户端提交最终价格或明威价格。
+最终报价固定为 `round(basePrice × (1 + percentage / 100) + fixedAmount)`。服务端重新计算且拒绝负值；不接收客户端提交最终价格或明威价格。来源价格为电询、空值或 0 时，`basePrice`／`quotePrice` 为 `null`，页面和复制文本显示“暂未报价”；缺失或为 0 的 `officialPrice` 返回 `null` 并显示“—”。无基价商品仍可保存调价规则，待来源恢复数字价格后自动应用，当前不得以 0 或固定调整金额生成报价。商品数量、型号是否同时出现、各容量的颜色集合不作为批次拒绝条件；来源空批次、商品身份无效、重复商品或非法价格仍返回受控 503。
 
 公共错误处理中间件返回 success=false 和 error.code/message/details，并通过 X-Request-Id 关联日志。部分认证、仪表板及模板错误仍返回顶层 message 或字符串 error，客户端必须兼容，不能把公共格式当成全量端点已经统一。
 
