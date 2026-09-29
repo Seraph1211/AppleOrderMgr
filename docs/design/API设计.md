@@ -42,7 +42,7 @@
 
 公开接口在全局认证中间件之前挂载，管理接口仍要求登录管理员。所有接口使用统一 `{success,data}`／`{success:false,error}` 结构。
 
-- `GET /api/public/apple-quotes`：无需登录，每 IP 每分钟最多 120 次，且不写入内部操作日志。公开开关关闭返回 503 `QUOTE_PAGE_PAUSED`；来源不可用或无完整批次返回 503 `QUOTE_SOURCE_UNAVAILABLE`。成功仅返回 `enabled`、`updatedAt`、`stale`、筛选候选及 `items[{productKey,productName,productModel,storageGb,color,quotePrice,officialPrice}]`，不返回明威价、调价字段、规格码、来源地址或操作人。
+- `GET /api/public/apple-quotes`：无需登录，每 IP 每分钟最多 120 次，且不写入内部操作日志。公开开关关闭返回 503 `QUOTE_PAGE_PAUSED`；来源不可用、空批次、无效／重复商品身份或非法数字价格返回 503 `QUOTE_SOURCE_UNAVAILABLE`，电询和商品组合变动不阻断页面。成功仅返回 `enabled`、`updatedAt`、`stale`、筛选候选及 `items[{productKey,productName,productModel,storageGb,color,quotePrice,officialPrice}]`，不返回明威价、调价字段、规格码、来源地址或操作人。
 - `GET /api/public/iphone18-quotes`：历史兼容别名，返回内容与 `/api/public/apple-quotes` 相同；新客户端不得继续使用该地址。
 - `GET /api/quote-pricing/iphone18`：仅管理员。返回公开设置版本、来源批次、完整商品列表及每项明威价、官网价、百分比、固定金额和最终报价。
 - `PUT /api/quote-pricing/iphone18/availability`：仅管理员；请求 `{enabled:boolean,expectedVersion:integer}`，切换固定公开链接，不改调价规则。
