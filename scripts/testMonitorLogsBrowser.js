@@ -51,7 +51,7 @@ async function main() {
         message,
         parseState: 'parsed',
       };
-      const firstPageItems = Array.from({ length: 50 }, (_, index) => ({
+      const firstPageItems = Array.from({ length: 100 }, (_, index) => ({
         ...row,
         id: index ? `log-${index}` : row.id,
         lineNumber: String(index + 1),
@@ -132,6 +132,7 @@ async function main() {
             listRequests += 1;
             const query = Object.fromEntries(url.searchParams);
             assert.notEqual(query.cursor, '', '首页请求应省略空游标');
+            assert.equal(Number(query.limit), 100, '每次加载100个片段');
             logPolicy.query(query);
             if (fail) {
               await route.fulfill({
@@ -190,19 +191,24 @@ async function main() {
       assert(await reader.evaluate(element => element.scrollWidth > element.clientWidth));
       await panel.getByLabel('自动换行', { exact: true }).check();
       assert(await reader.evaluate(element => element.scrollWidth <= element.clientWidth + 1));
+      fail = true;
+      const beforeAutoLoad = listRequests;
       await reader.evaluate(element => {
-        element.scrollTop = 350;
+        element.scrollTop = element.scrollHeight - element.clientHeight - 200;
       });
       const scrollTop = await reader.evaluate(element => element.scrollTop);
-      fail = true;
-      await panel.getByRole('button', { name: '加载更多', exact: true }).click();
       await panel.getByText('已加载日志保留，可重试加载更多。').waitFor();
-      assert.equal(await reader.locator('tbody tr').count(), 50);
+      assert.equal(await reader.locator('tbody tr').count(), 100);
+      await reader.evaluate(element => {
+        element.dispatchEvent(new Event('scroll'));
+      });
+      await page.waitForTimeout(400);
+      assert.equal(listRequests, beforeAutoLoad + 1, '失败后停止自动重试，避免反复请求');
       assert.equal(await reader.evaluate(element => element.scrollTop), scrollTop);
       fail = false;
       await panel.getByRole('button', { name: '重试加载更多', exact: true }).click();
-      await panel.getByText('已加载 51 个片段 · 已到当前结果末尾').waitFor();
-      assert.equal(await reader.locator('tbody tr').count(), 51, '仅去重重叠ID，保留原始重复行');
+      await panel.getByText('已加载 101 个片段 · 已到当前结果末尾').waitFor();
+      assert.equal(await reader.locator('tbody tr').count(), 101, '仅去重重叠ID，保留原始重复行');
       assert.equal(await reader.evaluate(element => element.scrollTop), scrollTop);
       contextFail = true;
       await panel.getByRole('button', { name: '详情与上下文', exact: true }).click();
@@ -271,6 +277,19 @@ async function main() {
         await detail.getByRole('button', { name: '关闭日志详情' }).tap();
         await page.setViewportSize({ width: 375, height: 740 });
       }
+      await reader.evaluate(element => {
+        element.scrollTop = element.scrollHeight;
+      });
+      await panel.getByText('已加载 101 个片段 · 已到当前结果末尾').waitFor();
+      const completedRequests = listRequests;
+      await reader.evaluate(element => {
+        element.dispatchEvent(new Event('scroll'));
+      });
+      await page.waitForTimeout(400);
+      assert.equal(listRequests, completedRequests, '末页不再自动请求');
+      await reader.evaluate(element => {
+        element.scrollTop = 0;
+      });
       assert(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
         '页面不应横向溢出'

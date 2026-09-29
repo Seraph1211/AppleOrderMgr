@@ -4,6 +4,7 @@ import client from '../api/client';
 import { copyDeferredText } from '../utils/copyDeferredText';
 
 const BASE = '/server-monitor/logs';
+const PAGE_SIZE = 100;
 const day = offset =>
   new Date(Date.now() + 8 * 3600000 + offset * 86400000).toISOString().slice(0, 10);
 const time = value =>
@@ -76,6 +77,7 @@ export default function MonitorLogs() {
   const dialogRef = useRef(null);
   const contextTriggerRef = useRef(null);
   const logScrollRef = useRef(null);
+  const loadMoreRef = useRef(null);
   const filterKey = JSON.stringify(filters);
   const activeInstance = catalog?.instances.find(
     row => row.deviceId === filters.deviceId && row.localId === filters.localId
@@ -124,7 +126,7 @@ export default function MonitorLogs() {
           params: {
             ...JSON.parse(filterKey),
             cursor: cursor || undefined,
-            limit: 50,
+            limit: PAGE_SIZE,
           },
           signal: controller.signal,
         });
@@ -150,6 +152,19 @@ export default function MonitorLogs() {
       controller.abort();
     };
   }, [filterKey, cursor, refresh, filters.deviceId, filters.localId]);
+
+  useEffect(() => {
+    const nextCursor = result?.nextCursor;
+    if (loading || error || drawerOpen || !nextCursor || nextCursor === cursor) return undefined;
+    const observer = new IntersectionObserver(
+      entries => {
+        if (entries.some(entry => entry.isIntersecting)) setCursor(nextCursor);
+      },
+      { root: logScrollRef.current, rootMargin: '0px 0px 400px 0px' }
+    );
+    if (loadMoreRef.current) observer.observe(loadMoreRef.current);
+    return () => observer.disconnect();
+  }, [result?.nextCursor, loading, error, cursor, drawerOpen]);
 
   useEffect(() => {
     if (!filters.deviceId || !filters.localId) {
@@ -692,12 +707,13 @@ export default function MonitorLogs() {
               当前条件下没有已上传的日志，请核对筛选条件和采集状态。
             </p>
           ) : null}
+          <div ref={loadMoreRef} className="h-px" aria-hidden="true" />
         </div>
         {result && (
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-3 py-2 text-sm">
             <span className="text-gray-500">
               已加载 {result.items.length} 个片段
-              {!result.nextCursor && ' · 已到当前结果末尾'}
+              {result.nextCursor ? ' · 下滑自动加载' : ' · 已到当前结果末尾'}
             </span>
             {result.nextCursor && (
               <button
