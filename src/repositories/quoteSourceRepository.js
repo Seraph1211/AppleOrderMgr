@@ -33,8 +33,9 @@ function getPool() {
 }
 
 /**
- * 在显式只读事务中取得最新完整的 iPhone 18 报价批次。
- * @returns {Promise<{items:Object[],sourceUpdatedAt:Date,lastCheckedAt:Date|null}>}
+ * 在显式只读事务中取得最新 iPhone 18 报价批次。
+ * 批次的完整性由业务服务按动态结构校验，不在 SQL 中固定商品数量。
+ * @returns {Promise<Object>} 最新批次、采集检查时间与最新观测时间
  */
 async function fetchLatestIphone18Batch() {
   const connection = await getPool().getConnection();
@@ -44,34 +45,26 @@ async function fetchLatestIphone18Batch() {
     const [rows] = await connection.execute(
       `SELECT product_model, storage_gb, color, spec_code, wholesale_price,
               official_price, site_update_time, crawl_time
-         FROM quote_hnmwdx_apple
-        WHERE product_model IN ('18 Pro', '18 Pro Max')
-          AND site_update_time = (
-            SELECT site_update_time
-             FROM quote_hnmwdx_apple
+        FROM quote_hnmwdx_apple
+       WHERE product_model IN ('18 Pro', '18 Pro Max')
+         AND site_update_time = (
+            SELECT MAX(site_update_time)
+              FROM quote_hnmwdx_apple
              WHERE product_model IN ('18 Pro', '18 Pro Max')
-             GROUP BY site_update_time
-            HAVING COUNT(DISTINCT product_model) = 2
-               AND COUNT(*) = 28
-               AND SUM(product_model = '18 Pro') = 12
-               AND SUM(product_model = '18 Pro Max') = 16
-               AND COUNT(DISTINCT CONCAT_WS('|', product_model, storage_gb, color)) = 28
-               AND SUM(
-                 wholesale_price IS NULL OR official_price IS NULL
-                 OR storage_gb IS NULL OR color IS NULL
-               ) = 0
-             ORDER BY site_update_time DESC
-             LIMIT 1
           )
         ORDER BY FIELD(product_model, '18 Pro', '18 Pro Max'), storage_gb,
                  FIELD(color, '黑色', '银色', '冰川蓝色', '勃艮第酒红色')`,
       []
     );
     const [checks] = await connection.execute(
-      `SELECT MAX(finished_at) AS last_checked_at
-         FROM crawl_job_log
-        WHERE spider_name = 'ecommerce.hnmwdx.iphone18'
-          AND status IN ('success', 'skipped')`,
+      `SELECT
+         (SELECT MAX(finished_at)
+            FROM crawl_job_log
+           WHERE spider_name = 'ecommerce.hnmwdx.iphone18'
+             AND status IN ('success', 'skipped')) AS last_checked_at,
+         (SELECT MAX(site_update_time)
+            FROM quote_hnmwdx_apple
+           WHERE product_model IN ('18 Pro', '18 Pro Max')) AS latest_observed_at`,
       []
     );
     await connection.rollback();
@@ -89,6 +82,7 @@ async function fetchLatestIphone18Batch() {
       items,
       sourceUpdatedAt: items[0]?.sourceUpdatedAt || null,
       lastCheckedAt: checks[0]?.last_checked_at || null,
+      latestObservedAt: checks[0]?.latest_observed_at || null,
     };
   } catch (error) {
     try {

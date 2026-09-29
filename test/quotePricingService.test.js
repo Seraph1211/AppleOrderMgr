@@ -56,6 +56,7 @@ describe('iPhone 18 公开报价字段边界', () => {
       items: rows,
       sourceUpdatedAt: updatedAt,
       lastCheckedAt: updatedAt,
+      latestObservedAt: updatedAt,
     });
     Adjustment.findAll.mockResolvedValue([
       {
@@ -121,6 +122,17 @@ describe('iPhone 18 公开报价字段边界', () => {
     expect(result.items[0]).not.toHaveProperty('fixedAmount');
     expect(result.items[0]).not.toHaveProperty('specCode');
     expect(result.filters.colors).toEqual(['黑色', '银色']);
+  });
+
+  test('当采用批次落后于来源最新批次时标记过期', async () => {
+    sourceRepository.fetchLatestIphone18Batch.mockResolvedValue({
+      items: rows,
+      sourceUpdatedAt: new Date(updatedAt.getTime() - 60_000),
+      lastCheckedAt: updatedAt,
+      latestObservedAt: updatedAt,
+    });
+
+    await expect(service.getPublicQuotes()).resolves.toMatchObject({ stale: true });
   });
 
   test('公开开关关闭时不访问来源库', async () => {

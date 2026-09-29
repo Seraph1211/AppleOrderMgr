@@ -171,6 +171,14 @@ function latestDate(...values) {
   return new Date(Math.max(...dates.map(date => date.getTime())));
 }
 
+function isSourceBatchBehind(source) {
+  if (!source.sourceUpdatedAt || !source.latestObservedAt) return false;
+  const selectedAt = new Date(source.sourceUpdatedAt);
+  const observedAt = new Date(source.latestObservedAt);
+  if ([selectedAt, observedAt].some(value => Number.isNaN(value.getTime()))) return true;
+  return selectedAt.getTime() < observedAt.getTime();
+}
+
 /** 获取无需登录的公开报价。 @returns {Promise<Object>} 公开字段白名单 */
 async function getPublicQuotes() {
   try {
@@ -195,7 +203,10 @@ async function getPublicQuotes() {
     return {
       enabled: true,
       updatedAt: latestDate(source.sourceUpdatedAt, lastAdjustmentAt),
-      stale: !checkedAt || Date.now() - checkedAt.getTime() > staleMinutes * 60 * 1000,
+      stale:
+        isSourceBatchBehind(source) ||
+        !checkedAt ||
+        Date.now() - checkedAt.getTime() > staleMinutes * 60 * 1000,
       filters: {
         productModels: [...new Set(items.map(item => item.productModel))],
         storageGb: [...new Set(items.map(item => item.storageGb))].sort((a, b) => a - b),

@@ -60,6 +60,30 @@ describe('iPhone 18 公开报价计算', () => {
     );
   });
 
+  test('新增容量时按动态结构接纳批次，不限制固定商品数量', () => {
+    const colors = ['黑色', '银色', '冰川蓝色', '勃艮第酒红色'];
+    const rows = ['18 Pro', '18 Pro Max'].flatMap(productModel =>
+      [256, 512, 1024, 2048].flatMap(storageGb =>
+        colors.map((color, index) =>
+          sourceRow({ productModel, storageGb, color, basePrice: 10000 + index })
+        )
+      )
+    );
+
+    expect(normalizeSourceItems(rows)).toHaveLength(32);
+  });
+
+  test('拒绝某个型号容量组缺失颜色的最新批次', () => {
+    const rows = [
+      sourceRow(),
+      sourceRow({ color: '银色' }),
+      sourceRow({ storageGb: 512 }),
+      sourceRow({ productModel: '18 Pro Max', color: '黑色' }),
+    ];
+
+    expect(() => normalizeSourceItems(rows)).toThrow('报价数据暂不可用');
+  });
+
   test('所有容量均按黑色、银色、冰川蓝色、勃艮第酒红色排列', () => {
     const rows = [
       sourceRow({ storageGb: 512, color: '勃艮第酒红色' }),
@@ -68,6 +92,8 @@ describe('iPhone 18 公开报价计算', () => {
       sourceRow({ color: '勃艮第酒红色' }),
       sourceRow(),
       sourceRow({ storageGb: 512, color: '黑色' }),
+      sourceRow({ storageGb: 512, color: '银色' }),
+      sourceRow({ storageGb: 512, color: '冰川蓝色' }),
       sourceRow({ productModel: '18 Pro Max', color: '黑色' }),
     ];
 
@@ -81,6 +107,8 @@ describe('iPhone 18 公开报价计算', () => {
       '18 Pro|256|冰川蓝色',
       '18 Pro|256|勃艮第酒红色',
       '18 Pro|512|黑色',
+      '18 Pro|512|银色',
+      '18 Pro|512|冰川蓝色',
       '18 Pro|512|勃艮第酒红色',
       '18 Pro Max|256|黑色',
     ]);

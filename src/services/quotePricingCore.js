@@ -145,6 +145,26 @@ function normalizeSourceItems(rows) {
   if (models.size !== PRODUCT_MODELS.length) {
     throw new ApiError(503, 'QUOTE_SOURCE_UNAVAILABLE', '报价数据暂不可用');
   }
+  const colorsByModelAndStorage = new Map();
+  items.forEach(item => {
+    const modelGroups = colorsByModelAndStorage.get(item.productModel) || new Map();
+    const colors = modelGroups.get(item.storageGb) || new Set();
+    colors.add(item.color);
+    modelGroups.set(item.storageGb, colors);
+    colorsByModelAndStorage.set(item.productModel, modelGroups);
+  });
+  colorsByModelAndStorage.forEach(modelGroups => {
+    const expectedColors = new Set();
+    modelGroups.forEach(colors => colors.forEach(color => expectedColors.add(color)));
+    modelGroups.forEach(colors => {
+      if (
+        colors.size !== expectedColors.size ||
+        [...expectedColors].some(color => !colors.has(color))
+      ) {
+        throw new ApiError(503, 'QUOTE_SOURCE_UNAVAILABLE', '报价数据暂不可用');
+      }
+    });
+  });
   return items.sort(compareQuoteItems);
 }
 
