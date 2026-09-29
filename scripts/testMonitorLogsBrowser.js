@@ -28,6 +28,8 @@ async function main() {
       const errors = [];
       let fail = false;
       let empty = false;
+      let contextFail = false;
+      let listRequests = 0;
       let allowed = true;
       const deviceId = '11111111-1111-4111-8111-111111111111';
       const localId = '22222222-2222-4222-8222-222222222222';
@@ -49,6 +51,12 @@ async function main() {
         message,
         parseState: 'parsed',
       };
+      const firstPageItems = Array.from({ length: 50 }, (_, index) => ({
+        ...row,
+        id: index ? `log-${index}` : row.id,
+        lineNumber: String(index + 1),
+        message: index === 1 ? `${'长日志内容'.repeat(100)}\n第二行\n` : message,
+      }));
       page.on('pageerror', error => errors.push(error.message));
       await page.route('**/*', async route => {
         try {
@@ -99,7 +107,14 @@ async function main() {
             };
           else if (url.pathname.endsWith('/logs/accounts'))
             data = { items: ['128', '129'], nextCursor: null };
-          else if (url.pathname.endsWith('/context'))
+          else if (url.pathname.endsWith('/context')) {
+            if (contextFail) {
+              await route.fulfill({
+                status: 503,
+                json: { success: false, error: { message: '上下文合成失败' } },
+              });
+              return;
+            }
             data = {
               anchorId: row.id,
               items: [
@@ -109,11 +124,12 @@ async function main() {
                   id: 'context-other',
                   lineNumber: '2',
                   accountNumber: url.searchParams.get('scope') === 'instance' ? '129' : '128',
-                  message: '上下文合成日志\n',
+                  message: `上下文合成日志 [${url.searchParams.get('scope') === 'instance' ? '129' : '128'}]\n`,
                 },
               ],
             };
-          else if (url.pathname === '/api/server-monitor/logs') {
+          } else if (url.pathname === '/api/server-monitor/logs') {
+            listRequests += 1;
             const query = Object.fromEntries(url.searchParams);
             assert.notEqual(query.cursor, '', '首页请求应省略空游标');
             logPolicy.query(query);
@@ -132,10 +148,17 @@ async function main() {
               };
             else if (url.searchParams.get('cursor'))
               data = {
-                items: [{ ...row, id: 'page-two', lineNumber: '51', message: '第二页完整日志\n' }],
+                items: [
+                  row,
+                  { ...row, id: 'page-two', lineNumber: '51', message: '第二页完整日志\n' },
+                ],
                 nextCursor: null,
               };
-            else data = { items: empty ? [] : [row], nextCursor: empty ? null : 'synthetic-next' };
+            else
+              data = {
+                items: empty ? [] : firstPageItems,
+                nextCursor: empty ? null : 'synthetic-next',
+              };
           } else throw new Error(`非预期API：${url.pathname}`);
           await route.fulfill({ json: { success: true, data } });
         } catch (error) {
@@ -149,30 +172,55 @@ async function main() {
       const panel = page.getByRole('region', { name: '完整日志查询', exact: true });
       await panel.getByLabel('服务器', { exact: true }).selectOption(deviceId);
       await panel.getByLabel('软件实例', { exact: true }).selectOption(localId);
-      await panel.getByText(message.trim(), { exact: true }).waitFor();
+      await panel.getByRole('button', { name: '选择第1条日志', exact: true }).waitFor();
       assert.equal(await page.evaluate(() => window.logInjected), undefined);
-      assert.match(
-        await panel
-          .locator('tbody tr')
-          .first()
-          .locator('td')
-          .first()
-          .locator('div')
-          .first()
-          .innerText(),
-        /20\d{2}\//
-      );
-      await panel.getByRole('button', { name: '复制第1行第1段', exact: true }).click();
+      const reader = panel.getByRole('region', { name: '日志阅读区', exact: true });
+      const first = panel.getByRole('button', { name: '选择第1条日志', exact: true });
+      const numberColumn = await reader.locator('td').first().boundingBox();
+      assert(numberColumn.width <= 50, '序号列不应挤占日志正文宽度');
+      await first.click();
+      await panel.getByRole('button', { name: '复制选中日志', exact: true }).click();
       await panel.getByText('日志已复制', { exact: true }).waitFor();
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), message);
-      await panel.getByRole('button', { name: '下一页', exact: true }).click();
-      await panel.getByText('第二页完整日志', { exact: true }).waitFor();
-      await panel.getByRole('button', { name: '上一页', exact: true }).click();
-      await panel.getByRole('button', { name: '上下文', exact: true }).click();
-      const detail = panel.getByRole('region', { name: '日志上下文', exact: true });
-      await detail.getByText('上下文合成日志', { exact: true }).waitFor();
+      assert.equal(await panel.getByText(row.fileName, { exact: true }).count(), 0);
+      await panel.getByRole('button', { name: '收起筛选', exact: true }).click();
+      assert.equal(await panel.getByLabel('服务器', { exact: true }).isVisible(), false);
+      assert.equal(await panel.getByLabel('日志采集状态').getAttribute('open'), null);
+      await panel.getByLabel('自动换行', { exact: true }).uncheck();
+      assert(await reader.evaluate(element => element.scrollWidth > element.clientWidth));
+      await panel.getByLabel('自动换行', { exact: true }).check();
+      assert(await reader.evaluate(element => element.scrollWidth <= element.clientWidth + 1));
+      await reader.evaluate(element => {
+        element.scrollTop = 350;
+      });
+      const scrollTop = await reader.evaluate(element => element.scrollTop);
+      fail = true;
+      await panel.getByRole('button', { name: '加载更多', exact: true }).click();
+      await panel.getByText('已加载日志保留，可重试加载更多。').waitFor();
+      assert.equal(await reader.locator('tbody tr').count(), 50);
+      assert.equal(await reader.evaluate(element => element.scrollTop), scrollTop);
+      fail = false;
+      await panel.getByRole('button', { name: '重试加载更多', exact: true }).click();
+      await panel.getByText('已加载 51 个片段 · 已到当前结果末尾').waitFor();
+      assert.equal(await reader.locator('tbody tr').count(), 51, '仅去重重叠ID，保留原始重复行');
+      assert.equal(await reader.evaluate(element => element.scrollTop), scrollTop);
+      contextFail = true;
+      await panel.getByRole('button', { name: '详情与上下文', exact: true }).click();
+      const detail = page.getByRole('dialog', { name: '日志详情与上下文' });
+      await detail.getByText('上下文合成失败', { exact: false }).waitFor();
+      const beforeContextRetry = listRequests;
+      contextFail = false;
+      await detail.getByRole('button', { name: '重试上下文' }).click();
+      await detail.getByText('上下文合成日志 [128]', { exact: true }).waitFor();
+      assert.equal(listRequests, beforeContextRetry, '重试上下文不重新查询主列表');
+      await detail.getByText(row.fileName, { exact: true }).waitFor();
       await detail.getByRole('button', { name: '整个实例上下文', exact: true }).click();
-      await detail.getByText('账号 129', { exact: true }).waitFor();
+      await detail.getByText('上下文合成日志 [129]', { exact: true }).waitFor();
+      await page.keyboard.press('Escape');
+      assert.equal(await detail.count(), 0);
+      assert.equal(await reader.evaluate(element => element.scrollTop), scrollTop);
+      assert.equal(await page.evaluate(() => document.activeElement.textContent), '详情与上下文');
+      await panel.getByRole('button', { name: '展开筛选', exact: true }).click();
       await panel.getByLabel('账号编号', { exact: false }).fill('128');
       await panel.getByLabel('正文关键词', { exact: true }).fill('店铺');
       const request = page.waitForRequest(
@@ -183,43 +231,50 @@ async function main() {
       );
       await panel.getByRole('button', { name: '查询', exact: true }).click();
       await request;
-      await panel.getByText(message.trim(), { exact: true }).waitFor();
-      assert.equal(await detail.count(), 0);
+      await first.waitFor();
+      assert.equal(await first.locator('mark').innerText(), '店铺');
+      assert.equal(await reader.evaluate(element => element.scrollTop), 0);
+      assert(await panel.getByRole('button', { name: '复制选中日志' }).isDisabled());
       await panel.getByLabel('软件实例', { exact: true }).selectOption(otherId);
       await panel.getByText('实例二账号128独立日志', { exact: true }).waitFor();
-      assert.equal(await panel.getByText(message.trim(), { exact: true }).count(), 0);
+      assert.equal(await reader.locator('tbody tr').count(), 1);
       await panel.getByLabel('软件实例', { exact: true }).selectOption(localId);
-      await panel.getByText(message.trim(), { exact: true }).waitFor();
+      await first.waitFor();
       fail = true;
-      await panel.getByRole('button', { name: '刷新当前页', exact: true }).click();
+      await panel.getByRole('button', { name: '重新查询（从头）', exact: true }).click();
       await panel.getByText('合成日志读取失败', { exact: false }).waitFor();
-      assert.equal(await panel.getByText(message.trim(), { exact: true }).count(), 0);
+      assert.equal(await reader.locator('tbody tr').count(), 0);
       fail = false;
       empty = true;
       await panel.getByRole('button', { name: '重新查询', exact: true }).click();
       await panel.getByText('当前条件下没有已上传的日志', { exact: false }).waitFor();
       empty = false;
-      await panel.getByRole('button', { name: '刷新当前页', exact: true }).click();
-      await panel.getByText(message.trim(), { exact: true }).waitFor();
-      await panel.scrollIntoViewIfNeeded();
+      await panel.getByRole('button', { name: '清空筛选', exact: true }).click();
+      await first.waitFor();
+      // 清空已经为空的筛选仍会重新读取，避免列表被清空后不再发请求。
+      const reread = page.waitForRequest(
+        req => new URL(req.url()).pathname === '/api/server-monitor/logs'
+      );
+      await panel.getByRole('button', { name: '清空筛选', exact: true }).click();
+      await reread;
+      await first.waitFor();
+      await panel.getByRole('button', { name: '收起筛选', exact: true }).click();
+      if (mobile) {
+        await first.tap();
+        await panel.getByRole('button', { name: '详情与上下文' }).tap();
+        await detail.getByText('上下文合成日志 [128]', { exact: true }).waitFor();
+        await page.setViewportSize({ width: 375, height: 500 });
+        await detail.locator('.flex-1').evaluate(element => {
+          element.scrollTop = element.scrollHeight;
+        });
+        assert(await detail.getByRole('button', { name: '关闭日志详情' }).isVisible());
+        await detail.getByRole('button', { name: '关闭日志详情' }).tap();
+        await page.setViewportSize({ width: 375, height: 740 });
+      }
       assert(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
         '页面不应横向溢出'
       );
-      if (mobile) {
-        const scroll = panel.locator('.overflow-x-auto').first();
-        await scroll.evaluate(element => {
-          element.scrollLeft = element.scrollWidth;
-        });
-        await panel.getByRole('button', { name: '上下文', exact: true }).tap();
-        await panel.getByRole('button', { name: '关闭日志上下文', exact: true }).tap();
-      }
-      await panel
-        .locator('.overflow-x-auto')
-        .first()
-        .evaluate(element => {
-          element.scrollLeft = 0;
-        });
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: path.resolve(`coverage/full-logs-${mobile ? 'mobile' : 'desktop'}.png`),

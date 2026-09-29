@@ -49,12 +49,20 @@ export default function MonitorLogs() {
   const [catalog, setCatalog] = useState(null);
   const [catalogError, setCatalogError] = useState('');
   const [filters, setFilters] = useState(initial);
-  const [draft, setDraft] = useState({ account: '', fromTime: '', toTime: '', keyword: '' });
+  const [draft, setDraft] = useState({
+    account: '',
+    fromTime: '',
+    toTime: '',
+    keyword: '',
+  });
   const [accounts, setAccounts] = useState([]);
   const [accountError, setAccountError] = useState('');
   const [accountAfter, setAccountAfter] = useState('');
   const [accountNext, setAccountNext] = useState(null);
-  const [cursors, setCursors] = useState(['']);
+  const [cursor, setCursor] = useState('');
+  const [filtersOpen, setFiltersOpen] = useState(true);
+  const [wrapLines, setWrapLines] = useState(true);
+  const [drawerOpen, setDrawerOpen] = useState(false);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -64,8 +72,10 @@ export default function MonitorLogs() {
   const [scope, setScope] = useState('account');
   const [context, setContext] = useState(null);
   const [contextError, setContextError] = useState('');
-  const contextRef = useRef(null);
-  const cursor = cursors.at(-1);
+  const [contextRefresh, setContextRefresh] = useState(0);
+  const dialogRef = useRef(null);
+  const contextTriggerRef = useRef(null);
+  const logScrollRef = useRef(null);
   const filterKey = JSON.stringify(filters);
   const activeInstance = catalog?.instances.find(
     row => row.deviceId === filters.deviceId && row.localId === filters.localId
@@ -78,7 +88,9 @@ export default function MonitorLogs() {
     const controller = new AbortController();
     async function read() {
       try {
-        const response = await client.get(`${BASE}/states`, { signal: controller.signal });
+        const response = await client.get(`${BASE}/states`, {
+          signal: controller.signal,
+        });
         if (active) {
           setCatalog(response.data);
           setCatalogError('');
@@ -97,7 +109,7 @@ export default function MonitorLogs() {
   }, [refresh]);
 
   useEffect(() => {
-    setResult(null);
+    if (!cursor) setResult(null);
     setError('');
     if (!filters.deviceId || !filters.localId) {
       setLoading(false);
@@ -109,10 +121,23 @@ export default function MonitorLogs() {
     async function read() {
       try {
         const response = await client.get(BASE, {
-          params: { ...JSON.parse(filterKey), cursor: cursor || undefined, limit: 50 },
+          params: {
+            ...JSON.parse(filterKey),
+            cursor: cursor || undefined,
+            limit: 50,
+          },
           signal: controller.signal,
         });
-        if (active) setResult(response.data);
+        if (active) {
+          setResult(previous => {
+            if (!cursor || !previous) return response.data;
+            const known = new Set(previous.items.map(row => row.id));
+            return {
+              ...response.data,
+              items: [...previous.items, ...response.data.items.filter(row => !known.has(row.id))],
+            };
+          });
+        }
       } catch (e) {
         if (active) setError(e.message || '日志读取失败');
       } finally {
@@ -168,7 +193,7 @@ export default function MonitorLogs() {
   useEffect(() => {
     setContext(null);
     setContextError('');
-    if (!selected) return undefined;
+    if (!drawerOpen || !selected) return undefined;
     let active = true;
     const controller = new AbortController();
     async function read() {
@@ -183,18 +208,56 @@ export default function MonitorLogs() {
       }
     }
     read();
-    contextRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     return () => {
       active = false;
       controller.abort();
     };
-  }, [selected, scope, refresh]);
+  }, [drawerOpen, selected, scope, contextRefresh]);
 
-  function change(field, value) {
+  useEffect(() => {
+    if (!drawerOpen) return undefined;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    dialogRef.current?.querySelector('button')?.focus({ preventScroll: true });
+    function handleKey(event) {
+      if (event.key === 'Escape') setDrawerOpen(false);
+      if (event.key !== 'Tab') return;
+      const controls = [
+        ...dialogRef.current.querySelectorAll('button, input, select, summary, [tabindex="0"]'),
+      ].filter(element => !element.disabled && element.getClientRects().length);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener('keydown', handleKey);
+      contextTriggerRef.current?.focus({ preventScroll: true });
+    };
+  }, [drawerOpen]);
+
+  function resetReader() {
     setResult(null);
     setSelected(null);
-    setCursors(['']);
+    setDrawerOpen(false);
+    setCursor('');
     setNotice('');
+    if (logScrollRef.current) logScrollRef.current.scrollTop = 0;
+  }
+  function reload() {
+    resetReader();
+    setRefresh(value => value + 1);
+  }
+
+  function change(field, value) {
+    resetReader();
     setAccounts([]);
     setAccountAfter('');
     setAccountNext(null);
@@ -208,10 +271,7 @@ export default function MonitorLogs() {
   }
   function submit(event) {
     event.preventDefault();
-    setResult(null);
-    setSelected(null);
-    setCursors(['']);
-    setNotice('');
+    resetReader();
     setFilters(current => ({
       ...current,
       ...draft,
@@ -228,78 +288,69 @@ export default function MonitorLogs() {
       setNotice(e.message || '复制失败');
     }
   }
+  function highlighted(message) {
+    const keyword = filters.keyword.trim();
+    if (!keyword) return message;
+    return message.split(keyword).map((part, index) => (
+      <span key={index}>
+        {index > 0 && <mark className="rounded-sm bg-amber-100 text-gray-900">{keyword}</mark>}
+        {part}
+      </span>
+    ));
+  }
   function rows(items, inContext = false) {
     return (
-      <div className="overflow-x-auto rounded-lg border border-gray-200">
-        <table className="w-full min-w-[680px] table-fixed text-sm">
-          <thead className="bg-gray-50 text-left text-gray-500">
-            <tr>
-              <th className="w-44 p-3">时间／账号</th>
-              <th className="p-3">完整日志正文</th>
-              <th className="w-28 p-3">操作</th>
-            </tr>
-          </thead>
-          <tbody className="bg-white">
-            {items.map(row => (
-              <tr
-                key={row.id}
-                className={`border-t border-gray-200 ${row.id === context?.anchorId ? 'bg-primary-50' : 'hover:bg-gray-50'}`}
-              >
-                <td className="p-3 align-top break-words">
-                  <div>{time(row.loggedAt)}</div>
-                  <div className="mt-1 font-medium">账号 {row.accountNumber ?? '未识别'}</div>
-                  <div className="mt-2 text-xs text-gray-500">
-                    {row.fileName}
-                    <br />第 {row.lineNumber} 行 · 第 {row.partIndex + 1} 段<br />
-                    版本 {row.fileId.slice(0, 8)}
-                  </div>
-                  {PARSE[row.parseState] && (
-                    <span className="text-xs text-amber-700">{PARSE[row.parseState]}</span>
-                  )}
-                </td>
-                <td className="p-3 align-top">
-                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-6 text-gray-700">
-                    {row.message || '（空片段）'}
+      <table
+        className={`w-full border-collapse text-left font-mono text-[13px] leading-[22px] ${wrapLines ? 'table-fixed' : ''}`}
+        aria-label={inContext ? '上下文日志列表' : '日志原文列表'}
+      >
+        <caption className="sr-only">序号仅表示当前列表位置，原始文件与行号请查看详情。</caption>
+        <colgroup>
+          <col style={{ width: 48 }} />
+          <col />
+        </colgroup>
+        <tbody>
+          {items.map((row, index) => (
+            <tr
+              key={row.id}
+              className={`${row.id === selected?.id ? 'bg-primary-50' : 'hover:bg-gray-50'} group`}
+            >
+              <td className="w-12 select-none py-0.5 pr-2 text-right align-top text-xs text-gray-400">
+                {index + 1}
+              </td>
+              <td className="p-0 align-top">
+                {inContext ? (
+                  <pre
+                    className={`px-2 py-0.5 font-mono ${wrapLines ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre'}`}
+                  >
+                    {highlighted(row.message.replace(/\r?\n$/, '') || '（空行）')}
                   </pre>
-                  {row.rawBase64 && (
-                    <details className="mt-2 text-xs">
-                      <summary className="cursor-pointer text-amber-700">
-                        查看原始字节（Base64）
-                      </summary>
-                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">
-                        {row.rawBase64}
-                      </pre>
-                    </details>
-                  )}
-                </td>
-                <td className="p-3 align-top">
-                  <div className="flex flex-col gap-2">
-                    <button
-                      className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
-                      onClick={() => copy(row.message)}
-                      aria-label={`复制第${row.lineNumber}行第${row.partIndex + 1}段`}
+                ) : (
+                  <button
+                    type="button"
+                    aria-label={`选择第${index + 1}条日志`}
+                    aria-pressed={selected?.id === row.id}
+                    className="block w-full select-text px-2 py-3 sm:py-0.5 text-left text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+                    onClick={() => {
+                      setSelected(row);
+                      setNotice('');
+                    }}
+                  >
+                    <span
+                      className={`block ${wrapLines ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre'}`}
                     >
-                      <Copy className="mr-1 h-4 w-4" />
-                      复制
-                    </button>
-                    {!inContext && (
-                      <button
-                        className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
-                        onClick={() => {
-                          setScope(row.accountNumber ? 'account' : 'instance');
-                          setSelected(row);
-                        }}
-                      >
-                        上下文
-                      </button>
+                      {highlighted(row.message.replace(/\r?\n$/, '') || '（空行）')}
+                    </span>
+                    {PARSE[row.parseState] && (
+                      <span className="ml-2 text-xs text-amber-700">[{PARSE[row.parseState]}]</span>
                     )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                  </button>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     );
   }
   return (
@@ -319,7 +370,32 @@ export default function MonitorLogs() {
         </p>
       )}
       {!catalog && !catalogError && <p className="text-gray-500">正在读取服务器与实例…</p>}
-      <form onSubmit={submit} className="rounded-lg border border-gray-200 bg-white p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <p className="min-w-0 break-words text-gray-600">
+          {chosenDevice?.name || '未选择服务器'} / {activeInstance?.label || '未选择实例'} ·{' '}
+          {filters.date}
+          {filters.account &&
+            ` · 账号 ${filters.account === '__unassigned__' ? '未识别' : filters.account}`}
+          {(filters.fromTime || filters.toTime) &&
+            ` · ${filters.fromTime || '00:00:00'}—${filters.toTime || '23:59:59'}`}
+          {filters.keyword && ` · 关键词：${filters.keyword}`}
+        </p>
+        <button
+          type="button"
+          className="btn btn-secondary shrink-0"
+          aria-expanded={filtersOpen}
+          aria-controls="log-query-filters"
+          onClick={() => setFiltersOpen(value => !value)}
+        >
+          {filtersOpen ? '收起筛选' : '展开筛选'}
+        </button>
+      </div>
+      <form
+        id="log-query-filters"
+        hidden={!filtersOpen}
+        onSubmit={submit}
+        className="rounded-lg border border-gray-200 bg-white p-4"
+      >
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <label className="text-sm text-gray-600">
             服务器
@@ -430,7 +506,10 @@ export default function MonitorLogs() {
             type="checkbox"
             checked={draft.account === '__unassigned__'}
             onChange={e => {
-              setDraft(value => ({ ...value, account: e.target.checked ? '__unassigned__' : '' }));
+              setDraft(value => ({
+                ...value,
+                account: e.target.checked ? '__unassigned__' : '',
+              }));
               setAccountAfter('');
             }}
           />
@@ -472,8 +551,7 @@ export default function MonitorLogs() {
                 toTime: '',
                 keyword: '',
               }));
-              setCursors(['']);
-              setSelected(null);
+              reload();
             }}
           >
             清空筛选
@@ -482,146 +560,278 @@ export default function MonitorLogs() {
             type="button"
             className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
             disabled={loading}
-            onClick={() => setRefresh(value => value + 1)}
+            onClick={reload}
           >
             <RefreshCw className="mr-1 h-4 w-4" />
-            刷新当前页
+            重新查询（从头）
           </button>
         </div>
       </form>
       {filters.localId && (
-        <div
-          className="rounded-lg border border-blue-100 bg-primary-50 p-3 text-sm text-gray-700"
+        <details
+          className="rounded-lg border border-blue-100 bg-primary-50 px-3 py-2 text-sm text-gray-700"
           aria-label="日志采集状态"
         >
-          <p>
-            {chosenDevice?.name} / {activeInstance?.label} ·{' '}
+          <summary className="cursor-pointer leading-6">
             {!snapshot
               ? '等待新版采集器接入'
               : !activeInstance.fresh
-                ? '采集状态已过期，已上传日志仍可查询'
+                ? '采集状态已过期'
                 : STATE[snapshot.state] || snapshot.state}
-            {chosenDevice?.enabled === false ? ' · 设备已停用' : ''}
-          </p>
+            {snapshot && ` · 待上传 ${snapshot.pending} 个片段`}
+            {snapshot &&
+              (snapshot.state !== 'ready' || !activeInstance.fresh) &&
+              ' · 查询结果可能尚不完整'}
+            {chosenDevice?.enabled === false && ' · 设备已停用'}
+            <span className="ml-2 text-xs text-primary">采集详情</span>
+          </summary>
           {snapshot && (
-            <>
-              <p className="mt-1">
+            <div className="mt-2 space-y-1 border-t border-blue-100 pt-2 text-xs leading-5">
+              <p>
                 扫描时间：{time(activeInstance.observedAt)} · 发现 {snapshot.fileCount} 个文件 ·
-                已读 {size(snapshot.scannedBytes)} / {size(snapshot.totalBytes)} · 待上传{' '}
-                {snapshot.pending} 个片段 · 异常 {snapshot.issues} · 本机过期未传 {snapshot.expired}
+                已读 {size(snapshot.scannedBytes)} / {size(snapshot.totalBytes)} · 异常{' '}
+                {snapshot.issues} · 本机过期未传 {snapshot.expired}
               </p>
-              <p className="mt-1">
-                本机现存日期：{snapshot.dates?.join('、') || '无'}。
+              <p>本机现存日期：{snapshot.dates?.join('、') || '无'}。</p>
+              <p>
                 {snapshot.dates?.includes(filters.date)
-                  ? '文件存在不代表当天完整，补采期间可刷新查看新增结果。'
+                  ? '文件存在不代表当天完整。补采可能插入较早日志，补采结束后请重新查询。'
                   : '所选日期未发现现存文件；已删除历史无法从本机补采。'}
               </p>
-            </>
+            </div>
           )}
-        </div>
+        </details>
       )}
-      {notice && (
-        <p role="status" className="text-sm text-primary">
-          {notice}
-        </p>
-      )}
-      {error && (
-        <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-          {error}{' '}
-          <button
-            className="underline"
-            onClick={() => {
-              setCursors(['']);
-              setRefresh(value => value + 1);
-            }}
-          >
-            重新查询
-          </button>
-        </p>
-      )}
-      {loading ? (
-        <p className="p-8 text-center text-gray-500">正在读取日志…</p>
-      ) : !filters.localId ? (
-        <p className="p-8 text-center text-gray-500">请选择服务器和软件实例查看日志。</p>
-      ) : result?.items.length ? (
-        rows(result.items)
-      ) : (
-        result && (
-          <p className="p-8 text-center text-gray-500">
-            当前条件下没有已上传的日志，请核对筛选条件和采集状态。
-          </p>
-        )
-      )}
-      {result && (
-        <div className="flex items-center justify-between gap-2 text-sm">
-          <span>
-            第 {cursors.length} 页 · 本页 {result.items.length} 个片段
-          </span>
-          <div className="flex gap-2">
+      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
-              className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
-              disabled={loading || cursors.length === 1}
-              onClick={() => {
-                setSelected(null);
-                setCursors(value => value.slice(0, -1));
-              }}
+              type="button"
+              className="btn btn-secondary inline-flex items-center gap-1"
+              disabled={!selected}
+              onClick={() => copy(selected.message)}
             >
-              上一页
+              <Copy className="h-4 w-4" />
+              复制选中日志
             </button>
             <button
-              className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
-              disabled={loading || !result.nextCursor}
-              onClick={() => {
-                setSelected(null);
-                setCursors(value => [...value, result.nextCursor]);
-              }}
-            >
-              下一页
-            </button>
-          </div>
-        </div>
-      )}
-      {selected && (
-        <section
-          ref={contextRef}
-          className="space-y-3 rounded-lg border border-gray-200 bg-white p-3"
-          aria-label="日志上下文"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="font-semibold">日志上下文 · 前后各20个片段</h3>
-            <button
-              aria-label="关闭日志上下文"
+              type="button"
               className="btn btn-secondary"
-              onClick={() => setSelected(null)}
+              disabled={!selected}
+              onClick={event => {
+                contextTriggerRef.current = event.currentTarget;
+                setScope(selected.accountNumber ? 'account' : 'instance');
+                setDrawerOpen(true);
+              }}
             >
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <button
-              className={`btn ${scope === 'account' ? 'btn-primary' : 'btn-secondary'}`}
-              disabled={!selected.accountNumber}
-              onClick={() => setScope('account')}
-            >
-              该账号上下文
+              详情与上下文
             </button>
             <button
-              className={`btn ${scope === 'instance' ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => setScope('instance')}
+              type="button"
+              className="btn btn-secondary"
+              disabled={loading || !filters.localId}
+              onClick={reload}
+              aria-label="重新查询日志，从头加载"
             >
-              整个实例上下文
+              <RefreshCw className="h-4 w-4" />
             </button>
           </div>
-          {contextError ? (
-            <p role="alert" className="text-red-700">
-              {contextError}
+          <label className="inline-flex min-h-8 items-center gap-2 text-sm text-gray-600">
+            <input
+              type="checkbox"
+              checked={wrapLines}
+              onChange={event => setWrapLines(event.target.checked)}
+            />
+            自动换行
+          </label>
+        </div>
+        <div className="flex min-h-8 flex-wrap items-center justify-between gap-1 border-b border-gray-100 px-3 py-1 text-xs text-gray-500">
+          <span>
+            {selected
+              ? `已选中 · 账号 ${selected.accountNumber ?? '未识别'} · 原文复制保留换行`
+              : '点击一条日志选择；序号为列表位置，文件来源见详情'}
+          </span>
+          <span role="status" className="text-primary">
+            {notice}
+          </span>
+        </div>
+        {error && (
+          <p
+            role="alert"
+            className="flex flex-wrap items-center gap-2 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
+            {error}
+            {result ? (
+              <span>已加载日志保留，可重试加载更多。</span>
+            ) : (
+              <button type="button" className="underline" onClick={reload}>
+                重新查询
+              </button>
+            )}
+          </p>
+        )}
+        <div
+          ref={logScrollRef}
+          role="region"
+          aria-label="日志阅读区"
+          tabIndex={0}
+          className="h-[60vh] min-h-[280px] max-h-[760px] overflow-auto text-gray-700"
+          style={{ overflowAnchor: 'none' }}
+          aria-busy={loading}
+        >
+          {result?.items.length ? (
+            rows(result.items)
+          ) : loading ? (
+            <p className="p-8 text-center text-sm text-gray-500">正在读取日志…</p>
+          ) : !filters.localId ? (
+            <p className="p-8 text-center text-sm text-gray-500">
+              请选择服务器和软件实例查看日志。
             </p>
-          ) : context ? (
-            rows(context.items, true)
-          ) : (
-            <p className="p-4 text-gray-500">正在读取上下文…</p>
-          )}
-        </section>
+          ) : !error && result ? (
+            <p className="p-8 text-center text-sm text-gray-500">
+              当前条件下没有已上传的日志，请核对筛选条件和采集状态。
+            </p>
+          ) : null}
+        </div>
+        {result && (
+          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-3 py-2 text-sm">
+            <span className="text-gray-500">
+              已加载 {result.items.length} 个片段
+              {!result.nextCursor && ' · 已到当前结果末尾'}
+            </span>
+            {result.nextCursor && (
+              <button
+                type="button"
+                className="btn btn-secondary min-h-11 sm:min-h-0"
+                disabled={loading}
+                onClick={() => {
+                  if (error) setRefresh(value => value + 1);
+                  else setCursor(result.nextCursor);
+                }}
+              >
+                {loading ? '正在加载…' : error ? '重试加载更多' : '加载更多'}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+      {drawerOpen && selected && (
+        <div
+          className="fixed inset-0 z-50 flex justify-end bg-gray-900/20"
+          onClick={event => {
+            if (event.target === event.currentTarget) setDrawerOpen(false);
+          }}
+        >
+          <section
+            ref={dialogRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="log-detail-title"
+            className="flex h-[100dvh] w-full max-w-3xl flex-col bg-white shadow-xl"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
+              <h3 id="log-detail-title" className="font-semibold text-gray-900">
+                日志详情与上下文
+              </h3>
+              <button
+                type="button"
+                aria-label="关闭日志详情"
+                className="btn btn-secondary"
+                onClick={() => setDrawerOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
+                <dt className="text-gray-500">日志时间</dt>
+                <dd>{time(selected.loggedAt)}</dd>
+                <dt className="text-gray-500">账号</dt>
+                <dd>{selected.accountNumber ?? '未识别'}</dd>
+                <dt className="text-gray-500">来源文件</dt>
+                <dd className="break-all">{selected.fileName}</dd>
+                <dt className="text-gray-500">原始位置</dt>
+                <dd>
+                  第 {selected.lineNumber} 行 · 第 {selected.partIndex + 1} 段
+                </dd>
+                <dt className="text-gray-500">文件版本</dt>
+                <dd className="break-all font-mono text-xs">{selected.fileId}</dd>
+                {PARSE[selected.parseState] && (
+                  <>
+                    <dt className="text-gray-500">格式说明</dt>
+                    <dd className="text-amber-700">{PARSE[selected.parseState]}</dd>
+                  </>
+                )}
+              </dl>
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <h4 className="text-sm font-medium">选中原文</h4>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => copy(selected.message)}
+                  >
+                    复制原文
+                  </button>
+                </div>
+                <pre className="max-h-64 overflow-auto rounded border border-gray-200 bg-gray-50 p-2 font-mono text-[13px] leading-6 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
+                  {highlighted(selected.message || '（空片段）')}
+                </pre>
+                <p role="status" className="mt-1 text-xs text-primary">
+                  {notice}
+                </p>
+                {selected.rawBase64 && (
+                  <details className="mt-2 text-xs">
+                    <summary className="cursor-pointer text-amber-700">
+                      查看原始字节（Base64）
+                    </summary>
+                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">
+                      {selected.rawBase64}
+                    </pre>
+                  </details>
+                )}
+              </div>
+              <div className="space-y-2">
+                <h4 className="text-sm font-medium">上下文 · 同一天前后各20个片段</h4>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    className={`btn ${scope === 'account' ? 'btn-primary' : 'btn-secondary'}`}
+                    disabled={!selected.accountNumber}
+                    onClick={() => setScope('account')}
+                  >
+                    该账号上下文
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn ${scope === 'instance' ? 'btn-primary' : 'btn-secondary'}`}
+                    onClick={() => setScope('instance')}
+                  >
+                    整个实例上下文
+                  </button>
+                </div>
+                {contextError ? (
+                  <p role="alert" className="text-sm text-red-700">
+                    {contextError}
+                    <button
+                      type="button"
+                      className="ml-2 underline"
+                      onClick={() => setContextRefresh(value => value + 1)}
+                    >
+                      重试上下文
+                    </button>
+                  </p>
+                ) : context ? (
+                  <div className="overflow-auto rounded border border-gray-200">
+                    {rows(context.items, true)}
+                  </div>
+                ) : (
+                  <p className="p-4 text-sm text-gray-500">正在读取上下文…</p>
+                )}
+              </div>
+            </div>
+          </section>
+        </div>
       )}
     </section>
   );
