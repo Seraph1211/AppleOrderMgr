@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Copy, Maximize2, Minimize2, RefreshCw, Search, X } from 'lucide-react';
 import client from '../api/client';
+import MonitorLogAccountSelect from './MonitorLogAccountSelect';
 import { copyDeferredText } from '../utils/copyDeferredText';
 
 const BASE = '/server-monitor/logs';
@@ -58,6 +59,7 @@ export default function MonitorLogs() {
   });
   const [accounts, setAccounts] = useState([]);
   const [accountError, setAccountError] = useState('');
+  const [accountsLoading, setAccountsLoading] = useState(false);
   const [accountAfter, setAccountAfter] = useState('');
   const [accountNext, setAccountNext] = useState(null);
   const [cursor, setCursor] = useState('');
@@ -239,13 +241,15 @@ export default function MonitorLogs() {
   }, [result?.nextCursor, loading, error, cursor, drawerOpen]);
 
   useEffect(() => {
-    if (!filters.deviceId || !filters.localId) {
+    if (!filters.deviceId || !filters.localId || draft.account === '__unassigned__') {
+      setAccountsLoading(false);
       setAccounts([]);
       return undefined;
     }
     let active = true;
     const controller = new AbortController();
     setAccountError('');
+    setAccountsLoading(true);
     const timer = setTimeout(async () => {
       try {
         const response = await client.get(`${BASE}/accounts`, {
@@ -266,8 +270,10 @@ export default function MonitorLogs() {
         if (active) {
           setAccounts([]);
           setAccountNext(null);
-          setAccountError(e.message || '账号候选读取失败，可直接输入编号');
+          setAccountError(e.message || '账号候选读取失败');
         }
+      } finally {
+        if (active) setAccountsLoading(false);
       }
     }, 250);
     return () => {
@@ -534,26 +540,33 @@ export default function MonitorLogs() {
               onChange={e => change('date', e.target.value)}
             />
           </label>
-          <label className="text-sm text-gray-600">
-            账号编号
-            <input
-              className="input mt-1 w-full text-base sm:text-sm"
-              list="monitor-log-accounts"
-              placeholder="全部账号，或输入编号"
-              aria-label="账号编号"
-              disabled={draft.account === '__unassigned__'}
+          <div className="text-sm text-gray-600">
+            <span>账号编号</span>
+            <MonitorLogAccountSelect
               value={draft.account === '__unassigned__' ? '' : draft.account}
-              onChange={e => {
-                setDraft(value => ({ ...value, account: e.target.value }));
+              options={accounts}
+              loading={accountsLoading}
+              error={accountError}
+              disabled={!filtersOpen || !filters.localId || draft.account === '__unassigned__'}
+              nextCursor={accountNext}
+              hasPrevious={Boolean(accountAfter)}
+              onChange={account => {
+                if (account === draft.account) return;
+                setDraft(value => ({ ...value, account }));
+                setAccounts([]);
+                setAccountNext(null);
+                setAccountAfter('');
+              }}
+              onNext={() => {
+                setAccounts([]);
+                setAccountAfter(accountNext);
+              }}
+              onFirst={() => {
+                setAccounts([]);
                 setAccountAfter('');
               }}
             />
-            <datalist id="monitor-log-accounts">
-              {accounts.map(account => (
-                <option key={account} value={account} />
-              ))}
-            </datalist>
-          </label>
+          </div>
           <label className="text-sm text-gray-600">
             开始时间
             <input
@@ -602,22 +615,6 @@ export default function MonitorLogs() {
           />
           仅查看未识别账号的日志
         </label>
-        {accountError && <p className="mt-2 text-xs text-amber-700">{accountError}</p>}
-        {(accountNext || accountAfter) && (
-          <div className="mt-2 flex gap-3 text-xs text-primary">
-            {accountAfter && (
-              <button type="button" onClick={() => setAccountAfter('')}>
-                账号候选首页
-              </button>
-            )}
-            {accountNext && (
-              <button type="button" onClick={() => setAccountAfter(accountNext)}>
-                下一组账号候选
-              </button>
-            )}
-            <span>也可直接输入完整账号编号</span>
-          </div>
-        )}
         <div className="mt-4 flex flex-wrap gap-2">
           <button
             className="btn btn-primary inline-flex items-center justify-center min-h-11 sm:min-h-0"

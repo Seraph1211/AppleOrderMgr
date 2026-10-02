@@ -34,6 +34,7 @@ async function main() {
       let fail = false;
       let empty = false;
       let contextFail = false;
+      let accountFail = false;
       let listRequests = 0;
       let allowed = true;
       const deviceId = '11111111-1111-4111-8111-111111111111';
@@ -110,9 +111,23 @@ async function main() {
                 },
               })),
             };
-          else if (url.pathname.endsWith('/logs/accounts'))
-            data = { items: ['128', '129'], nextCursor: null };
-          else if (url.pathname.endsWith('/context')) {
+          else if (url.pathname.endsWith('/logs/accounts')) {
+            if (accountFail) {
+              await route.fulfill({
+                status: 503,
+                json: { success: false, error: { message: '账号候选合成失败' } },
+              });
+              return;
+            }
+            const search = url.searchParams.get('search') || '';
+            const values = url.searchParams.get('after')
+              ? ['200', '201']
+              : ['001', '002', '128', '129'];
+            data = {
+              items: values.filter(value => value.includes(search)),
+              nextCursor: !search && !url.searchParams.get('after') ? '129' : null,
+            };
+          } else if (url.pathname.endsWith('/context')) {
             if (contextFail) {
               await route.fulfill({
                 status: 503,
@@ -263,6 +278,66 @@ async function main() {
           .evaluate(element => element === document.activeElement)
       );
       await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
+      const accountInput = panel.getByRole('combobox', { name: '账号编号', exact: true });
+      await accountInput.click();
+      const candidates = page.getByRole('listbox', { name: '账号候选', exact: true });
+      await candidates.getByRole('option', { name: '001', exact: true }).waitFor();
+      const popupBox = await candidates.locator('..').boundingBox();
+      const inputBox = await accountInput.boundingBox();
+      assert(Math.abs(popupBox.width - inputBox.width) < 2, '下拉与输入框同宽');
+      assert(
+        popupBox.y >= 0 && popupBox.y + popupBox.height <= page.viewportSize().height + 1,
+        '账号下拉高度应留在当前窗口内'
+      );
+      assert(
+        popupBox.x >= 0 && popupBox.x + popupBox.width <= page.viewportSize().width,
+        '账号下拉不得越过屏幕边缘'
+      );
+      await page.screenshot({
+        path: path.resolve(`coverage/full-logs-${mode}-accounts.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
+      if (mobile) await candidates.getByRole('option', { name: '001', exact: true }).tap();
+      else await candidates.getByRole('option', { name: '001', exact: true }).click();
+      assert.equal(await accountInput.inputValue(), '001', '账号前导零保持原样');
+      assert.equal(await candidates.count(), 0);
+      await panel.getByRole('button', { name: '清空账号编号' }).click();
+      await accountInput.click();
+      await candidates.getByRole('option', { name: '001', exact: true }).waitFor();
+      await page.getByRole('button', { name: '下一组账号候选', exact: true }).click();
+      await candidates.getByRole('option', { name: '200', exact: true }).waitFor();
+      await page.getByRole('button', { name: '账号候选首页', exact: true }).click();
+      await candidates.getByRole('option', { name: '001', exact: true }).waitFor();
+      await accountInput.fill('002');
+      await candidates.getByRole('option', { name: '002', exact: true }).waitFor();
+      await accountInput.press('ArrowDown');
+      await accountInput.press('ArrowDown');
+      await accountInput.press('Enter');
+      assert.equal(await accountInput.inputValue(), '002', '键盘选择候选');
+      assert.equal(await candidates.count(), 0);
+      await accountInput.fill('777');
+      await page.getByText('暂无匹配候选，可直接输入编号查询', { exact: true }).waitFor();
+      assert.equal(await accountInput.inputValue(), '777', '无候选允许直接输入');
+      await accountInput.press('Escape');
+      assert.equal(await candidates.count(), 0);
+      accountFail = true;
+      await accountInput.fill('888');
+      await page.getByText('账号候选合成失败，可直接输入编号查询', { exact: true }).waitFor();
+      assert.equal(await accountInput.inputValue(), '888');
+      accountFail = false;
+      await accountInput.fill('');
+      await candidates.getByRole('option', { name: '001', exact: true }).waitFor();
+      await candidates.getByRole('option', { name: '全部账号', exact: true }).click();
+      assert.equal(await accountInput.inputValue(), '');
+      await accountInput.click();
+      await candidates.getByRole('option', { name: '001', exact: true }).waitFor();
+      await panel.getByLabel('正文关键词', { exact: true }).click();
+      assert.equal(await candidates.count(), 0, '点外部收起');
+      await panel.getByText('仅查看未识别账号的日志', { exact: true }).click();
+      assert(await accountInput.isDisabled());
+      assert.equal(await candidates.count(), 0);
+      await panel.getByText('仅查看未识别账号的日志', { exact: true }).click();
       await panel.getByLabel('账号编号', { exact: false }).fill('128');
       await panel.getByLabel('正文关键词', { exact: true }).fill('店铺');
       const request = page.waitForRequest(
