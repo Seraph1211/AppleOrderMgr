@@ -204,8 +204,12 @@ async function main() {
       await panel.getByText('日志已复制', { exact: true }).waitFor();
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), message);
       assert.equal(await panel.getByText(row.fileName, { exact: true }).count(), 0);
-      await panel.getByRole('button', { name: '修改筛选', exact: true }).waitFor();
+      assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
+      await panel.getByRole('button', { name: '收起筛选', exact: true }).click();
+      await panel.getByRole('button', { name: '重新查询日志，从头加载', exact: true }).click();
+      await first.waitFor();
       assert.equal(await panel.getByLabel('服务器', { exact: true }).isVisible(), false);
+      await first.click();
       assert.equal(await panel.getByLabel('日志采集状态').getAttribute('open'), null);
       await panel.getByLabel('自动换行', { exact: true }).uncheck();
       assert(await reader.evaluate(element => element.scrollWidth > element.clientWidth));
@@ -356,11 +360,11 @@ async function main() {
       assert.equal(await first.locator('mark').innerText(), '店铺');
       assert.equal(await reader.evaluate(element => element.scrollTop), 0);
       assert(await panel.getByRole('button', { name: '复制选中日志' }).isDisabled());
-      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
+      assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
       await panel.getByLabel('软件实例', { exact: true }).selectOption(otherId);
       await panel.getByText('实例二账号128独立日志', { exact: true }).waitFor();
       assert.equal(await reader.locator('tbody tr').count(), 1);
-      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
+      assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
       await panel.getByLabel('软件实例', { exact: true }).selectOption(localId);
       await first.waitFor();
       fail = true;
@@ -372,18 +376,19 @@ async function main() {
       await panel.getByRole('button', { name: '重新查询', exact: true }).click();
       await panel.getByText('当前条件下没有已上传的日志', { exact: false }).waitFor();
       empty = false;
-      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
+      assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
       await panel.getByRole('button', { name: '清空筛选', exact: true }).click();
       await first.waitFor();
       // 清空已经为空的筛选仍会重新读取，避免列表被清空后不再发请求。
       const reread = page.waitForRequest(
         req => new URL(req.url()).pathname === '/api/server-monitor/logs'
       );
-      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
+      assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
       await panel.getByRole('button', { name: '清空筛选', exact: true }).click();
       await reread;
       await first.waitFor();
-      await panel.getByRole('button', { name: '修改筛选', exact: true }).waitFor();
+      assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
+      await panel.getByRole('button', { name: '收起筛选', exact: true }).click();
       if (mobile) {
         await first.tap();
         await panel.getByRole('button', { name: '详情与上下文' }).tap();

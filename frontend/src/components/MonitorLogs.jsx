@@ -138,7 +138,6 @@ export default function MonitorLogs() {
           signal: controller.signal,
         });
         if (active) {
-          if (!cursor) setFiltersOpen(false);
           setResult(previous => {
             if (!cursor || !previous) return response.data;
             const known = new Set(previous.items.map(row => row.id));
