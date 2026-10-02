@@ -49,7 +49,19 @@ class InventoryService {
   /** 读取白名单模型的业务记录。 */
   async rows(name, options = {}) {
     try {
-      return (await this.m[name].findAll(options)).map(row => ({ id: row.id, ...row.body }));
+      const scopedOptions =
+        name === 'InventoryProduct'
+          ? {
+            ...options,
+            where: {
+              [Op.and]: [
+                options.where || {},
+                { 'body.model': { [Op.in]: policy.MONITORED_MODELS } },
+              ],
+            },
+          }
+          : options;
+      return (await this.m[name].findAll(scopedOptions)).map(row => ({ id: row.id, ...row.body }));
     } catch (_error) {
       throw ApiError.internal('库存数据读取失败');
     }
@@ -57,9 +69,13 @@ class InventoryService {
   /** 批量保存，调用方必须传事务。 */
   async put(name, rows, transaction) {
     try {
-      if (!rows.length) return;
+      const scopedRows =
+        name === 'InventoryProduct'
+          ? rows.filter(row => policy.MONITORED_MODELS.includes(row.model))
+          : rows;
+      if (!scopedRows.length) return;
       await this.m[name].bulkCreate(
-        rows.map(({ id, ...body }) => ({ id, body })),
+        scopedRows.map(({ id, ...body }) => ({ id, body })),
         { transaction, updateOnDuplicate: ['body', 'updatedAt'] }
       );
     } catch (_error) {

@@ -1,5 +1,7 @@
 const ApiError = require('../utils/ApiError');
 
+const MONITORED_MODELS = Object.freeze(['iPhone 18 Pro', 'iPhone 18 Pro Max']);
+
 const DEFAULT_CONFIG = Object.freeze({
   enabled: false,
   intervalSeconds: 300,
@@ -201,6 +203,7 @@ function validProductRow(row, product) {
 }
 module.exports = {
   DEFAULT_CONFIG,
+  MONITORED_MODELS,
   FILTER_FIELDS,
   productDetails,
   parseFilters,

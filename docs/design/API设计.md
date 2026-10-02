@@ -819,14 +819,14 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 原始日志属于受限正文，接口错误及应用日志不记录正文。已有告警上报协议保持不变。
 
-## 库存监控 API（本地已实现，待发布）
+## 库存监控 API（已生产发布）
 
 统一前缀 `/api/inventory`，现有登录鉴权且仅 admin，响应 `{success:true,data}`；所有接口 `Cache-Control: no-store`。错误输入 400、并发设置版本冲突 409、未登录 401、非管理员 403。设置密钥和代理凭据永不返回。
 
 | 方法/路径 | 请求与结果 |
 | --- | --- |
-| GET /catalog | 商品/门店目录、启用与待确认状态 |
-| PUT /catalog | `{kind:products或stores,ids:[],enabled:boolean}`，批量启停 |
+| GET /catalog | 仅返回 iPhone 18 Pro／Pro Max 商品及全部门店目录、启用与待确认状态；范围外旧商品不返回 |
+| PUT /catalog | `{kind:products或stores,ids:[],enabled:boolean}`，批量启停；范围外商品 ID 拒绝且整批不修改 |
 | POST /catalog/refresh | 排队一次官网目录核对，不同步发起外部请求 |
 | GET /settings | 配置/version/hasWebhook/目标名称，不含密文 |
 | PUT /settings | `{version,config,webhook?}`，严格白名单、版本控制；首次开启通知须先成功测试 |

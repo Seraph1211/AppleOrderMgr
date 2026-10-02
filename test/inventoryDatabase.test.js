@@ -27,10 +27,10 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
     'InventoryDelivery',
   ];
   const product = {
-    id: 'MG724CH/A',
-    sku: 'MG724CH/A',
-    title: 'iPhone 17 512GB Black',
-    model: 'iPhone 17',
+    id: 'MJTC4CH/A',
+    sku: 'MJTC4CH/A',
+    title: 'iPhone 18 Pro 512GB Black',
+    model: 'iPhone 18 Pro',
     capacity: '512GB',
     color: '黑色',
     enabled: true,
@@ -94,6 +94,47 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       await db?.close();
     }
   });
+  test('范围外旧商品不出现在目录和全国库存，不能通过批量接口重新启用', async () => {
+    try {
+      const outside = {
+        ...product,
+        id: 'MG724CH/A',
+        sku: 'MG724CH/A',
+        model: 'iPhone 17',
+        title: 'iPhone 17 512GB Black',
+      };
+      await m.InventoryProduct.create({ id: outside.id, body: outside });
+      const catalog = await service.catalog();
+      expect(catalog.products.map(row => row.model)).toEqual(['iPhone 18 Pro']);
+      expect((await service.latest()).items.map(row => row.model)).toEqual(['iPhone 18 Pro']);
+      expect((await service.latest({ models: 'iPhone 17' })).total).toBe(0);
+      await expect(
+        service.setCatalog({ kind: 'products', ids: [product.id, outside.id], enabled: false }, 1)
+      ).rejects.toThrow('目录项不存在');
+      expect((await m.InventoryProduct.findByPk(product.id)).body.enabled).toBe(true);
+      await expect(service.refresh({ models: 'iPhone 17' }, 1)).rejects.toThrow();
+      const claim = await collector.claim();
+      expect(claim.task.skus).toEqual([product.sku]);
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
+  test('首次目录只装入 Pro 与 Pro Max 共 32 个 SKU', async () => {
+    try {
+      await m.InventoryProduct.destroy({ truncate: true });
+      await m.InventoryStore.destroy({ truncate: true });
+      await m.InventoryRuntime.update({ body: {} }, { where: { id: 'main' } });
+      const catalog = await service.catalog();
+      expect(catalog.products).toHaveLength(32);
+      expect(catalog.products.filter(row => row.model === 'iPhone 18 Pro')).toHaveLength(16);
+      expect(catalog.products.filter(row => row.model === 'iPhone 18 Pro Max')).toHaveLength(16);
+      expect(catalog.products.every(row => !row.enabled)).toBe(true);
+      expect(await m.InventoryProduct.count()).toBe(32);
+      expect(catalog.stores).toHaveLength(49);
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
   async function round(status, manual = false) {
     try {
       if (manual) await service.refresh({}, 1);
@@ -108,7 +149,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
               sku: product.sku,
               storeCode: store.storeCode,
               storeName: store.storeName,
-              title: 'iPhone 17 512GB 黑色',
+              title: 'iPhone 18 Pro 512GB 黑色',
               status,
               quote: '测试提示',
             },
@@ -355,7 +396,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       expect((await service.history({ metric: 'first', hour: (hour + 1) % 24 })).total).toBe(0);
       const response = await fetch(`${base}/history/export?metric=first`, { headers });
       expect(response.status).toBe(200);
-      expect(await response.text()).toContain('MG724CH/A');
+      expect(await response.text()).toContain('MJTC4CH/A');
       const latest = await fetch(`${base}/latest`, { headers });
       expect(latest.headers.get('cache-control')).toBe('no-store');
       expect((await latest.json()).data.summary.currentStores).toBe(1);
@@ -496,15 +537,17 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       const Maintenance = require('../src/services/inventoryMaintenance');
       const metrics = {
         data: {
-          category: 'iphone_19',
+          category: 'iphone_18_pro',
           products: [
-            { category: 'iphone', partNumber: 'NEW11CH/A', name: 'iPhone 19 256GB Black' },
+            { category: 'iphone', partNumber: 'NEW11CH/A', name: 'iPhone 18 Pro 256GB Black' },
+            { category: 'iphone', partNumber: 'OTHER17CH/A', name: 'iPhone 17 256GB Black' },
           ],
         },
       };
       const selection = {
         products: [
           { partNumber: 'NEW11CH/A', dimensionCapacity: '256gb', dimensionColor: 'black' },
+          { partNumber: 'OTHER17CH/A', dimensionCapacity: '256gb', dimensionColor: 'black' },
         ],
         displayValues: { dimensionColor: { black: { value: '黑色' } } },
       };
@@ -515,7 +558,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
           .fn()
           .mockResolvedValueOnce({
             outcome: 'CATALOG_RECEIVED',
-            evidence: '<a href="/shop/buy-iphone/iphone-19">iPhone</a>',
+            evidence: '<a href="/shop/buy-iphone/iphone-18-pro">iPhone</a>',
           })
           .mockResolvedValueOnce({ outcome: 'CATALOG_RECEIVED', evidence: storePage })
           .mockResolvedValueOnce({ outcome: 'CATALOG_RECEIVED', evidence: productPage }),
@@ -525,6 +568,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       expect(await maintenance.catalogTick()).toBe(true);
       expect(await maintenance.catalogTick()).toBe(true);
       expect((await m.InventoryProduct.findByPk('NEW11CH/A')).body.enabled).toBe(false);
+      expect(await m.InventoryProduct.findByPk('OTHER17CH/A')).toBeNull();
       expect((await m.InventoryProduct.findByPk(product.id)).body.enabled).toBe(true);
       await service.refreshCatalog();
       driver.request.mockResolvedValue({ outcome: 'INVALID_RESPONSE' });
@@ -581,7 +625,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       throw inventoryFailure(error);
     }
   });
-  test('65 SKU × 49 门店完整合成轮次，跨 78 请求去重为 3185 组合', async () => {
+  test('旧目录 65 SKU 只采集 Pro 系列 32 SKU × 49 门店，42 请求去重为 1568 组合', async () => {
     try {
       const seed = require('../src/data/inventoryCatalog.json');
       await m.InventoryProduct.destroy({ truncate: true });
@@ -594,7 +638,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       );
       const products = new Map(seed.products.map(p => [p.sku, p]));
       let tasks = 0;
-      for (let i = 0; i < 78; i += 1) {
+      for (let i = 0; i < 42; i += 1) {
         const claim = await collector.claim();
         expect(claim).toBeTruthy();
         const evidence = claim.task.skus.flatMap(sku =>
@@ -614,19 +658,19 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
         });
         tasks += 1;
       }
-      expect(tasks).toBe(78);
-      expect(await m.InventorySample.count()).toBe(3185);
-      expect(await m.InventoryEvent.count()).toBe(3185);
+      expect(tasks).toBe(42);
+      expect(await m.InventorySample.count()).toBe(1568);
+      expect(await m.InventoryEvent.count()).toBe(1568);
       const summary = (await service.list('InventoryRound')).items[0];
       expect(summary).toMatchObject({
-        expected: 3185,
-        completed: 3185,
+        expected: 1568,
+        completed: 1568,
         failed: 0,
         status: 'complete',
       });
       const latest = await service.latest({});
       expect(latest.summary.currentStores).toBe(49);
-      expect(latest.summary.inStock).toBe(3185);
+      expect(latest.summary.inStock).toBe(1568);
     } catch (error) {
       throw inventoryFailure(error);
     }
@@ -655,7 +699,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
             sku: product.sku,
             storeCode: store.storeCode,
             storeName: store.storeName,
-            title: 'iPhone 17 512GB 黑色',
+            title: 'iPhone 18 Pro 512GB 黑色',
             status: 'in_stock',
             quote: '合成首次',
           },
@@ -679,7 +723,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
               sku: product.sku,
               storeCode: store.storeCode,
               storeName: store.storeName,
-              title: 'iPhone 17 512GB 黑色',
+              title: 'iPhone 18 Pro 512GB 黑色',
               status: 'in_stock',
             },
           ],
