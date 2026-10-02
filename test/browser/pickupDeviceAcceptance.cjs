@@ -73,7 +73,7 @@ const fixtures = require('../fixtures/pickupCode128.json');
       },
       { fixtures }
     );
-    await page.route('**/api/**', async route => {
+    await page.route('**/api/**', route => {
       const request = route.request();
       const url = new URL(request.url());
       if (!url.pathname.startsWith('/api/')) return route.continue();
@@ -105,17 +105,16 @@ const fixtures = require('../fixtures/pickupCode128.json');
         const matches =
           !keyword ||
           devices.some(d => d.serialNumber.toLowerCase().includes(keyword.toLowerCase()));
+        const matchedOrder = {
+          id: 9001,
+          // eslint-disable-next-line camelcase -- 服务端响应字段
+          order_number: order.orderNumber,
+          // eslint-disable-next-line camelcase -- 服务端响应字段
+          serial_numbers: devices.map(d => d.serialNumber),
+          products: order.products,
+        };
         data = {
-          orders: matches
-            ? [
-                {
-                  id: 9001,
-                  order_number: order.orderNumber,
-                  serial_numbers: devices.map(d => d.serialNumber),
-                  products: order.products,
-                },
-              ]
-            : [],
+          orders: matches ? [matchedOrder] : [],
           total: matches ? 1 : 0,
           page: 1,
           limit: 20,
@@ -264,6 +263,10 @@ const fixtures = require('../fixtures/pickupCode128.json');
       )
     );
     await page.goto(`${base}/orders`);
+    // 保留后续上线的手机订单布局；Serial No. 列在桌面表格核验。
+    await page.getByText('取货门店：', { exact: true }).filter({ visible: true }).waitFor();
+    await page.getByText('取货时间：', { exact: true }).filter({ visible: true }).waitFor();
+    await page.setViewportSize({ width: 1440, height: 1000 });
     await page.getByRole('columnheader', { name: 'Serial No.', exact: true }).waitFor();
     await page.getByText('TEST000001', { exact: true }).waitFor();
     await page.getByText('TEST000002', { exact: true }).waitFor();
@@ -276,7 +279,7 @@ const fixtures = require('../fixtures/pickupCode128.json');
     await search.fill('test000002');
     await searched;
     await page.getByText('TEST000002', { exact: true }).waitFor();
-    await page.screenshot({ path: path.join(output, '订单序列号搜索-390.png') });
+    await page.screenshot({ path: path.join(output, '订单序列号搜索-1440.png') });
     assert.deepEqual(errors, []);
     fs.writeFileSync(
       path.join(output, 'result.json'),
@@ -300,7 +303,10 @@ const fixtures = require('../fixtures/pickupCode128.json');
   } catch (error) {
     if (page) {
       await page.screenshot({ path: path.join(output, '失败现场.png') });
-      fs.writeFileSync(path.join(output, '失败现场.txt'), JSON.stringify({ errors, text: await page.locator('body').innerText() }));
+      fs.writeFileSync(
+        path.join(output, '失败现场.txt'),
+        JSON.stringify({ errors, text: await page.locator('body').innerText() })
+      );
     }
     throw error;
   } finally {
