@@ -818,3 +818,28 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - POST `/api/aos-collector/v1/logs/states`：`{observedAt,instances:[{localId,label,state,dates,fileCount,totalBytes,scannedBytes,pending,issues,expired}]}`，最多20实例。state=ready/catching_up/backpressure/missing/unreadable/error；日期最多30项。旧状态不覆盖新状态。
 
 原始日志属于受限正文，接口错误及应用日志不记录正文。已有告警上报协议保持不变。
+
+## 库存监控 API（本地已实现，待发布）
+
+统一前缀 `/api/inventory`，现有登录鉴权且仅 admin，响应 `{success:true,data}`；所有接口 `Cache-Control: no-store`。错误输入 400、并发设置版本冲突 409、未登录 401、非管理员 403。设置密钥和代理凭据永不返回。
+
+| 方法/路径 | 请求与结果 |
+| --- | --- |
+| GET /catalog | 商品/门店目录、启用与待确认状态 |
+| PUT /catalog | `{kind:products或stores,ids:[],enabled:boolean}`，批量启停 |
+| POST /catalog/refresh | 排队一次官网目录核对，不同步发起外部请求 |
+| GET /settings | 配置/version/hasWebhook/目标名称，不含密文 |
+| PUT /settings | `{version,config,webhook?}`，严格白名单、版本控制；首次开启通知须先成功测试 |
+| GET /latest | 通用筛选 cities/stores/models/capacities/colors/skus（逗号分隔），onlyInStock，page/pageSize；返回 items/total/summary/asOf |
+| POST /refresh | 同样筛选，当前启用范围内合并排队；返回轮次，不绕过保护 |
+| GET /rounds | 分页轮次及完成/失败/待采、耗时与固定范围 |
+| GET /rounds/:id | 固定轮次逐 SKU/门店覆盖矩阵与脱敏任务状态，支持通用筛选和分页；明细过期仅返回汇总 |
+| GET /history | 通用筛选 + from/to（明确时区 ISO）、metric（detections/arrivals/first/recovery/all）、source（auto/manual/all）；分页 |
+| GET /history/export | 同历史筛选 CSV，最多 50000 条；超过上限拒绝并要求缩小范围，防公式注入 |
+| GET /analysis | 同历史筛选 + bucketMinutes（10/20/30/60）；hours/configurations/heatmap/cities/stores，附 coverage 和 detailAvailable |
+| GET /health | 保护状态、预算、队列、最近成功/错误、下轮计划，脱敏 |
+| POST /resume | 人工确认核查后解除人工阻断，但保留预算和未到期冷却 |
+| POST /notifications/test | 当前机器人合成测试排队，与正式发送共用速率 |
+| GET /deliveries | 分页投递状态，accepted 不代表群内已读 |
+
+库存展示与统计口径见[库存监控](库存监控.md)。个人筛选不修改全局采集清单；通知筛选仅影响提醒。不存在设置任意请求 URL 或任意 SQL 的接口。

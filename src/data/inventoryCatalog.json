@@ -1,0 +1,823 @@
+{
+  "observedAt": "2026-10-02T13:02:53.215Z",
+  "status": "official_catalog_inventory_coverage_unverified",
+  "products": [
+    {
+      "sku": "MG314CH/A",
+      "title": "iPhone Air 256GB 深空黑色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "256GB",
+      "color": "深空黑色"
+    },
+    {
+      "sku": "MG334CH/A",
+      "title": "iPhone Air 256GB 云白色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "256GB",
+      "color": "云白色"
+    },
+    {
+      "sku": "MG344CH/A",
+      "title": "iPhone Air 256GB 浅金色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "256GB",
+      "color": "浅金色"
+    },
+    {
+      "sku": "MG364CH/A",
+      "title": "iPhone Air 256GB 天蓝色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "256GB",
+      "color": "天蓝色"
+    },
+    {
+      "sku": "MG374CH/A",
+      "title": "iPhone Air 512GB 深空黑色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "512GB",
+      "color": "深空黑色"
+    },
+    {
+      "sku": "MG394CH/A",
+      "title": "iPhone Air 512GB 云白色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "512GB",
+      "color": "云白色"
+    },
+    {
+      "sku": "MG3A4CH/A",
+      "title": "iPhone Air 512GB 浅金色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "512GB",
+      "color": "浅金色"
+    },
+    {
+      "sku": "MG3C4CH/A",
+      "title": "iPhone Air 512GB 天蓝色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "512GB",
+      "color": "天蓝色"
+    },
+    {
+      "sku": "MG3D4CH/A",
+      "title": "iPhone Air 1TB 深空黑色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "1TB",
+      "color": "深空黑色"
+    },
+    {
+      "sku": "MG3E4CH/A",
+      "title": "iPhone Air 1TB 云白色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "1TB",
+      "color": "云白色"
+    },
+    {
+      "sku": "MG3F4CH/A",
+      "title": "iPhone Air 1TB 浅金色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "1TB",
+      "color": "浅金色"
+    },
+    {
+      "sku": "MG3G4CH/A",
+      "title": "iPhone Air 1TB 天蓝色",
+      "family": "iphone_air",
+      "model": "iPhone Air",
+      "capacity": "1TB",
+      "color": "天蓝色"
+    },
+    {
+      "sku": "MG6W4CH/A",
+      "title": "iPhone 17 256GB 黑色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "256GB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MG6X4CH/A",
+      "title": "iPhone 17 256GB 白色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "256GB",
+      "color": "白色"
+    },
+    {
+      "sku": "MG6Y4CH/A",
+      "title": "iPhone 17 256GB 青雾蓝色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "256GB",
+      "color": "青雾蓝色"
+    },
+    {
+      "sku": "MG704CH/A",
+      "title": "iPhone 17 256GB 薰衣草紫色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "256GB",
+      "color": "薰衣草紫色"
+    },
+    {
+      "sku": "MG714CH/A",
+      "title": "iPhone 17 256GB 鼠尾草绿色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "256GB",
+      "color": "鼠尾草绿色"
+    },
+    {
+      "sku": "MG724CH/A",
+      "title": "iPhone 17 512GB 黑色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "512GB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MG734CH/A",
+      "title": "iPhone 17 512GB 白色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "512GB",
+      "color": "白色"
+    },
+    {
+      "sku": "MG744CH/A",
+      "title": "iPhone 17 512GB 青雾蓝色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "512GB",
+      "color": "青雾蓝色"
+    },
+    {
+      "sku": "MG754CH/A",
+      "title": "iPhone 17 512GB 薰衣草紫色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "512GB",
+      "color": "薰衣草紫色"
+    },
+    {
+      "sku": "MG764CH/A",
+      "title": "iPhone 17 512GB 鼠尾草绿色",
+      "family": "iphone_17",
+      "model": "iPhone 17",
+      "capacity": "512GB",
+      "color": "鼠尾草绿色"
+    },
+    {
+      "sku": "MHU44CH/A",
+      "title": "iPhone 17e 256GB 黑色",
+      "family": "iphone_17e",
+      "model": "iPhone 17e",
+      "capacity": "256GB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MHU54CH/A",
+      "title": "iPhone 17e 256GB 白色",
+      "family": "iphone_17e",
+      "model": "iPhone 17e",
+      "capacity": "256GB",
+      "color": "白色"
+    },
+    {
+      "sku": "MHU64CH/A",
+      "title": "iPhone 17e 256GB 浅粉色",
+      "family": "iphone_17e",
+      "model": "iPhone 17e",
+      "capacity": "256GB",
+      "color": "浅粉色"
+    },
+    {
+      "sku": "MHU74CH/A",
+      "title": "iPhone 17e 512GB 黑色",
+      "family": "iphone_17e",
+      "model": "iPhone 17e",
+      "capacity": "512GB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MHU94CH/A",
+      "title": "iPhone 17e 512GB 白色",
+      "family": "iphone_17e",
+      "model": "iPhone 17e",
+      "capacity": "512GB",
+      "color": "白色"
+    },
+    {
+      "sku": "MHUA4CH/A",
+      "title": "iPhone 17e 512GB 浅粉色",
+      "family": "iphone_17e",
+      "model": "iPhone 17e",
+      "capacity": "512GB",
+      "color": "浅粉色"
+    },
+    {
+      "sku": "MJT74CH/A",
+      "title": "iPhone 18 Pro 256GB 黑色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "256GB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MJT84CH/A",
+      "title": "iPhone 18 Pro 256GB 银色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "256GB",
+      "color": "银色"
+    },
+    {
+      "sku": "MJT94CH/A",
+      "title": "iPhone 18 Pro 256GB 勃艮第酒红色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "256GB",
+      "color": "勃艮第酒红色"
+    },
+    {
+      "sku": "MJTA4CH/A",
+      "title": "iPhone 18 Pro 256GB 冰川蓝色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "256GB",
+      "color": "冰川蓝色"
+    },
+    {
+      "sku": "MJTC4CH/A",
+      "title": "iPhone 18 Pro 512GB 黑色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "512GB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MJTD4CH/A",
+      "title": "iPhone 18 Pro 512GB 银色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "512GB",
+      "color": "银色"
+    },
+    {
+      "sku": "MJTE4CH/A",
+      "title": "iPhone 18 Pro 512GB 勃艮第酒红色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "512GB",
+      "color": "勃艮第酒红色"
+    },
+    {
+      "sku": "MJTF4CH/A",
+      "title": "iPhone 18 Pro 512GB 冰川蓝色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "512GB",
+      "color": "冰川蓝色"
+    },
+    {
+      "sku": "MJTG4CH/A",
+      "title": "iPhone 18 Pro 1TB 黑色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "1TB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MJTH4CH/A",
+      "title": "iPhone 18 Pro 1TB 银色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "1TB",
+      "color": "银色"
+    },
+    {
+      "sku": "MJTJ4CH/A",
+      "title": "iPhone 18 Pro 1TB 勃艮第酒红色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "1TB",
+      "color": "勃艮第酒红色"
+    },
+    {
+      "sku": "MJTK4CH/A",
+      "title": "iPhone 18 Pro 1TB 冰川蓝色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "1TB",
+      "color": "冰川蓝色"
+    },
+    {
+      "sku": "MJTL4CH/A",
+      "title": "iPhone 18 Pro 2TB 黑色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "2TB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MJTM4CH/A",
+      "title": "iPhone 18 Pro 2TB 银色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "2TB",
+      "color": "银色"
+    },
+    {
+      "sku": "MJTN4CH/A",
+      "title": "iPhone 18 Pro 2TB 勃艮第酒红色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "2TB",
+      "color": "勃艮第酒红色"
+    },
+    {
+      "sku": "MJTP4CH/A",
+      "title": "iPhone 18 Pro 2TB 冰川蓝色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro",
+      "capacity": "2TB",
+      "color": "冰川蓝色"
+    },
+    {
+      "sku": "MJY64CH/A",
+      "title": "iPhone 18 Pro Max 256GB 黑色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "256GB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MJY74CH/A",
+      "title": "iPhone 18 Pro Max 256GB 银色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "256GB",
+      "color": "银色"
+    },
+    {
+      "sku": "MJY84CH/A",
+      "title": "iPhone 18 Pro Max 256GB 勃艮第酒红色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "256GB",
+      "color": "勃艮第酒红色"
+    },
+    {
+      "sku": "MJY94CH/A",
+      "title": "iPhone 18 Pro Max 256GB 冰川蓝色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "256GB",
+      "color": "冰川蓝色"
+    },
+    {
+      "sku": "MJYA4CH/A",
+      "title": "iPhone 18 Pro Max 512GB 黑色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "512GB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MJYC4CH/A",
+      "title": "iPhone 18 Pro Max 512GB 银色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "512GB",
+      "color": "银色"
+    },
+    {
+      "sku": "MJYD4CH/A",
+      "title": "iPhone 18 Pro Max 512GB 勃艮第酒红色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "512GB",
+      "color": "勃艮第酒红色"
+    },
+    {
+      "sku": "MJYE4CH/A",
+      "title": "iPhone 18 Pro Max 512GB 冰川蓝色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "512GB",
+      "color": "冰川蓝色"
+    },
+    {
+      "sku": "MJYF4CH/A",
+      "title": "iPhone 18 Pro Max 1TB 黑色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "1TB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MJYG4CH/A",
+      "title": "iPhone 18 Pro Max 1TB 银色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "1TB",
+      "color": "银色"
+    },
+    {
+      "sku": "MJYH4CH/A",
+      "title": "iPhone 18 Pro Max 1TB 勃艮第酒红色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "1TB",
+      "color": "勃艮第酒红色"
+    },
+    {
+      "sku": "MJYJ4CH/A",
+      "title": "iPhone 18 Pro Max 1TB 冰川蓝色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "1TB",
+      "color": "冰川蓝色"
+    },
+    {
+      "sku": "MJYK4CH/A",
+      "title": "iPhone 18 Pro Max 2TB 黑色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "2TB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MJYL4CH/A",
+      "title": "iPhone 18 Pro Max 2TB 银色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "2TB",
+      "color": "银色"
+    },
+    {
+      "sku": "MJYM4CH/A",
+      "title": "iPhone 18 Pro Max 2TB 勃艮第酒红色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "2TB",
+      "color": "勃艮第酒红色"
+    },
+    {
+      "sku": "MJYN4CH/A",
+      "title": "iPhone 18 Pro Max 2TB 冰川蓝色",
+      "family": "iphone_18_pro",
+      "model": "iPhone 18 Pro Max",
+      "capacity": "2TB",
+      "color": "冰川蓝色"
+    },
+    {
+      "sku": "MYEV3CH/A",
+      "title": "iPhone 16 128GB 黑色",
+      "family": "iphone_16",
+      "model": "iPhone 16",
+      "capacity": "128GB",
+      "color": "黑色"
+    },
+    {
+      "sku": "MYEW3CH/A",
+      "title": "iPhone 16 128GB 白色",
+      "family": "iphone_16",
+      "model": "iPhone 16",
+      "capacity": "128GB",
+      "color": "白色"
+    },
+    {
+      "sku": "MYEX3CH/A",
+      "title": "iPhone 16 128GB 粉色",
+      "family": "iphone_16",
+      "model": "iPhone 16",
+      "capacity": "128GB",
+      "color": "粉色"
+    },
+    {
+      "sku": "MYEY3CH/A",
+      "title": "iPhone 16 128GB 群青色",
+      "family": "iphone_16",
+      "model": "iPhone 16",
+      "capacity": "128GB",
+      "color": "群青色"
+    },
+    {
+      "sku": "MYF03CH/A",
+      "title": "iPhone 16 128GB 深青色",
+      "family": "iphone_16",
+      "model": "iPhone 16",
+      "capacity": "128GB",
+      "color": "深青色"
+    }
+  ],
+  "stores": [
+    {
+      "storeCode": "R320",
+      "storeName": "三里屯",
+      "city": "北京",
+      "location": "100027"
+    },
+    {
+      "storeCode": "R359",
+      "storeName": "南京东路",
+      "city": "上海",
+      "location": "200001"
+    },
+    {
+      "storeCode": "R388",
+      "storeName": "西单大悦城",
+      "city": "北京",
+      "location": "100032"
+    },
+    {
+      "storeCode": "R389",
+      "storeName": "浦东",
+      "city": "上海",
+      "location": "200120"
+    },
+    {
+      "storeCode": "R390",
+      "storeName": "香港广场",
+      "city": "上海",
+      "location": "200021"
+    },
+    {
+      "storeCode": "R401",
+      "storeName": "上海环贸 iapm",
+      "city": "上海",
+      "location": "200031"
+    },
+    {
+      "storeCode": "R448",
+      "storeName": "王府井",
+      "city": "北京",
+      "location": "100006"
+    },
+    {
+      "storeCode": "R471",
+      "storeName": "西湖",
+      "city": "杭州",
+      "location": "310006"
+    },
+    {
+      "storeCode": "R476",
+      "storeName": "重庆北城天街",
+      "city": "重庆",
+      "location": "400020"
+    },
+    {
+      "storeCode": "R479",
+      "storeName": "华贸购物中心",
+      "city": "北京",
+      "location": "100025"
+    },
+    {
+      "storeCode": "R480",
+      "storeName": "解放碑",
+      "city": "重庆",
+      "location": "400010"
+    },
+    {
+      "storeCode": "R484",
+      "storeName": "深圳益田假日广场",
+      "city": "深圳",
+      "location": "518000"
+    },
+    {
+      "storeCode": "R493",
+      "storeName": "新街口",
+      "city": "南京",
+      "location": "210008"
+    },
+    {
+      "storeCode": "R502",
+      "storeName": "成都万象城",
+      "city": "成都",
+      "location": "610000"
+    },
+    {
+      "storeCode": "R531",
+      "storeName": "天一广场",
+      "city": "宁波",
+      "location": "315000"
+    },
+    {
+      "storeCode": "R532",
+      "storeName": "杭州万象城",
+      "city": "杭州",
+      "location": "310000"
+    },
+    {
+      "storeCode": "R534",
+      "storeName": "中街大悦城",
+      "city": "沈阳",
+      "location": "110042"
+    },
+    {
+      "storeCode": "R557",
+      "storeName": "青岛万象城",
+      "city": "青岛",
+      "location": "266000"
+    },
+    {
+      "storeCode": "R571",
+      "storeName": "南宁万象城",
+      "city": "南宁",
+      "location": "530022"
+    },
+    {
+      "storeCode": "R572",
+      "storeName": "郑州万象城",
+      "city": "郑州",
+      "location": "450000"
+    },
+    {
+      "storeCode": "R573",
+      "storeName": "重庆万象城",
+      "city": "重庆",
+      "location": "400050"
+    },
+    {
+      "storeCode": "R574",
+      "storeName": "无锡恒隆广场",
+      "city": "无锡",
+      "location": "214000"
+    },
+    {
+      "storeCode": "R575",
+      "storeName": "武汉",
+      "city": "武汉",
+      "location": "430022"
+    },
+    {
+      "storeCode": "R576",
+      "storeName": "沈阳万象城",
+      "city": "沈阳",
+      "location": "110000"
+    },
+    {
+      "storeCode": "R577",
+      "storeName": "天环广场",
+      "city": "广州",
+      "location": "510000"
+    },
+    {
+      "storeCode": "R579",
+      "storeName": "天津恒隆广场",
+      "city": "天津",
+      "location": "300041"
+    },
+    {
+      "storeCode": "R580",
+      "storeName": "成都太古里",
+      "city": "成都",
+      "location": "610000"
+    },
+    {
+      "storeCode": "R581",
+      "storeName": "五角场",
+      "city": "上海",
+      "location": "200433"
+    },
+    {
+      "storeCode": "R609",
+      "storeName": "大连恒隆广场",
+      "city": "大连",
+      "location": "116000"
+    },
+    {
+      "storeCode": "R617",
+      "storeName": "长沙",
+      "city": "长沙",
+      "location": "410000"
+    },
+    {
+      "storeCode": "R637",
+      "storeName": "天津大悦城",
+      "city": "天津",
+      "location": "300199"
+    },
+    {
+      "storeCode": "R638",
+      "storeName": "天津万象城",
+      "city": "天津",
+      "location": "300201"
+    },
+    {
+      "storeCode": "R639",
+      "storeName": "珠江新城",
+      "city": "广州",
+      "location": "510623"
+    },
+    {
+      "storeCode": "R643",
+      "storeName": "虹悦城",
+      "city": "南京",
+      "location": "210000"
+    },
+    {
+      "storeCode": "R644",
+      "storeName": "厦门新生活广场",
+      "city": "厦门",
+      "location": "361012"
+    },
+    {
+      "storeCode": "R645",
+      "storeName": "朝阳大悦城",
+      "city": "北京",
+      "location": "100000"
+    },
+    {
+      "storeCode": "R646",
+      "storeName": "泰禾广场",
+      "city": "福州",
+      "location": "350000"
+    },
+    {
+      "storeCode": "R648",
+      "storeName": "济南恒隆广场",
+      "city": "济南",
+      "location": "250011"
+    },
+    {
+      "storeCode": "R670",
+      "storeName": "昆明",
+      "city": "昆明",
+      "location": "650031"
+    },
+    {
+      "storeCode": "R678",
+      "storeName": "静安",
+      "city": "上海",
+      "location": "200040"
+    },
+    {
+      "storeCode": "R683",
+      "storeName": "环球港",
+      "city": "上海",
+      "location": "200062"
+    },
+    {
+      "storeCode": "R688",
+      "storeName": "苏州",
+      "city": "苏州",
+      "location": "215021"
+    },
+    {
+      "storeCode": "R703",
+      "storeName": "玄武湖",
+      "city": "南京",
+      "location": "210009"
+    },
+    {
+      "storeCode": "R705",
+      "storeName": "七宝",
+      "city": "上海",
+      "location": "201101"
+    },
+    {
+      "storeCode": "R761",
+      "storeName": "深圳万象城",
+      "city": "深圳",
+      "location": "518001"
+    },
+    {
+      "storeCode": "R765",
+      "storeName": "合肥万象城",
+      "city": "合肥",
+      "location": "230031"
+    },
+    {
+      "storeCode": "R766",
+      "storeName": "温州万象城",
+      "city": "温州",
+      "location": "325000"
+    },
+    {
+      "storeCode": "R792",
+      "storeName": "北京荟聚",
+      "city": "北京",
+      "location": "100162"
+    },
+    {
+      "storeCode": "R793",
+      "storeName": "前海壹方城",
+      "city": "深圳",
+      "location": "518101"
+    }
+  ],
+  "specificationSource": "productSelectionData exact partNumber + displayValues"
+}

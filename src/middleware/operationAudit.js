@@ -2,6 +2,7 @@ const { OperationLog } = require('../models');
 const logger = require('../utils/logger');
 
 const MODULE_LABELS = {
+  inventory: '库存监控',
   'mail-contacts': '邮件联系人',
   'wecom-notifications': '企微订单通知',
   'identity-verifications': '身份核验',

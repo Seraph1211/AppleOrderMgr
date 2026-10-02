@@ -182,6 +182,18 @@ services:
     restart: unless-stopped
     stop_grace_period: 90s
 
+  inventory-worker:
+    <<: *backend-service
+    profiles: ['inventory']
+    command: npm run start:inventory-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 45s
+
 volumes:
   postgres_data:
   frontend_dist:

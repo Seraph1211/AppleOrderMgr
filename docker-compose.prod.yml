@@ -98,6 +98,21 @@ services:
     cpus: 0.75
     pids_limit: 192
 
+  inventory-worker:
+    <<: *service-defaults
+    profiles: ['inventory']
+    command: ['node', 'src/workers/inventoryWorker.js']
+    environment:
+      NODE_ENV: production
+      LOG_TO_FILES: 'false'
+      DB_POOL_MAX: '3'
+    volumes:
+      - ${INVENTORY_SECRETS_DIR:-./.secrets/inventory}:/run/inventory-secrets:ro
+    stop_grace_period: 45s
+    mem_limit: 512m
+    cpus: 0.75
+    pids_limit: 192
+
   migrate:
     image: ${MIGRATOR_IMAGE:?请在发布环境文件中设置 MIGRATOR_IMAGE}
     profiles: ['tools']

@@ -3,6 +3,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
 import Login from './pages/Login';
+import InventoryMonitor from './pages/InventoryMonitor';
 import Dashboard from './pages/Dashboard';
 import Orders from './pages/Orders';
 import OrderDetail from './pages/OrderDetail';
@@ -46,6 +47,14 @@ function ManagementApp() {
             <ProtectedRoute>
               <Layout>
                 <Routes>
+                  <Route
+                    path="/inventory-monitor"
+                    element={
+                      <ProtectedRoute requiredRole="admin">
+                        <InventoryMonitor />
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route
                     path="/wecom-notifications"
                     element={permissionRoute(PERMISSIONS.WECOM_READ, <WecomNotifications />)}

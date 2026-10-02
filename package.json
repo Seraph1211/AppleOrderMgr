@@ -40,7 +40,11 @@
     "orders:preview-product-filters": "node scripts/previewProductFilters.js",
     "test:browser:product-filters": "node scripts/testProductFiltersBrowser.js",
     "test:browser:quote-pricing": "node test/browser/quotePricingAcceptance.cjs",
-    "start:wecom-worker": "node src/workers/wecomNotificationWorker.js"
+    "start:wecom-worker": "node src/workers/wecomNotificationWorker.js",
+    "inventory:validate": "node scripts/validateInventorySource.js",
+    "inventory:preflight": "node scripts/measureInventoryCoverage.js",
+    "start:inventory-worker": "node src/workers/inventoryWorker.js",
+    "test:browser:inventory": "node scripts/testInventoryBrowser.js"
   },
   "keywords": [
     "apple",

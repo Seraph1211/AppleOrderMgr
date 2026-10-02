@@ -48,6 +48,7 @@ const baseNavigation = [
 ];
 
 const adminNavigation = [
+  { name: '库存监控', href: '/inventory-monitor', icon: Package, adminOnly: true },
   {
     name: '公开报价',
     href: '/quote-pricing',

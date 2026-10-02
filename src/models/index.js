@@ -24,6 +24,17 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  InventoryProduct: require('./InventoryProduct')(sequelize),
+  InventoryStore: require('./InventoryStore')(sequelize),
+  InventorySetting: require('./InventorySetting')(sequelize),
+  InventoryRuntime: require('./InventoryRuntime')(sequelize),
+  InventoryRound: require('./InventoryRound')(sequelize),
+  InventorySnapshot: require('./InventorySnapshot')(sequelize),
+  InventorySample: require('./InventorySample')(sequelize),
+  InventoryEvent: require('./InventoryEvent')(sequelize),
+  InventoryHourly: require('./InventoryHourly')(sequelize),
+  InventoryDelivery: require('./InventoryDelivery')(sequelize),
+
   ProxyOrder: require('./ProxyOrder')(sequelize),
   ProxyAssignment: require('./ProxyAssignment')(sequelize),
   ProxyEvent: require('./ProxyEvent')(sequelize),

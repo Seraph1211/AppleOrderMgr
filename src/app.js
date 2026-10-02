@@ -141,6 +141,7 @@ app.use('/api/payment-tasks', paymentTasksRouter);
 app.use('/api/payment-dispatch', paymentDispatchRouter);
 app.use('/api/identity-verifications', require('./routes/identityVerifications'));
 app.use('/api/quote-pricing', require('./routes/quotePricing'));
+app.use('/api/inventory', require('./routes/inventory'));
 
 // ---------- 404 兜底 ----------
 app.use((req, _res, next) => {
