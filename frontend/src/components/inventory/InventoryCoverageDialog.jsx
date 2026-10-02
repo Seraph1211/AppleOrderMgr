@@ -1,18 +1,20 @@
 import { timeText } from './inventoryPresentation';
-import { useEffect, useRef, useState } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { inventoryApi } from '../../api/inventoryApi';
-import { Pager, Table, Status } from './InventoryCommon';
+import {
+  Pager,
+  Table,
+  Status,
+  InventoryDialog,
+  CompactRecord,
+  RecordFields,
+} from './InventoryCommon';
 /** 原生对话框提供焦点约束，手机短屏可滚动查看固定轮次覆盖。 */
 export default function InventoryCoverageDialog({ id, onClose }) {
-  const dialog = useRef(null);
   const [page, setPage] = useState(1);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [retry, setRetry] = useState(0);
-  useEffect(() => {
-    dialog.current.showModal();
-  }, []);
   useEffect(() => {
     let active = true;
     setError('');
@@ -30,25 +32,12 @@ export default function InventoryCoverageDialog({ id, onClose }) {
     };
   }, [id, page, retry]);
   return (
-    <dialog
-      ref={dialog}
-      onCancel={onClose}
-      aria-labelledby="coverage-title"
-      className="rounded-lg border border-gray-200 p-0 w-[calc(100%-24px)] max-w-4xl max-h-[90dvh] backdrop:bg-gray-900/30"
+    <InventoryDialog
+      title="固定轮次覆盖矩阵"
+      onClose={onClose}
+      className="inventory-coverage-dialog"
     >
-      <div className="p-4 space-y-4">
-        <div className="flex items-center justify-between gap-2">
-          <h2 id="coverage-title" className="font-semibold text-gray-900">
-            固定轮次覆盖矩阵
-          </h2>
-          <button
-            className="btn btn-secondary min-h-[44px]"
-            aria-label="关闭覆盖矩阵"
-            onClick={onClose}
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+      <div className="inventory-dialog-scroll p-4 space-y-4">
         {error && (
           <div role="alert" className="text-sm text-red-700">
             {error}
@@ -73,6 +62,21 @@ export default function InventoryCoverageDialog({ id, onClose }) {
               <>
                 <Table
                   headers={['商品', '门店', '覆盖', '库存', '采集时间']}
+                  mobileChildren={data.items.map(row => (
+                    <CompactRecord
+                      key={row.id}
+                      title={row.model}
+                      subtitle={`${row.capacity} · ${row.color} / ${row.city} ${row.storeName}`}
+                      status={<Status value={row.stockStatus} />}
+                    >
+                      <RecordFields
+                        fields={[
+                          ['覆盖', <Status key="coverage" value={row.status} />],
+                          ['采集时间', timeText(row.observedAt)],
+                        ]}
+                      />
+                    </CompactRecord>
+                  ))}
                   empty={!data.items.length}
                 >
                   {data.items.map(row => (
@@ -125,6 +129,6 @@ export default function InventoryCoverageDialog({ id, onClose }) {
           </>
         )}
       </div>
-    </dialog>
+    </InventoryDialog>
   );
 }

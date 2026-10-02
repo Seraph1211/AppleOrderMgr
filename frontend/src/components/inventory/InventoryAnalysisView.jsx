@@ -15,19 +15,33 @@ export default function InventoryAnalysisView({ data, onDrill }) {
           {data.coverage.ratio === null ? '暂无计划' : `${(data.coverage.ratio * 100).toFixed(1)}%`}
         </p>
       </div>
-      <section className="bg-white rounded-lg border border-gray-200 p-4">
+      <section className="inventory-panel p-4 sm:p-5">
         <h3 className="font-medium mb-3">北京时间小时分布</h3>
         <div className="h-56 w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={[...data.hours].sort((a, b) => +a.key - +b.key)}>
-              <XAxis dataKey="key" unit="时" />
-              <YAxis allowDecimals={false} />
+              <XAxis
+                dataKey="key"
+                unit="时"
+                tickLine={false}
+                axisLine={false}
+                tick={{ fontSize: 12 }}
+              />
+              <YAxis
+                allowDecimals={false}
+                width={32}
+                tickLine={false}
+                axisLine={false}
+                tick={{ fontSize: 12 }}
+              />
               <Tooltip />
               <Bar
                 isAnimationActive={false}
                 dataKey="count"
                 name="次数"
                 fill="#1E3A8A"
+                maxBarSize={44}
+                radius={[4, 4, 0, 0]}
                 onClick={row => data.detailAvailable && onDrill('hours', row.key)}
                 cursor={data.detailAvailable ? 'pointer' : 'default'}
               />
@@ -35,7 +49,7 @@ export default function InventoryAnalysisView({ data, onDrill }) {
           </ResponsiveContainer>
         </div>
       </section>
-      <section className="bg-white rounded-lg border border-gray-200 p-4">
+      <section className="inventory-panel p-4 sm:p-5">
         <div className="flex flex-wrap justify-between gap-2 mb-3">
           <h3 className="font-medium">时间热力图 · {data.bucketMinutes} 分钟</h3>
           <span className="text-xs text-gray-500">灰色：无数据或覆盖缺口 · 蓝色：有观测</span>
@@ -84,30 +98,32 @@ export default function InventoryAnalysisView({ data, onDrill }) {
           </div>
         )}
       </section>
-      {Object.entries({ configurations: '配置分布', cities: '城市榜单', stores: '门店榜单' }).map(
-        ([key, label]) => (
-          <section key={key}>
-            <h3 className="font-medium mb-3">{label}</h3>
-            <Table headers={[label, '次数', '明细']} empty={!data[key].length} label={label}>
-              {data[key].map(row => (
-                <tr key={row.key}>
-                  <td className="px-3 py-3">{row.key}</td>
-                  <td className="px-3 py-3 font-medium text-primary">{row.count}</td>
-                  <td className="px-3 py-3">
-                    <button
-                      className="text-primary min-h-[44px] whitespace-nowrap disabled:text-gray-400"
-                      disabled={!data.detailAvailable}
-                      onClick={() => onDrill(key, row.key)}
-                    >
-                      {data.detailAvailable ? '查看记录' : '明细已清理'}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </Table>
-          </section>
-        )
-      )}
+      <div className="inventory-analysis-rankings">
+        {Object.entries({ configurations: '配置分布', cities: '城市榜单', stores: '门店榜单' }).map(
+          ([key, label]) => (
+            <section key={key}>
+              <h3 className="font-medium mb-3">{label}</h3>
+              <Table headers={[label, '次数', '明细']} empty={!data[key].length} label={label}>
+                {data[key].map(row => (
+                  <tr key={row.key}>
+                    <td className="px-3 py-3">{row.key}</td>
+                    <td className="px-3 py-3 font-medium text-primary">{row.count}</td>
+                    <td className="px-3 py-3">
+                      <button
+                        className="text-primary min-h-[44px] whitespace-nowrap disabled:text-gray-400"
+                        disabled={!data.detailAvailable}
+                        onClick={() => onDrill(key, row.key)}
+                      >
+                        {data.detailAvailable ? '查看记录' : '明细已清理'}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </Table>
+            </section>
+          )
+        )}
+      </div>
     </div>
   );
 }

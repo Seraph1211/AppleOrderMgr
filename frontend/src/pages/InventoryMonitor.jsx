@@ -1,10 +1,26 @@
 import { STATUS, timeText } from '../components/inventory/inventoryPresentation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { PackageSearch, RefreshCw, Copy, Download, Bell, Activity } from 'lucide-react';
+import {
+  PackageSearch,
+  RefreshCw,
+  Copy,
+  Download,
+  Bell,
+  Activity,
+  MapPin,
+  Settings2,
+  History,
+  BarChart3,
+  ArrowUpRight,
+} from 'lucide-react';
+import '../components/inventory/inventory.css';
 import { inventoryApi as api } from '../api/inventoryApi';
 import {
   InventoryFilters,
+  FilterSection,
+  CompactRecord,
+  RecordFields,
   MultiSelect,
   Pager,
   Status,
@@ -19,6 +35,13 @@ const TABS = {
   history: '历史记录',
   analysis: '分析统计',
   settings: '通知与健康',
+};
+const TAB_ICONS = {
+  latest: MapPin,
+  manage: Settings2,
+  history: History,
+  analysis: BarChart3,
+  settings: Bell,
 };
 const EMPTY_CATALOG = { products: [], stores: [] };
 const serialize = values =>
@@ -239,41 +262,92 @@ export default function InventoryMonitor() {
   const tableRows = data?.items || [];
   const currentCatalog = catalog[catalogKind];
   return (
-    <div className="space-y-5 min-w-0">
+    <div className="inventory-page min-w-0">
       {roundId && <InventoryCoverageDialog id={roundId} onClose={() => setRoundId(null)} />}
-      <header className="flex flex-wrap gap-3 items-start justify-between">
-        <div className="flex gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center">
-            <PackageSearch className="w-5 h-5 text-primary" />
+      <header className="inventory-header">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="inventory-brand-icon">
+            <PackageSearch className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900">库存监控</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              大陆 Apple 直营店 · iPhone · 发现时间均为北京时间
+            <h1 className="font-semibold tracking-tight text-gray-900">库存监控</h1>
+            <p className="text-xs sm:text-sm text-gray-500 mt-1">
+              大陆 Apple 直营店{' '}
+              <span className="hidden sm:inline">· iPhone 18 Pro 系列 · 北京时间</span>
             </p>
           </div>
         </div>
         <button
-          className="btn inline-flex items-center justify-center gap-2 btn-secondary min-h-[44px]"
+          className="btn btn-secondary inventory-refresh inline-flex items-center justify-center gap-2"
+          disabled={loading || busy}
           onClick={() => load()}
-          disabled={busy || loading}
+          aria-label="刷新页面"
         >
           <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          刷新页面
+          <span className="hidden sm:inline">刷新页面</span>
         </button>
       </header>
-      <nav className="flex overflow-x-auto gap-1 border-b border-gray-200" aria-label="库存功能">
-        {Object.entries(TABS).map(([key, title]) => (
-          <button
-            key={key}
-            className={`shrink-0 px-4 py-3 min-h-[48px] text-sm font-medium border-b-2 ${tab === key ? 'border-primary text-primary' : 'border-transparent text-gray-500 hover:text-gray-900'}`}
-            aria-current={tab === key ? 'page' : undefined}
-            onClick={() => switchTab(key)}
-          >
-            {title}
-          </button>
-        ))}
+      <nav className="inventory-nav" aria-label="库存视图">
+        {Object.entries(TABS).map(([key, label]) => {
+          const Icon = TAB_ICONS[key];
+          return (
+            <button
+              key={key}
+              className={`inventory-tab ${tab === key ? 'inventory-tab-active' : ''}`}
+              aria-current={tab === key ? 'page' : undefined}
+              onClick={() => switchTab(key)}
+            >
+              <Icon className="w-4 h-4" />
+              <span>{label}</span>
+            </button>
+          );
+        })}
       </nav>
+      <div className="inventory-state-strip">
+        <button
+          onClick={() => switchTab('manage')}
+          aria-label="前往监控管理设置采集"
+          className="inventory-state-link"
+        >
+          <span
+            className={`inventory-status-dot ${settings?.config.enabled ? 'text-green-600' : 'text-gray-400'}`}
+          />
+          采集{settings?.config.enabled ? '已开启' : '已关闭'}
+          <ArrowUpRight className="w-3 h-3" />
+        </button>
+        <button
+          onClick={() => switchTab('settings')}
+          aria-label="前往通知设置"
+          className="inventory-state-link"
+        >
+          <span
+            className={`inventory-status-dot ${settings?.config.notificationsEnabled ? 'text-green-600' : 'text-gray-400'}`}
+          />
+          通知{settings?.config.notificationsEnabled ? '已开启' : '已关闭'}
+          <ArrowUpRight className="w-3 h-3" />
+        </button>
+        <span className="hidden lg:block ml-auto text-xs text-gray-400">
+          最新快照每 10 秒自动更新 · 所有时间为北京时间
+        </span>
+      </div>
+      {tab === 'latest' && (
+        <div className="inventory-overview" aria-label="当前筛选库存概览">
+          {[
+            ['筛选组合', data?.summary?.combinations, 'text-gray-900'],
+            ['新鲜结果', data?.summary?.fresh, 'text-primary'],
+            ['有货门店', data?.summary?.currentStores, 'text-green-700'],
+          ].map(([label, value, color]) => (
+            <div key={label}>
+              <span className="text-xs sm:text-sm text-gray-500">{label}</span>
+              <strong
+                className={`block text-xl sm:text-2xl font-semibold tabular-nums mt-1 ${color}`}
+              >
+                {value ?? '—'}
+              </strong>
+            </div>
+          ))}
+        </div>
+      )}
       {error && (
         <div
           className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700 flex flex-wrap gap-2 justify-between"
@@ -302,12 +376,23 @@ export default function InventoryMonitor() {
         <InventoryFilters
           catalog={catalog}
           filters={filters}
+          applied={applied}
           onChange={setFilters}
           onApply={apply}
+          onReset={() => {
+            setFilters({});
+            setApplied({});
+            setPage(1);
+            setSelected([]);
+            setHour('');
+          }}
         />
       )}
       {['history', 'analysis'].includes(tab) && (
-        <section className="bg-white border border-gray-200 rounded-lg p-4 space-y-3">
+        <FilterSection
+          title="时间与统计口径"
+          summary={`${from.replace('T', ' ')} — ${to.replace('T', ' ')} · 北京时间`}
+        >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <label className="text-sm text-gray-600">
               开始（北京时间）
@@ -419,7 +504,7 @@ export default function InventoryMonitor() {
               </button>
             )}
           </div>
-        </section>
+        </FilterSection>
       )}
       {loading && !data && (
         <p role="status" className="py-10 text-center text-gray-500">
@@ -428,14 +513,11 @@ export default function InventoryMonitor() {
       )}
       {tab === 'latest' && (
         <>
-          <div className="flex flex-wrap gap-3 items-center justify-between">
-            <p className="text-sm text-gray-600">
-              筛选内 {data?.summary?.combinations || 0} 个组合 · 新鲜 {data?.summary?.fresh || 0} ·
-              有货门店 {data?.summary?.currentStores || 0}
-              <span className="block text-xs text-gray-400 mt-1">
-                页面每 10 秒读取缓存；官网采集时间见各行
-              </span>
-            </p>
+          <div className="inventory-list-toolbar">
+            <div>
+              <h2 className="font-semibold text-gray-900">全国库存</h2>
+              <p className="text-xs text-gray-500 mt-1">官网采集时间见各行，缓存刷新不触发采集</p>
+            </div>
             <div className="flex flex-wrap gap-2">
               <label className="flex items-center gap-2 text-sm min-h-[44px]">
                 <input
@@ -488,6 +570,56 @@ export default function InventoryMonitor() {
             ]}
             empty={!tableRows.length}
             label="全国库存列表"
+            mobileHeader={
+              <label className="flex items-center gap-2 min-h-[44px]">
+                <input
+                  type="checkbox"
+                  aria-label="全选本页库存"
+                  checked={tableRows.length > 0 && selected.length === tableRows.length}
+                  onChange={e => setSelected(e.target.checked ? tableRows.map(r => r.id) : [])}
+                />
+                全选本页<span className="ml-auto text-gray-500">已选 {selected.length} 项</span>
+              </label>
+            }
+            mobileChildren={tableRows.map(row => (
+              <CompactRecord
+                key={row.id}
+                title={row.model}
+                subtitle={`${row.capacity} · ${row.color} / ${row.city} ${row.storeName}`}
+                status={<Status value={row.displayStatus} />}
+                selection={
+                  <input
+                    type="checkbox"
+                    aria-label={`选择 ${row.sku} ${row.storeCode}`}
+                    checked={selected.includes(row.id)}
+                    onChange={e =>
+                      setSelected(
+                        e.target.checked
+                          ? [...selected, row.id]
+                          : selected.filter(id => id !== row.id)
+                      )
+                    }
+                  />
+                }
+                meta={`最后成功：${timeText(row.observedAt)}`}
+              >
+                <RecordFields
+                  fields={[
+                    ['精确 SKU', row.sku],
+                    ['官网提示', row.quote || '尚无有效提示'],
+                    ['上次有效状态', STATUS[row.lastStatus]],
+                    ['最近尝试', timeText(row.lastAttemptAt)],
+                    ['异常原因', row.error],
+                  ]}
+                />
+                <button
+                  className="btn btn-secondary mt-3 w-full"
+                  onClick={() => drill('latest', row)}
+                >
+                  查看记录
+                </button>
+              </CompactRecord>
+            ))}
           >
             {tableRows.map(row => (
               <tr key={row.id}>
@@ -546,8 +678,12 @@ export default function InventoryMonitor() {
       )}
       {tab === 'manage' && draft && (
         <>
-          <section className="bg-white border border-gray-200 rounded-lg p-4 flex flex-wrap items-end gap-4">
-            <label className="flex items-center gap-2 min-h-[44px]">
+          <section className="inventory-panel inventory-monitor-settings">
+            <div className="basis-full">
+              <h2 className="font-semibold">采集设置</h2>
+              <p className="text-sm text-gray-500 mt-1">选择商品与门店，保存后开启全国定时采集</p>
+            </div>
+            <label className="inventory-setting-toggle">
               <input
                 type="checkbox"
                 checked={draft.enabled}
@@ -654,7 +790,7 @@ export default function InventoryMonitor() {
                 已选 {catalogSelected.length}
               </span>
             </div>
-            <div className="max-h-[420px] overflow-y-auto">
+            <div className="inventory-catalog-scroll">
               <Table
                 headers={[
                   <input
@@ -674,6 +810,58 @@ export default function InventoryMonitor() {
                 ]}
                 empty={!currentCatalog.length}
                 label="监控目录"
+                mobileHeader={
+                  <label className="flex items-center gap-2 min-h-[44px]">
+                    <input
+                      type="checkbox"
+                      aria-label="全选目录"
+                      checked={
+                        currentCatalog.length > 0 &&
+                        catalogSelected.length === currentCatalog.length
+                      }
+                      onChange={e =>
+                        setCatalogSelected(e.target.checked ? currentCatalog.map(r => r.id) : [])
+                      }
+                    />
+                    全选目录
+                    <span className="ml-auto text-gray-500">{currentCatalog.length} 项</span>
+                  </label>
+                }
+                mobileChildren={currentCatalog.map(row => (
+                  <CompactRecord
+                    key={row.id}
+                    title={
+                      catalogKind === 'products'
+                        ? row.model
+                        : `${row.city} · Apple ${row.storeName}`
+                    }
+                    subtitle={
+                      catalogKind === 'products' ? `${row.capacity} · ${row.color}` : row.id
+                    }
+                    status={<Status value={row.enabled ? 'normal' : 'disabled'} />}
+                    selection={
+                      <input
+                        type="checkbox"
+                        aria-label={`选择目录 ${row.id}`}
+                        checked={catalogSelected.includes(row.id)}
+                        onChange={e =>
+                          setCatalogSelected(
+                            e.target.checked
+                              ? [...catalogSelected, row.id]
+                              : catalogSelected.filter(id => id !== row.id)
+                          )
+                        }
+                      />
+                    }
+                  >
+                    <RecordFields
+                      fields={[
+                        [catalogKind === 'products' ? '精确 SKU' : '门店代码', row.id],
+                        ['最近目录核对', timeText(row.lastSeenAt)],
+                      ]}
+                    />
+                  </CompactRecord>
+                ))}
               >
                 {currentCatalog.map(row => (
                   <tr key={row.id}>
@@ -715,6 +903,30 @@ export default function InventoryMonitor() {
             </p>
             <Table
               headers={['计划时间 / 来源', '状态', '完成 / 计划', '失败 / 待采', '耗时 / 重试']}
+              mobileChildren={tableRows.map(row => (
+                <CompactRecord
+                  key={row.id}
+                  title={timeText(row.plannedAt)}
+                  subtitle={`${STATUS[row.source]} · 完成 ${row.completed} / ${row.expected}`}
+                  status={<Status value={row.status} />}
+                >
+                  <RecordFields
+                    fields={[
+                      ['失败 / 待采', `${row.failed} / ${row.pending}`],
+                      [
+                        '耗时 / 重试',
+                        `${row.finishedAt && row.startedAt ? `${((row.finishedAt - row.startedAt) / 1000).toFixed(1)} 秒` : '—'} / ${row.retries}`,
+                      ],
+                    ]}
+                  />
+                  <button
+                    className="btn btn-secondary w-full mt-3"
+                    onClick={() => setRoundId(row.id)}
+                  >
+                    {row.completed} / {row.expected} · 查看覆盖
+                  </button>
+                </CompactRecord>
+              ))}
               empty={!tableRows.length}
             >
               {tableRows.map(row => (
@@ -775,6 +987,22 @@ export default function InventoryMonitor() {
             headers={['发现时间', '城市 / 门店', '商品配置', '检测 / 事件', '来源', '官网提示']}
             empty={!tableRows.length}
             label="库存历史"
+            mobileChildren={tableRows.map(row => (
+              <CompactRecord
+                key={row.id}
+                title={row.model}
+                subtitle={`${row.capacity} · ${row.color} / ${row.city} ${row.storeName}`}
+                status={<Status value={row.kind || row.status} />}
+                meta={`${timeText(row.observedAt)} · ${STATUS[row.source]}`}
+              >
+                <RecordFields
+                  fields={[
+                    ['精确 SKU', row.sku],
+                    ['官网提示', row.quote],
+                  ]}
+                />
+              </CompactRecord>
+            ))}
           >
             {tableRows.map(row => (
               <tr key={row.id}>
@@ -804,14 +1032,22 @@ export default function InventoryMonitor() {
       )}
       {tab === 'settings' && draft && (
         <>
-          <section className="bg-white rounded-lg border border-gray-200 p-4 space-y-4">
+          <section className="inventory-panel p-4 sm:p-5 space-y-4">
             <h2 className="font-medium flex items-center gap-2">
               <Bell className="w-5 h-5 text-primary" />
-              独立库存群
+              库存通知
             </h2>
             <p className="text-sm text-gray-500">
               与订单群配置和队列独立。保存后发送合成测试，核对群内收到后再启用。接口接受不等于群内已读。
             </p>
+            <label className="inventory-setting-toggle">
+              <input
+                type="checkbox"
+                checked={draft.notificationsEnabled}
+                onChange={e => update('notificationsEnabled', e.target.checked)}
+              />
+              开启自动库存通知（只提醒新事件）
+            </label>
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="text-sm">
                 群名称
@@ -883,14 +1119,6 @@ export default function InventoryMonitor() {
                 ))}
               </div>
             </details>
-            <label className="flex items-center gap-2 min-h-[44px] text-sm">
-              <input
-                type="checkbox"
-                checked={draft.notificationsEnabled}
-                onChange={e => update('notificationsEnabled', e.target.checked)}
-              />
-              开启自动库存通知（只提醒新事件）
-            </label>
             <div className="flex flex-wrap gap-2">
               <button
                 className="btn inline-flex items-center justify-center gap-2 btn-primary min-h-[44px]"
@@ -928,7 +1156,7 @@ export default function InventoryMonitor() {
               </span>
             </div>
           </section>
-          <section className="bg-white rounded-lg border border-gray-200 p-4 space-y-3">
+          <section className="inventory-panel p-4 sm:p-5 space-y-3">
             <h2 className="font-medium flex items-center gap-2">
               <Activity className="w-5 h-5 text-primary" />
               运行健康与预算
@@ -1010,6 +1238,23 @@ export default function InventoryMonitor() {
               headers={['类型', '结果', '尝试次数', '发送时间', '原因']}
               empty={!tableRows.length}
               label="通知投递"
+              mobileChildren={tableRows.map(row => (
+                <CompactRecord
+                  key={row.id}
+                  title={STATUS[row.kind] || row.kind}
+                  subtitle={timeText(row.sentAt)}
+                  status={
+                    <Status value={row.status === 'unknown' ? 'delivery_unknown' : row.status} />
+                  }
+                >
+                  <RecordFields
+                    fields={[
+                      ['尝试次数', String(row.attempts)],
+                      ['原因', row.errorCode],
+                    ]}
+                  />
+                </CompactRecord>
+              ))}
             >
               {tableRows.map(row => (
                 <tr key={row.id}>

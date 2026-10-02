@@ -1,4 +1,4 @@
-/* global localStorage, document, navigator, window */
+/* global localStorage, document, navigator, window, getComputedStyle */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -14,10 +14,14 @@ async function main() {
       executablePath: process.env.INVENTORY_BROWSER_EXECUTABLE,
       headless: true,
     });
-    const output = path.resolve('test-artifacts/inventory');
+    const baseUrl = process.env.INVENTORY_BROWSER_BASE_URL || 'http://127.0.0.1:5317';
+    if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(baseUrl)) throw new Error('合成验收仅允许本机服务');
+    const output = path.resolve(process.env.INVENTORY_BROWSER_OUTPUT || 'test-artifacts/inventory');
     fs.mkdirSync(output, { recursive: true });
     for (const viewport of [
       { width: 1440, height: 1000 },
+      { width: 1024, height: 768 },
+      { width: 768, height: 1024 },
       { width: 375, height: 667 },
       { width: 375, height: 500 },
     ]) {
@@ -44,10 +48,10 @@ async function main() {
         webhookTested: false,
       };
       const product = {
-        id: 'MG724CH/A',
-        sku: 'MG724CH/A',
-        title: 'iPhone 17 512GB Black',
-        model: 'iPhone 17',
+        id: 'TEST18PROCH/A',
+        sku: 'TEST18PROCH/A',
+        title: 'iPhone 18 Pro 512GB Black',
+        model: 'iPhone 18 Pro',
         capacity: '512GB',
         color: '黑色',
         enabled: true,
@@ -63,7 +67,7 @@ async function main() {
       const row = {
         ...product,
         ...store,
-        id: 'MG724CH/A|R320',
+        id: 'TEST18PROCH/A|R320',
         displayStatus: 'in_stock',
         status: 'in_stock',
         lastStatus: 'in_stock',
@@ -73,11 +77,12 @@ async function main() {
         lastAttemptAt: Date.now(),
       };
       const deliver = [];
+      let latestQuery;
       await page.route('**/*', async route => {
         try {
           const url = new URL(route.request().url());
           if (!url.pathname.startsWith('/api/')) {
-            if (url.origin === 'http://127.0.0.1:5317') await route.continue();
+            if (url.origin === baseUrl) await route.continue();
             else await route.abort();
             return;
           }
@@ -109,7 +114,18 @@ async function main() {
               return;
             }
             if (action === 'catalog' && method === 'GET')
-              data = { products: [product], stores: [store] };
+              data = {
+                products: [product],
+                stores: [
+                  store,
+                  ...Array.from({ length: 48 }, (_, index) => ({
+                    ...store,
+                    id: `R${index}`,
+                    storeCode: `R${index}`,
+                    storeName: `测试直营店 ${String(index).padStart(2, '0')} 综合购物中心`,
+                  })),
+                ],
+              };
             else if (action === 'catalog') {
               const body = route.request().postDataJSON();
               (body.kind === 'products' ? product : store).enabled = body.enabled;
@@ -125,15 +141,38 @@ async function main() {
                 hasWebhook: settings.hasWebhook || Boolean(body.webhook),
               };
               data = settings;
-            } else if (action === 'latest')
+            } else if (action === 'latest') {
+              latestQuery = Object.fromEntries(url.searchParams);
               data = {
-                items: [row],
+                items: [
+                  row,
+                  {
+                    ...row,
+                    id: 'second',
+                    model: 'iPhone 18 Pro Max',
+                    color: '深空黑色',
+                    storeName: '北京朝阳大悦城',
+                    storeCode: 'R479',
+                    displayStatus: 'stale',
+                    quote: '上次可取货',
+                  },
+                  {
+                    ...row,
+                    id: 'third',
+                    color: '银色',
+                    storeName: '王府井',
+                    storeCode: 'R448',
+                    displayStatus: 'error',
+                    error: '网络暂时不可用，请稍后查看',
+                    quote: '',
+                  },
+                ],
                 total: 51,
                 page: +(url.searchParams.get('page') || 1),
                 pageSize: 50,
                 summary: { combinations: 51, inStock: 1, currentStores: 1, fresh: 50 },
               };
-            else if (action === 'health')
+            } else if (action === 'health')
               data = {
                 state: 'normal',
                 paused: false,
@@ -184,7 +223,10 @@ async function main() {
               data = { items: [{ ...row, kind: 'arrival' }], total: 1, page: 1, pageSize: 50 };
             else if (action === 'history/export') {
               exported += 1;
-              await route.fulfill({ contentType: 'text/csv', body: 'SKU,城市\nMG724CH/A,北京' });
+              await route.fulfill({
+                contentType: 'text/csv',
+                body: 'SKU,城市\nTEST18PROCH/A,北京',
+              });
               return;
             } else if (action === 'analysis')
               data = {
@@ -194,7 +236,7 @@ async function main() {
                 notice: '观测次数，不代表销量；灰色为缺口。',
                 coverage: { complete: 1, planned: 2, ratio: 0.5 },
                 hours: [{ key: '14', count: 1 }],
-                configurations: [{ key: 'iPhone 17 · 512GB · 黑色', count: 1 }],
+                configurations: [{ key: 'iPhone 18 Pro · 512GB · 黑色', count: 1 }],
                 cities: [{ key: '北京', count: 1 }],
                 stores: [{ key: '北京 · 三里屯', count: 1 }],
                 heatmap: [
@@ -236,8 +278,12 @@ async function main() {
         }
       });
       await context.addInitScript(() => localStorage.setItem('token', 'synthetic-inventory-token'));
-      await page.goto('http://127.0.0.1:5317/inventory-monitor');
-      await page.getByRole('region', { name: '全国库存列表' }).getByText('今天可取货').waitFor();
+      await page.goto(`${baseUrl}/inventory-monitor`);
+      await page
+        .getByRole('region', { name: '全国库存列表' })
+        .locator('.inventory-status:visible')
+        .filter({ hasText: /^有货$/ })
+        .waitFor();
       const click = async locator => {
         try {
           if (viewport.width === 375) await locator.tap();
@@ -247,17 +293,92 @@ async function main() {
         }
       };
       await click(page.getByRole('checkbox', { name: '全选本页库存' }));
-      await click(page.getByRole('button', { name: '复制选中 (1)' }));
-      assert.match(await page.evaluate(() => navigator.clipboard.readText()), /MG724|iPhone 17/);
+      await click(page.getByRole('button', { name: '复制选中 (3)' }));
+      assert.match(
+        await page.evaluate(() => navigator.clipboard.readText()),
+        /TEST18PRO|iPhone 18 Pro/
+      );
       await click(page.getByRole('button', { name: '检查当前筛选' }));
       await page.getByRole('status').filter({ hasText: '统一查询队列' }).waitFor();
       assert.equal(checked, 1);
+      const assertNoOverflow = async () => {
+        try {
+          assert.equal(
+            await page.evaluate(
+              () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
+            ),
+            false,
+            '页面不应横向溢出'
+          );
+        } catch (error) {
+          throw new Error('响应式边界失败', { cause: error });
+        }
+      };
+      await assertNoOverflow();
+      if (viewport.width === 375) {
+        const list = page.getByRole('region', { name: '全国库存列表' });
+        assert.ok((await list.locator('.inventory-list-heading label').boundingBox()).height >= 44);
+        const details = list.locator('summary').first();
+        await click(details);
+        await list.getByText('今天可取货', { exact: true }).locator('visible=true').waitFor();
+        await click(details);
+        assert.equal(
+          await page.getByRole('button', { name: '城市', exact: true }).isVisible(),
+          false
+        );
+        for (const button of await page
+          .getByRole('navigation', { name: '库存视图' })
+          .getByRole('button')
+          .all()) {
+          const box = await button.boundingBox();
+          assert.ok(box.x >= 0 && box.x + box.width <= viewport.width && box.height >= 44);
+        }
+        await click(page.getByRole('button', { name: '商品与门店筛选', exact: true }));
+      }
       await click(page.getByRole('button', { name: '城市', exact: true }));
+      await page.getByLabel('搜索城市', { exact: true }).fill('不存在的城市');
+      await page.getByText('没有匹配的选项', { exact: true }).waitFor();
+      await page.getByLabel('搜索城市', { exact: true }).fill('');
+      if (viewport.width === 375) {
+        const dialog = page.getByRole('dialog', { name: '城市', exact: true });
+        await dialog.waitFor();
+        assert.ok(await dialog.getByRole('button', { name: '完成', exact: true }).isVisible());
+        assert.equal(
+          await page
+            .getByLabel('搜索城市', { exact: true })
+            .evaluate(el => getComputedStyle(el).fontSize),
+          '16px'
+        );
+      }
       await click(page.getByRole('checkbox', { name: '北京', exact: true }));
-      await click(page.getByRole('button', { name: '关闭城市' }));
+      await click(page.getByRole('button', { name: '完成 (1)' }));
+      if (viewport.width === 375) {
+        await click(page.getByRole('button', { name: '门店', exact: true }));
+        const sheet = page.getByRole('dialog', { name: '门店', exact: true });
+        await sheet.waitFor();
+        await click(
+          sheet.getByRole('checkbox', { name: '北京 · 测试直营店 47 综合购物中心', exact: true })
+        );
+        const complete = sheet.getByRole('button', { name: '完成 (1)' });
+        const bounds = await complete.boundingBox();
+        assert.ok(
+          bounds.y >= 0 && bounds.y + bounds.height <= viewport.height,
+          '短屏完成按钮应在视口内'
+        );
+        assert.equal(await sheet.evaluate(el => el.contains(document.activeElement)), true);
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await page.screenshot({
+          path: path.join(output, `筛选弹层-${viewport.width}x${viewport.height}.png`),
+        });
+        await click(sheet.getByRole('button', { name: '清空选择', exact: true }));
+        await click(sheet.getByRole('button', { name: '完成', exact: true }));
+      }
       await click(page.getByRole('button', { name: '应用筛选' }));
+      await page.waitForFunction(() => !document.querySelector('[role=alert]'));
+      assert.equal(latestQuery.cities, '北京');
       await click(page.getByRole('button', { name: '下一页' }));
       await page.getByText('第 2 页', { exact: false }).waitFor();
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: path.join(output, `库存-${viewport.width}x${viewport.height}.png`),
@@ -272,17 +393,39 @@ async function main() {
       await click(page.getByRole('checkbox', { name: '全选目录' }));
       await click(page.getByRole('button', { name: '启用所选' }));
       await page.getByRole('status').filter({ hasText: '启用' }).waitFor();
+      if (viewport.width === 375)
+        await click(
+          page.getByRole('region', { name: '数据表格', exact: true }).locator('summary').first()
+        );
+      await assertNoOverflow();
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: path.join(output, `管理-${viewport.width}x${viewport.height}.png`),
+        fullPage: true,
+      });
       await click(page.getByRole('button', { name: '40 / 49 · 查看覆盖' }));
       await page.getByRole('dialog').waitFor();
-      await click(page.getByRole('button', { name: '关闭覆盖矩阵' }));
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await page.screenshot({
+        path: path.join(output, `覆盖-${viewport.width}x${viewport.height}.png`),
+      });
+      await click(page.getByRole('button', { name: '关闭固定轮次覆盖矩阵' }));
       await click(page.getByRole('button', { name: '历史记录', exact: true }));
-      await page.getByRole('region', { name: '库存历史' }).getByText('到货变化').waitFor();
+      await page
+        .getByRole('region', { name: '库存历史' })
+        .getByText('到货变化')
+        .locator('visible=true')
+        .waitFor();
       await click(page.getByRole('button', { name: '导出', exact: true }));
       await page.getByRole('status').filter({ hasText: '导出' }).waitFor();
       assert.equal(exported, 1);
       await click(page.getByRole('button', { name: '分析统计', exact: true }));
       await page.getByText('北京时间小时分布', { exact: true }).waitFor();
+      if (viewport.width === 375)
+        await click(page.getByRole('button', { name: '时间与统计口径', exact: true }));
       await page.getByLabel('热力图间隔', { exact: true }).selectOption('10');
+      await assertNoOverflow();
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: path.join(output, `分析-${viewport.width}x${viewport.height}.png`),
         fullPage: true,
@@ -302,6 +445,7 @@ async function main() {
       await click(page.getByRole('button', { name: '发送合成测试' }));
       await click(page.getByRole('button', { name: '刷新测试状态' }));
       await page.getByText('测试接口已接受', { exact: true }).waitFor();
+      await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
         path: path.join(output, `通知-${viewport.width}x${viewport.height}.png`),
         fullPage: true,
@@ -318,7 +462,27 @@ async function main() {
       await page.getByRole('alert').waitFor();
       fail = false;
       await click(page.getByRole('button', { name: '重试加载' }));
-      await page.getByRole('region', { name: '全国库存列表' }).getByText('今天可取货').waitFor();
+      await page
+        .getByRole('region', { name: '全国库存列表' })
+        .locator('.inventory-status:visible')
+        .filter({ hasText: /^有货$/ })
+        .waitFor();
+      if (viewport.width === 375)
+        await click(page.getByRole('button', { name: '商品与门店筛选', exact: true }));
+      await click(page.getByRole('button', { name: '重置选择' }));
+      await page.waitForTimeout(100);
+      assert.equal(latestQuery.cities, undefined);
+      if (viewport.width === 375)
+        await click(page.getByRole('button', { name: '商品与门店筛选', exact: true }));
+      await click(page.getByRole('button', { name: '型号', exact: true }));
+      await page.keyboard.press('Escape');
+      assert.equal(await page.getByLabel('搜索型号').count(), 0);
+      assert.equal(
+        await page
+          .getByRole('button', { name: '型号', exact: true })
+          .evaluate(el => el === document.activeElement),
+        true
+      );
       allowed = false;
       await page.reload();
       await page.waitForURL('**/profile');
@@ -328,7 +492,11 @@ async function main() {
       logger.info('库存浏览器合成交互通过', { viewport });
     }
   } catch (error) {
-    logger.error('库存浏览器验收失败', { message: error.message, cause: error.cause?.message });
+    logger.error('库存浏览器验收失败', {
+      message: error.message,
+      cause: error.cause?.message,
+      stack: error.stack,
+    });
     process.exitCode = 1;
   } finally {
     await browser?.close();
