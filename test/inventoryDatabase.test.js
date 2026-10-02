@@ -552,6 +552,160 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       throw inventoryFailure(error);
     }
   });
+  test('健康告警跨 Worker 去重、发送前撤销、稳定恢复与旧队列清理', async () => {
+    try {
+      const { encrypt } = require('../src/utils/fieldEncryption');
+      const setting = await m.InventorySetting.findByPk('main');
+      await setting.update({
+        body: {
+          ...setting.body,
+          webhookCipher: encrypt(
+            'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test_inventory_health'
+          ),
+          destinationId: 'health-dest',
+          config: { ...DEFAULT_CONFIG, enabled: true, notificationsEnabled: true },
+        },
+      });
+      const send = jest.fn().mockResolvedValue({ status: 'accepted' });
+      const one = new InventoryNotifier(service, send);
+      const two = new InventoryNotifier(service, send);
+      const change = async patch => {
+        try {
+          const runtime = await m.InventoryRuntime.findByPk('main');
+          await runtime.update({ body: { ...runtime.body, ...patch } });
+        } catch (error) {
+          throw inventoryFailure(error);
+        }
+      };
+      const age = async () => {
+        try {
+          const runtime = await m.InventoryRuntime.findByPk('main');
+          await change({
+            healthAlerts: { ...runtime.body.healthAlerts, since: Date.now() - 121000 },
+          });
+        } catch (error) {
+          throw inventoryFailure(error);
+        }
+      };
+      await m.InventoryDelivery.create({
+        id: 'legacy-health',
+        body: {
+          id: 'legacy-health',
+          kind: 'health',
+          status: 'pending',
+          destinationId: 'health-dest',
+          expiresAt: Date.now() + 120000,
+        },
+      });
+      await change({ lastError: 'TRANSPORT_UNKNOWN' });
+      await one.health();
+      expect((await m.InventoryDelivery.findByPk('legacy-health')).body.errorCode).toBe(
+        'HEALTH_SUPERSEDED'
+      );
+      expect(await one.claim()).toBeNull();
+      await age();
+      await Promise.all([one.health(), two.health()]);
+      expect(await m.InventoryDelivery.count({ where: { 'body.status': 'pending' } })).toBe(1);
+      // 排队后采集成功：claim 必须自行重读，不依赖下一次 health 轮询。
+      await change({ lastError: null });
+      expect(await one.claim()).toBeNull();
+      expect(send).not.toHaveBeenCalled();
+      await change({ lastError: 'TRANSPORT_UNKNOWN' });
+      await one.health();
+      await age();
+      await Promise.all([one.tick(), two.tick()]);
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send.mock.calls[0][1]).toContain('查询持续异常');
+      await change({ lastError: null });
+      await one.tick();
+      expect(send).toHaveBeenCalledTimes(1);
+      await age();
+      await two.tick();
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls[1][1]).toContain('已稳定恢复');
+      await two.tick();
+      await change({ lastError: 'RESPONSE_READ_FAILED' });
+      await one.health();
+      await age();
+      await one.tick();
+      expect(send).toHaveBeenCalledTimes(2);
+      // 普通故障合并窗口不妨碍新严重故障立即提醒。
+      await db.query(
+        'UPDATE inventory_validation_state SET body = \'{"pausedReason":"INVALID_STRUCTURE"}\'::jsonb'
+      );
+      await two.tick();
+      expect(send).toHaveBeenCalledTimes(3);
+      expect(send.mock.calls[2][1]).toContain('需要人工处理');
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
+  test('健康提醒遵守静默、过期重新观察与中断未知不重发', async () => {
+    try {
+      const { encrypt } = require('../src/utils/fieldEncryption');
+      let setting = await m.InventorySetting.findByPk('main');
+      await setting.update({
+        body: {
+          ...setting.body,
+          webhookCipher: encrypt(
+            'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=test_inventory_health'
+          ),
+          destinationId: 'health-dest',
+          config: {
+            ...DEFAULT_CONFIG,
+            enabled: true,
+            notificationsEnabled: true,
+            silentStart: new Date(Date.now() + 8 * 3600000 - 60000).toISOString().slice(11, 16),
+            silentEnd: new Date(Date.now() + 8 * 3600000 + 300000).toISOString().slice(11, 16),
+          },
+        },
+      });
+      await db.query(
+        'UPDATE inventory_validation_state SET body = \'{"pausedReason":"INVALID_STRUCTURE"}\'::jsonb'
+      );
+      const send = jest.fn().mockResolvedValue({ status: 'accepted' });
+      const notifier = new InventoryNotifier(service, send);
+      await notifier.health();
+      // 静默状态按北京时间复核，覆盖跨日窗口。
+      const pending = (await service.rows('InventoryDelivery'))[0];
+      expect(pending.healthKey).toBe('manual:INVALID_STRUCTURE');
+      expect(await notifier.claim()).toBeNull();
+      setting = await m.InventorySetting.findByPk('main');
+      await setting.update({
+        body: {
+          ...setting.body,
+          config: { ...setting.body.config, silentStart: '', silentEnd: '' },
+        },
+      });
+      await service.put('InventoryDelivery', [{ ...pending, expiresAt: 1 }]);
+      const claim = await notifier.claim();
+      expect(claim).not.toBeNull();
+      expect(claim.ids).not.toContain(pending.id);
+      const inFlight = (await service.rows('InventoryDelivery')).find(
+        item => item.status === 'sending'
+      );
+      await service.put('InventoryDelivery', [{ ...inFlight, claimedAt: Date.now() - 21000 }]);
+      let runtime = await m.InventoryRuntime.findByPk('main');
+      await runtime.update({ body: { ...runtime.body, sendLease: 0 } });
+      await notifier.tick();
+      expect(send).not.toHaveBeenCalled();
+      expect((await m.InventoryDelivery.findByPk(inFlight.id)).body.status).toBe('unknown');
+      await db.query("UPDATE inventory_validation_state SET body = '{}'::jsonb");
+      await notifier.health();
+      runtime = await m.InventoryRuntime.findByPk('main');
+      await runtime.update({
+        body: {
+          ...runtime.body,
+          healthAlerts: { ...runtime.body.healthAlerts, since: Date.now() - 121000 },
+        },
+      });
+      await notifier.tick();
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(send.mock.calls[0][1]).toContain('已稳定恢复');
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
   test('到货合并后发送前复核；无货、关闭、保护暂停不推送', async () => {
     try {
       const send = jest.fn().mockResolvedValue({ status: 'accepted' });
@@ -586,7 +740,9 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
         'UPDATE inventory_validation_state SET body = \'{"pausedReason":"TEST_PAUSE"}\'::jsonb'
       );
       await notifier.tick();
-      expect(send).toHaveBeenCalledTimes(1);
+      expect(send).toHaveBeenCalledTimes(2);
+      expect(send.mock.calls[1][1]).toContain('需要人工处理');
+      expect(send.mock.calls.filter(call => call[1].includes('到货提醒'))).toHaveLength(1);
       expect(
         (await service.rows('InventoryDelivery')).some(
           r => r.errorCode === 'INVENTORY_NO_LONGER_CURRENT'

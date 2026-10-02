@@ -21,8 +21,7 @@ let collecting;
 let notifying;
 async function collect() {
   try {
-    const health = await service.health();
-    await notifier.health(health);
+    await notifier.health();
     const claim = await collector.claim();
     if (claim) {
       const result = await driver.request('inventory', {

@@ -5,6 +5,13 @@ const ApiError = require('../utils/ApiError');
 const { decrypt } = require('../utils/fieldEncryption');
 const { sendText } = require('./wecomTransport');
 const { isSilent, displayStatus } = require('./inventoryPolicy');
+const {
+  VERSION,
+  healthObservation,
+  observeHealth,
+  canQueueHealth,
+  settleHealth,
+} = require('./inventoryHealthNotificationPolicy');
 const TITLES = {
   arrival: 'iPhone 到货提醒',
   first: '初始库存摘要',
@@ -52,32 +59,69 @@ class InventoryNotifier {
       throw inventoryFailure(error);
     }
   }
-  /** 按保护状态变化合并提醒，稳定状态不刷屏。 */
-  async health(health) {
+  /** 在同一运行锁内观察健康、撤销过期告警并按持续时间排队。 */
+  async reconcileHealth({ transaction, state, settings, now }, guard) {
     try {
-      return await this.s.locked(async ({ transaction, state, settings, now }) => {
+      const observation = healthObservation(state, guard, now);
+      const { state: alerts, desiredKey } = observeHealth(
+        state.healthAlerts,
+        observation,
+        settings,
+        now
+      );
+      state.healthAlerts = alerts;
+      const pending = await this.s.rows('InventoryDelivery', {
+        transaction,
+        where: { 'body.kind': 'health', 'body.status': 'pending' },
+      });
+      const retained = pending.find(
+        item =>
+          item.healthVersion === VERSION &&
+          item.healthKey === desiredKey &&
+          item.destinationId === settings.destinationId &&
+          item.expiresAt > now
+      );
+      await this.s.put(
+        'InventoryDelivery',
+        pending
+          .filter(item => item !== retained)
+          .map(item => ({ ...item, status: 'skipped', errorCode: 'HEALTH_SUPERSEDED' })),
+        transaction
+      );
+      if (!desiredKey || retained || !canQueueHealth(alerts, desiredKey, now)) return;
+      const message = `状态：${observation.label}\n影响：已启用库存范围\n原因：${observation.reason}\n最近成功：${state.lastSuccessAt ? new Date(state.lastSuccessAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚无'}${observation.cooldownUntil ? `\n冷却截止：${new Date(observation.cooldownUntil).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })}` : ''}\n请在监控管理的“通知与健康”页查看详情。`;
+      await this.s.put(
+        'InventoryDelivery',
+        [
+          {
+            id: randomUUID(),
+            kind: 'health',
+            healthVersion: VERSION,
+            healthKey: desiredKey,
+            status: 'pending',
+            destinationId: settings.destinationId,
+            content: message,
+            notBefore: now,
+            expiresAt: now + 120000,
+            attempts: 0,
+          },
+        ],
+        transaction
+      );
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  }
+  /** 使用数据库当前状态，避免轮询快照与发送之间的状态竞争。 */
+  async health() {
+    try {
+      return await this.s.locked(async context => {
         try {
-          const previous = state.notifiedHealth || 'normal';
-          if (previous === health.state) return;
-          state.notifiedHealth = health.state;
-          if (!settings.config.notificationsEnabled) return;
-          const message = `状态：${health.state}\n影响：已启用库存范围\n原因：${health.reason || '保护状态变化'}\n最近成功：${health.lastSuccessAt ? new Date(health.lastSuccessAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚无'}\n冷却截止：${health.cooldownUntil ? new Date(health.cooldownUntil).toISOString() : '无'}\n请在库存运行健康页查看下一步。`;
-          await this.s.put(
-            'InventoryDelivery',
-            [
-              {
-                id: randomUUID(),
-                kind: 'health',
-                status: 'pending',
-                destinationId: settings.destinationId,
-                content: message,
-                notBefore: now + 10000,
-                expiresAt: now + 120000,
-                attempts: 0,
-              },
-            ],
-            transaction
+          const [guard] = await this.s.db.query(
+            "SELECT body FROM inventory_validation_state WHERE id = 'inventory-validation'",
+            { type: QueryTypes.SELECT, transaction: context.transaction }
           );
+          await this.reconcileHealth(context, guard?.body);
         } catch (error) {
           throw inventoryFailure(error);
         }
@@ -95,14 +139,17 @@ class InventoryNotifier {
             transaction,
             where: { 'body.status': 'sending' },
           });
-          await this.s.put(
-            'InventoryDelivery',
-            interrupted
-              .filter(r => r.claimedAt < now - 20000)
-              .map(r => ({ ...r, status: 'unknown', errorCode: 'WORKER_INTERRUPTED' })),
-            transaction
-          );
+          const abandoned = interrupted
+            .filter(r => r.claimedAt < now - 20000)
+            .map(r => ({ ...r, status: 'unknown', errorCode: 'WORKER_INTERRUPTED' }));
+          for (const item of abandoned) state.healthAlerts = settleHealth(state.healthAlerts, item);
+          await this.s.put('InventoryDelivery', abandoned, transaction);
           if (state.sendLease > now) return null;
+          const [guard] = await this.s.db.query(
+            "SELECT body FROM inventory_validation_state WHERE id = 'inventory-validation'",
+            { type: QueryTypes.SELECT, transaction }
+          );
+          await this.reconcileHealth({ transaction, state, settings, now }, guard?.body);
           const queue = await this.s.rows('InventoryDelivery', {
             transaction,
             where: { 'body.status': 'pending' },
@@ -138,10 +185,6 @@ class InventoryNotifier {
               })
               : []
             ).map(r => [r.id, r])
-          );
-          const [guard] = await this.s.db.query(
-            "SELECT body FROM inventory_validation_state WHERE id = 'inventory-validation'",
-            { type: QueryTypes.SELECT, transaction }
           );
           const guardPaused = Boolean(
             guard?.body.pausedReason || guard?.body.cooldownUntil > now || guard?.body.recovering
@@ -219,7 +262,7 @@ class InventoryNotifier {
           if (first.partial) content += '本轮覆盖未完整，仅汇总当前有效结果。\n';
           const base = process.env.INVENTORY_PUBLIC_URL;
           if (base && /^https:\/\/[^\s?#]+$/.test(base))
-            content += `详情（需登录）：${base.replace(/\/$/, '')}/inventory-monitor\n`;
+            content += `详情（需登录）：${base.replace(/\/$/, '')}/inventory-monitor${first.kind === 'health' ? '/manage?tab=settings' : ''}\n`;
           if (!batch.length) {
             await this.s.put(
               'InventoryDelivery',
@@ -240,6 +283,9 @@ class InventoryNotifier {
             })),
             transaction
           );
+          for (const item of batch) {
+            if (item.kind === 'health') state.healthAlerts.lastAttempts[item.healthKey] = now;
+          }
           rate.push({ at: now, destinationId: settings.destinationId });
           state.sendLease = now + 20000;
           return {
@@ -289,6 +335,7 @@ class InventoryNotifier {
                 sentAt: result.status === 'accepted' ? now : null,
               };
             });
+          for (const item of next) state.healthAlerts = settleHealth(state.healthAlerts, item);
           await this.s.put('InventoryDelivery', next, transaction);
           state.sendLease = 0;
           if (
