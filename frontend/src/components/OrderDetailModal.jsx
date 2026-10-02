@@ -213,6 +213,14 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                 </p>
               </div>
               <div>
+                <p className="text-sm text-gray-600">下单手机号</p>
+                <p className="mt-1 break-all font-mono text-sm">{order.recipientPhone || '-'}</p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm text-gray-600">下单邮箱号</p>
+                <p className="mt-1 break-all text-sm">{order.recipientEmail || '-'}</p>
+              </div>
+              <div>
                 <p className="text-sm text-gray-600">Serial No.</p>
                 {order.serialNumbers?.length ? (
                   order.serialNumbers.map(serial => (

@@ -280,9 +280,24 @@ export default function OrderDetail() {
               <User className="h-5 w-5 text-primary" />
               取机人
             </h2>
-            <p className="text-sm text-gray-900">{order.recipient?.name || '-'}</p>
-            <p className="mt-1 text-sm text-gray-500">{order.recipient_phone || '-'}</p>
-            <p className="mt-1 break-all text-sm text-gray-500">{order.recipient_email || '-'}</p>
+            <dl className="space-y-3 text-sm">
+              <div>
+                <dt className="text-gray-500">姓名 / TAG</dt>
+                <dd className="break-words text-gray-900">
+                  {order.recipient?.name || '-'} / {order.recipient_tag || '-'}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-gray-500">下单手机号</dt>
+                <dd className="break-all font-mono text-gray-900">
+                  {order.recipient_phone || '-'}
+                </dd>
+              </div>
+              <div className="min-w-0">
+                <dt className="text-gray-500">下单邮箱号</dt>
+                <dd className="break-all text-gray-900">{order.recipient_email || '-'}</dd>
+              </div>
+            </dl>
           </div>
           <div className="card">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-gray-900">
