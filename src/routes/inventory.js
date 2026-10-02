@@ -1,6 +1,7 @@
 const inventoryFailure = require('../utils/inventoryFailure');
 const express = require('express');
-const { requireRole } = require('../middleware/authMiddleware');
+const { PERMISSIONS } = require('../constants/business');
+const { requireRole, requirePermission } = require('../middleware/authMiddleware');
 const asyncHandler = require('../utils/asyncHandler');
 const InventoryService = require('../services/inventoryService');
 const InventoryAnalysis = require('../services/inventoryAnalysis');
@@ -18,7 +19,8 @@ function createRouter(service = new InventoryService()) {
     null,
     new InventoryValidationGate(service.db, { production: true })
   );
-  router.use(requireRole(['admin']));
+  const read = requirePermission(PERMISSIONS.INVENTORY_READ);
+  const admin = requireRole(['admin']);
   router.use((_req, res, next) => {
     res.set('Cache-Control', 'no-store');
     next();
@@ -32,47 +34,63 @@ function createRouter(service = new InventoryService()) {
       }
     });
   router.get(
+    '/scope',
+    read,
+    handle(() => service.scope())
+  );
+  router.get(
     '/catalog',
+    read,
     handle(() => service.catalog())
   );
   router.put(
     '/catalog',
+    admin,
     handle(req => service.setCatalog(req.body, req.user.id))
   );
   router.post(
     '/catalog/refresh',
+    admin,
     handle(() => service.refreshCatalog())
   );
   router.get(
     '/settings',
+    admin,
     handle(() => service.getSettings())
   );
   router.put(
     '/settings',
+    admin,
     handle(req => service.saveSettings(req.body, req.user.id))
   );
   router.get(
     '/latest',
+    read,
     handle(req => service.latest(req.query))
   );
   router.post(
     '/refresh',
+    admin,
     handle(req => service.refresh(req.body, req.user.id))
   );
   router.get(
     '/rounds',
+    admin,
     handle(req => service.list('InventoryRound', req.query))
   );
   router.get(
     '/rounds/:id',
+    admin,
     handle(req => service.roundDetail(req.params.id, req.query))
   );
   router.get(
     '/history',
+    read,
     handle(req => service.history(req.query))
   );
   router.get(
     '/history/export',
+    read,
     asyncHandler(async (req, res) => {
       try {
         const { items } = await service.history(req.query, true);
@@ -122,22 +140,27 @@ function createRouter(service = new InventoryService()) {
   );
   router.get(
     '/analysis',
+    read,
     handle(req => analysis.get(req.query))
   );
   router.get(
     '/health',
+    admin,
     handle(() => service.health())
   );
   router.post(
     '/resume',
+    admin,
     handle(req => maintenance.resume(req.user.id))
   );
   router.post(
     '/notifications/test',
+    admin,
     handle(req => notifier.test(req.user.id))
   );
   router.get(
     '/deliveries',
+    admin,
     handle(req => service.list('InventoryDelivery', req.query))
   );
   return router;

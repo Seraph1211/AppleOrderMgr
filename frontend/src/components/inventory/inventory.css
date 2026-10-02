@@ -47,7 +47,7 @@
 }
 .inventory-nav {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--inventory-tab-count, 3), minmax(0, 1fr));
   padding: 5px;
   gap: 4px;
   background: white;
@@ -110,7 +110,7 @@
 }
 .inventory-overview {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--inventory-tab-count, 3), minmax(0, 1fr));
   border: 1px solid #e5e7eb;
   border-radius: 12px;
   background: white;
@@ -403,7 +403,7 @@
 }
 @media (min-width: 1280px) {
   .inventory-analysis-rankings {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--inventory-tab-count, 3), minmax(0, 1fr));
     align-items: start;
   }
 }

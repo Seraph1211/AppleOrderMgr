@@ -61,6 +61,7 @@ const EMAIL_TERMINAL_STATUSES = Object.freeze([
 ]);
 
 const PERMISSIONS = Object.freeze({
+  INVENTORY_READ: 'inventory.read',
   PROXY_READ: 'proxy_orders.read',
   PROXY_EDIT: 'proxy_orders.edit',
   PROXY_STATUS: 'proxy_orders.status',

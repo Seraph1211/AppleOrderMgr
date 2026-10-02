@@ -243,6 +243,10 @@ export function InventoryFilters({ catalog, filters, applied, onChange, onApply,
     models: uniq(catalog.products, 'model'),
     capacities: uniq(catalog.products, 'capacity'),
     colors: uniq(catalog.products, 'color'),
+    skus: catalog.products.map(product => ({
+      value: product.sku,
+      label: `${product.model} · ${product.capacity} · ${product.color} (${product.sku})`,
+    })),
   };
   const count = Object.values(applied).reduce((sum, items) => sum + items.length, 0);
   const dirty = JSON.stringify(filters) !== JSON.stringify(applied);
@@ -250,7 +254,7 @@ export function InventoryFilters({ catalog, filters, applied, onChange, onApply,
     .filter(([, items]) => items.length)
     .map(
       ([key, items]) =>
-        `${labels[key]} ${items.map(value => options[key].find(option => option.value === value)?.label || value).join('、')}`
+        `${labels[key] || (key === 'skus' ? '精确商品' : key)} ${items.map(value => options[key]?.find(option => option.value === value)?.label || value).join('、')}`
     )
     .join(' · ');
   return (

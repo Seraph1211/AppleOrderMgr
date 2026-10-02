@@ -27,6 +27,12 @@ import AlertModal from './AlertModal';
 import { PERMISSIONS } from '../constants/permissions';
 
 const baseNavigation = [
+  {
+    name: '库存监控',
+    href: '/inventory-monitor',
+    icon: Package,
+    permission: PERMISSIONS.INVENTORY_READ,
+  },
   { name: '仪表板', href: '/', icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD_READ },
   { name: '订单管理', href: '/orders', icon: Package, permission: PERMISSIONS.ORDERS_READ },
   { name: '代抢管理', href: '/proxy-orders', icon: Package, permission: PERMISSIONS.PROXY_READ },
@@ -48,7 +54,7 @@ const baseNavigation = [
 ];
 
 const adminNavigation = [
-  { name: '库存监控', href: '/inventory-monitor', icon: Package, adminOnly: true },
+  { name: '监控管理', href: '/inventory-monitor/manage', icon: Settings, adminOnly: true },
   {
     name: '公开报价',
     href: '/quote-pricing',

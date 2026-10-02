@@ -209,15 +209,15 @@ describe('生产保护与费用上限', () => {
       );
     expect(state.recovering).toBe(false);
   });
-  test('连续普通 5xx 单列异常冷却，不计为 Apple 风控', () => {
-    let state = {};
-    for (let i = 0; i < 5; i += 1)
-      state = settleProduction(
-        state,
-        { purpose: 'inventory', outcome: 'UPSTREAM_ERROR', egress: 'main' },
-        now
-      );
-    expect(state.cooldownUntil).toBe(now + 600000);
-    expect(state.recent.filter(r => r.risk)).toHaveLength(0);
-  });
+  test.each(['UPSTREAM_ERROR', 'PROXY_TUNNEL_UNAVAILABLE'])(
+    '连续 %s 单列异常冷却，不永久暂停代理',
+    outcome => {
+      let state = {};
+      for (let i = 0; i < 5; i += 1)
+        state = settleProduction(state, { purpose: 'inventory', outcome, egress: 'main' }, now);
+      expect(state.cooldownUntil).toBe(now + 600000);
+      expect(state.recent.filter(r => r.risk)).toHaveLength(0);
+      expect(state.pausedEgress?.main).toBeUndefined();
+    }
+  );
 });

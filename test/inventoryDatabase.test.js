@@ -160,6 +160,23 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       throw inventoryFailure(error);
     }
   }
+  test('轮次失败保留代理根因和上次有效状态，不伪造新的库存', async () => {
+    try {
+      await round('in_stock');
+      await service.refresh({}, 1);
+      for (let i = 0; i < 6; i += 1) {
+        const claim = await collector.claim();
+        if (!claim) break;
+        await collector.settle(claim, { outcome: 'NO_HEALTHY_PROXY' });
+      }
+      const [snapshot] = await service.rows('InventorySnapshot');
+      expect(snapshot).toMatchObject({ status: 'in_stock', error: 'NO_HEALTHY_PROXY' });
+      expect((await service.health()).reason).toBe('NO_HEALTHY_PROXY');
+      expect(await m.InventorySample.count()).toBe(1);
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
   test('同轮六区域去重、跨轮到货唯一、快照与小时统计一致', async () => {
     try {
       await round('out_of_stock');
@@ -359,6 +376,45 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       throw inventoryFailure(error);
     }
   });
+  test('监控范围排除未启用及不支持项目，配置开关与运行状态分离', async () => {
+    try {
+      await m.InventoryProduct.bulkCreate([
+        { id: 'disabled', body: { ...product, sku: 'disabled', enabled: false } },
+        { id: 'unsupported', body: { ...product, sku: 'unsupported', supported: false } },
+      ]);
+      await m.InventoryStore.create({
+        id: 'disabled',
+        body: { ...store, storeCode: 'disabled', enabled: false },
+      });
+      const runtime = await m.InventoryRuntime.findByPk('main');
+      await runtime.update({
+        body: {
+          ...runtime.body,
+          workerHeartbeat: Date.now(),
+          lastSuccessAt: Date.now(),
+          lastError: 'NO_HEALTHY_PROXY',
+        },
+      });
+      expect(await service.scope()).toMatchObject({
+        products: [{ sku: product.sku }],
+        stores: [{ storeCode: store.storeCode }],
+        combinations: 1,
+        enabled: true,
+        state: 'degraded',
+      });
+      const settings = await m.InventorySetting.findByPk('main');
+      await settings.update({
+        body: { ...settings.body, config: { ...settings.body.config, enabled: false } },
+      });
+      expect(await service.scope()).toMatchObject({
+        combinations: 1,
+        enabled: false,
+        state: 'disabled',
+      });
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
   test('API 管理员边界、严格输入、CSV 与历史小时筛选', async () => {
     let server;
     try {
@@ -367,7 +423,16 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       const app = express();
       app.use(express.json());
       app.use((req, _res, next) => {
-        req.user = { id: 1, role: req.headers['x-test-role'] || 'operator' };
+        req.user = req.headers['x-test-anonymous']
+          ? null
+          : {
+            id: 1,
+            role: req.headers['x-test-role'] || 'operator',
+            permissions:
+                req.headers['x-test-role'] === 'admin' || req.headers['x-test-read']
+                  ? ['inventory.read']
+                  : [],
+          };
         next();
       });
       app.use('/inventory', createRouter(service));
@@ -380,6 +445,44 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       const base = `http://127.0.0.1:${server.address().port}/inventory`;
       expect((await fetch(`${base}/latest`)).status).toBe(403);
       const headers = { 'x-test-role': 'admin', 'content-type': 'application/json' };
+      expect(
+        (await fetch(`${base}/scope`, { headers: { 'x-test-anonymous': 'true' } })).status
+      ).toBe(401);
+      const reader = { 'x-test-read': 'true', 'content-type': 'application/json' };
+      for (const path of ['catalog', 'scope', 'latest', 'history', 'history/export', 'analysis']) {
+        expect((await fetch(`${base}/${path}`, { headers: reader })).status).toBe(200);
+      }
+      for (const [method, path] of [
+        ['GET', 'settings'],
+        ['GET', 'health'],
+        ['GET', 'rounds'],
+        ['GET', 'rounds/anything'],
+        ['GET', 'deliveries'],
+        ['PUT', 'catalog'],
+        ['POST', 'catalog/refresh'],
+        ['PUT', 'settings'],
+        ['POST', 'refresh'],
+        ['POST', 'resume'],
+        ['POST', 'notifications/test'],
+      ]) {
+        expect((await fetch(`${base}/${path}`, { method, headers: reader })).status).toBe(403);
+      }
+      const scope = (await (await fetch(`${base}/scope`, { headers: reader })).json()).data;
+      expect(scope).toMatchObject({
+        products: [{ sku: product.sku }],
+        stores: [{ storeCode: store.storeCode }],
+        combinations: 1,
+        state: 'offline',
+      });
+      expect(Object.keys(scope).sort()).toEqual([
+        'combinations',
+        'enabled',
+        'lastSuccessAt',
+        'products',
+        'state',
+        'stores',
+      ]);
+      expect(Object.keys(scope.products[0]).sort()).toEqual(['capacity', 'color', 'model', 'sku']);
       expect((await fetch(`${base}/latest?page=-1`, { headers })).status).toBe(400);
       expect(
         (

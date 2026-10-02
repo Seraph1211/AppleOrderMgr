@@ -87,6 +87,14 @@ describe('库存探测 HTTP 边界', () => {
     expect(result.evidence).toBeUndefined();
     expect(h.gate.finish).toHaveBeenCalledTimes(1);
   });
+  test.each([502, 503, 504])('CONNECT %d 仅作为临时代理故障，不锁死供应商', async status => {
+    const h = harness({ status, headers: {}, data: '' }, status);
+    expect(await requestOnce(h.options)).toMatchObject({
+      outcome: 'PROXY_TUNNEL_UNAVAILABLE',
+      summary: { responseSource: 'proxy_connect', tunnelStatus: status },
+    });
+    expect(h.request).toHaveBeenCalledTimes(1);
+  });
   test('目标429尊重Retry-After且没有自动换出口', async () => {
     const h = harness({ status: 429, headers: { 'retry-after': '900' }, data: '' });
     const result = await requestOnce(h.options);

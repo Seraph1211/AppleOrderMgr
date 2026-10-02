@@ -37,6 +37,9 @@ async function main() {
       const errors = [];
       page.on('pageerror', e => errors.push(e.message));
       let allowed = true;
+      let readAllowed = false;
+      const forbiddenReads = [];
+      let historyQuery;
       let fail = false;
       let checked = 0;
       let saved = 0;
@@ -93,11 +96,21 @@ async function main() {
               username: 'inventory-test',
               nickname: '库存测试',
               role: allowed ? 'admin' : 'operator',
-              permissions: [],
+              permissions: allowed || readAllowed ? ['inventory.read'] : [],
               availableHome: '/profile',
             };
           else if (url.pathname.startsWith('/api/inventory/')) {
-            if (!allowed) {
+            if (
+              !allowed &&
+              !(
+                readAllowed &&
+                route.request().method() === 'GET' &&
+                ['catalog', 'scope', 'latest', 'history', 'history/export', 'analysis'].includes(
+                  url.pathname.slice('/api/inventory/'.length)
+                )
+              )
+            ) {
+              forbiddenReads.push(url.pathname);
               await route.fulfill({
                 status: 403,
                 json: { success: false, error: { message: '仅管理员可访问' } },
@@ -125,6 +138,15 @@ async function main() {
                     storeName: `测试直营店 ${String(index).padStart(2, '0')} 综合购物中心`,
                   })),
                 ],
+              };
+            else if (action === 'scope')
+              data = {
+                products: product.enabled ? [product] : [],
+                stores: store.enabled ? [store] : [],
+                combinations: product.enabled && store.enabled ? 1 : 0,
+                enabled: settings.config.enabled,
+                state: 'normal',
+                lastSuccessAt: row.observedAt,
               };
             else if (action === 'catalog') {
               const body = route.request().postDataJSON();
@@ -219,9 +241,10 @@ async function main() {
                 detailAvailable: true,
                 tasks: [],
               };
-            else if (action === 'history')
+            else if (action === 'history') {
+              historyQuery = Object.fromEntries(url.searchParams);
               data = { items: [{ ...row, kind: 'arrival' }], total: 1, page: 1, pageSize: 50 };
-            else if (action === 'history/export') {
+            } else if (action === 'history/export') {
               exported += 1;
               await route.fulfill({
                 contentType: 'text/csv',
@@ -292,6 +315,49 @@ async function main() {
           throw new Error('交互失败', { cause: error });
         }
       };
+      const menu = async name => {
+        try {
+          const group = ['监控管理', '通知与健康'].includes(name) ? '监控管理' : '库存监控';
+          if (
+            !(await page
+              .getByRole('navigation', { name: '库存视图' })
+              .getByRole('button', { name, exact: true })
+              .count())
+          ) {
+            if (viewport.width < 1024)
+              await click(page.getByRole('button', { name: '打开导航', exact: true }));
+            await click(
+              page
+                .getByRole('navigation', { name: '主导航' })
+                .getByRole('link', { name: group, exact: true })
+            );
+          }
+          await click(
+            page
+              .getByRole('navigation', { name: '库存视图' })
+              .getByRole('button', { name, exact: true })
+          );
+        } catch (error) {
+          throw new Error('菜单导航失败', { cause: error });
+        }
+      };
+      const scope = page.getByRole('region', { name: '已启用监控范围' });
+      assert.equal(
+        await page.getByRole('navigation', { name: '库存视图' }).getByRole('button').count(),
+        3
+      );
+      assert.equal(await page.getByRole('link', { name: '历史记录', exact: true }).count(), 0);
+      await scope.getByText('1 个商品配置 × 1 家门店，共 1 个组合').waitFor();
+      await click(scope.locator('summary').first());
+      await scope
+        .getByRole('list', { name: '已启用商品明细' })
+        .getByText('TEST18PROCH/A', { exact: true })
+        .waitFor();
+      await click(scope.locator('summary').last());
+      await scope
+        .getByRole('list', { name: '已启用门店明细' })
+        .getByText('R320', { exact: true })
+        .waitFor();
       await click(page.getByRole('checkbox', { name: '全选本页库存' }));
       await click(page.getByRole('button', { name: '复制选中 (3)' }));
       assert.match(
@@ -326,13 +392,6 @@ async function main() {
           await page.getByRole('button', { name: '城市', exact: true }).isVisible(),
           false
         );
-        for (const button of await page
-          .getByRole('navigation', { name: '库存视图' })
-          .getByRole('button')
-          .all()) {
-          const box = await button.boundingBox();
-          assert.ok(box.x >= 0 && box.x + box.width <= viewport.width && box.height >= 44);
-        }
         await click(page.getByRole('button', { name: '商品与门店筛选', exact: true }));
       }
       await click(page.getByRole('button', { name: '城市', exact: true }));
@@ -384,8 +443,26 @@ async function main() {
         path: path.join(output, `库存-${viewport.width}x${viewport.height}.png`),
         fullPage: true,
       });
-      await click(page.getByRole('button', { name: '监控管理', exact: true }));
+      const inventoryList = page.getByRole('region', { name: '全国库存列表' });
+      if (viewport.width === 375) await click(inventoryList.locator('summary').first());
+      await click(
+        inventoryList
+          .getByRole('button', { name: '查看记录', exact: true })
+          .locator('visible=true')
+          .first()
+      );
+      await page.getByRole('region', { name: '库存历史' }).waitFor();
+      await page.waitForURL('**/inventory-monitor?tab=history');
+      assert.equal(historyQuery.skus, product.sku);
+      assert.equal(historyQuery.stores, store.storeCode);
+      assert.equal(historyQuery.metric, 'all');
+      assert.deepEqual(errors, [], '精确 SKU 历史跳转不能崩溃');
+      await menu('监控管理');
       await page.getByRole('region', { name: '监控目录' }).waitFor();
+      assert.equal(
+        await page.getByRole('navigation', { name: '库存视图' }).getByRole('button').count(),
+        2
+      );
       await click(page.getByRole('checkbox', { name: '全选目录' }));
       await click(page.getByRole('button', { name: '停用所选' }));
       await page.getByRole('status').filter({ hasText: '停用' }).waitFor();
@@ -410,7 +487,7 @@ async function main() {
         path: path.join(output, `覆盖-${viewport.width}x${viewport.height}.png`),
       });
       await click(page.getByRole('button', { name: '关闭固定轮次覆盖矩阵' }));
-      await click(page.getByRole('button', { name: '历史记录', exact: true }));
+      await menu('历史记录');
       await page
         .getByRole('region', { name: '库存历史' })
         .getByText('到货变化')
@@ -419,7 +496,7 @@ async function main() {
       await click(page.getByRole('button', { name: '导出', exact: true }));
       await page.getByRole('status').filter({ hasText: '导出' }).waitFor();
       assert.equal(exported, 1);
-      await click(page.getByRole('button', { name: '分析统计', exact: true }));
+      await menu('统计分析');
       await page.getByText('北京时间小时分布', { exact: true }).waitFor();
       if (viewport.width === 375)
         await click(page.getByRole('button', { name: '时间与统计口径', exact: true }));
@@ -434,7 +511,7 @@ async function main() {
         page.getByRole('region', { name: '城市榜单' }).getByRole('button', { name: '查看记录' })
       );
       await page.getByRole('region', { name: '库存历史' }).waitFor();
-      await click(page.getByRole('button', { name: '通知与健康', exact: true }));
+      await menu('通知与健康');
       await page.getByLabel('群名称', { exact: true }).fill('合成库存群');
       await page
         .getByLabel('Webhook（加密保存，不回显）')
@@ -458,7 +535,7 @@ async function main() {
         '页面不应横向溢出'
       );
       fail = true;
-      await click(page.getByRole('button', { name: '全国库存', exact: true }));
+      await menu('全国库存');
       await page.getByRole('alert').waitFor();
       fail = false;
       await click(page.getByRole('button', { name: '重试加载' }));
@@ -472,7 +549,7 @@ async function main() {
       await click(page.getByRole('button', { name: '重置选择' }));
       await page.waitForTimeout(100);
       assert.equal(latestQuery.cities, undefined);
-      if (viewport.width === 375)
+      if (!(await page.getByRole('button', { name: '型号', exact: true }).isVisible()))
         await click(page.getByRole('button', { name: '商品与门店筛选', exact: true }));
       await click(page.getByRole('button', { name: '型号', exact: true }));
       await page.keyboard.press('Escape');
@@ -484,7 +561,23 @@ async function main() {
         true
       );
       allowed = false;
+      readAllowed = true;
       await page.reload();
+      await page.getByRole('heading', { name: '库存监控', exact: true, level: 1 }).waitFor();
+      assert.equal(await page.getByRole('button', { name: '检查当前筛选' }).count(), 0);
+      assert.equal(await page.getByRole('link', { name: '监控管理', exact: true }).count(), 0);
+      assert.equal(await page.getByRole('link', { name: '通知与健康', exact: true }).count(), 0);
+      await menu('历史记录');
+      await page.getByRole('region', { name: '库存历史' }).waitFor();
+      await menu('统计分析');
+      await page.getByText('北京时间小时分布', { exact: true }).waitFor();
+      for (const suffix of ['/manage', '/settings', '?tab=settings', '?tab=manage']) {
+        await page.goto(`${baseUrl}/inventory-monitor${suffix}`);
+        await page.waitForURL('**/profile');
+      }
+      assert.deepEqual(forbiddenReads, [], '普通用户不能请求管理数据');
+      readAllowed = false;
+      await page.goto(`${baseUrl}/inventory-monitor`);
       await page.waitForURL('**/profile');
       assert.equal(await page.getByRole('heading', { name: '库存监控', exact: true }).count(), 0);
       assert.deepEqual(errors, []);

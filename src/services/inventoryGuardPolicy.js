@@ -58,6 +58,7 @@ function settleProduction(original, result, now) {
   if (result.purpose === 'inventory') {
     const transient = [
       'UPSTREAM_ERROR',
+      'PROXY_TUNNEL_UNAVAILABLE',
       'REQUEST_TIMEOUT',
       'TRANSPORT_UNKNOWN',
       'RESPONSE_READ_FAILED',

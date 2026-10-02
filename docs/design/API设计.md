@@ -821,10 +821,13 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ## 库存监控 API（已生产发布）
 
-统一前缀 `/api/inventory`，现有登录鉴权且仅 admin，响应 `{success:true,data}`；所有接口 `Cache-Control: no-store`。错误输入 400、并发设置版本冲突 409、未登录 401、非管理员 403。设置密钥和代理凭据永不返回。
+统一前缀 `/api/inventory`，使用现有登录鉴权，响应 `{success:true,data}`；所有接口 `Cache-Control: no-store`。错误输入 400、并发设置版本冲突 409、未登录 401、未授权 403。设置密钥和代理凭据永不返回。
+
+`inventory.read` 为可分配的普通用户权限，允许 GET catalog/scope/latest/history/history/export/analysis；管理员自动拥有。其他接口均保留 admin 角色校验，包括设置、目录修改、轮次详情、手动采集、恢复、通知测试和投递记录。菜单与页面路由同步检查，旧 tab 链接归入用户或管理员菜单后再次鉴权。现有普通用户不隐式获得权限，由管理员在用户管理中分配。
 
 | 方法/路径 | 请求与结果 |
 | --- | --- |
+| GET /scope | 已启用且支持的商品及已启用门店白名单、组合数、采集开关、汇总状态和最后成功时间；不含代理、预算、Webhook 或内部运行配置 |
 | GET /catalog | 仅返回 iPhone 18 Pro／Pro Max 商品及全部门店目录、启用与待确认状态；范围外旧商品不返回 |
 | PUT /catalog | `{kind:products或stores,ids:[],enabled:boolean}`，批量启停；范围外商品 ID 拒绝且整批不修改 |
 | POST /catalog/refresh | 排队一次官网目录核对，不同步发起外部请求 |

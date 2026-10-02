@@ -228,6 +228,7 @@ class InventoryCollector {
             'REQUEST_TIMEOUT',
             'TRANSPORT_UNKNOWN',
             'UPSTREAM_ERROR',
+            'PROXY_TUNNEL_UNAVAILABLE',
             'RESPONSE_READ_FAILED',
           ].includes(result.outcome);
           const blocked = !actual && !success;
@@ -515,7 +516,11 @@ class InventoryCollector {
               ...old.get(key),
               id: key,
               interrupted: true,
-              error: 'ROUND_COVERAGE_MISSING',
+              error:
+                [...round.tasks]
+                  .reverse()
+                  .find(task => task.skus.includes(product.sku) && task.error)?.error ||
+                'ROUND_COVERAGE_MISSING',
               lastAttemptAt: now,
             });
         }
@@ -549,7 +554,9 @@ class InventoryCollector {
       state.rampReady =
         state.completeStreak >= 3 &&
         now - Math.max(state.lastRiskAt || 0, state.riskFreeSince) >= 1800000;
-      if (round.status !== 'complete') state.lastError = 'ROUND_COVERAGE_MISSING';
+      if (round.status !== 'complete')
+        state.lastError =
+          [...round.tasks].reverse().find(task => task.error)?.error || 'ROUND_COVERAGE_MISSING';
     } catch (error) {
       throw inventoryFailure(error);
     }

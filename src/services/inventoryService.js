@@ -127,6 +127,39 @@ class InventoryService {
       throw inventoryFailure(error);
     }
   }
+  /** 用户可见的监控范围白名单；不返回管理配置、代理或通知信息。 */
+  async scope() {
+    try {
+      const [catalog, settings, health] = await Promise.all([
+        this.catalog(),
+        this.getSettings(),
+        this.health(),
+      ]);
+      const products = catalog.products
+        .filter(row => row.enabled && row.supported)
+        .map(({ sku, model, capacity, color }) => ({ sku, model, capacity, color }));
+      const stores = catalog.stores
+        .filter(row => row.enabled)
+        .map(({ storeCode, city, storeName }) => ({ storeCode, city, storeName }));
+      const state = !settings.config.enabled
+        ? 'disabled'
+        : !products.length || !stores.length
+          ? 'empty'
+          : !health.workerHeartbeat || Date.now() - health.workerHeartbeat > 120000
+            ? 'offline'
+            : health.state;
+      return {
+        products,
+        stores,
+        combinations: products.length * stores.length,
+        enabled: settings.config.enabled,
+        state,
+        lastSuccessAt: health.lastSuccessAt,
+      };
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  }
   /** 批量启停目录，不修改个人过滤。 */
   async setCatalog(input, actor) {
     try {

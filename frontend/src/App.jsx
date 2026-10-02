@@ -49,11 +49,30 @@ function ManagementApp() {
                 <Routes>
                   <Route
                     path="/inventory-monitor"
+                    element={permissionRoute(
+                      PERMISSIONS.INVENTORY_READ,
+                      <InventoryMonitor mode="read" />
+                    )}
+                  />
+                  <Route
+                    path="/inventory-monitor/manage"
                     element={
                       <ProtectedRoute requiredRole="admin">
-                        <InventoryMonitor />
+                        <InventoryMonitor mode="admin" />
                       </ProtectedRoute>
                     }
+                  />
+                  <Route
+                    path="/inventory-monitor/history"
+                    element={<Navigate to="/inventory-monitor?tab=history" replace />}
+                  />
+                  <Route
+                    path="/inventory-monitor/analysis"
+                    element={<Navigate to="/inventory-monitor?tab=analysis" replace />}
+                  />
+                  <Route
+                    path="/inventory-monitor/settings"
+                    element={<Navigate to="/inventory-monitor/manage?tab=settings" replace />}
                   />
                   <Route
                     path="/wecom-notifications"

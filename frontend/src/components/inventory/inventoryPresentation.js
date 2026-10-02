@@ -38,3 +38,20 @@ export function timeText(value) {
     ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
     : '—';
 }
+
+const FAILURE_TEXT = {
+  NO_HEALTHY_PROXY: '暂无可用代理，需检查代理出口',
+  PROXY_TUNNEL_UNAVAILABLE: '代理隧道暂时不可用，等待有限重试',
+  PROXY_CONNECT_REJECTED: '代理拒绝连接，出口已暂停',
+  PROXY_AUTH_FAILED: '代理认证失败，需核对配置',
+  ROUND_COVERAGE_MISSING: '本轮未取得该商品和门店的有效结果',
+  REQUEST_BUDGET_EXHAUSTED: '已达到请求预算上限',
+  TARGET_COOLDOWN: '采集正在保护冷却',
+  REQUEST_TIMEOUT: '请求超时',
+  TRANSPORT_UNKNOWN: '连接中断，结果未知',
+  RESPONSE_READ_FAILED: '响应读取失败',
+};
+/** 将已知采集故障转成可操作说明，保留未知故障代码供排查。 */
+export function failureText(code) {
+  return FAILURE_TEXT[code] || code || '无';
+}

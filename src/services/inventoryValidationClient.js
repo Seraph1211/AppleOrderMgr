@@ -208,7 +208,12 @@ async function requestOnce({
       result.summary = { ...result.summary, tunnelStatus };
       if (tunnelStatus !== 200) {
         result.status = tunnelStatus;
-        result.outcome = tunnelStatus === 407 ? 'PROXY_AUTH_FAILED' : 'PROXY_CONNECT_REJECTED';
+        result.outcome =
+          tunnelStatus === 407
+            ? 'PROXY_AUTH_FAILED'
+            : [502, 503, 504].includes(tunnelStatus)
+              ? 'PROXY_TUNNEL_UNAVAILABLE'
+              : 'PROXY_CONNECT_REJECTED';
         result.summary.responseSource = 'proxy_connect';
         delete result.retryMs;
         evidence = undefined;

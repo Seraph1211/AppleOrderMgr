@@ -1,6 +1,8 @@
-import { STATUS, timeText } from '../components/inventory/inventoryPresentation';
+import { STATUS, timeText, failureText } from '../components/inventory/inventoryPresentation';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Navigate, useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import InventoryScope from '../components/inventory/InventoryScope';
 import {
   PackageSearch,
   RefreshCw,
@@ -8,11 +10,11 @@ import {
   Download,
   Bell,
   Activity,
+  ArrowUpRight,
   MapPin,
-  Settings2,
   History,
   BarChart3,
-  ArrowUpRight,
+  Settings2,
 } from 'lucide-react';
 import '../components/inventory/inventory.css';
 import { inventoryApi as api } from '../api/inventoryApi';
@@ -33,15 +35,8 @@ const TABS = {
   latest: '全国库存',
   manage: '监控管理',
   history: '历史记录',
-  analysis: '分析统计',
+  analysis: '统计分析',
   settings: '通知与健康',
-};
-const TAB_ICONS = {
-  latest: MapPin,
-  manage: Settings2,
-  history: History,
-  analysis: BarChart3,
-  settings: Bell,
 };
 const EMPTY_CATALOG = { products: [], stores: [] };
 const serialize = values =>
@@ -51,16 +46,21 @@ const serialize = values =>
       .map(([key, value]) => [key, Array.isArray(value) ? value.join(',') : value])
   );
 const localDate = date => new Date(date.getTime() + 28800000).toISOString().slice(0, 16);
-/** 管理员库存模块：五个视图共享筛选及有界后台队列。 */
-export default function InventoryMonitor() {
-  const [params, setParams] = useSearchParams();
-  const tab = TABS[params.get('tab')] ? params.get('tab') : 'latest';
+/** 库存分组页面内的视图；配置与手动采集仅管理员可用。 */
+function InventoryView({ view = 'latest', mode = 'read' }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { isAdmin } = useAuth();
+  const admin = isAdmin();
+  const tab = view;
+  const initial = location.state || {};
+  const [scope, setScope] = useState(null);
   const [roundId, setRoundId] = useState(null);
   const [catalog, setCatalog] = useState(EMPTY_CATALOG);
   const [settings, setSettings] = useState(null);
   const [draft, setDraft] = useState(null);
-  const [filters, setFilters] = useState({});
-  const [applied, setApplied] = useState({});
+  const [filters, setFilters] = useState(initial.filters || {});
+  const [applied, setApplied] = useState(initial.filters || {});
   const [page, setPage] = useState(1);
   const [onlyInStock, setOnlyInStock] = useState(false);
   const [data, setData] = useState(null);
@@ -73,23 +73,31 @@ export default function InventoryMonitor() {
   const [catalogKind, setCatalogKind] = useState('products');
   const [catalogSelected, setCatalogSelected] = useState([]);
   const [webhook, setWebhook] = useState('');
-  const [metric, setMetric] = useState('arrivals');
-  const [source, setSource] = useState('all');
+  const [metric, setMetric] = useState(initial.metric || 'arrivals');
+  const [source, setSource] = useState(initial.source || 'all');
   const [bucketMinutes, setBucketMinutes] = useState(60);
-  const [hour, setHour] = useState('');
-  const [from, setFrom] = useState(() => `${localDate(new Date()).slice(0, 10)}T00:00`);
-  const [to, setTo] = useState(() => localDate(new Date(Date.now() + 60000)));
+  const [hour, setHour] = useState(initial.hour ?? '');
+  const [from, setFrom] = useState(
+    () => initial.from || `${localDate(new Date()).slice(0, 10)}T00:00`
+  );
+  const [to, setTo] = useState(() => initial.to || localDate(new Date(Date.now() + 60000)));
   const sequence = useRef(0);
   const mounted = useRef(true);
-  const switchTab = name => {
-    if (name === 'analysis' && metric === 'all') setMetric('arrivals');
-    sequence.current += 1;
-    setParams({ tab: name });
-    setPage(1);
-    setData(null);
-    setSelected([]);
-    setNotice('');
-    setError('');
+  const switchTab = (name, overrides = {}) => {
+    navigate(
+      `${['manage', 'settings'].includes(name) ? '/inventory-monitor/manage' : '/inventory-monitor'}?tab=${name}`,
+      {
+        state: {
+          filters: applied,
+          metric: name === 'analysis' && metric === 'all' ? 'arrivals' : metric,
+          source,
+          from,
+          to,
+          hour,
+          ...overrides,
+        },
+      }
+    );
   };
   const historyParams = useCallback(
     () => ({
@@ -117,13 +125,15 @@ export default function InventoryMonitor() {
         const query = ['history', 'analysis'].includes(tab)
           ? { ...historyParams(), bucketMinutes }
           : { ...serialize(applied), onlyInStock };
-        const [result, h] = await Promise.all([
+        const [result, overview, h] = await Promise.all([
           api.get(path, { ...query, page, pageSize: 50 }),
-          api.get('health'),
+          api.get('scope'),
+          admin ? api.get('health') : Promise.resolve(null),
         ]);
         if (id !== sequence.current || !mounted.current) return;
         setData(result.data);
-        setHealth(h.data);
+        setScope(overview.data);
+        setHealth(h?.data || null);
         setError('');
         if (tab === 'latest')
           setSelected(previous =>
@@ -135,17 +145,20 @@ export default function InventoryMonitor() {
         if (id === sequence.current && mounted.current) setLoading(false);
       }
     },
-    [tab, applied, onlyInStock, page, bucketMinutes, historyParams]
+    [tab, applied, onlyInStock, page, bucketMinutes, historyParams, admin]
   );
   useEffect(() => {
     mounted.current = true;
     const initial = async () => {
       try {
-        const [c, s] = await Promise.all([api.get('catalog'), api.get('settings')]);
+        const [c, s] = await Promise.all([
+          api.get('catalog'),
+          admin ? api.get('settings') : Promise.resolve(null),
+        ]);
         if (mounted.current) {
           setCatalog(c.data);
-          setSettings(s.data);
-          setDraft(s.data.config);
+          setSettings(s?.data || null);
+          setDraft(s?.data.config || null);
         }
       } catch (failure) {
         if (mounted.current) setError(failure.message);
@@ -156,7 +169,7 @@ export default function InventoryMonitor() {
       mounted.current = false;
       sequence.current += 1;
     };
-  }, []);
+  }, [admin]);
   useEffect(() => {
     load();
   }, [load]);
@@ -251,7 +264,14 @@ export default function InventoryMonitor() {
     }
     setFilters(next);
     setApplied(next);
-    switchTab('history');
+    switchTab('history', {
+      filters: next,
+      metric: kind === 'latest' ? 'all' : metric,
+      hour: kind === 'hours' ? key : '',
+      ...(kind === 'heatmap'
+        ? { from: localDate(new Date(+key)), to: localDate(new Date(+key + bucketMinutes * 60000)) }
+        : {}),
+    });
   };
   const apply = () => {
     setApplied(filters);
@@ -270,7 +290,9 @@ export default function InventoryMonitor() {
             <PackageSearch className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="font-semibold tracking-tight text-gray-900">库存监控</h1>
+            <h1 className="font-semibold tracking-tight text-gray-900">
+              {mode === 'admin' ? '监控管理' : '库存监控'}
+            </h1>
             <p className="text-xs sm:text-sm text-gray-500 mt-1">
               大陆 Apple 直营店{' '}
               <span className="hidden sm:inline">· iPhone 18 Pro 系列 · 北京时间</span>
@@ -287,49 +309,64 @@ export default function InventoryMonitor() {
           <span className="hidden sm:inline">刷新页面</span>
         </button>
       </header>
-      <nav className="inventory-nav" aria-label="库存视图">
-        {Object.entries(TABS).map(([key, label]) => {
-          const Icon = TAB_ICONS[key];
-          return (
-            <button
-              key={key}
-              className={`inventory-tab ${tab === key ? 'inventory-tab-active' : ''}`}
-              aria-current={tab === key ? 'page' : undefined}
-              onClick={() => switchTab(key)}
-            >
-              <Icon className="w-4 h-4" />
-              <span>{label}</span>
-            </button>
-          );
-        })}
+      <nav
+        className="inventory-nav"
+        aria-label="库存视图"
+        style={{ '--inventory-tab-count': mode === 'admin' ? 2 : 3 }}
+      >
+        {(mode === 'admin' ? ['manage', 'settings'] : ['latest', 'history', 'analysis']).map(
+          key => {
+            const Icon = {
+              latest: MapPin,
+              history: History,
+              analysis: BarChart3,
+              manage: Settings2,
+              settings: Bell,
+            }[key];
+            return (
+              <button
+                key={key}
+                className={`inventory-tab ${tab === key ? 'inventory-tab-active' : ''}`}
+                aria-current={tab === key ? 'page' : undefined}
+                onClick={() => switchTab(key)}
+              >
+                <Icon className="w-4 h-4" />
+                <span>{TABS[key]}</span>
+              </button>
+            );
+          }
+        )}
       </nav>
-      <div className="inventory-state-strip">
-        <button
-          onClick={() => switchTab('manage')}
-          aria-label="前往监控管理设置采集"
-          className="inventory-state-link"
-        >
-          <span
-            className={`inventory-status-dot ${settings?.config.enabled ? 'text-green-600' : 'text-gray-400'}`}
-          />
-          采集{settings?.config.enabled ? '已开启' : '已关闭'}
-          <ArrowUpRight className="w-3 h-3" />
-        </button>
-        <button
-          onClick={() => switchTab('settings')}
-          aria-label="前往通知设置"
-          className="inventory-state-link"
-        >
-          <span
-            className={`inventory-status-dot ${settings?.config.notificationsEnabled ? 'text-green-600' : 'text-gray-400'}`}
-          />
-          通知{settings?.config.notificationsEnabled ? '已开启' : '已关闭'}
-          <ArrowUpRight className="w-3 h-3" />
-        </button>
-        <span className="hidden lg:block ml-auto text-xs text-gray-400">
-          最新快照每 10 秒自动更新 · 所有时间为北京时间
-        </span>
-      </div>
+      {admin && (
+        <div className="inventory-state-strip">
+          <button
+            onClick={() => switchTab('manage')}
+            aria-label="前往监控管理设置采集"
+            className="inventory-state-link"
+          >
+            <span
+              className={`inventory-status-dot ${settings?.config.enabled ? 'text-green-600' : 'text-gray-400'}`}
+            />
+            采集{settings?.config.enabled ? '已开启' : '已关闭'}
+            <ArrowUpRight className="w-3 h-3" />
+          </button>
+          <button
+            onClick={() => switchTab('settings')}
+            aria-label="前往通知设置"
+            className="inventory-state-link"
+          >
+            <span
+              className={`inventory-status-dot ${settings?.config.notificationsEnabled ? 'text-green-600' : 'text-gray-400'}`}
+            />
+            通知{settings?.config.notificationsEnabled ? '已开启' : '已关闭'}
+            <ArrowUpRight className="w-3 h-3" />
+          </button>
+          <span className="hidden lg:block ml-auto text-xs text-gray-400">
+            最新快照每 10 秒自动更新 · 所有时间为北京时间
+          </span>
+        </div>
+      )}
+      {['latest', 'manage'].includes(tab) && <InventoryScope scope={scope} />}
       {tab === 'latest' && (
         <div className="inventory-overview" aria-label="当前筛选库存概览">
           {[
@@ -364,11 +401,11 @@ export default function InventoryMonitor() {
           {notice}
         </p>
       )}
-      {health && (health.paused || !settings?.config.enabled) && (
+      {health && (health.paused || health.state === 'degraded' || !settings?.config.enabled) && (
         <p className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
           {!settings?.config.enabled
             ? '全局监控已关闭，页面保留上次结果。'
-            : `采集保护：${STATUS[health.state] || health.state}；${health.reason || '等待冷却到期'}`}{' '}
+            : `采集保护：${STATUS[health.state] || health.state}；${health.reason ? failureText(health.reason) : '等待冷却到期'}`}{' '}
           {health.cooldownUntil ? `截止 ${timeText(health.cooldownUntil)}` : ''}
         </p>
       )}
@@ -538,18 +575,20 @@ export default function InventoryMonitor() {
                 <Copy className="w-4 h-4" />
                 复制选中 ({selected.length})
               </button>
-              <button
-                className="btn inline-flex items-center justify-center gap-2 btn-primary min-h-[44px]"
-                disabled={busy || !settings?.config.enabled}
-                onClick={() =>
-                  act(async () => {
-                    await api.post('refresh', serialize(applied));
-                  }, '当前筛选已进入统一查询队列，保护和预算仍生效')
-                }
-              >
-                <RefreshCw className="w-4 h-4" />
-                检查当前筛选
-              </button>
+              {admin && (
+                <button
+                  className="btn inline-flex items-center justify-center gap-2 btn-primary min-h-[44px]"
+                  disabled={busy || !settings?.config.enabled}
+                  onClick={() =>
+                    act(async () => {
+                      await api.post('refresh', serialize(applied));
+                    }, '当前筛选已进入统一查询队列，保护和预算仍生效')
+                  }
+                >
+                  <RefreshCw className="w-4 h-4" />
+                  检查当前筛选
+                </button>
+              )}
             </div>
           </div>
           <Table
@@ -609,7 +648,7 @@ export default function InventoryMonitor() {
                     ['官网提示', row.quote || '尚无有效提示'],
                     ['上次有效状态', STATUS[row.lastStatus]],
                     ['最近尝试', timeText(row.lastAttemptAt)],
-                    ['异常原因', row.error],
+                    ['异常原因', row.error ? failureText(row.error) : '无'],
                   ]}
                 />
                 <button
@@ -656,7 +695,7 @@ export default function InventoryMonitor() {
                   {row.lastStatus && (
                     <p className="text-xs text-gray-500">上次：{STATUS[row.lastStatus]}</p>
                   )}
-                  {row.error && <p className="text-xs text-red-600">{row.error}</p>}
+                  {row.error && <p className="text-xs text-red-600">{failureText(row.error)}</p>}
                 </td>
                 <td className="px-3 py-3 text-xs whitespace-nowrap">
                   {timeText(row.observedAt)}
@@ -1180,7 +1219,7 @@ export default function InventoryMonitor() {
                 今日代理提取：{health?.proxyExtractions || 0} / {draft.dailyProxyExtractions}
               </p>
               <p>最近风险比例：{((health?.riskRatio || 0) * 100).toFixed(1)}%</p>
-              <p>最近错误：{health?.reason || '无'}</p>
+              <p>最近错误：{failureText(health?.reason)}</p>
               <p>
                 库存排队：{health?.queue?.queuedRounds || 0} 轮；通知待发：
                 {health?.queue?.pendingNotifications || 0} 条
@@ -1274,4 +1313,21 @@ export default function InventoryMonitor() {
       )}
     </div>
   );
+}
+
+/** 两个菜单边界：用户查询组三页签、管理员配置组两页签。旧链接先归组再由路由鉴权。 */
+export default function InventoryMonitor({ mode = 'read' }) {
+  const location = useLocation();
+  const requested = new URLSearchParams(location.search).get('tab');
+  const fallback = mode === 'admin' ? 'manage' : 'latest';
+  const view = TABS[requested] ? requested : fallback;
+  const targetMode = ['manage', 'settings'].includes(view) ? 'admin' : 'read';
+  if (targetMode !== mode)
+    return (
+      <Navigate
+        to={`${targetMode === 'admin' ? '/inventory-monitor/manage' : '/inventory-monitor'}?tab=${view}`}
+        replace
+      />
+    );
+  return <InventoryView key={view} view={view} mode={mode} />;
 }

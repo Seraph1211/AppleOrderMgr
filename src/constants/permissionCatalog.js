@@ -81,6 +81,7 @@ const PERMISSION_DEPENDENCIES = Object.freeze({
 const PERMISSION_MODULE_NAMES = Object.freeze({
   proxy_orders: '代抢管理',
   wecom: '企微订单通知',
+  inventory: '库存监控',
   monitor: '服务器监控',
   ingestion: '订单数据源',
   identity: '身份核验',
@@ -102,6 +103,7 @@ const PERMISSION_MODULE_NAMES = Object.freeze({
 /* eslint-enable camelcase */
 
 const PERMISSION_LABELS = Object.freeze({
+  [PERMISSIONS.INVENTORY_READ]: '库存查看（全国库存、历史、统计及导出）',
   [PERMISSIONS.PROXY_READ]: '查看全部代抢订单',
   [PERMISSIONS.PROXY_EDIT]: '录入和编辑代抢资料',
   [PERMISSIONS.PROXY_STATUS]: '修改代抢处理状态',

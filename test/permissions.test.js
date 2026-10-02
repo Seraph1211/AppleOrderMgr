@@ -37,6 +37,7 @@ describe('逐用户权限矩阵', () => {
   });
 
   test.each([
+    PERMISSIONS.INVENTORY_READ,
     PERMISSIONS.DASHBOARD_READ,
     PERMISSIONS.STATS_READ,
     PERMISSIONS.ORDERS_READ,
