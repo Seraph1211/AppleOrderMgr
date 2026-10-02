@@ -15,9 +15,14 @@ async function main() {
       headless: true,
     });
     fs.mkdirSync(path.resolve('coverage'), { recursive: true });
-    for (const mobile of [false, true]) {
+    for (const mode of ['desktop', 'portrait', 'mobile']) {
+      const mobile = mode === 'mobile';
       const context = await browser.newContext({
-        viewport: mobile ? { width: 375, height: 740 } : { width: 1440, height: 1000 },
+        viewport: mobile
+          ? { width: 375, height: 740 }
+          : mode === 'portrait'
+            ? { width: 1080, height: 1920 }
+            : { width: 1440, height: 1000 },
         isMobile: mobile,
         hasTouch: mobile,
         serviceWorkers: 'block',
@@ -184,7 +189,7 @@ async function main() {
       await panel.getByText('日志已复制', { exact: true }).waitFor();
       assert.equal(await page.evaluate(() => navigator.clipboard.readText()), message);
       assert.equal(await panel.getByText(row.fileName, { exact: true }).count(), 0);
-      await panel.getByRole('button', { name: '收起筛选', exact: true }).click();
+      await panel.getByRole('button', { name: '修改筛选', exact: true }).waitFor();
       assert.equal(await panel.getByLabel('服务器', { exact: true }).isVisible(), false);
       assert.equal(await panel.getByLabel('日志采集状态').getAttribute('open'), null);
       await panel.getByLabel('自动换行', { exact: true }).uncheck();
@@ -210,6 +215,28 @@ async function main() {
       await panel.getByText('已加载 101 个片段 · 已到当前结果末尾').waitFor();
       assert.equal(await reader.locator('tbody tr').count(), 101, '仅去重重叠ID，保留原始重复行');
       assert.equal(await reader.evaluate(element => element.scrollTop), scrollTop);
+      await reader.evaluate(element => {
+        element.scrollTop = 500;
+      });
+      const readingTop = await reader.evaluate(element => element.scrollTop);
+      const beforeExpand = listRequests;
+      await panel.getByRole('button', { name: '展开阅读', exact: true }).click();
+      const expanded = page.getByRole('dialog', { name: '专注日志阅读', exact: true });
+      await expanded.waitFor();
+      assert.equal(await reader.evaluate(element => element.scrollTop), readingTop);
+      assert.equal(listRequests, beforeExpand, '展开阅读复用已加载日志');
+      const expandedBox = await expanded.boundingBox();
+      assert.equal(expandedBox.y, 0);
+      assert.equal(expandedBox.height, page.viewportSize().height);
+      await expanded.getByRole('button', { name: '退出阅读', exact: true }).focus();
+      await page.keyboard.press('Shift+Tab');
+      assert(
+        await expanded.evaluate(element => element.contains(document.activeElement)),
+        '专注模式焦点不能跳到背景'
+      );
+      await reader.evaluate(element => {
+        element.scrollTop = 500;
+      });
       contextFail = true;
       await panel.getByRole('button', { name: '详情与上下文', exact: true }).click();
       const detail = page.getByRole('dialog', { name: '日志详情与上下文' });
@@ -224,9 +251,18 @@ async function main() {
       await detail.getByText('上下文合成日志 [129]', { exact: true }).waitFor();
       await page.keyboard.press('Escape');
       assert.equal(await detail.count(), 0);
-      assert.equal(await reader.evaluate(element => element.scrollTop), scrollTop);
+      assert.equal(await reader.evaluate(element => element.scrollTop), readingTop);
       assert.equal(await page.evaluate(() => document.activeElement.textContent), '详情与上下文');
-      await panel.getByRole('button', { name: '展开筛选', exact: true }).click();
+      assert(await expanded.isVisible(), 'Esc先关闭详情，保留专注阅读');
+      await page.keyboard.press('Escape');
+      assert.equal(await expanded.count(), 0);
+      assert.equal(await reader.evaluate(element => element.scrollTop), readingTop);
+      assert(
+        await panel
+          .getByRole('button', { name: '展开阅读' })
+          .evaluate(element => element === document.activeElement)
+      );
+      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
       await panel.getByLabel('账号编号', { exact: false }).fill('128');
       await panel.getByLabel('正文关键词', { exact: true }).fill('店铺');
       const request = page.waitForRequest(
@@ -241,13 +277,15 @@ async function main() {
       assert.equal(await first.locator('mark').innerText(), '店铺');
       assert.equal(await reader.evaluate(element => element.scrollTop), 0);
       assert(await panel.getByRole('button', { name: '复制选中日志' }).isDisabled());
+      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
       await panel.getByLabel('软件实例', { exact: true }).selectOption(otherId);
       await panel.getByText('实例二账号128独立日志', { exact: true }).waitFor();
       assert.equal(await reader.locator('tbody tr').count(), 1);
+      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
       await panel.getByLabel('软件实例', { exact: true }).selectOption(localId);
       await first.waitFor();
       fail = true;
-      await panel.getByRole('button', { name: '重新查询（从头）', exact: true }).click();
+      await panel.getByRole('button', { name: '重新查询日志，从头加载', exact: true }).click();
       await panel.getByText('合成日志读取失败', { exact: false }).waitFor();
       assert.equal(await reader.locator('tbody tr').count(), 0);
       fail = false;
@@ -255,16 +293,18 @@ async function main() {
       await panel.getByRole('button', { name: '重新查询', exact: true }).click();
       await panel.getByText('当前条件下没有已上传的日志', { exact: false }).waitFor();
       empty = false;
+      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
       await panel.getByRole('button', { name: '清空筛选', exact: true }).click();
       await first.waitFor();
       // 清空已经为空的筛选仍会重新读取，避免列表被清空后不再发请求。
       const reread = page.waitForRequest(
         req => new URL(req.url()).pathname === '/api/server-monitor/logs'
       );
+      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
       await panel.getByRole('button', { name: '清空筛选', exact: true }).click();
       await reread;
       await first.waitFor();
-      await panel.getByRole('button', { name: '收起筛选', exact: true }).click();
+      await panel.getByRole('button', { name: '修改筛选', exact: true }).waitFor();
       if (mobile) {
         await first.tap();
         await panel.getByRole('button', { name: '详情与上下文' }).tap();
@@ -277,6 +317,7 @@ async function main() {
         await detail.getByRole('button', { name: '关闭日志详情' }).tap();
         await page.setViewportSize({ width: 375, height: 740 });
       }
+      await panel.getByRole('button', { name: '展开阅读', exact: true }).click();
       await reader.evaluate(element => {
         element.scrollTop = element.scrollHeight;
       });
@@ -290,13 +331,40 @@ async function main() {
       await reader.evaluate(element => {
         element.scrollTop = 0;
       });
+      if (mobile) await expanded.getByRole('button', { name: '退出阅读', exact: true }).tap();
+      else await expanded.getByRole('button', { name: '退出阅读', exact: true }).click();
+      if (mode === 'portrait') {
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[aria-label="日志阅读区"]').getBoundingClientRect().height >
+            1000
+        );
+        const box = await reader.boundingBox();
+        assert(box.height > 1000, '竖屏日志高度突破旧760像素上限');
+        assert(
+          Math.abs(box.y + box.height - page.viewportSize().height) < 100,
+          '竖屏日志填满剩余空间'
+        );
+        await page.setViewportSize({ width: 1920, height: 1080 });
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[aria-label="日志阅读区"]').getBoundingClientRect().height <
+            1000
+        );
+        await page.setViewportSize({ width: 1080, height: 1920 });
+        await page.waitForFunction(
+          () =>
+            document.querySelector('[aria-label="日志阅读区"]').getBoundingClientRect().height >
+            1000
+        );
+      }
       assert(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
         '页面不应横向溢出'
       );
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
-        path: path.resolve(`coverage/full-logs-${mobile ? 'mobile' : 'desktop'}.png`),
+        path: path.resolve(`coverage/full-logs-${mode}.png`),
         fullPage: true,
         animations: 'disabled',
       });
@@ -305,10 +373,10 @@ async function main() {
       await page.getByText('日志查询', { exact: true }).waitFor({ state: 'hidden' });
       assert.deepEqual(errors, []);
       await context.close();
-      logger.info('完整日志浏览器合成验收通过', { viewport: mobile ? '375触屏' : '1440桌面' });
+      logger.info('完整日志浏览器合成验收通过', { viewport: mode });
     }
   } catch (error) {
-    logger.error('完整日志浏览器合成验收失败', { message: error.message });
+    logger.error('完整日志浏览器合成验收失败', { message: error.message, stack: error.stack });
     process.exitCode = 1;
   } finally {
     if (browser) await browser.close();

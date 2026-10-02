@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Copy, RefreshCw, Search, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Copy, Maximize2, Minimize2, RefreshCw, Search, X } from 'lucide-react';
 import client from '../api/client';
 import { copyDeferredText } from '../utils/copyDeferredText';
 
@@ -64,6 +64,8 @@ export default function MonitorLogs() {
   const [filtersOpen, setFiltersOpen] = useState(true);
   const [wrapLines, setWrapLines] = useState(true);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [readingExpanded, setReadingExpanded] = useState(false);
+  const [readerHeight, setReaderHeight] = useState(420);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -78,6 +80,9 @@ export default function MonitorLogs() {
   const contextTriggerRef = useRef(null);
   const logScrollRef = useRef(null);
   const loadMoreRef = useRef(null);
+  const sectionRef = useRef(null);
+  const readerPanelRef = useRef(null);
+  const expandTriggerRef = useRef(null);
   const filterKey = JSON.stringify(filters);
   const activeInstance = catalog?.instances.find(
     row => row.deviceId === filters.deviceId && row.localId === filters.localId
@@ -131,6 +136,7 @@ export default function MonitorLogs() {
           signal: controller.signal,
         });
         if (active) {
+          if (!cursor) setFiltersOpen(false);
           setResult(previous => {
             if (!cursor || !previous) return response.data;
             const known = new Set(previous.items.map(row => row.id));
@@ -152,6 +158,72 @@ export default function MonitorLogs() {
       controller.abort();
     };
   }, [filterKey, cursor, refresh, filters.deviceId, filters.localId]);
+
+  useLayoutEffect(() => {
+    if (readingExpanded) return undefined;
+    let frame;
+    function measure() {
+      const viewport = window.visualViewport;
+      const top = readerPanelRef.current?.getBoundingClientRect().top ?? 0;
+      const height = Math.max(
+        420,
+        Math.floor(
+          (viewport?.height ?? window.innerHeight) -
+            Math.max(16, top - (viewport?.offsetTop ?? 0)) -
+            16
+        )
+      );
+      setReaderHeight(current => (current === height ? current : height));
+    }
+    function schedule() {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    }
+    measure();
+    const observer = new ResizeObserver(schedule);
+    if (sectionRef.current) observer.observe(sectionRef.current);
+    window.addEventListener('resize', schedule);
+    window.addEventListener('scroll', schedule, { passive: true });
+    window.visualViewport?.addEventListener('resize', schedule);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+      window.removeEventListener('resize', schedule);
+      window.removeEventListener('scroll', schedule);
+      window.visualViewport?.removeEventListener('resize', schedule);
+    };
+  }, [readingExpanded]);
+
+  useEffect(() => {
+    if (!readingExpanded) return undefined;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    readerPanelRef.current?.querySelector('button')?.focus({ preventScroll: true });
+    function handleKey(event) {
+      // 详情侧栏拥有自己的焦点与 Esc 处理，先关闭最上层。
+      if (dialogRef.current) return;
+      if (event.key === 'Escape') setReadingExpanded(false);
+      if (event.key !== 'Tab') return;
+      const controls = [
+        ...readerPanelRef.current.querySelectorAll('button, input, [tabindex="0"]'),
+      ].filter(element => !element.disabled && element.getClientRects().length);
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last?.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first?.focus();
+      }
+    }
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.body.style.overflow = overflow;
+      document.removeEventListener('keydown', handleKey);
+      expandTriggerRef.current?.focus({ preventScroll: true });
+    };
+  }, [readingExpanded]);
 
   useEffect(() => {
     const nextCursor = result?.nextCursor;
@@ -369,7 +441,7 @@ export default function MonitorLogs() {
     );
   }
   return (
-    <section className="space-y-4" aria-label="完整日志查询">
+    <section ref={sectionRef} className="space-y-4" aria-label="完整日志查询">
       <div>
         <h2 className="text-lg font-semibold text-gray-900">日志查询</h2>
         <p className="mt-1 text-sm text-gray-500">
@@ -402,7 +474,7 @@ export default function MonitorLogs() {
           aria-controls="log-query-filters"
           onClick={() => setFiltersOpen(value => !value)}
         >
-          {filtersOpen ? '收起筛选' : '展开筛选'}
+          {filtersOpen ? '收起筛选' : '修改筛选'}
         </button>
       </div>
       <form
@@ -617,9 +689,43 @@ export default function MonitorLogs() {
           )}
         </details>
       )}
-      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
+      {readingExpanded && <div style={{ height: readerHeight }} aria-hidden="true" />}
+      <div
+        ref={readerPanelRef}
+        role={readingExpanded ? 'dialog' : undefined}
+        aria-modal={readingExpanded ? true : undefined}
+        aria-label={readingExpanded ? '专注日志阅读' : undefined}
+        className={`flex flex-col overflow-hidden border border-gray-200 bg-white ${readingExpanded ? 'fixed inset-0 z-50 !m-0 h-[100dvh]' : 'rounded-lg'}`}
+        style={readingExpanded ? undefined : { height: readerHeight }}
+      >
+        {readingExpanded && (
+          <div className="shrink-0 border-b border-gray-200 px-3 py-2 text-sm text-gray-600">
+            <span className="mr-2 font-semibold text-gray-900">专注阅读</span>
+            {chosenDevice?.name} / {activeInstance?.label} · {filters.date}
+            {filters.account &&
+              ` · 账号 ${filters.account === '__unassigned__' ? '未识别' : filters.account}`}
+            {(filters.fromTime || filters.toTime) &&
+              ` · ${filters.fromTime || '00:00:00'}—${filters.toTime || '23:59:59'}`}
+            {filters.keyword && ` · 关键词：${filters.keyword}`}
+          </div>
+        )}
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-gray-200 bg-gray-50 px-3 py-2">
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="btn btn-secondary inline-flex min-h-11 items-center gap-1 sm:min-h-0"
+              onClick={event => {
+                if (!readingExpanded) expandTriggerRef.current = event.currentTarget;
+                setReadingExpanded(value => !value);
+              }}
+            >
+              {readingExpanded ? (
+                <Minimize2 className="h-4 w-4" />
+              ) : (
+                <Maximize2 className="h-4 w-4" />
+              )}
+              {readingExpanded ? '退出阅读' : '展开阅读'}
+            </button>
             <button
               type="button"
               className="btn btn-secondary inline-flex items-center gap-1"
@@ -660,7 +766,7 @@ export default function MonitorLogs() {
             自动换行
           </label>
         </div>
-        <div className="flex min-h-8 flex-wrap items-center justify-between gap-1 border-b border-gray-100 px-3 py-1 text-xs text-gray-500">
+        <div className="flex min-h-8 shrink-0 flex-wrap items-center justify-between gap-1 border-b border-gray-100 px-3 py-1 text-xs text-gray-500">
           <span>
             {selected
               ? `已选中 · 账号 ${selected.accountNumber ?? '未识别'} · 原文复制保留换行`
@@ -673,7 +779,7 @@ export default function MonitorLogs() {
         {error && (
           <p
             role="alert"
-            className="flex flex-wrap items-center gap-2 bg-red-50 px-3 py-2 text-sm text-red-700"
+            className="flex shrink-0 flex-wrap items-center gap-2 bg-red-50 px-3 py-2 text-sm text-red-700"
           >
             {error}
             {result ? (
@@ -690,7 +796,7 @@ export default function MonitorLogs() {
           role="region"
           aria-label="日志阅读区"
           tabIndex={0}
-          className="h-[60vh] min-h-[280px] max-h-[760px] overflow-auto text-gray-700"
+          className="min-h-0 flex-1 overflow-auto overscroll-contain text-gray-700"
           style={{ overflowAnchor: 'none' }}
           aria-busy={loading}
         >
@@ -710,7 +816,7 @@ export default function MonitorLogs() {
           <div ref={loadMoreRef} className="h-px" aria-hidden="true" />
         </div>
         {result && (
-          <div className="flex flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-3 py-2 text-sm">
+          <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-gray-200 px-3 py-2 text-sm">
             <span className="text-gray-500">
               已加载 {result.items.length} 个片段
               {result.nextCursor ? ' · 下滑自动加载' : ' · 已到当前结果末尾'}
