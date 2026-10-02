@@ -76,8 +76,8 @@ export default function MonitorLogAccountSelect({
 
   function choose(account) {
     onChange(account);
-    setOpen(false);
     inputRef.current?.focus({ preventScroll: true });
+    setOpen(false);
   }
 
   return (
@@ -163,8 +163,8 @@ export default function MonitorLogAccountSelect({
             onKeyDown={event => {
               if (event.key === 'Escape') {
                 event.stopPropagation();
-                setOpen(false);
                 inputRef.current?.focus({ preventScroll: true });
+                setOpen(false);
               }
             }}
             onBlur={event => {

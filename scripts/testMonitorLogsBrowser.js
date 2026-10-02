@@ -309,6 +309,10 @@ async function main() {
       await candidates.getByRole('option', { name: '200', exact: true }).waitFor();
       await page.getByRole('button', { name: '账号候选首页', exact: true }).click();
       await candidates.getByRole('option', { name: '001', exact: true }).waitFor();
+      await page.getByRole('button', { name: '下一组账号候选', exact: true }).focus();
+      await page.keyboard.press('Escape');
+      assert.equal(await candidates.count(), 0, '翻页按钮聚焦时Esc关闭并返回输入框');
+      assert(await accountInput.evaluate(element => element === document.activeElement));
       await accountInput.fill('002');
       await candidates.getByRole('option', { name: '002', exact: true }).waitFor();
       await accountInput.press('ArrowDown');
