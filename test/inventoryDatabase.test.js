@@ -214,6 +214,123 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       throw inventoryFailure(error);
     }
   });
+  test('同一轮最多三任务并发，乱序与重复回执去重，失败不覆盖已成功组合', async () => {
+    try {
+      const claims = (await Promise.all(Array.from({ length: 5 }, () => collector.claim()))).filter(
+        Boolean
+      );
+      expect(claims).toHaveLength(3);
+      expect(new Set(claims.map(claim => claim.taskIndex)).size).toBe(3);
+      expect(await new InventoryCollector(service).claim()).toBeNull();
+      const valid = {
+        id: 'valid',
+        outcome: 'INVENTORY_VALID',
+        evidence: [
+          {
+            sku: product.sku,
+            storeCode: store.storeCode,
+            storeName: store.storeName,
+            title: product.title,
+            status: 'in_stock',
+            quote: '测试提示',
+          },
+        ],
+      };
+      await collector.settle(claims[1], valid);
+      expect((await m.InventoryRuntime.findByPk('main')).body.leaseUntil).toBeGreaterThan(
+        Date.now()
+      );
+      expect((await collector.settle(claims[1], valid)).ignored).toBe(true);
+      await collector.settle(claims[0], { id: 'failure', outcome: 'PROXY_AUTH_FAILED' });
+      expect((await service.rows('InventorySnapshot'))[0].error).toBeNull();
+      await collector.settle(claims[2], valid);
+      const rest = (await Promise.all(Array.from({ length: 3 }, () => collector.claim()))).filter(
+        Boolean
+      );
+      await Promise.all(rest.map(claim => collector.settle(claim, valid)));
+      expect(await m.InventorySample.count()).toBe(1);
+      expect(await m.InventoryEvent.count()).toBe(1);
+      expect((await service.rows('InventoryRound'))[0].status).toBe('complete');
+      expect((await m.InventoryRuntime.findByPk('main')).body.lastError).toBeNull();
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
+  test('轮次截止等待在途结果，独立租约过期不能被其他任务续期复活', async () => {
+    try {
+      const [first, second] = await Promise.all([collector.claim(), collector.claim()]);
+      const row = await m.InventoryRound.findByPk(first.roundId);
+      const tasks = row.body.tasks.map((task, i) =>
+        i === first.taskIndex ? { ...task, leaseUntil: Date.now() - 1 } : task
+      );
+      await row.update({ body: { ...row.body, tasks, plannedAt: Date.now() - 3600000 } });
+      expect(
+        (await collector.settle(first, { id: 'late', outcome: 'INVENTORY_VALID', evidence: [] }))
+          .ignored
+      ).toBe(true);
+      expect(await collector.claim()).toBeNull();
+      const active = (await service.rows('InventoryRound'))[0];
+      expect(active.status).toBe('running');
+      expect(active.tasks[first.taskIndex].error).toBe('INTERRUPTED_ATTEMPT_UNKNOWN');
+      await collector.settle(second, { id: 'actual', outcome: 'PROXY_AUTH_FAILED' });
+      expect((await service.rows('InventoryRound'))[0].status).toBe('partial');
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
+  test('闸门容量等待不记请求失败，不清空已有有效结果或消耗重试', async () => {
+    try {
+      await round('in_stock');
+      await service.refresh({}, 1);
+      const claim = await collector.claim();
+      expect((await collector.settle(claim, { outcome: 'REQUEST_IN_FLIGHT' })).deferred).toBe(true);
+      const current = (await m.InventoryRound.findByPk(claim.roundId)).body;
+      expect(current.tasks[claim.taskIndex].attempts).toBe(0);
+      expect(current.retries).toBe(0);
+      expect((await service.rows('InventorySnapshot'))[0].error).toBeNull();
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
+  test('多闸门实例允许三在途请求，原子保留各自预算和幂等结算', async () => {
+    try {
+      const Gate = require('../src/services/inventoryValidationGate');
+      const gate = new Gate(db, { production: true });
+      const other = new Gate(db, { production: true });
+      const permits = [];
+      for (let i = 0; i < 3; i += 1) {
+        await db.query(
+          "UPDATE inventory_validation_state SET body = jsonb_set(body, '{nextAt}', '0')"
+        );
+        const results = await Promise.all([
+          gate.reserve('inventory', 'main', {}),
+          other.reserve('inventory', 'main', {}),
+        ]);
+        expect(results.filter(result => result.id)).toHaveLength(1);
+        permits.push(results.find(result => result.id));
+      }
+      await db.query(
+        "UPDATE inventory_validation_state SET body = jsonb_set(body, '{nextAt}', '0')"
+      );
+      expect((await gate.reserve('inventory', 'main', {})).id).toBeUndefined();
+      for (const permit of permits.reverse()) {
+        const result = {
+          id: permit.id,
+          outcome: 'INVENTORY_VALID',
+          egress: 'main',
+          bytes: 100,
+          durationMs: 1,
+        };
+        await Promise.all([gate.finish(result), other.finish(result)]);
+      }
+      const [rows] = await db.query('SELECT body FROM inventory_validation_state');
+      expect(rows[0].body.hourCount).toBe(3);
+      expect(rows[0].body.byteCount).toBe(300);
+      expect(Object.keys(rows[0].body.requestLeases)).toHaveLength(0);
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  });
   test('手动请求合并，不因页面筛选关闭全局目录', async () => {
     try {
       const first = await service.refresh({ cities: '北京' }, 1);
@@ -254,6 +371,13 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       claim = await collector.claim();
       const runtime = await m.InventoryRuntime.findByPk('main');
       await runtime.update({ body: { ...runtime.body, leaseUntil: 0 } });
+      const leasedRound = await m.InventoryRound.findByPk(claim.roundId);
+      await leasedRound.update({
+        body: {
+          ...leasedRound.body,
+          tasks: leasedRound.body.tasks.map(task => ({ ...task, leaseUntil: 1 })),
+        },
+      });
       const restarted = new InventoryCollector(service);
       await restarted.claim();
       const active = (await service.rows('InventoryRound'))[0];
@@ -1001,7 +1125,13 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
     try {
       const claim = await collector.claim();
       const row = await m.InventoryRound.findByPk(claim.roundId);
-      await row.update({ body: { ...row.body, plannedAt: Date.now() - 3600000 } });
+      await row.update({
+        body: {
+          ...row.body,
+          plannedAt: Date.now() - 3600000,
+          tasks: row.body.tasks.map(task => ({ ...task, leaseUntil: 1 })),
+        },
+      });
       const runtime = await m.InventoryRuntime.findByPk('main');
       await runtime.update({ body: { ...runtime.body, leaseUntil: 0 } });
       expect(await collector.claim()).toBeNull();

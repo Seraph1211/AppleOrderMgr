@@ -9,6 +9,7 @@ const InventoryNotifier = require('../services/inventoryNotifier');
 const InventoryValidationGate = require('../services/inventoryValidationGate');
 const InventoryDriver = require('../services/inventoryDriver');
 const InventoryMaintenance = require('../services/inventoryMaintenance');
+const { REQUEST_CONCURRENCY } = require('../services/inventoryConcurrency');
 const service = new InventoryService(models);
 const gate = new InventoryValidationGate(models.sequelize, { production: true });
 const collector = new InventoryCollector(service);
@@ -17,31 +18,42 @@ const driver = new InventoryDriver(gate);
 const maintenance = new InventoryMaintenance(service, driver, gate);
 let stopping = false;
 let timer;
-let collecting;
+const collecting = new Set();
+let dispatching;
 let notifying;
-async function collect() {
+async function collect(claim) {
   try {
-    await notifier.health();
-    const claim = await collector.claim();
-    if (claim) {
-      const result = await driver.request('inventory', {
-        skus: claim.task.skus,
-        location: claim.task.location,
+    const result = await driver.request('inventory', {
+      skus: claim.task.skus,
+      location: claim.task.location,
+    });
+    const applied = await collector.settle(claim, result);
+    if (applied.pause)
+      await gate.locked(async (state, _now, transaction) => {
+        try {
+          state.pausedReason = applied.pause;
+          await gate.save(state, transaction);
+        } catch (error) {
+          throw inventoryFailure(error);
+        }
       });
-      const applied = await collector.settle(claim, result);
-      if (applied.pause)
-        await gate.locked(async (state, _now, transaction) => {
-          try {
-            state.pausedReason = applied.pause;
-            await gate.save(state, transaction);
-          } catch (error) {
-            throw inventoryFailure(error);
-          }
-        });
-    } else await maintenance.catalogTick();
-    await maintenance.retain();
   } catch (error) {
     logger.error('库存采集周期失败', { errorType: error.name });
+  }
+}
+async function dispatch() {
+  try {
+    await notifier.health();
+    while (!stopping && collecting.size < REQUEST_CONCURRENCY) {
+      const claim = await collector.claim();
+      if (!claim) break;
+      const pending = collect(claim).finally(() => collecting.delete(pending));
+      collecting.add(pending);
+    }
+    if (!collecting.size && !stopping) await maintenance.catalogTick();
+    await maintenance.retain();
+  } catch (error) {
+    logger.error('库存并发调度失败', { errorType: error.name });
   }
 }
 async function stop() {
@@ -49,7 +61,8 @@ async function stop() {
   stopping = true;
   clearInterval(timer);
   try {
-    await Promise.allSettled([collecting, notifying]);
+    await dispatching;
+    await Promise.allSettled([...collecting, notifying]);
     await models.sequelize.close();
   } catch (error) {
     logger.error('库存 Worker 关闭失败', { errorType: error.name });
@@ -63,9 +76,9 @@ async function main() {
     await service.catalog();
     timer = setInterval(() => {
       if (stopping) return;
-      if (!collecting)
-        collecting = collect().finally(() => {
-          collecting = null;
+      if (!dispatching)
+        dispatching = dispatch().finally(() => {
+          dispatching = null;
         });
       if (!notifying)
         notifying = notifier

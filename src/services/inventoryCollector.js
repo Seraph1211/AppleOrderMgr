@@ -2,6 +2,7 @@ const inventoryFailure = require('../utils/inventoryFailure');
 const { randomUUID } = require('crypto');
 const { Op } = require('sequelize');
 const policy = require('./inventoryPolicy');
+const { REQUEST_CONCURRENCY, TASK_LEASE_MS } = require('./inventoryConcurrency');
 
 /** 持久化库存轮次与样本事务；驱动网络由 Worker 注入。 */
 class InventoryCollector {
@@ -9,7 +10,7 @@ class InventoryCollector {
     this.s = service;
     this.owner = owner;
   }
-  /** 获取单一任务租约并保留错过的计划轮次。 */
+  /** 单一轮次拥有者领取最多三个独立任务，保留错过的计划轮次。 */
   async claim() {
     try {
       await this.s.catalog();
@@ -78,10 +79,6 @@ class InventoryCollector {
               })
             )[0]
             : null;
-          if (round && now > round.plannedAt + round.intervalSeconds * 1000) {
-            await this.finishRound(round, { transaction, state, now });
-            return null;
-          }
           if (!round) {
             const queued = await this.s.rows('InventoryRound', {
               transaction,
@@ -108,17 +105,24 @@ class InventoryCollector {
             state.activeRound = round.id;
             state.lastSource = round.source;
           }
-          if (round.tasks.some(t => t.status === 'running')) {
-            for (const task of round.tasks.filter(t => t.status === 'running')) {
-              task.status = 'failed';
-              task.error = 'INTERRUPTED_ATTEMPT_UNKNOWN';
-            }
+          for (const task of round.tasks.filter(t => t.status === 'running')) {
+            if ((task.leaseUntil || state.leaseUntil || 0) > now) continue;
+            task.status = 'failed';
+            task.error = 'INTERRUPTED_ATTEMPT_UNKNOWN';
           }
+          if (now > round.plannedAt + round.intervalSeconds * 1000)
+            for (const task of round.tasks.filter(t => t.status === 'pending')) {
+              task.status = 'failed';
+              task.error = 'ROUND_DEADLINE_EXCEEDED';
+            }
+          this.updateLease(round, state);
+          const running = round.tasks.filter(t => t.status === 'running');
+          if (running.length >= REQUEST_CONCURRENCY) return null;
           const taskIndex = round.tasks.findIndex(
             t => t.status === 'pending' && (!t.notBefore || t.notBefore <= now)
           );
           if (taskIndex < 0) {
-            if (!round.tasks.some(t => t.status === 'pending'))
+            if (!round.tasks.some(t => ['pending', 'running'].includes(t.status)))
               await this.finishRound(round, { transaction, state, now });
             else await this.s.put('InventoryRound', [round], transaction);
             return null;
@@ -126,8 +130,10 @@ class InventoryCollector {
           const task = round.tasks[taskIndex];
           task.status = 'running';
           task.claimedAt = now;
+          task.leaseToken = randomUUID();
+          task.leaseUntil = now + TASK_LEASE_MS;
           state.leaseOwner = this.owner;
-          state.leaseUntil = now + 90000;
+          this.updateLease(round, state);
           await this.s.put('InventoryRound', [round], transaction);
           return {
             roundId: round.id,
@@ -135,6 +141,7 @@ class InventoryCollector {
             task: { ...task },
             config: settings.config,
             claimedAt: now,
+            leaseToken: task.leaseToken,
           };
         } catch (error) {
           throw inventoryFailure(error);
@@ -160,9 +167,22 @@ class InventoryCollector {
             await this.s.rows('InventoryRound', { transaction, where: { id: claim.roundId } })
           )[0];
           const task = round.tasks[claim.taskIndex];
-          if (task.status !== 'running' || task.claimedAt !== claim.claimedAt)
+          if (
+            task.status !== 'running' ||
+            task.claimedAt !== claim.claimedAt ||
+            task.leaseToken !== claim.leaseToken ||
+            task.leaseUntil < now
+          )
             return { ignored: true };
           const actual = Boolean(result.id);
+          // 并发容量或限速等待不是已发出的失败，不能污染有效库存。
+          if (!actual && result.outcome === 'REQUEST_IN_FLIGHT') {
+            task.status = 'pending';
+            task.notBefore = Math.max(now + 1000, result.until || 0);
+            this.updateLease(round, state);
+            await this.s.put('InventoryRound', [round], transaction);
+            return { applied: true, deferred: true };
+          }
           if (actual) task.attempts += 1;
           const valid = ['INVENTORY_VALID', 'PARTIAL_RESPONSE'].includes(result.outcome);
           const productMap = new Map(round.products.map(p => [p.sku, p]));
@@ -198,6 +218,11 @@ class InventoryCollector {
                 .filter(r => r.status !== 'unknown' && !inconsistent)
                 .map(r => `${r.sku}|${r.storeCode}`)
             );
+            const covered = await this.s.rows('InventorySample', {
+              transaction,
+              where: { 'body.roundId': round.id, 'body.sku': { [Op.in]: task.skus } },
+            });
+            for (const row of covered) good.add(`${row.sku}|${row.storeCode}`);
             const failures = [];
             for (const sku of task.skus)
               for (const store of round.stores) {
@@ -277,7 +302,7 @@ class InventoryCollector {
             state.rampReady = false;
             state.completeStreak = 0;
           }
-          state.leaseUntil = 0;
+          this.updateLease(round, state);
           if (round.tasks.every(t => ['complete', 'failed'].includes(t.status)))
             await this.finishRound(round, context);
           else await this.s.put('InventoryRound', [round], transaction);
@@ -294,6 +319,15 @@ class InventoryCollector {
     } catch (error) {
       throw inventoryFailure(error);
     }
+  }
+  /** 运行租约覆盖全部在途任务，结算其中一项不会释放其他任务。 */
+  updateLease(round, state) {
+    state.leaseUntil = Math.max(
+      0,
+      ...round.tasks
+        .filter(task => task.status === 'running')
+        .map(task => task.leaseUntil || state.leaseUntil || 0)
+    );
   }
   /** 快照、检测、事件、通知、统计一次事务提交。 */
   async applyRows(round, data, context) {
@@ -557,6 +591,7 @@ class InventoryCollector {
       if (round.status !== 'complete')
         state.lastError =
           [...round.tasks].reverse().find(task => task.error)?.error || 'ROUND_COVERAGE_MISSING';
+      else state.lastError = null;
     } catch (error) {
       throw inventoryFailure(error);
     }

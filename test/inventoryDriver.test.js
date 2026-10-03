@@ -55,6 +55,49 @@ describe('库存出口严格边界', () => {
       throw new Error('动态出口测试失败', { cause: error });
     }
   });
+  test('并发请求只提取一个代理端点，失败后可重新尝试', async () => {
+    try {
+      fs.readFileSync.mockReturnValue(
+        JSON.stringify({ apiUrl: 'https://api.yiyouip.com/index.php' })
+      );
+      acquireProxy.mockResolvedValue({
+        url: 'http://user:pass@proxy.test:80',
+        expiresAt: Date.now() + 240000,
+      });
+      const driver = new InventoryDriver(gate, { apiFile: 'private-file' });
+      const results = await Promise.all(
+        Array.from({ length: 3 }, () => driver.request('inventory', {}))
+      );
+      expect(results.every(result => result.outcome === 'INVENTORY_VALID')).toBe(true);
+      expect(acquireProxy).toHaveBeenCalledTimes(1);
+      expect(requestOnce).toHaveBeenCalledTimes(3);
+      state.proxyCache = null;
+      acquireProxy.mockRejectedValueOnce(new Error('PRIVATE_PROVIDER_ERROR'));
+      expect((await driver.request('inventory', {})).outcome).toBe('NO_HEALTHY_PROXY');
+      await driver.request('inventory', {});
+      expect(acquireProxy).toHaveBeenCalledTimes(3);
+    } catch (error) {
+      throw new Error('并发出口测试失败', { cause: error });
+    }
+  });
+  test('并发端点换取等待保留为未发请求，不误报代理不可用', async () => {
+    try {
+      fs.readFileSync.mockReturnValue(
+        JSON.stringify({ apiUrl: 'https://api.yiyouip.com/index.php' })
+      );
+      acquireProxy.mockRejectedValue(
+        Object.assign(new Error('PRIVATE'), { inventoryOutcome: 'REQUEST_IN_FLIGHT' })
+      );
+      const driver = new InventoryDriver(gate, { apiFile: 'private-file' });
+      expect(await driver.request('inventory', {})).toEqual({
+        outcome: 'REQUEST_IN_FLIGHT',
+        until: null,
+      });
+      expect(requestOnce).not.toHaveBeenCalled();
+    } catch (error) {
+      throw new Error('代理许可等待测试失败', { cause: error });
+    }
+  });
   test('可用缓存不暴露密文，网络错误只返回脱敏结果', async () => {
     try {
       state.proxyCache = {

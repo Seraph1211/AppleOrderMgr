@@ -34,7 +34,12 @@ async function acquireProxy({ apiUrl, gate, request = axios.get }) {
       await new Promise(resolve => setTimeout(resolve, permit.waitMs));
       permit = await gate.reserve('provider', 'yiyou-provider', {});
     }
-    if (!permit.id) throw new Error('PROVIDER_BUDGET_BLOCKED');
+    if (!permit.id) {
+      const error = new Error('PROVIDER_UNAVAILABLE');
+      error.inventoryOutcome = permit.blocked || 'REQUEST_IN_FLIGHT';
+      error.until = permit.until || null;
+      throw error;
+    }
     started = Date.now();
     const response = await request(url.href, {
       proxy: false,
@@ -65,7 +70,8 @@ async function acquireProxy({ apiUrl, gate, request = axios.get }) {
       expiresAt: Date.now() + 240000,
       attemptId: permit.id,
     };
-  } catch (_error) {
+  } catch (error) {
+    if (!permit?.id && error.inventoryOutcome) throw error;
     if (permit?.id && !finished) {
       try {
         await gate.finish({
