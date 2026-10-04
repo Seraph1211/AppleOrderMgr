@@ -59,6 +59,27 @@
   }
 }
 
+/* 库存视图共用一组分段页签，数量与标签分开呈现。 */
+.stock-view-tabs {
+  @apply inline-grid min-w-0 grid-cols-3 gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1;
+  width: 320px;
+  max-width: calc(100% - 52px);
+}
+.stock-view-tab {
+  @apply flex min-h-[44px] min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-gray-500 sm:px-3;
+  @apply hover:bg-white/60 hover:text-gray-700 focus:ring-0 focus:ring-offset-0;
+  @apply focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+}
+.stock-view-tab[aria-selected='true'] {
+  @apply bg-white text-primary shadow-sm;
+}
+.stock-view-count {
+  @apply inline-flex min-w-[22px] items-center justify-center rounded-md bg-gray-200/70 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-gray-500;
+}
+.stock-view-tab[aria-selected='true'] .stock-view-count {
+  @apply bg-blue-50 text-primary;
+}
+
 /* 页面标题遵循全局紧凑规范，局部强调文字不受影响。 */
 .app-content h1 {
   font-size: 24px;
@@ -568,10 +589,10 @@
   flex-shrink: 0;
 }
 .pickups-page .card,
-.pickups-page [role="dialog"] {
+.pickups-page [role='dialog'] {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.pickups-page [role="dialog"] > div {
+.pickups-page [role='dialog'] > div {
   min-width: 0;
 }

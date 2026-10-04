@@ -309,7 +309,7 @@ export default function Stock() {
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div role="tablist" aria-label="库存视图" className="stock-toolbar">
+        <div role="tablist" aria-label="库存视图" className="stock-view-tabs">
           {[
             ['in_stock', '在库', resource.data?.counts?.inStock],
             ['sold', '已售', resource.data?.counts?.sold],
@@ -319,11 +319,11 @@ export default function Stock() {
               key={view}
               role="tab"
               aria-selected={tab === view}
-              className={`btn ${tab === view ? 'btn-primary' : 'btn-secondary'}`}
+              className="btn stock-view-tab"
               onClick={() => changeTab(view)}
             >
-              {label}
-              {count === undefined ? '' : ` ${count}`}
+              <span>{label}</span>
+              {count !== undefined && <span className="stock-view-count">{count}</span>}
             </button>
           ))}
         </div>
