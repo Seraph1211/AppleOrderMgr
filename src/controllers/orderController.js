@@ -31,6 +31,7 @@ const {
   DISPLAY_ORDER_STATUSES,
   DISPLAY_ORDER_STATUS_SQL,
   getDisplayOrderStatus,
+  getDisplayOrderStatusLabel,
 } = require('../utils/orderDisplayStatus');
 
 const MAX_MULTI_SELECT_ITEMS = 100;
@@ -59,7 +60,10 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
         })
         .join('、'),
   },
-  emailOrderStatus: { label: '订单状态', value: item => item.display_order_status || 'unknown' },
+  emailOrderStatus: {
+    label: '订单状态',
+    value: item => getDisplayOrderStatusLabel(item.display_order_status),
+  },
   emailPaymentStatus: {
     label: '邮件付款状态',
     value: item => item.email_payment_status || 'unknown',

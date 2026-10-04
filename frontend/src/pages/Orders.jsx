@@ -314,15 +314,6 @@ export default function Orders() {
 
   loadOrdersRef.current = loadOrders;
 
-  const handleExport = async () => {
-    const params = { keyword: searchTerm || undefined, ...filters };
-    for (const key of ['displayOrderStatuses', 'productKeys', 'pickupStores', 'recipientTags']) {
-      if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
-      else delete params[key];
-    }
-    await exportOrders(params);
-  };
-
   const handleSelectedExport = async fields => {
     if (!canExportOrders || selectedIds.length === 0 || exportingSelected) return;
     setExportingSelected(true);
@@ -661,17 +652,6 @@ export default function Orders() {
               className="input pl-10"
             />
           </div>
-
-          {/* 导出按钮 */}
-          {can(PERMISSIONS.ORDERS_EXPORT) && (
-            <button
-              onClick={handleExport}
-              className="btn btn-secondary flex items-center space-x-2"
-            >
-              <Download className="w-4 h-4" />
-              <span>导出</span>
-            </button>
-          )}
 
           {/* 列设置按钮 */}
           <button
