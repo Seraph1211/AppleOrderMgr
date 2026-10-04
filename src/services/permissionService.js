@@ -289,6 +289,7 @@ function resolveAvailableHome(permissions) {
     [PERMISSIONS.RECIPIENTS_READ, '/recipients'],
     [PERMISSIONS.IDENTITY_READ, '/identity-verifications'],
     [PERMISSIONS.INVENTORY_READ, '/inventory-monitor'],
+    [PERMISSIONS.STOCK_READ, '/stock'],
     [PERMISSIONS.MONITOR_MANAGE, '/server-monitor'],
     [PERMISSIONS.CHANNELS_READ, '/channels'],
     [PERMISSIONS.PAYMENT_DISPATCH_READ, '/payment-dispatch'],
@@ -314,13 +315,14 @@ async function renameOrderAccessTags(oldTag, newTag, actorUserId, transaction) {
       throw ApiError.conflict('新 TAG 已存在于用户授权中，请先调整授权，避免扩大访问范围');
     }
     const affectedUsers = users.filter(user => getOrderAccess(user).tags.includes(oldTag));
-    const grants = affectedUsers.length
-      ? await UserPermission.findAll({
+    let grants = [];
+    if (affectedUsers.length) {
+      grants = await UserPermission.findAll({
         where: { userId: { [Op.in]: affectedUsers.map(user => user.id) } },
         attributes: ['userId', 'permissionCode'],
         transaction,
-      })
-      : [];
+      });
+    }
     const grantsByUser = new Map();
     for (const grant of grants) {
       if (!grantsByUser.has(grant.userId)) grantsByUser.set(grant.userId, []);

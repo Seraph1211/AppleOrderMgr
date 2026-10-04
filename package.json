@@ -48,7 +48,13 @@
     "official:collect": "node scripts/collectOfficialOrder.js",
     "official:migrate": "node scripts/migrateOfficialOrderResearch.js",
     "test:official-queue": "python3 -m unittest discover -s test -p 'officialOrderQueue_test.py' -v",
-    "test:browser:official": "node scripts/testOfficialOrderRefreshBrowser.js"
+    "test:browser:official": "node scripts/testOfficialOrderRefreshBrowser.js",
+    "test:stock": "jest test/stockMoney.test.js test/stockRules.test.js test/stockCommand.test.js test/stockImport.test.js test/stockEvidence.test.js test/stockImportCleanup.test.js --runInBand",
+    "test:stock:integration": "jest test/stock.integration.test.js test/stockImport.integration.test.js test/stockLegacy.integration.test.js test/stockLedger.integration.test.js --runInBand",
+    "stock:repair-bridges": "node scripts/repairPickupStockBridge.js",
+    "stock:cleanup-previews": "node scripts/cleanupStockImportPreviews.js",
+    "test:stock:ledger": "jest test/stockLedger.integration.test.js --runInBand",
+    "test:stock:ledger:migration": "jest test/stockLedgerMigration.integration.test.js --runInBand"
   },
   "keywords": [
     "apple",

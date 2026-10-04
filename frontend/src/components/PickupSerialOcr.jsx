@@ -5,7 +5,15 @@ import { normalizeOcrSerial, validateOcrFile } from '../utils/pickupOcr';
 import { recognizePickupSerial } from '../api/pickupsApi';
 
 /** 拍照或选择图片后通过阿里云 OCR；候选必须经用户核对，不自动绑定。 */
-export default function PickupSerialOcr({ orderId, orderNumber, onConfirm, onCancel }) {
+export default function PickupSerialOcr({
+  orderId,
+  orderNumber,
+  onConfirm,
+  onCancel,
+  recognizeSerial = recognizePickupSerial,
+  confirmLabel = '绑定',
+  contextLabel,
+}) {
   const [preview, setPreview] = useState('');
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState('');
@@ -88,7 +96,7 @@ export default function PickupSerialOcr({ orderId, orderNumber, onConfirm, onCan
       )
         throw new Error('图片尺寸过大或过小，请裁剪至清晰的包装盒标签后重试。');
       setProgress('阿里云正在识别，请稍候…');
-      const result = await recognizePickupSerial(orderId, file, job.controller.signal);
+      const result = await recognizeSerial(orderId, file, job.controller.signal);
       if (job.cancelled) return;
       const values = result.data.candidates;
       setRows(
@@ -128,9 +136,9 @@ export default function PickupSerialOcr({ orderId, orderNumber, onConfirm, onCan
     bindingRef.current = true;
     setBinding(true);
     setError('');
-    setProgress('正在绑定，请勿关闭页面…');
+    setProgress(`正在${confirmLabel}，请勿关闭页面…`);
     try {
-      const failures = await onConfirm(normalized);
+      const failures = (await onConfirm(normalized)) || [];
       setRows(
         rows.flatMap((row, index) => {
           const failure = failures.find(item => item.serial === normalized[index]);
@@ -160,6 +168,7 @@ export default function PickupSerialOcr({ orderId, orderNumber, onConfirm, onCan
       </p>
       <div className="flex flex-wrap gap-2">
         <button
+          type="button"
           className="btn btn-secondary min-h-[44px]"
           disabled={busy || binding}
           onClick={() => cameraRef.current?.click()}
@@ -168,6 +177,7 @@ export default function PickupSerialOcr({ orderId, orderNumber, onConfirm, onCan
           拍照识别
         </button>
         <button
+          type="button"
           className="btn btn-secondary min-h-[44px]"
           disabled={busy || binding}
           onClick={() => fileRef.current?.click()}
@@ -212,7 +222,9 @@ export default function PickupSerialOcr({ orderId, orderNumber, onConfirm, onCan
       )}
       {reviewReady && !busy && (
         <>
-          <p className="text-sm font-medium text-gray-900">待绑定 {rows.length} 台</p>
+          <p className="text-sm font-medium text-gray-900">
+            待{confirmLabel} {rows.length} 台
+          </p>
           <p className="text-sm text-gray-600">请核对全部序列号，可修改或删除不需要绑定的项目。</p>
           {rows.length ? (
             <table className="w-full table-fixed text-left text-sm" aria-label="待绑定序列号">
@@ -260,6 +272,7 @@ export default function PickupSerialOcr({ orderId, orderNumber, onConfirm, onCan
                     </td>
                     <td className="py-2 text-right align-top">
                       <button
+                        type="button"
                         className="btn btn-secondary min-h-[44px] min-w-[44px] px-2"
                         aria-label={`删除序列号 ${index + 1}`}
                         disabled={binding}
@@ -283,6 +296,7 @@ export default function PickupSerialOcr({ orderId, orderNumber, onConfirm, onCan
             </p>
           )}
           <button
+            type="button"
             className="btn btn-secondary min-h-[44px]"
             disabled={binding || rows.length >= 20}
             onClick={() =>
@@ -292,18 +306,20 @@ export default function PickupSerialOcr({ orderId, orderNumber, onConfirm, onCan
             手动添加序列号
           </button>
           <p className="break-all text-sm text-gray-600">
-            确认后将以上 {rows.length} 台设备绑定订单 {orderNumber}。
+            {contextLabel || `确认后将以上 ${rows.length} 台设备绑定订单 ${orderNumber}。`}
           </p>
           <button
+            type="button"
             className="btn btn-primary min-h-[44px] w-full"
             disabled={!canConfirm || binding}
             onClick={confirmRows}
           >
-            {binding ? '正在绑定…' : `确认绑定 ${rows.length} 台`}
+            {binding ? `正在${confirmLabel}…` : `确认${confirmLabel} ${rows.length} 台`}
           </button>
         </>
       )}
       <button
+        type="button"
         className="btn btn-secondary min-h-[44px] w-full"
         disabled={binding}
         onClick={() => {

@@ -734,6 +734,184 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 两个付款码 GET 接口继续执行权限、当前归属及访问审计，全部非普通微信方式返回 unsupported，不返回图片或链接；两页按钮保留并显示服务端提示。复制时只有普通微信读取付款码，其他方式直接调用原链接接口，仍由服务端校验权限和归属；微信分付使用订单链接。复制字段顺序、批量失败处理、来源时间加 30 分钟规则保持。
 
+## 自有库存与销售接口目标契约
+
+### 自有库存简化台账（本地实现）
+
+所有路径以下均在 `/api/stock` 下，写请求均带requestKey，批量最多100台；金额为两位小数字符串，日期为北京时间 YYYY-MM-DD；没有客户、收货人、销售单和挑货前置要求。
+
+| 方法与路径               | 契约                                                                                                                                                                                                                               |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET /ledger/catalog      | products、warehouses、people、enabled；管理员另有settingsVersion；可在当前表单新增规格和姓名                                                                                                                                       |
+| GET /ledger              | view=in_stock/sold/all（默认在库）、q、productId、warehouseId、salespersonName、paymentStatus、soldFrom、soldTo、page、pageSize=20/50/100；返回items,total,page,pageSize,counts:{inStock,sold}                                     |
+| GET /ledger/:id          | 单台DTO及审计摘要events，附件沿用units/:id与原附件接口                                                                                                                                                                             |
+| POST /ledger/receive     | units:[{serialNumber,productId或product:{modelName,storageGb,colorName},warehouseId,receivedOn,orderNumber?,officialCostAmount?,acquiredOn?,extraExpenseAmount?,notes?}]                                                           |
+| POST /ledger/sell        | units:[{id,expectedVersion,saleAmount,extraExpenseAmount?}],salespersonName,handlerName,soldOn,payment,notes?                                                                                                                      |
+| POST /ledger/history     | units:[{serialNumber,productId或product,orderNumber?,warehouseId?,receivedOn?,officialCostAmount?,acquiredOn?,extraExpenseAmount?,saleAmount,notes?}],salespersonName,handlerName,soldOn,payment；历史人物允许null，无切换时点前置 |
+| POST /ledger/payment     | units:[{id,expectedVersion}],payment,reason?；回退已知资金事实须原因与更正权限                                                                                                                                                     |
+| PATCH /ledger/:id        | expectedVersion及需修改的serialNumber,productId或product,warehouseId,receivedOn,orderNumber,officialCostAmount,acquiredOn,extraExpenseAmount,notes,sale:{saleAmount?,salespersonName?,handlerName?,soldOn?,payment?},reason?       |
+| POST /ledger/:id/recover | expectedVersion,warehouseId,receivedOn?,confirmInWarehouse:true,reason；同步作废该次销售、费用、付款、到账和分配，保留审计                                                                                                         |
+
+payment={status,collectorName?,collectedOn?,receivedOn?}；status为unpaid/agent_pending/company_received，历史另可unknown；旧部分到账只读标legacy_partial。代收人默认销售人，代收转回保留原代收与客户付款日期。正常公司到账须receivedOn，历史未知可空。费用不抵货款。成功写返回{items:[单台DTO],ledgerUnitIds,idempotent}。
+
+单台DTO为id,version,serialNumber,state,orderNumber,orderLinked,product,warehouse,receivedOn,officialCostAmount,costStatus,acquiredOn,extraExpenseAmount,notes,saleId,soldOn,salespersonName,handlerName,saleAmount,sourceWarehouse,isHistorical,paymentStatus,collectorName,collectedOn,companyReceivedOn,grossProfit,profitAfterExpenses,compatibilityReason,allowedActions；未知值null；敏感金额、订单、销售与货款字段按原独立权限省略。allowedActions只含当前允许的sell/edit/payment/recover。库存仅warehouse，已售仅local。旧复杂多台、部分到账或共享到账分配保留，不自动变更事实。旧版没有客户付款登记的记录显示待核实，不能直接推断未付款；新台账明确选择未收款才记unpaid。
+
+新售需要stock.sales.edit和ship，未收款的新销售不额外要求货款编辑权限；历史另需stock.import；成本/费用/真实货款使用既有独立权限，公司到账需stock.receipts.edit。销售或资金更正需stock.correct及简短原因，普通资料也做版本检查。更正保留前后值与操作者。历史误售记录若原入库日期未知，恢复现货前须补receivedOn；原日期已知时沿用，不能自动填今天。
+
+订单号可先保存待关联文本；成功关联后只从受原TAG权限保护的绑定读取号码。原取货接口绑定、解绑时同事务清除冗余待关联文本，防止解绑后泄露原受限订单号。批内重复SN在归一化后提前拒绝，失败不得返回回滚后不存在的临时设备ID。
+
+2026-10-04，已在隔离工作树实现并挂载；开发验证和独立验收分别见[开发记录](../archive/2026-10/2026-10-04-自有库存简化版开发验证记录.md)与[独立报告](../archive/2026-10/2026-10-04-自有库存简化版独立验收报告.md)，未部署生产。它管理自有实物，现有 `/api/inventory` 继续用于 Apple 门店库存监控。关联[简化版方案](../planning/自有库存简化版方案.md)及[数据契约](../database/自有库存与销售数据契约.md)。
+
+### 原完整版本兼容范围
+
+以下原完整版本契约保留用于读取旧事实、迁移审计和回归。旧销售、代卖销售、费用、转运、客户付款、公司到账、纠错和导入路径的POST/PATCH/PUT/DELETE返回HTTP 410 `STOCK_FLOW_RETIRED`，无业务副作用。旧 `/units` 的写命令也退役，统一使用 `/ledger`。唯一旧销售写例外 `POST /sales/:id/cancel` 只释放原草稿或预占，避免遗留占用锁死，继续按原权限及版本检查。仓库/规格、开关设置、附件及扫码仍为共用能力；旧两页面链接重定向台账。
+
+### 通用输入与响应
+
+- 全部接口通过现有 authenticate；所有新权限逐用户显式授予，管理员全权，旧账号不自动新增权限。禁用模块时仍可查询已授权历史并返回enabled=false，新的业务命令返回409 STOCK_NOT_ENABLED；旧取货身份桥接、管理员配置及已成功命令的授权幂等重放不受开关影响。
+- 写请求使用 JSON camelCase；必填 `requestKey` UUID，修改已有主记录另带 `expectedVersion` 非负整数。同用户同键同内容重放先复核原操作实际使用的动作/字段权限，再返回原操作引用和当前授权数据，`idempotent=true`；同键不同内容为 409 IDEMPOTENCY_CONFLICT。重新鉴权后才读幂等结果。
+- 成功保持 `{success:true,data:{...}}`，创建 201、其他 200；错误保持 `{success:false,error:{code,message,details?}}`。列表返回 `{items,total,page,pageSize}`，page>=1，pageSize 默认20、允许20/50/100。详情带 version 和 allowedActions；金额采用两位小数字符串，未知为 null，未授权字段完全不返回。
+- 日期用带时区 ISO 8601；纯拿货日期用 YYYY-MM-DD。日期区间按 `[from,to)` 查询，前端把北京时间日期边界换算后提交，不依赖浏览器所在时区。
+- 多值筛选沿用现有前端惯例，以 JSON 数组字符串传递；服务端解析后验证长度与值，禁止字符串拼 SQL。单次选机或接单最多100台、20个规格行；导入每次最多500行，超过要求分批。
+- 非本人范围的来源订单统一404；序列号冲突只给通用错误及用户已提供的 SN，不暴露其他订单、客户或账号。禁止将数据库唯一错误原样返回给用户。
+
+### 权限码和依赖
+
+所有权限加入后端 `business.js`、`permissionCatalog.js`，前端权限常量及配置目录；模块名 `stock`，不得合并到现有 inventory.read。权限依赖由目录统一校验，接口再次校验字段及动作。
+
+| 权限码                                              | 含义与依赖                                                                                                             |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `stock.read`                                        | 查看自有库存及非敏感实物资料；首期获授权内部人员共享两个重庆仓及代卖位置，不另做按销售人私有库存                       |
+| `stock.receive`                                     | 登记实物入账，依赖 stock.read；不自动取得成本录入或订单详情权限                                                        |
+| `stock.transfer`                                    | 发出及接收转仓、送代卖，依赖 stock.read                                                                                |
+| `stock.source.link`                                 | 来源绑定更正，依赖 stock.read、pickups.read、pickups.edit；仍校验实际订单 TAG 范围                                     |
+| `stock.catalog.manage`                              | 维护规格、仓库、客户与合作人，依赖 stock.read；价格维护还需 stock.cost.edit                                            |
+| `stock.cost.read` / `stock.cost.edit`               | 查看／确认或更正成本，分别依赖 stock.read、stock.cost.read                                                             |
+| `stock.sales.read` / `stock.sales.edit`             | 销售读取／接单编辑取消；read 依赖 stock.read，edit 依赖 sales.read                                                     |
+| `stock.sales.ship`                                  | 选机及出货、代卖售出登记，依赖 stock.sales.read；售价属于销售操作字段，可见售价不等于可见成本或毛利                    |
+| `stock.expenses.read` / `stock.expenses.edit`       | 费用读取／登记，分别依赖 stock.sales.read、stock.expenses.read                                                         |
+| `stock.profit.read`                                 | 毛利与扣费利润，依赖 stock.sales.read、stock.cost.read、stock.expenses.read；授权提示毛利可推算成本                    |
+| `stock.collections.read` / `stock.collections.edit` | 客户付款事实读取／登记，分别依赖 stock.sales.read、stock.collections.read                                              |
+| `stock.receipts.read` / `stock.receipts.edit`       | 公司到账与代收余额读取／登记，分别依赖 stock.collections.read、stock.receipts.read                                     |
+| `stock.import`                                      | 导入预览及确认，依赖 stock.read，并按模板要求 receive／sales.ship／collections.edit／receipts.edit；带成本需 cost.edit |
+| `stock.export`                                      | 导出，依赖 stock.read，按目标对象再次检查相应 read；无授权列不可通过导出补齐                                           |
+| `stock.correct`                                     | 更正已生效事实，依赖 stock.read，并同时具备被修改领域的 edit／ship 权限；原始记录与修正均留痕                          |
+| `stock.settings.manage`                             | 模块开关、启用时点；管理员保留，不授予普通用户                                                                         |
+
+实物 DTO 的 sourceOrder 只有调用方具备 orders.read 且匹配 TAG 时才返回 id/number 和可打开标志；其他人只看到 linked=true/false。绑定操作本身使用 pickups 权限和 TAG 校验，不借 stock.read 扩大订单访问。成本、利润、收付款、证据、事件、导入预览和导出均使用同一 DTO 字段投影；未授权字段出现在写请求时返回403，不静默接受或抹掉。
+
+### 基础资料与实物
+
+以下路径均省略 `/api/stock` 前缀：
+
+| 方法与路径                     | 输入及结果                                                                                                                                                                             | 权限                                                 |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| GET/PATCH `/settings`          | enabled、cutoverAt、version；已发生实物业务后禁止普通修改 cutoverAt                                                                                                                    | settings.manage                                      |
+| GET `/catalog`                 | products、locations、parties；只返回所需类别的有效候选，停用历史引用仍在详情可读                                                                                                       | read                                                 |
+| POST/PATCH `/products[/:id]`   | modelKey/modelName/storageGb/colorKey/colorName/skuCode?/isActive；更新需版本                                                                                                          | catalog.manage                                       |
+| POST/PATCH `/locations[/:id]`  | name/kind/city/partyId?/isActive；禁止手工创建 historical 类型                                                                                                                         | catalog.manage                                       |
+| POST/PATCH `/parties[/:id]`    | name/partyType/roles/userId?/contact?/isActive；联系方式按加密规则保存                                                                                                                 | catalog.manage                                       |
+| GET/POST/PATCH `/prices[/:id]` | productId/validFrom/validTo?/amount/sourceLabel/sourceVersion；GET可按 acquiredOn 查询有效版本；编辑重叠区间409                                                                        | cost.read／cost.edit 与 catalog.manage               |
+| GET `/summary`                 | productIds/modelKeys/colors/locationIds；返回每规格的重庆 Q/R/A、每仓现货、代卖、在途与总未售，数值口径固定                                                                            | read；金额按额外权限                                 |
+| GET `/units`、GET `/units/:id` | q=完整或部分 SN，productIds/locationIds/states/sourceLinked；默认排除 registered，详情含授权事件、照片和销售关联                                                                       | read                                                 |
+| POST `/units/register`         | `requestKey`、`units[{serialBarcode,productId,acquiredOn?,cost?,sourceOrderId?}]`；仅创建或完善 registered 身份，不计现货，供全国取出直发代卖；已有明确规格/确认成本不得被普通登记覆盖 | receive；附成本或来源按附加权限                      |
+| POST `/units/receive`          | mode=current/opening；units[] 含 serialBarcode/productId/locationId/acquiredOn?/receivedAt/cost?/sourceOrderId?/attachmentIds?；全批原子入账，返回逐台 id/version                      | receive；opening 另需 import；附成本或绑定按附加权限 |
+| PUT `/units/:id/source-order`  | orderId 可空、bindingId 可空、expectedVersion；null表示明确解除而非缺省；旧新订单同时校验范围                                                                                          | source.link                                          |
+| PUT `/units/:id/cost`          | acquiredOn、status=pending/confirmed、amount?/priceId?/source?/basis?；首次确认和明确更正，后者还需 reason                                                                             | cost.edit；更正已确认值另需 correct                  |
+| GET `/units/:id/events`        | 分页事件，按当前权限裁剪 changes，不泄露历史金额或旧订单详情                                                                                                                           | read 及字段权限                                      |
+| POST `/serial/recognize`       | multipart 单张 image，JPG/PNG/WebP，<=10MiB，返回候选，不直接入库                                                                                                                      | receive 或 sales.ship；仍需 read                     |
+
+cost 对象为 `{status,amount?,priceId?,source?,basis?}`。pending 不接受 amount；confirmed 要求 acquiredOn、正金额和来源。sourceOrderId 省略表示不改变已有绑定；明确绑定走统一绑定事务服务。已 in_stock 的同 SN 不能普通重复入库，即使换了 requestKey 也409；registered 可补商品后首次入库。
+
+### 接单与出货
+
+| 方法与路径                     | 输入及结果                                                                                                                                                                                                                            | 权限                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET `/sales`、GET `/sales/:id` | q=销售单号片段、channel/status/customerId/salespersonId/dateField=createdAt或shippedAt/from/to；详情按权限返回逐台、费用完整性及资金关联；posted 客户付款显示去向/金额/日期，有 receipts.read 才返回 receivedAmount/outstandingAmount | sales.read                                                          |
+| POST `/sales`                  | channel/local、customerId、salespersonId、lines[{productId,quantity,quotedUnitAmount?}]、notes?；生成 draft                                                                                                                           | sales.edit                                                          |
+| PATCH `/sales/:id`             | 客户、负责人、未出货商品数量及约定价；draft不占，reserved修改数量按差额校验；已挑规格不可删且数量不可小于已挑数                                                                                                                       | sales.edit                                                          |
+| POST `/sales/:id/reserve`      | expectedVersion；原子验证所有行可售足够后转 reserved                                                                                                                                                                                  | sales.edit                                                          |
+| PUT `/sales/:id/picks`         | expectedVersion、完整 units[{lineId,unitId,saleAmount?}]；原子替换本单挑货清单，可分次暂存，释放移除项                                                                                                                                | sales.ship                                                          |
+| POST `/sales/:id/ship`         | expectedVersion、shippedAt、handlerId、unitPrices[{saleUnitId,amount}]、collection?；核对全部数量并一次出货，collection 可选同事务登记                                                                                                | sales.ship；含collection另需collections.edit，直收另需receipts.edit |
+| POST `/sales/:id/cancel`       | expectedVersion、reason；仅 draft/reserved，释放数量与 picks，不操作实物售后                                                                                                                                                          | sales.edit                                                          |
+| POST `/consignment-sales`      | locationId、salespersonId、handlerId、customerId?、shippedAt、units[{unitId,saleAmount}]；按 SN 从该代卖位置直接生成已售单                                                                                                            | sales.ship                                                          |
+| PUT `/sales/:id/fees-complete` | expectedVersion、complete BOOLEAN；明确费用完整性，不按是否有费用自动推断                                                                                                                                                             | expenses.edit                                                       |
+| GET `/sales/:id/events`        | 与主详情相同的数据和字段权限                                                                                                                                                                                                          | sales.read                                                          |
+
+ship 的 collection 为 `{destination,collectorId?,amount,receivedAt,notes?}`；只在出货成功后同事务生成，客户金额必须等于全单售价。未提供则客户付款状态为“未登记”，不能默认判定代收人持款。前端可另开付款登记表单，适配没有财务权限的出货人员。
+
+### 转仓与代卖送货
+
+| 方法与路径                             | 输入及结果                                                                                | 权限     |
+| -------------------------------------- | ----------------------------------------------------------------------------------------- | -------- |
+| GET `/transfers`、GET `/transfers/:id` | 状态、起终点、日期筛选及逐台明细                                                          | read     |
+| POST `/transfers`                      | fromLocationId?/originLabel?、toLocationId、handlerId、unitIds[]；保存 draft              | transfer |
+| POST `/transfers/:id/dispatch`         | expectedVersion、dispatchedAt；校验实际位置及剩余 Q−R，原子转在途                         | transfer |
+| POST `/transfers/:id/receive`          | expectedVersion、receivedAt、unitIds[]；只接收本单在途项，可多次，全部收到后头转 received | transfer |
+| POST `/transfers/:id/cancel`           | expectedVersion、reason；仅 draft，删除其未生效选择关系但保留明细与事件                   | transfer |
+
+全国直发时实物必须是 registered 且已经明确规格，fromLocationId 为空、originLabel 必填；dispatch 不虚构重庆现货。同一仓即时交接可连续调用 dispatch/receive，各自幂等，失败后保留真实在途状态。
+
+### 费用和资金
+
+| 方法与路径                                       | 输入及结果                                                                                                                                       | 权限                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| GET `/sales/:id/expenses`                        | 明细及当前版本分摊，不返回无权限的成本／利润                                                                                                     | expenses.read                                                |
+| POST `/sales/:id/expenses`                       | category/scope/amount/occurredAt/paidByPartyId?/saleUnitIds?/notes?；selectedUnits 非空且全属于本单                                              | expenses.edit                                                |
+| PATCH `/expenses/:id`、POST `/expenses/:id/void` | 更正内容或reason，重算新版本分摊／作废，保留旧版                                                                                                 | expenses.edit 与 correct                                     |
+| GET `/collections/:id`                           | 付款详情及按全部目标权限裁剪的附件元信息                                                                                                         | collections.read                                             |
+| GET `/expenses/:id`                              | 费用详情、当前版本分摊及受控附件元信息                                                                                                           | expenses.read                                                |
+| GET `/collections`、POST `/collections`          | POST含 saleId/destination/collectorId?/amount/receivedAt/notes?；重复posted拒绝，company同事务生成直收到账                                       | collections.read／collections.edit；company另需receipts.edit |
+| GET `/receipts`、GET `/receipts/:id`             | 到账、分配、未分配余额与有效状态                                                                                                                 | receipts.read                                                |
+| GET `/receivable-summary`                        | 按代收人、销售及SN显示已代收／已转回／未转回，未登记客户付款单独计数                                                                             | receipts.read                                                |
+| POST `/receipts`                                 | source=agent_transfer、payerId、receivedAt、amount、allocations[{collectionId,saleUnitId,amount}]、notes?；允许未分配余额                        | receipts.edit                                                |
+| PUT `/receipts/:id/allocations`                  | expectedVersion、完整 allocations；同事务反转旧分配并登记新分配，重新校验金额和代收人                                                            | receipts.edit                                                |
+| GET `/reports/sales`                             | dateField固定shippedAt、from/to、channel/salespersonId/productIds；数量金额与已确认成本部分毛利、待核实计数、incompleteFeesCount费用未完善销售数 | sales.read；利润另需profit.read                              |
+| GET `/reports/receipts`                          | 按receivedAt范围统计实际有效到账及未分配余额，不增加销售额                                                                                       | receipts.read                                                |
+
+### 有权限的事实更正
+
+POST `/corrections`，必填 requestKey、reason（5..500字）、kind、targetId、expectedVersion、changes、previewToken。kind 固定为 unit_identity/unit_location/sale_fact/collection_fact/receipt_fact；不提供任意表名或任意字段更新。所有更正还需目标领域操作权限。金额纠错必须包含受影响已登记付款或到账分配的完整修正清单，客户端先调用同结构但无previewToken的 POST `/corrections/preview` 获取差异、影响版本及10分钟有效的认证加密previewToken，再原样回传token和相同业务内容。token由服务端现有fieldEncryption封装purpose/userId/requestHash/targetVersions/expiresAt，摘要只覆盖kind/targetId/expectedVersion/changes/reason，不把requestKey或token纳入业务摘要。
+
+- unitIdentity：更正误录 SN 或规格，保持稳定 unitId，校验唯一性并同步旧绑定组合外键；已挑机器改变规格时先在同一命令释放错误挑选并重核数量。已售规格更正同步同一销售的行归组与快照，不改变真实数量。
+- unitLocation：只更正录错的位置／时间，需说明实物依据；禁止将已售机器改成在库，实际流转仍走 transfer。已在途纠错必须同步对应转运项及头状态。
+- saleFact：允许更正售价、日期、人员、错绑 SN 或作废误录销售。错绑 SN 需提供真实正确 SN、两台现状及明确恢复位置，核对无后续销售／流转冲突；不是退货功能。作废误录销售需同时撤销关联收款／分配或已有凭据证明无真实收款，且恢复实物有据。存在实际售出后退回的请求拒绝为不支持业务。
+- collectionFact／receiptFact：明确更正或作废实收事实，保留旧版本事件和被反转分配。对于公司直收，两条关联记录一并修正；总金额不足以覆盖仍有效分配时拒绝，不能自动转给其他销售或其他代收人。
+- 更正预览只读，10分钟内有效且包含所有目标版本；提交重新加锁及核对，版本改变返回409。不另建审批流程。
+
+changes输入白名单固定如下，省略字段表示不改，null只用于明确允许清空的字段；响应预览列出全部派生影响，服务端不得接受任意JSON Patch：
+
+| kind            | changes结构                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| unit_identity   | `{serialNumber?,productId?}`；更正同一实物身份，不借修改SN替换另一台机器                                                                                                                                                                                                                                                                                     |
+| unit_location   | `{locationId?,state,occurredAt,transferResolution?}`；state仅registered/in_stock/in_transit，transferResolution为`{transferId,expectedVersion,itemStates:[{unitId,state,receivedAt?}]}`，前后位置与转运项必须一致                                                                                                                                            |
+| sale_fact       | `{shippedAt?,salespersonId?,handlerId?,unitPrices?:[{saleUnitId,amount}],replacements?:[{saleUnitId,newUnitId,newFromLocationId,oldUnitState,oldUnitLocationId?}],void?:true,unitRestorations?:[{unitId,state,locationId?}],collectionChange?,receiptChanges?}`；replace保持saleUnitId稳定，逐台核实真实实物去向并同步费用版本；void必须包含所有实物恢复安排 |
+| collection_fact | `{amount?,receivedAt?,destination?,collectorId?,void?:true,receiptChanges?}`；公司直收的配套receipt同事务处理，collection金额仍须等于有效销售金额                                                                                                                                                                                                            |
+| receipt_fact    | `{amount?,receivedAt?,payerId?,void?:true,allocations?:[{collectionId,saleUnitId,amount}]}`；公司直收不得单独改变金额，应通过关联collection或sale更正                                                                                                                                                                                                        |
+
+collectionChange为`{id,expectedVersion,amount?,destination?,collectorId?,receivedAt?,void?}`；receiptChanges为其数组版本`[{id,expectedVersion,amount?,payerId?,receivedAt?,void?,allocations?}]`。所有嵌套更正都复用同样权限和金额校验。历史误录销售作废只恢复registered，不能把启用前历史误录制造成当前现货；新销售误录的实物恢复位置须有据，恢复后重新检查可售与在途关系。正常真实退回仍不支持。
+
+### 附件与导入导出
+
+| 方法与路径                      | 输入及结果                                                                                                                              | 权限                                        |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| POST `/attachments/prepare`     | kind/originalName/contentType/sizeBytes、targets[{type,id}]；全部目标先鉴权，返回attachmentId及5分钟上传URL；prepared记录24小时内可确认 | 目标领域的写权限                            |
+| POST `/attachments/:id/confirm` | expectedVersion；服务端核验对象存在、大小和MIME后确认关联；不得由前端自报成功                                                           | 目标领域写权限                              |
+| GET `/attachments/:id/read`     | 每次校验全部关联目标，返回5分钟私有读取URL                                                                                              | 目标领域读权限，来源旧取货凭证另需其TAG权限 |
+| GET `/imports/template`         | kind=opening/historical_sales/collections/receipts；下载模板及字段说明                                                                  | import与模板所需权限                        |
+| POST `/imports/preview`         | multipart单文件xlsx/csv，kind/sourceLabel，<=10MiB且<=500数据行；返回previewId/hash、逐行错误与归组预览，24小时有效                     | import及具体模板权限                        |
+| POST `/imports/:id/commit`      | requestKey、expectedVersion、previewHash；全批再校验后原子提交，不做静默部分写入                                                        | 同预览，并再次鉴权                          |
+| GET `/imports/:id`              | 本人或管理员可见状态、错误与生成记录引用，金额仍按当前权限投影                                                                          | import及内容权限                            |
+| GET `/export`                   | entity=units/sales/receipts、白名单fields[]及与列表相同筛选；每次<=5000行，超出要求缩小范围                                             | export及目标读权限                          |
+
+Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用户文本按纯文本转义；金额列仍为校验后的数值。模板资金记录需稳定 externalRecordKey；预览不能从图片中自动推断销售价或来源订单。
+
+### 错误代码与旧接口兼容
+
+400：VALIDATION_ERROR、SN_INVALID、MONEY_INVALID、DATE_INVALID、IMPORT_ROW_LIMIT；403：FORBIDDEN、FIELD_FORBIDDEN；404：NOT_FOUND；409：VERSION_CONFLICT、IDEMPOTENCY_CONFLICT、SN_EXISTS、SOURCE_BINDING_CONFLICT、INSUFFICIENT_STOCK、UNIT_ALREADY_PICKED、UNIT_STATE_CONFLICT、SHIPMENT_INCOMPLETE、RECEIPT_OVERALLOCATED、COLLECTOR_MISMATCH、IMPORT_PREVIEW_STALE、COST_NOT_CONFIRMED、CORRECTION_CONFLICT。成本未确认允许真实出货，只在明确要求完整利润结果时使用 COST_NOT_CONFIRMED，不将其作为强制出货门槛。500 为通用错误及追踪ID，不含SQL与敏感明文。
+
+原 `/api/pickups/:orderId/devices` 的请求响应及 orderId 必填语义保持。内部 create 改为先取得模块事务锁，再保证 stockUnit 存在并写入绑定；删除只删除绑定，主档保留。原相同订单重扫幂等、跨订单冲突、TAG权限及旧UUID重试语义须回归。新无来源订单 OCR 走 `/api/stock/serial/recognize`，复用现有识别服务和同一每月额度，不要求伪造订单或绕过原OCR授权。OCR为外部计费识别，不是库存记账命令，不自动重试；沿用每用户每分钟10次限制，超限429。事务锁等待、语句超时及死锁返回503 STOCK_BUSY；数据库连接意外中断或暂时不可用返回503 STOCK_CONNECTION_LOST；两类业务命令均使用原requestKey安全重试。真正的输入格式与数据库字段约束错误返回400，不把断连误报成字段无效。
+
 ## 取货记录接口（2026-09-22，本地实现）
 
 2026-09-23 设备扫码扩展（已生产发布，真实手机待验收）：
