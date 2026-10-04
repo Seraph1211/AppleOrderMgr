@@ -1,4 +1,4 @@
-/* global navigator, screen */
+/* global navigator, screen, document */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -8,6 +8,7 @@ const { chromium } = require('playwright-core');
 const winston = require('winston');
 const Cdp = require('./officialOrderCdp');
 const OfficialOrderGate = require('./officialOrderGate');
+const OfficialOrderProxyTunnel = require('./officialOrderProxyTunnel');
 const {
   parseOfficialOrderDetail: parseBody,
   parseOfficialOrderList: parseOrderList,
@@ -44,14 +45,30 @@ const LIMITS = Object.freeze({
   loopPollMs: 750,
   childShutdownMs: 5000,
   jsonIndent: 2,
+  authSettleMs: 500,
+  authSnapshotMs: 1000,
+  authDiagnosticMs: 3000,
+  authFrames: 8,
+  authTextLength: 12000,
 });
 const HTTP_STATUS = Object.freeze({
   ok: 200,
   proxyAuth: 407,
   conflict: 409,
+  precondition: 412,
   rateLimited: 429,
   risk: 541,
 });
+
+function withinDeadline(promise, milliseconds, fallback) {
+  let timer;
+  return Promise.race([
+    promise,
+    new Promise(resolve => {
+      timer = setTimeout(() => resolve(fallback), milliseconds);
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
 
 /** 服务器单笔只读采集器；不会写入订单或邮件业务状态。 */
 class OfficialOrderCollector {
@@ -63,10 +80,25 @@ class OfficialOrderCollector {
     resumeRun,
     totalRequestLimit = LIMITS.totalRequests,
     runRequestLimit,
+    accountMode = false,
   }) {
     this.root = path.resolve(root);
     const inputs = readPrivate(inputFile);
-    this.sample = validateSample(inputs.samples.find(sample => sample.id === orderId));
+    this.accountMode = accountMode;
+    this.samples = accountMode
+      ? inputs.samples.map(validateSample)
+      : [validateSample(inputs.samples.find(sample => sample.id === orderId))];
+    this.sample = this.samples[0];
+    if (
+      !this.sample ||
+      this.samples.some(
+        sample =>
+          sample.accountHash !== this.sample.accountHash || sample.password !== this.sample.password
+      ) ||
+      new Set(this.samples.map(sample => sample.id)).size !== this.samples.length
+    )
+      throw fail('ACCOUNT_MISMATCH');
+    this.accountResults = accountMode ? [...(inputs.failures || [])] : null;
     this.gate = new OfficialOrderGate(
       readPrivate(`${this.root}/private/db.json`),
       totalRequestLimit,
@@ -80,7 +112,8 @@ class OfficialOrderCollector {
       Number(this.proxy.port) < 1 ||
       Number(this.proxy.port) > LIMITS.maximumPort ||
       !this.proxy.username ||
-      !this.proxy.password
+      !this.proxy.password ||
+      (this.proxy.preemptiveAuth !== undefined && typeof this.proxy.preemptiveAuth !== 'boolean')
     )
       throw fail('PROXY_INVALID');
     this.proxyHash = hash(`${this.proxy.host}:${this.proxy.port}:${this.proxy.username}`);
@@ -115,14 +148,82 @@ class OfficialOrderCollector {
     this.logger.info(event, { timestamp: new Date().toISOString(), ...data });
   }
   stop(code) {
-    if (!this.stopped) {
+    if (
+      !this.stopped ||
+      (this.accountMode && this.stopped === 'SUCCEEDED' && code !== 'SUCCEEDED')
+    ) {
       this.stopped = code;
       this.log('stopped', { code });
     }
   }
+  beginAuthDiagnostic(response) {
+    // 先停止外部请求，再保存诊断；证据写入异常也不能恢复登录。
+    this.stop('AUTH_PRECONDITION_REQUIRED');
+    if (this.authDiagnostic) return;
+    const location = Object.entries(response.headers || {}).find(
+      ([name]) => name.toLowerCase() === 'location'
+    )?.[1];
+    this.authDiagnostic = { status: HTTP_STATUS.precondition, hasLocation: !!location };
+    this.seal({ status: response.status, location: location || null }, 'auth-response');
+    this.log('auth_precondition', this.authDiagnostic);
+  }
+  async captureAuthDiagnostic() {
+    try {
+      if (!this.authDiagnostic || !this.page) return;
+      // 不加载修复入口，只读取终止请求后现有页面可见文本；整体有硬超时。
+      const capture = async () => {
+        try {
+          await delay(LIMITS.authSettleMs);
+          const frames = this.page.frames().slice(0, LIMITS.authFrames);
+          const snapshots = await Promise.all(
+            frames.map(async frame => {
+              try {
+                const url = frame.url();
+                permittedUrl(url);
+                const text = await withinDeadline(
+                  frame.evaluate(
+                    limit => (document.body?.innerText || '').slice(0, limit),
+                    LIMITS.authTextLength
+                  ),
+                  LIMITS.authSnapshotMs,
+                  null
+                );
+                return text === null ? null : { url, text };
+              } catch (_error) {
+                return null;
+              }
+            })
+          );
+          return snapshots.filter(Boolean);
+        } catch (_error) {
+          return [];
+        }
+      };
+      const snapshots = await withinDeadline(capture(), LIMITS.authDiagnosticMs, []);
+      this.seal({ networkStopped: true, snapshots }, 'auth-page');
+      this.authDiagnostic.visibleFrameCount = snapshots.length;
+      this.log('auth_diagnostic_saved', this.authDiagnostic);
+    } catch (_error) {
+      this.log('auth_diagnostic_unavailable');
+    }
+  }
   async initialize() {
     try {
-      this.id = await this.gate.open(this.sample, this.proxyHash);
+      if (this.accountMode) {
+        await this.gate.openAccount(this.sample, this.proxyHash);
+        this.started = Date.now();
+        for (const sample of this.samples) {
+          try {
+            this.id = await this.gate.startOrder(sample);
+            this.sample = sample;
+            break;
+          } catch (error) {
+            if (error.code !== 'ORDER_ATTEMPT_LIMIT') throw error;
+            this.accountResults.push({ orderId: sample.id, outcome: error.code });
+          }
+        }
+        if (!this.id) throw fail('ORDER_ATTEMPT_LIMIT');
+      } else this.id = await this.gate.open(this.sample, this.proxyHash);
       this.directory = `${this.root}/evidence/run-${this.id}`;
       fs.mkdirSync(this.directory, { mode: 0o700 });
       this.logger = winston.createLogger({
@@ -202,7 +303,11 @@ class OfficialOrderCollector {
       if (method === 'Fetch.authRequired') {
         const authKey = `${sessionId}:${p.requestId}`;
         const proxyAuth =
-          this.proxy && p.authChallenge.source === 'Proxy' && !this.authChallenges.has(authKey);
+          !this.stopped &&
+          this.proxy &&
+          !this.proxy.preemptiveAuth &&
+          p.authChallenge.source === 'Proxy' &&
+          !this.authChallenges.has(authKey);
         this.authChallenges.add(authKey);
         let authChallengeResponse = { response: 'CancelAuth' };
         if (proxyAuth) {
@@ -260,6 +365,7 @@ class OfficialOrderCollector {
         const u = new URL(p.response.url);
         if (!['http:', 'https:'].includes(u.protocol)) return;
         const meta = {
+          sampleId: this.sample.id,
           status: p.response.status,
           type: p.type,
           host: u.hostname,
@@ -278,9 +384,11 @@ class OfficialOrderCollector {
           this.stop(`HTTP_${meta.status}`);
         }
         if (meta.path === '/appleauth/auth/signin/complete' && meta.status !== HTTP_STATUS.ok) {
-          this.stop(
-            meta.status === HTTP_STATUS.conflict ? 'HUMAN_VERIFICATION_REQUIRED' : 'AUTH_REJECTED'
-          );
+          if (meta.status === HTTP_STATUS.precondition) this.beginAuthDiagnostic(p.response);
+          else
+            this.stop(
+              meta.status === HTTP_STATUS.conflict ? 'HUMAN_VERIFICATION_REQUIRED' : 'AUTH_REJECTED'
+            );
         }
         if (/\/appleauth\/auth\/(?:verify|repair|upgrade)/.test(meta.path)) {
           this.stop('HUMAN_VERIFICATION_REQUIRED');
@@ -306,8 +414,28 @@ class OfficialOrderCollector {
         if (bytes.length > LIMITS.bodyBytes) return this.stop('BODY_TOO_LARGE');
         const sealed = this.seal(bytes, `body-${++this.bodyCount}`);
         this.log('body', { ...meta, ...sealed });
+        if (
+          meta.path === '/appleauth/auth/signin/complete' &&
+          meta.status === HTTP_STATUS.precondition
+        ) {
+          try {
+            const { authType } = JSON.parse(bytes.toString('utf8'));
+            if (this.authDiagnostic && ['sa', 'hsa', 'hsa2', 'non-sa'].includes(authType))
+              this.authDiagnostic.authType = authType;
+          } catch (_error) {
+            this.log('auth_diagnostic_body_unparsed');
+          }
+        }
         if (isOfficialOrderResponse(meta)) {
-          const result = parseBody(bytes.toString('utf8'), this.sample.orderNumber);
+          if (this.accountMode && meta.sampleId !== this.sample.id) return;
+          let result;
+          try {
+            result = parseBody(bytes.toString('utf8'), this.sample.orderNumber);
+          } catch (error) {
+            // 账号模式切换订单后的迟到响应不能终止新单，更不能回写到新单。
+            if (this.accountMode && error.code === 'IDENTITY_MISMATCH') return;
+            throw error;
+          }
           if (result && !this.stopped) {
             this.result = result;
             this.resultEvidence = { ...meta, ...sealed, observedAt: new Date().toISOString() };
@@ -377,11 +505,16 @@ class OfficialOrderCollector {
         'about:blank',
       ];
       if (!headed) args.splice(1, 0, '--headless=new');
-      args.splice(
-        args.length - 1,
-        0,
-        `--proxy-server=http://${this.proxy.host}:${this.proxy.port}`
-      );
+      let proxyServer = `http://${this.proxy.host}:${this.proxy.port}`;
+      if (this.proxy.preemptiveAuth) {
+        this.proxyTunnel = new OfficialOrderProxyTunnel(this.proxy, (code, retryAfter) => {
+          this.retryAfter = retryAfter;
+          this.stop(code);
+        });
+        proxyServer = await this.proxyTunnel.start();
+        this.log('proxy_preemptive_auth', { loopbackOnly: true });
+      }
+      args.splice(args.length - 1, 0, `--proxy-server=${proxyServer}`);
       this.child = spawn(chromium.executablePath(), args, {
         stdio: ['ignore', 'ignore', 'ignore'],
       });
@@ -437,7 +570,7 @@ class OfficialOrderCollector {
           throw fail('INTERCEPTION_NOT_READY');
         await delay(LIMITS.attachPollMs);
       }
-      await pageSession.detach();
+      this.pageControl = pageSession;
       await this.restoreSession();
       await this.context.routeWebSocket('**/*', socket => socket.close());
       this.log('browser', { version: this.browser.version(), proxy: !!this.proxy, headed });
@@ -547,8 +680,10 @@ class OfficialOrderCollector {
   }
   async loginStep() {
     try {
+      if (this.stopped) return;
       await this.navigateAccount();
       for (const frame of this.page.frames()) {
+        if (this.stopped) return;
         if (!/^https:\/\/(?:idmsa|idmsauth)\.apple\.com(?:\.cn)?\//.test(frame.url())) continue;
         const password = frame.locator('#password_text_field');
         const email = frame.locator('#account_name_text_field');
@@ -562,7 +697,9 @@ class OfficialOrderCollector {
         ) {
           if (await email.isVisible()) await email.fill(this.sample.email);
           await password.fill(this.sample.password);
+          if (this.stopped) return;
           await this.gate.claimLogin();
+          if (this.stopped) return;
           this.passwordSubmitted = true;
           this.passwordSubmittedAt = Date.now();
           this.log('password_submitted', { accountHash: this.sample.accountHash });
@@ -574,6 +711,7 @@ class OfficialOrderCollector {
           (await email.isVisible())
         ) {
           await email.fill(this.sample.email);
+          if (this.stopped) return;
           this.emailSubmitted = true;
           await signIn.click({ timeout: 5000 });
           this.log('identifier_submitted');
@@ -603,14 +741,12 @@ class OfficialOrderCollector {
       throw error;
     }
   }
-  async run() {
-    let summary;
+  async collectCurrent(first = true) {
     try {
-      await this.initialize();
-      await this.launch();
-      const url = this.sessionRestored
-        ? this.sample.url
-        : 'https://www.apple.com.cn/shop/goto/account';
+      const url =
+        this.sessionRestored || !first
+          ? this.sample.url
+          : 'https://www.apple.com.cn/shop/goto/account';
       await this.page
         .goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 })
         .catch(() => this.log('navigation_pending'));
@@ -620,6 +756,7 @@ class OfficialOrderCollector {
         if (!ready && Date.now() - observeFrom > LIMITS.siteReadyMs)
           throw fail('SITE_READINESS_TIMEOUT');
         if (ready) await this.loginStep();
+        if (this.stopped) break;
         if (this.targetDetailUrl && !this.detailOpened) {
           this.detailOpened = true;
           this.log('target_order_opened');
@@ -636,11 +773,103 @@ class OfficialOrderCollector {
         await delay(LIMITS.loopPollMs);
       }
       if (!this.stopped) this.stop('NO_VALID_ORDER_DATA');
+    } catch (error) {
+      error.component = 'officialOrderCollector';
+      throw error;
+    }
+  }
+
+  saveOrderResult() {
+    const output = {
+      systemOrderId: this.sample.id,
+      ...this.result,
+      source: {
+        provider: 'Apple official website',
+        runId: Number(this.id),
+        ...this.resultEvidence,
+      },
+    };
+    this.seal(output, 'official-result');
+    const resultFile = path.join(
+      this.root,
+      'private/results',
+      `order-${this.sample.id}-run-${this.id}.json`
+    );
+    writePrivate(resultFile, JSON.stringify(output, null, LIMITS.jsonIndent));
+    return resultFile;
+  }
+
+  async collectAccount() {
+    try {
+      let first = true;
+      for (const sample of this.samples) {
+        if (this.accountResults.some(result => result.orderId === sample.id)) continue;
+        if (!first) {
+          if (
+            this.stopped &&
+            !['SUCCEEDED', 'NO_VALID_ORDER_DATA', 'ORDER_ATTEMPT_LIMIT'].includes(this.stopped)
+          )
+            break;
+          if (Date.now() - this.started >= LIMITS.observationMs) {
+            this.stopped = 'TIME_BUDGET';
+            break;
+          }
+          // 停止旧文档加载并清空旧请求归属，再改变目标订单；全局预算和登录标记不重置。
+          await this.pageControl.send('Page.stopLoading');
+          await Promise.allSettled([...this.pending]);
+          this.requests.clear();
+          if (this.stopped && !['SUCCEEDED', 'NO_VALID_ORDER_DATA'].includes(this.stopped)) break;
+          try {
+            this.id = await this.gate.startOrder(sample);
+          } catch (error) {
+            if (error.code !== 'ORDER_ATTEMPT_LIMIT') throw error;
+            this.accountResults.push({ orderId: sample.id, outcome: error.code });
+            continue;
+          }
+          if (this.stopped && !['SUCCEEDED', 'NO_VALID_ORDER_DATA'].includes(this.stopped)) break;
+          this.directory = `${this.root}/evidence/run-${this.id}`;
+          fs.mkdirSync(this.directory, { mode: 0o700 });
+          this.sample = sample;
+          this.stopped = null;
+          this.result = undefined;
+          this.resultEvidence = undefined;
+          this.targetDetailUrl = undefined;
+          this.detailOpened = false;
+          this.guestOpened = true;
+          this.orderListSeen = false;
+          this.accountNavigated = false;
+        }
+        await this.collectCurrent(first);
+        const result = { orderId: sample.id, outcome: this.stopped };
+        if (this.stopped === 'SUCCEEDED' && this.result) result.resultFile = this.saveOrderResult();
+        this.accountResults.push(result);
+        await this.gate.recordFailure(this.stopped, this.retryAfter);
+        await this.gate.finishOrder(this.stopped);
+        first = false;
+      }
+    } catch (error) {
+      error.component = 'officialOrderCollector';
+      throw error;
+    }
+  }
+
+  async run() {
+    let summary;
+    try {
+      await this.initialize();
+      await this.launch();
+      if (this.accountMode) await this.collectAccount();
+      else await this.collectCurrent();
+      await this.captureAuthDiagnostic();
       // 会话保存不将旧数据改成新观测；失败结果单列，旧成功文件保持。
-      if (!['AUTH_REJECTED', 'HUMAN_VERIFICATION_REQUIRED'].includes(this.stopped)) {
+      if (
+        !['AUTH_REJECTED', 'AUTH_PRECONDITION_REQUIRED', 'HUMAN_VERIFICATION_REQUIRED'].includes(
+          this.stopped
+        )
+      ) {
         await this.saveSession();
       }
-      if (this.result && this.stopped === 'SUCCEEDED') {
+      if (!this.accountMode && this.result && this.stopped === 'SUCCEEDED') {
         const output = {
           systemOrderId: this.sample.id,
           ...this.result,
@@ -682,8 +911,13 @@ class OfficialOrderCollector {
         });
       }
       this.cdp?.close();
+      if (this.proxyTunnel) {
+        await this.proxyTunnel.close().catch(() => {
+          this.stopped = 'PROXY_TUNNEL_CLOSE_FAILED';
+        });
+      }
       await Promise.allSettled([...this.pending]);
-      if (this.gate.id) {
+      if (this.id) {
         await this.gate.recordFailure(this.stopped, this.retryAfter).catch(() => {
           this.stopped = 'STATE_WRITE_FAILED';
         });
@@ -691,16 +925,34 @@ class OfficialOrderCollector {
       await this.gate.close(this.stopped || 'INITIALIZATION_FAILED').catch(() => {
         this.stopped = 'STATE_WRITE_FAILED';
       });
+      if (this.accountMode) {
+        for (const sample of this.samples) {
+          if (!this.accountResults.some(result => result.orderId === sample.id))
+            this.accountResults.push({
+              orderId: sample.id,
+              outcome:
+                this.stopped === 'SUCCEEDED' ? 'TIME_BUDGET' : this.stopped || 'COLLECTOR_FAILED',
+            });
+        }
+      }
       summary = {
         runId: this.id,
         systemOrderId: this.sample.id,
-        outcome: this.stopped || 'INITIALIZATION_FAILED',
+        outcome: this.accountMode
+          ? this.accountResults.every(result => result.outcome === 'SUCCEEDED')
+            ? 'SUCCEEDED'
+            : this.stopped === 'SUCCEEDED'
+              ? 'PARTIAL'
+              : this.stopped || 'INITIALIZATION_FAILED'
+          : this.stopped || 'INITIALIZATION_FAILED',
+        ...(this.accountMode ? { results: this.accountResults } : {}),
         requests: this.gate.requests,
         passwordSubmitted: this.passwordSubmitted,
         serverSessionRestored: !!this.sessionRestored,
+        authDiagnostic: this.authDiagnostic,
         resultFile: this.resultFile,
         result:
-          this.result && this.stopped === 'SUCCEEDED'
+          !this.accountMode && this.result && this.stopped === 'SUCCEEDED'
             ? { ...this.result, orderNumber: undefined }
             : undefined,
       };

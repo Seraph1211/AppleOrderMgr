@@ -39,11 +39,11 @@ import { PERMISSIONS } from '../constants/permissions';
 import { replayOrderMailLifecycle, replayOrderMailLifecycleBatch } from '../api/orderMailApi';
 
 export default function Orders() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canReadMail = can(PERMISSIONS.ORDER_MAIL_READ) || can(PERMISSIONS.ORDER_MAIL_MANAGE);
   const canRefreshMailStatus = can(PERMISSIONS.ORDER_MAIL_MANAGE);
   const canExportOrders = can(PERMISSIONS.ORDERS_EXPORT);
-  const canRefreshOfficialStatus = can(PERMISSIONS.ORDERS_EDIT);
+  const canRefreshOfficialStatus = user?.role === 'admin' && can(PERMISSIONS.ORDERS_EDIT);
   const canSelectOrders = canRefreshMailStatus || canExportOrders || canRefreshOfficialStatus;
   const [officialSubmitting, setOfficialSubmitting] = useState(false);
   const [officialBatchId, setOfficialBatchId] = useState(null);
@@ -165,7 +165,7 @@ export default function Orders() {
       if (response.data.batchId) setOfficialBatchId(response.data.batchId);
       showToast(
         response.data.queued ? 'success' : 'warning',
-        `已提交 ${response.data.queued} 单，${response.data.skipped} 单已在队列中`
+        `涉及 ${response.data.accountCount} 个 Apple ID、${response.data.total} 单；新增 ${response.data.queued} 单，${response.data.skipped} 单因账号正在处理而跳过`
       );
       setSelectedIds([]);
       setAllFilteredSelected(false);
@@ -580,6 +580,7 @@ export default function Orders() {
               <button
                 className="btn btn-secondary text-sm inline-flex items-center gap-1"
                 aria-label={`更新官网状态 ${order.orderNumber}`}
+                title="同步该 Apple ID 在系统内的全部订单"
                 disabled={officialSubmitting}
                 onClick={event => {
                   event.stopPropagation();
@@ -782,6 +783,11 @@ export default function Orders() {
         </div>
       </div>
 
+      {canRefreshOfficialStatus && (
+        <p className="text-sm text-gray-500">
+          更新官网状态会同步所选 Apple ID 在系统内的全部关联订单，包含未选中的订单。
+        </p>
+      )}
       {canRefreshOfficialStatus && (
         <OfficialOrderRefreshPanel
           batchId={officialBatchId}

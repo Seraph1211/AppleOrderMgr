@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { chromium } = require('playwright-core');
 const OUTPUT =
-  process.env.OFFICIAL_BROWSER_OUTPUT || 'test-artifacts/official-manual-release-20261003';
+  process.env.OFFICIAL_BROWSER_OUTPUT || 'test-artifacts/official-account-refresh-20261005';
 
 /** 验证单选、多选、全选、列配置恢复、任务恢复及 PC/H5，所有写入均为合成 API。 */
 async function main() {
@@ -13,7 +13,7 @@ async function main() {
     fs.mkdirSync(OUTPUT, { recursive: true });
     for (const width of [1440, 375]) {
       const context = await browser.newContext({
-        viewport: { width, height: 740 },
+        viewport: { width, height: width < 768 ? 560 : 740 },
         isMobile: width < 768,
         hasTouch: width < 768,
       });
@@ -22,6 +22,8 @@ async function main() {
       const errors = [];
       let batch = null;
       let sequence = 0;
+      let role = 'admin';
+      let officialReads = 0;
       page.on('pageerror', error => errors.push(error.message));
       await page.addInitScript(() => {
         localStorage.setItem('token', 'synthetic-official-token');
@@ -42,6 +44,7 @@ async function main() {
           const request = route.request();
           const url = new URL(request.url());
           const method = request.method();
+          if (url.pathname.includes('/official-refresh/') && method === 'GET') officialReads += 1;
           if (!url.pathname.startsWith('/api/')) {
             await route.continue();
             return;
@@ -52,7 +55,7 @@ async function main() {
             data = {
               id: 1,
               username: '合成验收',
-              role: 'operator',
+              role,
               permissions: ['orders.read', 'orders.edit', 'orders.export'],
               availableHome: '/orders',
             };
@@ -84,7 +87,9 @@ async function main() {
               sequence += 1;
               batch = {
                 id: `b-${sequence}`,
-                total: input.selection === 'filtered' ? 42 : ids.length,
+                total: input.selection === 'filtered' ? 42 : 3,
+                selectedCount: input.selection === 'filtered' ? 42 : ids.length,
+                accountCount: input.selection === 'filtered' ? 4 : 1,
                 createdAt: new Date().toISOString(),
                 counts: { queued: ids.length, running: 0, succeeded: 0, failed: 0, cancelled: 0 },
                 page: 1,
@@ -96,7 +101,15 @@ async function main() {
                   state: 'queued',
                 })),
               };
-              data = { batchId: batch.id, queued: batch.total, skipped: 0, total: batch.total };
+              data = {
+                batchId: batch.id,
+                queued: batch.total,
+                skipped: 0,
+                total: batch.total,
+                selectedCount: batch.selectedCount,
+                accountCount: batch.accountCount,
+                queuedAccountCount: batch.accountCount,
+              };
             }
           } else if (url.pathname.endsWith('/cancel')) {
             batch.counts.cancelled = batch.counts.queued;
@@ -152,7 +165,9 @@ async function main() {
       await list.getByRole('checkbox', { name: '选择订单 W1234567890', exact: true }).check();
       await list.getByRole('checkbox', { name: '选择订单 W1234567891', exact: true }).check();
       await page.getByRole('button', { name: '更新选中官网状态', exact: true }).click();
-      await page.getByText('已提交 2 单，0 单已在队列中').waitFor();
+      await page
+        .getByText('涉及 1 个 Apple ID、3 单；新增 3 单，0 单因账号正在处理而跳过')
+        .waitFor();
       assert.deepEqual(writes.at(-1).body.orderIds, [101, 102]);
       await page.getByRole('button', { name: '全选本页', exact: true }).click();
       assert.equal(
@@ -167,7 +182,9 @@ async function main() {
       await page.getByText('已选择筛选结果全部 42 单').waitFor();
       assert.equal(await page.getByRole('button', { name: '导出选中订单' }).isDisabled(), true);
       await page.getByRole('button', { name: '更新选中官网状态', exact: true }).click();
-      await page.getByText('已提交 42 单，0 单已在队列中').waitFor();
+      await page
+        .getByText('涉及 4 个 Apple ID、42 单；新增 42 单，0 单因账号正在处理而跳过')
+        .waitFor();
       assert.equal(writes.at(-1).body.selection, 'filtered');
       assert.equal(writes.at(-1).body.filters.keyword, '合成');
       await page
@@ -195,11 +212,50 @@ async function main() {
       await page.getByText('缺少可用的账号密码，请补全订单或账号资料', { exact: true }).waitFor();
       await page.getByText('订单与关联 Apple ID 不一致，请核对账号关联', { exact: true }).waitFor();
       assert.equal(writes.length, writeCount, '展示具体错误不自动重试官网');
+      batch.pausedAt = new Date().toISOString();
+      batch.pauseReason = 'AUTH_REJECTED';
+      batch.workerOnline = true;
+      batch.counts = { queued: 1, running: 0, succeeded: 0, failed: 1, cancelled: 0 };
+      batch.jobs[0].state = 'queued';
+      batch.jobs[0].errorCode = null;
+      await page.reload();
+      await page.getByText(/批次已暂停：官网未接受本次登录/).waitFor();
+      await page
+        .getByText('官网更新服务在线，此批次暂停不影响新的手动查询。', { exact: true })
+        .waitFor();
+      await page.getByText('查看逐单结果', { exact: true }).click();
+      await page.getByText('已暂停', { exact: true }).waitFor();
+      assert.equal(writes.length, writeCount, '展示暂停和刷新不自动恢复查询');
+      batch.pauseReason = 'AUTH_PRECONDITION_REQUIRED';
+      batch.jobs[1].errorCode = 'AUTH_PRECONDITION_REQUIRED';
+      await page.reload();
+      await page.getByText(/批次已暂停：Apple 登录需要完成额外步骤（HTTP 412）/).waitFor();
+      await page.getByText('查看逐单结果', { exact: true }).click();
+      await page
+        .getByText('Apple 登录需要完成额外步骤（HTTP 412），请核对官网提示', { exact: true })
+        .waitFor();
+      assert.equal(writes.length, writeCount, '412 提示不触发再次登录');
       assert(
         await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1),
         '页面不得横向溢出'
       );
       await page.screenshot({ path: `${OUTPUT}/官网手动更新-${width}.png`, fullPage: true });
+      batch.workerOnline = false;
+      await page.reload();
+      await page
+        .getByText('官网更新后台服务离线，请联系管理员检查；已有任务和官网状态已保留。', {
+          exact: true,
+        })
+        .waitFor();
+      assert.equal(writes.length, writeCount, '离线状态不得自动提交');
+      role = 'operator';
+      const readsBefore = officialReads;
+      await page.reload();
+      await list.getByRole('checkbox', { name: '选择订单 W1234567890', exact: true }).waitFor();
+      assert.equal(await page.getByRole('button', { name: /更新.*官网状态/ }).count(), 0);
+      assert.equal(await page.getByRole('region', { name: '官网更新进度' }).count(), 0);
+      assert.equal(officialReads, readsBefore, '普通用户不读取官网任务');
+      assert.equal(writes.length, writeCount, '普通用户不创建官网任务');
       assert.deepEqual(errors, []);
       await context.close();
     }

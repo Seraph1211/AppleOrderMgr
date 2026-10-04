@@ -1,10 +1,14 @@
 const express = require('express');
 const asyncHandler = require('../utils/asyncHandler');
-const { requirePermission } = require('../middleware/authMiddleware');
+const { requirePermission, requireRole } = require('../middleware/authMiddleware');
 const service = require('../services/officialOrderRefreshService');
 const router = express.Router();
 
-router.use(requirePermission('orders.read'), requirePermission('orders.edit'));
+router.use(
+  requireRole(['admin']),
+  requirePermission('orders.read'),
+  requirePermission('orders.edit')
+);
 router.post(
   '/batches',
   asyncHandler(async (req, res) => {

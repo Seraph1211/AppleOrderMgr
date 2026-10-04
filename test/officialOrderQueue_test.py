@@ -73,6 +73,43 @@ class QueueProtocolTest(unittest.TestCase):
             self.assertNotIn('unexpected-docker-call', result.stderr)
             self.assertEqual(QUEUE['read_summary'](result)['outcome'], 'ORDER_CREDENTIALS_MISSING')
 
+    def test_account_group_partial_success_and_single_launch(self):
+        job = {'id': 'a', 'orderId': 249, 'leaseToken': 'lease', 'accountGroupId': 'group',
+               'jobs': [{'id': 'a', 'orderId': 249, 'leaseToken': 'lease'},
+                        {'id': 'b', 'orderId': 250, 'leaseToken': 'lease'}]}
+        summary = {'outcome': 'REQUEST_BUDGET', 'results': [
+            {'orderId': 249, 'outcome': 'SUCCEEDED', 'resultFile': '/private/order-249-run-21.json'},
+            {'orderId': 250, 'outcome': 'REQUEST_BUDGET'}]}
+        result = subprocess.CompletedProcess(args=[], returncode=2,
+            stdout=json.dumps(summary), stderr='')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'private/results').mkdir(parents=True)
+            (root / 'private/results/order-249-run-21.json').write_text('{"systemOrderId":249}')
+            # runpy functions retain their own module globals.
+            with patch.dict(QUEUE['collect'].__globals__, ROOT=str(root)):
+                with patch.object(QUEUE['subprocess'], 'run', return_value=result) as run:
+                    payload = QUEUE['collect'](job)
+                    self.assertEqual(run.call_count, 1)
+                    self.assertEqual(run.call_args[1]['env']['OFFICIAL_ACCOUNT_GROUP'], 'group')
+                    self.assertEqual(payload['results'][0]['result']['systemOrderId'], 249)
+                    self.assertEqual(payload['results'][1]['outcome'], 'REQUEST_BUDGET')
+                    self.assertNotIn('result', payload['results'][1])
+
+    def test_account_group_rejects_duplicate_unclaimed_and_untrusted_success(self):
+        job = {'id': 'a', 'orderId': 249, 'leaseToken': 'lease', 'accountGroupId': 'group',
+               'jobs': [{'id': 'a', 'orderId': 249, 'leaseToken': 'lease'}]}
+        for rows in [[{'orderId': 250}], [{'orderId': 249}, {'orderId': 249}]]:
+            result = subprocess.CompletedProcess(args=[], returncode=2,
+                stdout=json.dumps({'outcome': 'PARTIAL', 'results': rows}), stderr='')
+            with patch.object(QUEUE['subprocess'], 'run', return_value=result):
+                with self.assertRaises(RuntimeError):
+                    QUEUE['collect'](job)
+        result = subprocess.CompletedProcess(args=[], returncode=1,
+            stdout=json.dumps({'outcome': 'SUCCEEDED', 'results': [{'orderId': 249, 'outcome': 'SUCCEEDED'}]}), stderr='')
+        with patch.object(QUEUE['subprocess'], 'run', return_value=result):
+            self.assertEqual(QUEUE['collect'](job)['results'][0]['outcome'], 'COLLECTOR_FAILED')
+
 
 if __name__ == '__main__':
     unittest.main()

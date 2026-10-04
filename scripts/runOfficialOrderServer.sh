@@ -5,9 +5,18 @@ umask 077
 TASK_ROOT=${OFFICIAL_ORDER_ROOT:-/var/www/apple-order-mgr/shared/official-orders}
 ORDER_ID=${1:-}
 RESUME_RUN=${2:-}
-if [[ ! "$ORDER_ID" =~ ^[1-9][0-9]*$ ]] || [[ -n "$RESUME_RUN" && ! "$RESUME_RUN" =~ ^[1-9][0-9]*$ ]]; then
+if [[ ! "$ORDER_ID" =~ ^[1-9][0-9]*$ ]] || [[ -n "$RESUME_RUN" && "$RESUME_RUN" != account && ! "$RESUME_RUN" =~ ^[1-9][0-9]*$ ]]; then
   echo 'Usage: runOfficialOrderServer.sh SYSTEM_ORDER_ID [SERVER_RESEARCH_RUN]' >&2
   exit 1
+fi
+if [[ "$RESUME_RUN" == account ]]; then
+  UUID_PATTERN='^[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[1-5][a-fA-F0-9]{3}-[89abAB][a-fA-F0-9]{3}-[a-fA-F0-9]{12}$'
+  if [[ ! "${OFFICIAL_ACCOUNT_GROUP:-}" =~ $UUID_PATTERN ]] || [[ ! "${OFFICIAL_GROUP_LEASE:-}" =~ $UUID_PATTERN ]]; then
+    echo '{"outcome":"INPUT_INVALID"}' >&2
+    exit 1
+  fi
+else
+  unset OFFICIAL_ACCOUNT_GROUP OFFICIAL_GROUP_LEASE
 fi
 exec 9>"$TASK_ROOT/private/collector.lock"
 flock -n 9 || { echo 'COLLECTOR_BUSY' >&2; exit 2; }
@@ -22,7 +31,9 @@ if docker inspect "$COLLECTOR_NAME" >/dev/null 2>&1; then
 fi
 INPUT_FILE="$TASK_ROOT/private/request-$ORDER_ID.json"
 INPUT_TEMP=$(mktemp "$TASK_ROOT/private/request-$ORDER_ID.XXXXXX")
-if docker exec -i -e OFFICIAL_ORDER_ID="$ORDER_ID" apple-order-mgr-prod-api-1 node \
+if docker exec -i -e OFFICIAL_ORDER_ID="$ORDER_ID" \
+  -e OFFICIAL_ACCOUNT_GROUP="${OFFICIAL_ACCOUNT_GROUP:-}" \
+  -e OFFICIAL_GROUP_LEASE="${OFFICIAL_GROUP_LEASE:-}" apple-order-mgr-prod-api-1 node \
   < "$TASK_ROOT/release/scripts/readOfficialOrderInput.js" > "$INPUT_TEMP"; then
   chmod 600 "$INPUT_TEMP"
   chown 1000:1000 "$INPUT_TEMP"

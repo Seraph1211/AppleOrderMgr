@@ -18,6 +18,16 @@ async function main() {
     if (typeof proxyName !== 'string' || path.basename(proxyName) !== proxyName) {
       throw new Error('PROXY_FILE_INVALID');
     }
+    if (resumeRun === 'account') {
+      const input = readPrivate(`${root}/private/request-${id}.json`);
+      if (!input.samples.length) {
+        process.stdout.write(
+          `${JSON.stringify({ outcome: 'INPUT_INVALID', results: input.failures })}\n`
+        );
+        process.exitCode = 2;
+        return;
+      }
+    }
     const collector = new OfficialOrderCollector({
       root,
       inputFile: `${root}/private/request-${id}.json`,
@@ -25,7 +35,8 @@ async function main() {
       proxyFile: `${root}/private/${proxyName}`,
       totalRequestLimit: settings.maxTotalRequests,
       runRequestLimit: settings.maxRunRequests,
-      resumeRun,
+      resumeRun: resumeRun === 'account' ? undefined : resumeRun,
+      accountMode: resumeRun === 'account',
     });
     const result = await collector.run();
     // 普通输出隐藏 Apple 订单号；完整 JSON 仅保存到受限 resultFile。

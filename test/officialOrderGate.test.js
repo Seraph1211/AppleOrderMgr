@@ -109,12 +109,14 @@ test('429 服从 Retry-After，认证错误暂停账号，密码提交有持久�
   await gate.claimLogin();
   await gate.recordFailure('HTTP_429', '7200');
   await gate.recordFailure('AUTH_REJECTED');
+  await gate.recordFailure('AUTH_PRECONDITION_REQUIRED');
   const pauses = state.queries
     .filter(q => q.sql.includes('INSERT INTO collector_pauses'))
     .map(q => q.args);
   expect(pauses).toContainEqual(['login', 'account', 'LOGIN_SUBMITTED', 1800]);
   expect(pauses).toContainEqual(['proxy', 'proxy', 'HTTP_429', 7200]);
   expect(pauses).toContainEqual(['account', 'account', 'AUTH_REJECTED', 86400]);
+  expect(pauses).toContainEqual(['account', 'account', 'AUTH_PRECONDITION_REQUIRED', 86400]);
   await gate.close('AUTH_REJECTED');
 });
 test('429 日期等待和 541 默认冷却不缩短旧暂停', async () => {
@@ -129,4 +131,26 @@ test('429 日期等待和 541 默认冷却不缩短旧暂停', async () => {
   expect(pauses[2].args[3]).toBe(172800);
   expect(pauses[0].sql).toContain('greatest');
   await gate.close('HTTP_541');
+});
+
+test('账号组多单沿用账号锁、时间与总请求计数，每单独立登记尝试', async () => {
+  const gate = new OfficialOrderGate(CONFIG, 1000, 300);
+  await gate.open(SAMPLE, 'proxy');
+  const started = gate.started;
+  await gate.permit('https://www.apple.com.cn/', () => false);
+  await gate.finishOrder('SUCCEEDED');
+  await gate.startOrder({ ...SAMPLE, id: 12, orderHash: 'order-2' });
+  expect(gate.started).toBe(started);
+  expect(gate.requests).toBe(1);
+  expect(state.queries.filter(q => q.sql.includes('pg_try_advisory_lock'))).toHaveLength(1);
+  expect(state.queries.filter(q => q.sql.includes('INSERT INTO collector_attempts'))).toHaveLength(
+    2
+  );
+  await gate.finishOrder('SUCCEEDED');
+  state.count = 3;
+  await expect(gate.startOrder({ ...SAMPLE, id: 13 })).rejects.toThrow('ORDER_ATTEMPT_LIMIT');
+  await expect(gate.startOrder({ ...SAMPLE, accountHash: 'another' })).rejects.toThrow(
+    'ACCOUNT_MISMATCH'
+  );
+  await gate.close('PARTIAL');
 });

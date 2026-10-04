@@ -15,7 +15,7 @@ STDERR_FAILURE_CODES = frozenset([
     'ORDER_ID_INVALID', 'ORDER_NOT_FOUND', 'ACCOUNT_ID_MISSING',
     'ACCOUNT_REFERENCE_CONFLICT', 'ORDER_ACCOUNT_AMBIGUOUS', 'ACCOUNT_MARKED_INVALID',
     'ORDER_CREDENTIALS_MISSING', 'CREDENTIAL_DECRYPT_FAILED',
-    'CREDENTIAL_SNAPSHOT_MISMATCH', 'ORDER_INPUT_READ_FAILED',
+    'CREDENTIAL_SNAPSHOT_MISMATCH', 'ORDER_INPUT_READ_FAILED', 'ACCESS_REVOKED', 'ACCOUNT_CHANGED',
     'INPUT_INVALID', 'LINK_IDENTITY_MISMATCH', 'DESTINATION_DENIED',
     'ARGUMENTS_INVALID', 'PROXY_FILE_INVALID', 'PRIVATE_FILE_PERMISSIONS',
     'INPUT_TOO_LARGE', 'KEY_INVALID', 'ENCRYPTED_STATE_INVALID',
@@ -71,29 +71,63 @@ def read_summary(result):
     return None
 
 
+def read_result(summary, order_id):
+    name = os.path.basename(summary.get('resultFile', ''))
+    if not re.match(r'^order-%d-run-[1-9][0-9]*\.json$' % order_id, name):
+        raise RuntimeError('RESULT_FILE_INVALID')
+    path = ROOT + '/private/results/' + name
+    if os.path.islink(path) or os.path.getsize(path) > 1048576:
+        raise RuntimeError('RESULT_FILE_INVALID')
+    with open(path, encoding='utf-8') as stream:
+        return json.load(stream)
+
+
 def collect(job):
     if not isinstance(job['orderId'], int) or job['orderId'] < 1:
         raise RuntimeError('ORDER_ID_INVALID')
-    result = subprocess.run(
-        ['bash', ROOT + '/release/scripts/runOfficialOrderServer.sh', str(job['orderId'])],
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE, universal_newlines=True, encoding='utf-8', errors='replace', timeout=240,
-        env=dict(os.environ, OFFICIAL_ORDER_ROOT=ROOT))
-    summary = read_summary(result)
-    payload = dict(job, outcome='COLLECTOR_FAILED')
-    if summary:
-        payload['outcome'] = summary.get('outcome', 'COLLECTOR_FAILED')
-    if result.returncode == 0 and payload['outcome'] == 'SUCCEEDED':
-        name = os.path.basename(summary.get('resultFile', ''))
-        if not re.match(r'^order-%d-run-[1-9][0-9]*\.json$' % job['orderId'], name):
+    grouped = isinstance(job.get('jobs'), list)
+    args = ['bash', ROOT + '/release/scripts/runOfficialOrderServer.sh', str(job['orderId'])]
+    environment = dict(os.environ, OFFICIAL_ORDER_ROOT=ROOT)
+    if grouped:
+        args.append('account')
+        environment.update(OFFICIAL_ACCOUNT_GROUP=job['accountGroupId'],
+                           OFFICIAL_GROUP_LEASE=job['leaseToken'])
+    result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            universal_newlines=True, encoding='utf-8', errors='replace',
+                            timeout=240, env=environment)
+    summary = read_summary(result) or {'outcome': 'COLLECTOR_FAILED'}
+    if not grouped:
+        payload = dict(job, outcome=summary['outcome'])
+        if result.returncode == 0 and payload['outcome'] == 'SUCCEEDED':
+            payload['result'] = read_result(summary, job['orderId'])
+        elif payload['outcome'] == 'SUCCEEDED':
+            payload['outcome'] = 'COLLECTOR_EXIT_FAILED'
+        return payload
+    # 每个结果只匹配已领取的订单；允许已验证的部分成功，异常退出不接纳结果。
+    observed = summary.get('results', []) if result.returncode in (0, 2) else []
+    if not isinstance(observed, list):
+        raise RuntimeError('RESULT_FILE_INVALID')
+    by_id = {}
+    expected = {item['orderId'] for item in job['jobs']}
+    for item in observed:
+        if (not isinstance(item, dict) or item.get('orderId') not in expected or
+                item['orderId'] in by_id):
             raise RuntimeError('RESULT_FILE_INVALID')
-        path = ROOT + '/private/results/' + name
-        if os.path.islink(path) or os.path.getsize(path) > 1048576:
-            raise RuntimeError('RESULT_FILE_INVALID')
-        with open(path, encoding='utf-8') as stream:
-            payload['result'] = json.load(stream)
-    elif payload['outcome'] == 'SUCCEEDED':
-        payload['outcome'] = 'COLLECTOR_EXIT_FAILED'
-    return payload
+        by_id[item['orderId']] = item
+    payloads = []
+    for member in job['jobs']:
+        item = by_id.get(member['orderId'])
+        code = item.get('outcome') if item else summary['outcome']
+        if not isinstance(code, str) or not re.match(r'^[A-Z_0-9]{1,80}$', code):
+            code = 'COLLECTOR_FAILED'
+        if not item and code in ('SUCCEEDED', 'PARTIAL'):
+            code = 'COLLECTOR_FAILED'
+        payload = dict(member, outcome=code)
+        if code == 'SUCCEEDED':
+            payload['result'] = read_result(item, member['orderId'])
+        payloads.append(payload)
+    return {'accountGroupId': job['accountGroupId'], 'leaseToken': job['leaseToken'],
+            'results': payloads}
 
 
 def main():
@@ -110,8 +144,10 @@ def main():
                     except (RuntimeError, ValueError, OSError, subprocess.TimeoutExpired):
                         subprocess.run(['docker', 'stop', '-t', '5', 'apple-official-order-collector'],
                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=20)
-                        payload = dict(job, outcome='COLLECTOR_INTERRUPTED')
-                    finished = command('finish', payload)
+                        payload = ({'accountGroupId': job['accountGroupId'], 'leaseToken': job['leaseToken'],
+                                    'results': [dict(member, outcome='COLLECTOR_INTERRUPTED') for member in job['jobs']]}
+                                   if job.get('jobs') else dict(job, outcome='COLLECTOR_INTERRUPTED'))
+                    finished = command('finish-group' if job.get('jobs') else 'finish', payload)
                     print(json.dumps({'event': 'official_order_finished', 'jobId': job['id'],
                                       'orderId': job['orderId'], 'state': finished.get('state'),
                                       'errorCode': finished.get('errorCode')}), flush=True)

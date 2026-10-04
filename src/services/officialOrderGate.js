@@ -44,7 +44,7 @@ class OfficialOrderGate {
     this.requests = 0;
   }
 
-  async open(sample, proxyHash) {
+  async openAccount(sample, proxyHash) {
     try {
       await this.client.connect();
       await this.lockClient.connect();
@@ -61,6 +61,28 @@ class OfficialOrderGate {
       if (!budget.rows.length || budget.rows[0].requests >= this.totalLimit) {
         throw fault('REQUEST_BUDGET');
       }
+      this.started = Date.now();
+    } catch (error) {
+      error.component = 'officialOrderGate';
+      throw error;
+    }
+  }
+
+  async open(sample, proxyHash) {
+    try {
+      await this.openAccount(sample, proxyHash);
+      return await this.startOrder(sample);
+    } catch (error) {
+      error.component = 'officialOrderGate';
+      throw error;
+    }
+  }
+
+  async startOrder(sample) {
+    try {
+      if (sample.accountHash !== this.accountHash) throw fault('ACCOUNT_MISMATCH');
+      if (this.requests >= this.runRequestLimit) throw fault('REQUEST_BUDGET');
+      if (Date.now() - this.started >= RUN_TIME_MS) throw fault('TIME_BUDGET');
       const attempts = await this.lockClient.query(
         `SELECT count(*)::int AS count FROM collector_attempts
          WHERE order_hash=$1 AND created_at > now()-interval '24 hours'`,
@@ -77,14 +99,13 @@ class OfficialOrderGate {
         await this.lockClient.query(
           `INSERT INTO collector_attempts(run_id,order_hash,account_hash,proxy_hash)
            VALUES($1,$2,$3,$4)`,
-          [this.id, sample.orderHash, sample.accountHash, proxyHash]
+          [this.id, sample.orderHash, sample.accountHash, this.proxyHash]
         );
         await this.lockClient.query('COMMIT');
       } catch (error) {
         await this.lockClient.query('ROLLBACK');
         throw error;
       }
-      this.started = Date.now();
       return this.id;
     } catch (error) {
       error.component = 'officialOrderGate';
@@ -202,8 +223,28 @@ class OfficialOrderGate {
         seconds = Math.max(LOGIN_COOLDOWN_SECONDS, Number.isFinite(seconds) ? seconds : 0);
         await this.pause('proxy', this.proxyHash, code, Math.ceil(seconds));
       }
-      if (['AUTH_REJECTED', 'HUMAN_VERIFICATION_REQUIRED'].includes(code)) {
+      if (
+        ['AUTH_REJECTED', 'AUTH_PRECONDITION_REQUIRED', 'HUMAN_VERIFICATION_REQUIRED'].includes(
+          code
+        )
+      ) {
         await this.pause('account', this.accountHash, code, ACCOUNT_PAUSE_SECONDS);
+      }
+    } catch (error) {
+      error.component = 'officialOrderGate';
+      throw error;
+    }
+  }
+
+  async finishOrder(outcome) {
+    try {
+      await this.chain;
+      if (this.id) {
+        await this.lockClient.query('UPDATE runs SET finished_at=now(),outcome=$2 WHERE id=$1', [
+          this.id,
+          outcome,
+        ]);
+        this.id = null;
       }
     } catch (error) {
       error.component = 'officialOrderGate';

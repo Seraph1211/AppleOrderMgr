@@ -1,6 +1,7 @@
 const { Client } = require('pg');
 const {
   readOfficialOrderInput,
+  readOfficialOrderGroupInput,
   officialInputErrorCode,
 } = require('/app/src/services/officialOrderInput');
 
@@ -16,10 +17,17 @@ async function main() {
       password: process.env.DB_PASSWORD,
     });
     await client.connect();
-    const sample = await readOfficialOrderInput(client, process.env.OFFICIAL_ORDER_ID);
-    process.stdout.write(
-      JSON.stringify({ capturedAt: new Date().toISOString(), samples: [sample] })
-    );
+    let input;
+    if (process.env.OFFICIAL_ACCOUNT_GROUP) {
+      input = await readOfficialOrderGroupInput(
+        client,
+        process.env.OFFICIAL_ACCOUNT_GROUP,
+        process.env.OFFICIAL_GROUP_LEASE
+      );
+    } else {
+      input = { samples: [await readOfficialOrderInput(client, process.env.OFFICIAL_ORDER_ID)] };
+    }
+    process.stdout.write(JSON.stringify({ capturedAt: new Date().toISOString(), ...input }));
   } catch (error) {
     process.stderr.write(
       `${JSON.stringify({ outcome: officialInputErrorCode(error), stage: 'input' })}\n`

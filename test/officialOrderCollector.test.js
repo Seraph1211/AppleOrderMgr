@@ -7,6 +7,7 @@ jest.mock('pg', () => ({ Client: jest.fn(() => ({ query: jest.fn(), end: jest.fn
 jest.mock('playwright-core', () => ({ chromium: {} }));
 const OfficialOrderCollector = require('../src/services/officialOrderCollector');
 const { writePrivate, hash, decrypt, encrypt } = require('../src/services/officialOrderSupport');
+const { validateSample } = require('../src/services/officialOrderSupport');
 
 let directory;
 let collector;
@@ -173,6 +174,16 @@ test('代理凭据仅回应一次 Proxy 挑战，不发送给网页服务器', a
   );
   expect(collector.cdp.send.mock.calls[2][1].authChallengeResponse.response).toBe('CancelAuth');
 });
+test('预先认证模式不再向浏览器挑战提供上游代理凭据', async () => {
+  collector.proxy.preemptiveAuth = true;
+  await collector.event(
+    event('Fetch.authRequired', { requestId: 'auth1', authChallenge: { source: 'Proxy' } })
+  );
+  expect(collector.cdp.send.mock.calls[0][1].authChallengeResponse).toEqual({
+    response: 'CancelAuth',
+  });
+  expect(collector.stopped).toBe('HTTP_AUTH_FAILED');
+});
 test('只将新鲜完整、身份匹配的 guestx 响应认定成功；证据密文可独立校验', async () => {
   await collector.event(event('Network.responseReceived', RESPONSE));
   await collector.event(
@@ -251,6 +262,105 @@ test('超过正文上限和代理故障保留失败，不制造空订单成功',
     })
   );
   expect(collector.stopped).toBe('PROXY_CONNECTION_FAILED');
+});
+test('412 单独分类、密封 Location，立即阻断新 GET/POST 和登录操作', async () => {
+  const location = 'https://appleid.apple.com/account/manage/repair?token=private-token';
+  await collector.event(
+    event('Network.responseReceived', {
+      ...RESPONSE,
+      response: {
+        url: 'https://idmsa.apple.com.cn/appleauth/auth/signin/complete',
+        status: 412,
+        headers: { Location: location },
+      },
+    })
+  );
+  expect(collector.stopped).toBe('AUTH_PRECONDITION_REQUIRED');
+  expect(collector.authDiagnostic).toEqual({ status: 412, hasLocation: true });
+  const file = fs.readdirSync(collector.directory).find(name => name.startsWith('auth-response-'));
+  expect(
+    JSON.parse(decrypt(fs.readFileSync(`${collector.directory}/${file}`), collector.key))
+  ).toEqual({ status: 412, location });
+  collector.page = { frames: jest.fn() };
+  collector.navigateAccount = jest.fn();
+  await collector.loginStep();
+  expect(collector.navigateAccount).not.toHaveBeenCalled();
+  expect(collector.page.frames).not.toHaveBeenCalled();
+  for (const method of ['GET', 'POST']) {
+    await collector.event(
+      event('Fetch.requestPaused', {
+        requestId: method,
+        resourceType: 'XHR',
+        request: { method, url: location },
+      })
+    );
+  }
+  expect(collector.gate.permit).not.toHaveBeenCalled();
+  expect(
+    collector.cdp.send.mock.calls.filter(call => call[0] === 'Fetch.failRequest')
+  ).toHaveLength(2);
+  expect(JSON.stringify(collector.logger.info.mock.calls)).not.toContain('private-token');
+  collector.cdp.send.mockResolvedValue({ body: '{"authType":"sa","detail":"secret"}' });
+  await collector.event(
+    event('Network.loadingFinished', { requestId: 'r1', encodedDataLength: 40 })
+  );
+  expect(collector.authDiagnostic.authType).toBe('sa');
+  expect(collector.result).toBeUndefined();
+  expect(JSON.stringify(collector.logger.info.mock.calls)).not.toContain('secret');
+});
+test.each(['unrecognized-private-value', null])(
+  '诊断正文不向普通日志透传未知 authType：%s',
+  async authType => {
+    collector.beginAuthDiagnostic({ status: 412, headers: {} });
+    collector.requests.set('s1:r1', {
+      type: 'XHR',
+      path: '/appleauth/auth/signin/complete',
+      status: 412,
+    });
+    collector.cdp.send.mockResolvedValue({ body: JSON.stringify({ authType }) });
+    await collector.event(
+      event('Network.loadingFinished', { requestId: 'r1', encodedDataLength: 50 })
+    );
+    expect(collector.authDiagnostic.authType).toBeUndefined();
+  }
+);
+test('412 后只读取当前页面，明文加密且页面挂起不会延长诊断', async () => {
+  jest.useFakeTimers();
+  try {
+    collector.beginAuthDiagnostic({ status: 412, headers: {} });
+    const frame = {
+      url: () => 'https://idmsa.apple.com.cn/appleauth/auth/authorize/signin',
+      evaluate: jest.fn().mockResolvedValue('请核对 account@example.test 的账号资料'),
+    };
+    const hanging = { url: frame.url, evaluate: jest.fn(() => new Promise(() => {})) };
+    collector.page = { frames: () => [frame, hanging], goto: jest.fn() };
+    const task = collector.captureAuthDiagnostic();
+    await jest.advanceTimersByTimeAsync(3001);
+    await task;
+    expect(collector.authDiagnostic.visibleFrameCount).toBe(1);
+    expect(collector.page.goto).not.toHaveBeenCalled();
+    expect(collector.gate.permit).not.toHaveBeenCalled();
+    const file = fs.readdirSync(collector.directory).find(name => name.startsWith('auth-page-'));
+    const captured = JSON.parse(
+      decrypt(fs.readFileSync(`${collector.directory}/${file}`), collector.key)
+    );
+    expect(captured.snapshots[0].text).toContain('account@example.test');
+    expect(JSON.stringify(collector.logger.info.mock.calls)).not.toContain('account@example.test');
+    expect(collector.stopped).toBe('AUTH_PRECONDITION_REQUIRED');
+  } finally {
+    jest.useRealTimers();
+  }
+});
+test('412 的诊断读取失败不改变账号失败结果', async () => {
+  collector.beginAuthDiagnostic({ status: 412, headers: {} });
+  collector.page = {};
+  const seal = collector.seal;
+  collector.seal = jest.fn(() => {
+    throw new Error('disk error');
+  });
+  await collector.captureAuthDiagnostic();
+  expect(collector.stopped).toBe('AUTH_PRECONDITION_REQUIRED');
+  collector.seal = seal;
 });
 test('页面会话断开后不再放行它的请求', async () => {
   await collector.event(event('Target.detachedFromTarget', { sessionId: 's1' }));
@@ -385,7 +495,7 @@ test('账号页只导航到官网观察到的登录或订单列表入口', async
   await collector.navigateAccount();
   expect(collector.page.goto.mock.calls[1][0]).toContain('/shop/order/list');
 });
-test.each(['SUCCEEDED', 'HTTP_541', 'IDENTITY_MISMATCH'])(
+test.each(['SUCCEEDED', 'HTTP_541', 'IDENTITY_MISMATCH', 'AUTH_PRECONDITION_REQUIRED'])(
   '运行结尾按真实结果分类，失败不覆盖成功数据：%s',
   async outcome => {
     const { EventEmitter } = require('events');
@@ -413,6 +523,7 @@ test.each(['SUCCEEDED', 'HTTP_541', 'IDENTITY_MISMATCH'])(
     collector.saveSession = jest.fn().mockResolvedValue();
     collector.gate.close = jest.fn().mockResolvedValue();
     collector.cdp.close = jest.fn();
+    collector.proxyTunnel = { close: jest.fn().mockResolvedValue() };
     collector.result = {
       orderNumber: ORDER,
       completeItemCount: 1,
@@ -423,6 +534,9 @@ test.each(['SUCCEEDED', 'HTTP_541', 'IDENTITY_MISMATCH'])(
     writePrivate(previousFile, '{"previous":true}');
     const summary = await collector.run();
     expect(summary.outcome).toBe(outcome);
+    if (outcome === 'AUTH_PRECONDITION_REQUIRED')
+      expect(collector.saveSession).not.toHaveBeenCalled();
+    expect(collector.proxyTunnel.close).toHaveBeenCalledTimes(1);
     expect(JSON.parse(fs.readFileSync(previousFile))).toEqual({ previous: true });
     if (outcome === 'SUCCEEDED') {
       expect(summary.result.orderNumber).toBeUndefined();
@@ -433,3 +547,100 @@ test.each(['SUCCEEDED', 'HTTP_541', 'IDENTITY_MISMATCH'])(
     }
   }
 );
+
+test.each(['success', 'risk', 'budget', 'attempts', 'lateRisk'])(
+  '账号组复用一个浏览器，逐单身份验证并保留部分结果：%s',
+  async kind => {
+    const { EventEmitter } = require('events');
+    collector.accountMode = true;
+    collector.accountResults = [];
+    collector.samples = [
+      collector.sample,
+      validateSample({
+        ...collector.sample,
+        id: 12,
+        orderNumber: 'W1234567891',
+        url: collector.sample.url.replace(ORDER, 'W1234567891'),
+      }),
+    ];
+    collector.logger = Object.assign(new EventEmitter(), {
+      info: jest.fn(),
+      end() {
+        this.emit('finish');
+      },
+    });
+    collector.initialize = jest.fn().mockImplementation(async () => {
+      await Promise.resolve();
+      collector.id = 22;
+      collector.started = Date.now();
+    });
+    collector.page = {
+      goto: jest.fn(async () => {
+        const number = collector.sample.orderNumber;
+        collector.cdp.send.mockResolvedValue({ body: detail().replace(ORDER, number) });
+        const response = JSON.parse(JSON.stringify(RESPONSE));
+        response.response.url = response.response.url.replace(ORDER, number);
+        if (kind === 'risk') response.response.status = 541;
+        await collector.event(event('Network.responseReceived', response));
+        await collector.event(
+          event('Network.loadingFinished', { requestId: 'r1', encodedDataLength: 1000 })
+        );
+      }),
+    };
+    collector.launch = jest.fn().mockResolvedValue();
+    collector.pageControl = {
+      send: jest.fn().mockImplementation(async () => {
+        await Promise.resolve();
+        if (kind === 'lateRisk') collector.stop('HTTP_541');
+      }),
+    };
+    collector.browser = { close: jest.fn().mockResolvedValue() };
+    collector.saveSession = jest.fn().mockResolvedValue();
+    collector.gate.startOrder = jest.fn(async () => {
+      await Promise.resolve();
+      if (kind === 'budget' || kind === 'attempts')
+        throw Object.assign(new Error('limit'), {
+          code: kind === 'budget' ? 'REQUEST_BUDGET' : 'ORDER_ATTEMPT_LIMIT',
+        });
+      return 23;
+    });
+    collector.gate.finishOrder = jest.fn().mockResolvedValue();
+    collector.gate.recordFailure = jest.fn().mockResolvedValue();
+    collector.gate.close = jest.fn().mockResolvedValue();
+    collector.cdp.close = jest.fn();
+    const summary = await collector.run();
+    expect(collector.launch).toHaveBeenCalledTimes(1);
+    expect(collector.browser.close).toHaveBeenCalledTimes(1);
+    expect(summary.results).toHaveLength(2);
+    if (kind === 'success') {
+      expect(summary.results.map(result => result.outcome)).toEqual(['SUCCEEDED', 'SUCCEEDED']);
+      expect(
+        summary.results.map(result => JSON.parse(fs.readFileSync(result.resultFile)).orderNumber)
+      ).toEqual([ORDER, 'W1234567891']);
+      expect(collector.page.goto).toHaveBeenCalledTimes(2);
+    } else if (kind === 'risk') {
+      expect(summary.results.map(result => result.outcome)).toEqual(['HTTP_541', 'HTTP_541']);
+      expect(collector.page.goto).toHaveBeenCalledTimes(1);
+    } else {
+      expect(summary.results[0].outcome).toBe('SUCCEEDED');
+      expect(summary.results[1].outcome).toBe(
+        kind === 'budget'
+          ? 'REQUEST_BUDGET'
+          : kind === 'lateRisk'
+            ? 'HTTP_541'
+            : 'ORDER_ATTEMPT_LIMIT'
+      );
+      expect(collector.page.goto).toHaveBeenCalledTimes(1);
+    }
+  }
+);
+test('账号模式切换目标后忽略旧单迟到正文，错误订单不会回写', async () => {
+  collector.accountMode = true;
+  await collector.event(event('Network.responseReceived', RESPONSE));
+  collector.sample = { ...collector.sample, id: 12, orderNumber: 'W1234567891' };
+  await collector.event(
+    event('Network.loadingFinished', { requestId: 'r1', encodedDataLength: 1000 })
+  );
+  expect(collector.result).toBeUndefined();
+  expect(collector.stopped).toBeNull();
+});

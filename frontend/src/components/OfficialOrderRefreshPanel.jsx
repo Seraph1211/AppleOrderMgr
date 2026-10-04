@@ -17,6 +17,9 @@ const ERRORS = {
   ORDER_ID_INVALID: '订单编号无效，请重新选择订单',
   ORDER_NOT_FOUND: '订单不存在或已被移除',
   ACCOUNT_ID_MISSING: '订单缺少 Apple ID，请核对订单资料',
+  ACCOUNT_CHANGED: '订单关联的 Apple ID 已变化，请重新提交',
+  LEGACY_ACCOUNT_SCOPE: '旧队列已暂停，请按账号分组规则重新提交',
+  TIME_BUDGET: '账号组查询时间已用完，保留已成功的订单结果',
   ACCOUNT_REFERENCE_CONFLICT: '订单与关联 Apple ID 不一致，请核对账号关联',
   ORDER_ACCOUNT_AMBIGUOUS: '匹配到多个 Apple ID，请核对账号库',
   ACCOUNT_MARKED_INVALID: '关联 Apple ID 已标记异常，请先核对账号',
@@ -36,7 +39,14 @@ const ERRORS = {
   PROXY_COOLDOWN: '代理暂不可用',
   ACCOUNT_BUSY: '账号正在查询',
   COLLECTOR_BUSY: '采集器正在运行',
-  AUTH_REJECTED: '账号登录失败',
+  AUTH_REJECTED: '官网未接受本次登录，需核对账号登录前置要求',
+  AUTH_PRECONDITION_REQUIRED: 'Apple 登录需要完成额外步骤（HTTP 412），请核对官网提示',
+  HTTP_AUTH_FAILED: '官网拒绝认证，需核对账号登录前置要求',
+  HTTP_407: '代理认证失败，请联系管理员检查代理配置',
+  PROXY_CONNECTION_FAILED: '代理连接失败，请联系管理员检查出口',
+  MULTIPLE_ACCOUNT_AUTH_FAILURES: '此前多个账号登录未完成',
+  LEGACY_SAFETY_HOLD: '此前批量查询已保护性暂停',
+  REQUEUED_MANUALLY: '已由新的手动查询替代',
   HUMAN_VERIFICATION_REQUIRED: '官网要求人工验证',
   HTTP_541: '官网限制访问',
   HTTP_429: '官网请求限流',
@@ -131,6 +141,7 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
             {recent.map(item => (
               <option key={item.id} value={item.id}>
                 {new Date(item.createdAt).toLocaleString('zh-CN')} · {item.total} 单
+                {item.pausedAt ? ' · 已暂停' : ''}
               </option>
             ))}
           </select>
@@ -145,15 +156,23 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
       {batch && (
         <>
           <p className="text-sm text-gray-600" role="status">
-            共 {batch.total} 单 · 已更新 {batch.counts.succeeded} · 失败 {batch.counts.failed} ·
-            查询中 {batch.counts.running} · 排队 {batch.counts.queued} · 已取消{' '}
-            {batch.counts.cancelled}
+            {batch.accountCount ?? 0} 个 Apple ID · 原选 {batch.selectedCount ?? '—'} 单 · 共{' '}
+            {batch.total} 单 · 已更新 {batch.counts.succeeded} · 失败 {batch.counts.failed} · 查询中{' '}
+            {batch.counts.running} · 排队 {batch.counts.queued} · 已取消 {batch.counts.cancelled}
           </p>
-          {batch.counts.queued + batch.counts.running > 0 && (
+          {batch.pausedAt && (
+            <p className="text-sm text-amber-700" role="status">
+              批次已暂停：{ERRORS[batch.pauseReason] || '需要管理员核查'}。
+              剩余任务不会自动重试；核查后可重新选择需要的订单更新，账号冷却仍然有效。
+            </p>
+          )}
+          {(batch.counts.queued + batch.counts.running > 0 || batch.pausedAt) && (
             <p className="text-xs text-gray-500">
               {batch.workerOnline === false
-                ? '服务器更新服务暂时离线，待处理任务已保存；恢复后继续执行。'
-                : '服务器正在逐单查询，关闭页面后继续执行。失败时保留上次官网状态。'}
+                ? '官网更新后台服务离线，请联系管理员检查；已有任务和官网状态已保留。'
+                : batch.pausedAt
+                  ? '官网更新服务在线，此批次暂停不影响新的手动查询。'
+                  : '服务器按 Apple ID 分组查询，逐单保存结果；关闭页面后继续执行。失败时保留上次官网状态。'}
             </p>
           )}
           {batch.counts.queued > 0 && (
@@ -180,7 +199,9 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
                         <br />
                         <span className="font-mono text-xs">{job.orderNumber}</span>
                       </td>
-                      <td className="whitespace-nowrap p-2">{STATES[job.state]}</td>
+                      <td className="whitespace-nowrap p-2">
+                        {batch.pausedAt && job.state === 'queued' ? '已暂停' : STATES[job.state]}
+                      </td>
                       <td className="min-w-32 p-2">
                         {job.errorCode ? (
                           <span className="text-amber-700">
