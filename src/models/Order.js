@@ -170,6 +170,18 @@ module.exports = sequelize => {
         defaultValue: null,
         comment: '入库来源的非敏感快照',
       },
+      officialRawStatus: {
+        type: DataTypes.TEXT,
+        allowNull: true,
+        field: 'official_raw_status',
+        comment: '手动查询的官网商品原始状态，多种状态以 | 分隔',
+      },
+      officialStatusObservedAt: {
+        type: DataTypes.DATE,
+        allowNull: true,
+        field: 'official_status_observed_at',
+        comment: '最近一次完整官网响应的观测时间',
+      },
       // 订单状态
       status: {
         type: DataTypes.STRING(50),

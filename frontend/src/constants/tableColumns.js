@@ -13,6 +13,14 @@ export const ordersColumns = [
     pinned: false,
   },
   {
+    key: 'officialOrderStatus',
+    label: '官网订单状态',
+    width: '180px',
+    defaultVisible: true,
+    sortable: false,
+    pinned: false,
+  },
+  {
     key: 'serialNumbers',
     label: 'Serial No.',
     width: '160px',

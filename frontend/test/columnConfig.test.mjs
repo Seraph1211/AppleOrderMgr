@@ -69,3 +69,22 @@ test('取机人默认列在 TAG 后展示独立渠道', () => {
   assert.equal(keys[keys.indexOf('tag') + 1], 'channel');
   assert.equal(recipientsColumns.find(column => column.key === 'channel').defaultVisible, true);
 });
+
+test('官网状态首次恢复位于订单号之后，保留其他列偏好', async () => {
+  const { restoreOfficialStatusColumn } = await import('../src/utils/columnConfig.js');
+  const merged = mergeColumnConfig(ordersColumns, [
+    { key: 'recipientName', visible: false, order: 0 },
+    { key: 'orderNumber', visible: true, order: 1 },
+    { key: 'officialOrderStatus', visible: false, order: 9 },
+  ]);
+  const restored = restoreOfficialStatusColumn(merged);
+  assert.equal(restored[2].key, 'officialOrderStatus');
+  assert.equal(restored[2].visible, true);
+  assert.equal(restored[0].visible, false);
+  const saved = restored.map((column, order) => ({
+    key: column.key,
+    order,
+    visible: column.key !== 'officialOrderStatus',
+  }));
+  assert.equal(mergeColumnConfig(ordersColumns, saved)[2].visible, false);
+});

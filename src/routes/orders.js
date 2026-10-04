@@ -15,6 +15,8 @@ const retiredFeature = require('../middleware/retiredFeature');
 
 const router = express.Router();
 
+router.use('/official-refresh', require('./officialOrderRefresh'));
+
 router.use('/:id/emails', require('./orderMail'));
 
 router.post(

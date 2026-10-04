@@ -8,6 +8,16 @@
 >
 > 验证范围：本地工作树静态核对；未验证真实数据库、邮箱、官网和生产环境
 
+## 手动官网状态更新（2026-10-03，已授权实施）
+
+- `POST /api/orders/official-refresh/batches`：需 `orders.read` + `orders.edit`。请求 `{ requestKey: UUID, selection: "ids", orderIds: [1,2] }` 或 `{ requestKey: UUID, selection: "filtered", filters: { ...订单列表筛选参数 } }`。200/202 返回 `{ success, data: { batchId, queued, skipped, total } }`；重复活动订单跳过，混合越权 ID 整体拒绝；无新订单返回 `batchId: null`。最多 10000 单，超量 400；后台未就绪 503。
+- `GET /api/orders/official-refresh/batches`：返回本人最近 10 个批次标识，供页面重开恢复；管理员可查询批次详情，列表仍仅本人。
+- `GET /api/orders/official-refresh/batches/:batchId`：返回当前批次 `counts`、总数、分页 `jobs`（每页 20，最多 100）；仅提交者或管理员且当前仍有全部订单访问范围。`jobs` 只返回订单 ID、订单号、队列状态、脱敏错误码、官网状态及时间。
+- `POST /api/orders/official-refresh/batches/:batchId/cancel`：取消排队任务，不中断已运行的官网请求。
+- 订单列表、详情新增 `official_order_status`（原始官网状态或 null）、`official_status_observed_at`（最近成功观测时间）；原邮件状态契约不变。
+
+以上均经认证与 TAG 范围校验。旧 `/refresh-all`、`/batch-refresh`、`/:id/refresh`、`/page-open-refresh` 和浏览器辅助接口保持退役，避免旧页面触发外部请求。
+
 ## 通用约束
 
 ### 浏览器辅助刷新（2026-09-21 API 已发布）
@@ -31,6 +41,8 @@
 字段目前混用 camelCase 和 snake_case，不能按惯例自动转换或增加别名。新契约修改需更新本页及对应专题文档，CON-01/CON-02 的完整统一尚未完成。
 
 ## 响应与错误
+
+手动官网更新批次的 `jobs[].errorCode` 增补：`ORDER_NOT_FOUND`、`ACCOUNT_ID_MISSING`、`ACCOUNT_REFERENCE_CONFLICT`、`ORDER_ACCOUNT_AMBIGUOUS`、`ACCOUNT_MARKED_INVALID`、`ORDER_CREDENTIALS_MISSING`、`CREDENTIAL_DECRYPT_FAILED`、`CREDENTIAL_SNAPSHOT_MISMATCH`、`ORDER_INPUT_READ_FAILED`、`INPUT_INVALID`、`LINK_IDENTITY_MISMATCH`、`DESTINATION_DENIED`。失败仍保留上次官网状态，仅返回固定分类，不返回输入、密码、完整链接或数据库错误。请求／响应结构、权限和两字段回写范围不变。
 
 常规成功为 success/data；公共分页结构如下，列表键由端点决定（例如 apple_ids、recipients、orders、items）：
 
@@ -777,26 +789,26 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 所有 `/api/proxy-orders` 接口需认证与 proxy_orders.read。独立动作权限为 edit/status/copy/accounts/link，均依赖 read。普通列表/详情不返回 Apple 密码，no-store；相关系统订单仅返回必要摘要，不要求 orders.read，不含支付链接和账号秘密。
 
-| 方法与路径 | 权限 | 契约 |
-| --- | --- | --- |
-| GET /api/proxy-orders | read | page/limit/keyword/status 分页，返回 rows/count；keyword 姓名/平台单号/委托编号；已知机型和颜色别名在响应中规范显示 |
-| GET /api/proxy-orders/stores | read | 已核实门店及省市区 |
-| POST /api/proxy-orders/parse | edit | text 单人文本；返回 draft/warnings；18PM → iPhone 18 Pro Max，iPhone 18 Pro/Pro Max 的红色、酒红色 → 勃艮第酒红色；缺数量默认 1、门店必须人工确认 |
-| POST /api/proxy-orders/address | edit | storeCode；生成账单地址，不写入订单 |
-| POST /api/proxy-orders | edit | 完整确认资料；pending，默认尝试分配一个账号；无账号仍保存 |
-| GET /api/proxy-orders/:id | read | 详情、分配历史、脱敏事件、官方订单摘要 |
-| PUT /api/proxy-orders/:id | edit | expectedVersion + 确认资料；成功/取消只允许改备注 |
-| POST /api/proxy-orders/:id/status | status | expectedVersion,status；手动禁止 succeeded |
-| POST /api/proxy-orders/:id/notes | edit | expectedVersion,notes；仅修改备注，保留加密原文及其他资料；所有状态可修改 |
-| POST /api/proxy-orders/:id/accounts | accounts | expectedVersion，accountIds 或 count；追加占用 |
-| POST /api/proxy-orders/:id/release | accounts | expectedVersion,assignmentIds,confirmedStopped=true；释放占用 |
-| POST /api/proxy-orders/:id/link | link | expectedVersion,orderNumber,reason；人工核对关联，不覆盖已有关系；orderNumber=null 为解除 |
-| POST /api/proxy-orders/copy | copy | ids 1–100；原子生成当前活跃账号模板，多行字符串；不更新状态 |
-| GET /api/proxy-orders/accounts | accounts | page/limit/keyword，scope=pool/candidates；返回 rows/count/availableCount，其中 availableCount 为整个专用池中状态“未使用”、未占用且未绑定普通取机人的数量；无密码 |
-| POST /api/proxy-orders/accounts/import | accounts | text，每行邮箱+密码；全量先验证，同账号密码差异拒绝不回显 |
-| POST /api/proxy-orders/accounts/adopt | accounts | ids，核对后纳入已有账号；有普通绑定拒绝 |
+| 方法与路径                             | 权限     | 契约                                                                                                                                                                                                                                   |
+| -------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET /api/proxy-orders                  | read     | page/limit/keyword/status 分页，返回 rows/count；keyword 姓名/平台单号/委托编号；已知机型和颜色别名在响应中规范显示                                                                                                                    |
+| GET /api/proxy-orders/stores           | read     | 已核实门店及省市区                                                                                                                                                                                                                     |
+| POST /api/proxy-orders/parse           | edit     | text 单人文本；返回 draft/warnings；18PM → iPhone 18 Pro Max，iPhone 18 Pro/Pro Max 的红色、酒红色 → 勃艮第酒红色；缺数量默认 1、门店必须人工确认                                                                                      |
+| POST /api/proxy-orders/address         | edit     | storeCode；生成账单地址，不写入订单                                                                                                                                                                                                    |
+| POST /api/proxy-orders                 | edit     | 完整确认资料；pending，默认尝试分配一个账号；无账号仍保存                                                                                                                                                                              |
+| GET /api/proxy-orders/:id              | read     | 详情、分配历史、脱敏事件、官方订单摘要                                                                                                                                                                                                 |
+| PUT /api/proxy-orders/:id              | edit     | expectedVersion + 确认资料；成功/取消只允许改备注                                                                                                                                                                                      |
+| POST /api/proxy-orders/:id/status      | status   | expectedVersion,status；手动禁止 succeeded                                                                                                                                                                                             |
+| POST /api/proxy-orders/:id/notes       | edit     | expectedVersion,notes；仅修改备注，保留加密原文及其他资料；所有状态可修改                                                                                                                                                              |
+| POST /api/proxy-orders/:id/accounts    | accounts | expectedVersion，accountIds 或 count；追加占用                                                                                                                                                                                         |
+| POST /api/proxy-orders/:id/release     | accounts | expectedVersion,assignmentIds,confirmedStopped=true；释放占用                                                                                                                                                                          |
+| POST /api/proxy-orders/:id/link        | link     | expectedVersion,orderNumber,reason；人工核对关联，不覆盖已有关系；orderNumber=null 为解除                                                                                                                                              |
+| POST /api/proxy-orders/copy            | copy     | ids 1–100；原子生成当前活跃账号模板，多行字符串；不更新状态                                                                                                                                                                            |
+| GET /api/proxy-orders/accounts         | accounts | page/limit/keyword，scope=pool/candidates；返回 rows/count/availableCount，其中 availableCount 为整个专用池中状态“未使用”、未占用且未绑定普通取机人的数量；无密码                                                                      |
+| POST /api/proxy-orders/accounts/import | accounts | text，每行邮箱+密码；全量先验证，同账号密码差异拒绝不回显                                                                                                                                                                              |
+| POST /api/proxy-orders/accounts/adopt  | accounts | ids，核对后纳入已有账号；有普通绑定拒绝                                                                                                                                                                                                |
 | POST /api/proxy-orders/accounts/status | accounts | accounts=[{id,expectedUpdatedAt}] 1–100 个专用池账号、status=未使用/使用中/已下架/异常；改为未使用须 confirmedStopped=true。整批行锁、版本校验与事务，任一账号不存在、非专用池或仍被代抢占用时整批拒绝；仅更新状态，保留备注和占用历史 |
-| PUT /api/proxy-orders/accounts/:id | accounts | status,notes,expectedUpdatedAt；改为未使用须 confirmedStopped=true，仍被代抢占用的账号拒绝；原账号更新冲突拒绝 |
+| PUT /api/proxy-orders/accounts/:id     | accounts | status,notes,expectedUpdatedAt；改为未使用须 confirmedStopped=true，仍被代抢占用的账号拒绝；原账号更新冲突拒绝                                                                                                                         |
 
 业务校验返回 400；不存在 404；占用/重复/版本冲突 409；无权限 403。复制拒绝未确认门店/不完整资料/异常账号/终态订单，错误不回显密码。读接口无隐式自动变更；匹配由 API 内可恢复的 20 秒周期扫描触发，跨进程使用事务锁，最多每批 100 个委托，分页游标循环扫描防饥饿。
 
@@ -825,24 +837,24 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 `inventory.read` 为可分配的普通用户权限，允许 GET catalog/scope/latest/history/history/export/analysis；管理员自动拥有。其他接口均保留 admin 角色校验，包括设置、目录修改、轮次详情、手动采集、恢复、通知测试和投递记录。菜单与页面路由同步检查，旧 tab 链接归入用户或管理员菜单后再次鉴权。现有普通用户不隐式获得权限，由管理员在用户管理中分配。
 
-| 方法/路径 | 请求与结果 |
-| --- | --- |
-| GET /scope | 已启用且支持的商品及已启用门店白名单、组合数、采集开关、汇总状态和最后成功时间；不含代理、预算、Webhook 或内部运行配置 |
-| GET /catalog | 仅返回 iPhone 18 Pro／Pro Max 商品及全部门店目录、启用与待确认状态；范围外旧商品不返回 |
-| PUT /catalog | `{kind:products或stores,ids:[],enabled:boolean}`，批量启停；范围外商品 ID 拒绝且整批不修改 |
-| POST /catalog/refresh | 排队一次官网目录核对，不同步发起外部请求 |
-| GET /settings | 配置/version/hasWebhook/目标名称，不含密文 |
-| PUT /settings | `{version,config,webhook?}`，严格白名单、版本控制；首次开启通知须先成功测试 |
-| GET /latest | 通用筛选 cities/stores/models/capacities/colors/skus（逗号分隔），onlyInStock，page/pageSize；返回 items/total/summary/asOf |
-| POST /refresh | 同样筛选，当前启用范围内合并排队；返回轮次，不绕过保护 |
-| GET /rounds | 分页轮次及完成/失败/待采、耗时与固定范围 |
-| GET /rounds/:id | 固定轮次逐 SKU/门店覆盖矩阵与脱敏任务状态，支持通用筛选和分页；明细过期仅返回汇总 |
-| GET /history | 通用筛选 + from/to（明确时区 ISO）、metric（detections/arrivals/first/recovery/all）、source（auto/manual/all）；分页 |
-| GET /history/export | 同历史筛选 CSV，最多 50000 条；超过上限拒绝并要求缩小范围，防公式注入 |
-| GET /analysis | 同历史筛选 + bucketMinutes（10/20/30/60）；hours/configurations/heatmap/cities/stores，附 coverage 和 detailAvailable |
-| GET /health | 保护状态、预算、队列、最近成功/错误、下轮计划，脱敏 |
-| POST /resume | 人工确认核查后解除人工阻断，但保留预算和未到期冷却 |
-| POST /notifications/test | 当前机器人合成测试排队，与正式发送共用速率 |
-| GET /deliveries | 分页投递状态，accepted 不代表群内已读 |
+| 方法/路径                | 请求与结果                                                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| GET /scope               | 已启用且支持的商品及已启用门店白名单、组合数、采集开关、汇总状态和最后成功时间；不含代理、预算、Webhook 或内部运行配置      |
+| GET /catalog             | 仅返回 iPhone 18 Pro／Pro Max 商品及全部门店目录、启用与待确认状态；范围外旧商品不返回                                      |
+| PUT /catalog             | `{kind:products或stores,ids:[],enabled:boolean}`，批量启停；范围外商品 ID 拒绝且整批不修改                                  |
+| POST /catalog/refresh    | 排队一次官网目录核对，不同步发起外部请求                                                                                    |
+| GET /settings            | 配置/version/hasWebhook/目标名称，不含密文                                                                                  |
+| PUT /settings            | `{version,config,webhook?}`，严格白名单、版本控制；首次开启通知须先成功测试                                                 |
+| GET /latest              | 通用筛选 cities/stores/models/capacities/colors/skus（逗号分隔），onlyInStock，page/pageSize；返回 items/total/summary/asOf |
+| POST /refresh            | 同样筛选，当前启用范围内合并排队；返回轮次，不绕过保护                                                                      |
+| GET /rounds              | 分页轮次及完成/失败/待采、耗时与固定范围                                                                                    |
+| GET /rounds/:id          | 固定轮次逐 SKU/门店覆盖矩阵与脱敏任务状态，支持通用筛选和分页；明细过期仅返回汇总                                           |
+| GET /history             | 通用筛选 + from/to（明确时区 ISO）、metric（detections/arrivals/first/recovery/all）、source（auto/manual/all）；分页       |
+| GET /history/export      | 同历史筛选 CSV，最多 50000 条；超过上限拒绝并要求缩小范围，防公式注入                                                       |
+| GET /analysis            | 同历史筛选 + bucketMinutes（10/20/30/60）；hours/configurations/heatmap/cities/stores，附 coverage 和 detailAvailable       |
+| GET /health              | 保护状态、预算、队列、最近成功/错误、下轮计划，脱敏                                                                         |
+| POST /resume             | 人工确认核查后解除人工阻断，但保留预算和未到期冷却                                                                          |
+| POST /notifications/test | 当前机器人合成测试排队，与正式发送共用速率                                                                                  |
+| GET /deliveries          | 分页投递状态，accepted 不代表群内已读                                                                                       |
 
 库存展示与统计口径见[库存监控](库存监控.md)。个人筛选不修改全局采集清单；通知筛选仅影响提醒。不存在设置任意请求 URL 或任意 SQL 的接口。

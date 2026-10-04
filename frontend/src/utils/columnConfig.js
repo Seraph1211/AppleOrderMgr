@@ -44,3 +44,13 @@ export function mergeColumnConfig(defaultColumns, savedColumns) {
     })
     .sort((left, right) => Number(Boolean(left.pinned)) - Number(Boolean(right.pinned)));
 }
+
+/** 首次恢复官网状态列，其他用户配置保持原样；后续保存不再强制位置。 */
+export function restoreOfficialStatusColumn(columns) {
+  const status = columns.find(column => column.key === 'officialOrderStatus');
+  if (!status) return columns;
+  const result = columns.filter(column => column.key !== status.key);
+  const index = result.findIndex(column => column.key === 'orderNumber');
+  result.splice(index + 1, 0, { ...status, visible: true });
+  return result;
+}
