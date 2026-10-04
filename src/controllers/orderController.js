@@ -148,6 +148,8 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
   return {
     id: plain.id,
     order_number: plain.orderNumber,
+    official_order_status: plain.officialRawStatus || null,
+    official_status_observed_at: plain.officialStatusObservedAt || null,
     serial_numbers: plain.serialNumbers || [],
     ingestion_source: plain.ingestionSource || 'unknown',
     source_recipient_tag: plain.sourceRecipientTag || null,
@@ -233,6 +235,8 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
   return {
     id: plain.id,
     order_number: plain.orderNumber,
+    official_order_status: plain.officialRawStatus || null,
+    official_status_observed_at: plain.officialStatusObservedAt || null,
     ingestion_source: plain.ingestionSource || 'unknown',
     source_recipient_tag: plain.sourceRecipientTag || null,
     recipient_profile_tag: plain.recipient?.tag || null,

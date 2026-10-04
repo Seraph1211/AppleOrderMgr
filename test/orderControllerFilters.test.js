@@ -108,8 +108,8 @@ test('订单 DTO 只返回邮件生命周期和历史限制', () => {
     email_payment_status: 'paid',
     payment_assignment_hold_reason: 'legacy_payment_restriction',
   });
-  expect(list).not.toHaveProperty('official_order_status');
-  expect(detail).not.toHaveProperty('official_order_status');
+  expect(list.official_order_status).toBeNull();
+  expect(detail.official_order_status).toBeNull();
 });
 
 test('订单详情仅在订单敏感字段权限通过后返回密码快照', () => {

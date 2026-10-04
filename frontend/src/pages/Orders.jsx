@@ -1,3 +1,6 @@
+import OfficialOrderStatus from '../components/OfficialOrderStatus';
+import OfficialOrderRefreshPanel from '../components/OfficialOrderRefreshPanel';
+import { submitOfficialOrderRefresh } from '../api/officialOrderRefreshApi';
 import OrderAmount from '../components/OrderAmount';
 import OrderMailDrawer from '../components/OrderMailDrawer';
 import AutoDismissToast from '../components/AutoDismissToast';
@@ -40,7 +43,11 @@ export default function Orders() {
   const canReadMail = can(PERMISSIONS.ORDER_MAIL_READ) || can(PERMISSIONS.ORDER_MAIL_MANAGE);
   const canRefreshMailStatus = can(PERMISSIONS.ORDER_MAIL_MANAGE);
   const canExportOrders = can(PERMISSIONS.ORDERS_EXPORT);
-  const canSelectOrders = canRefreshMailStatus || canExportOrders;
+  const canRefreshOfficialStatus = can(PERMISSIONS.ORDERS_EDIT);
+  const canSelectOrders = canRefreshMailStatus || canExportOrders || canRefreshOfficialStatus;
+  const [officialSubmitting, setOfficialSubmitting] = useState(false);
+  const [officialBatchId, setOfficialBatchId] = useState(null);
+  const [allFilteredSelected, setAllFilteredSelected] = useState(false);
   const [mailOrder, setMailOrder] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -59,6 +66,7 @@ export default function Orders() {
   const showToast = useCallback((type, message) => {
     if (message) setToast({ id: Date.now(), type, message });
   }, []);
+  const refreshAfterOfficial = useCallback(() => loadOrdersRef.current?.(true), []);
   const dismissToast = useCallback(() => setToast(null), []);
 
   // 分页状态
@@ -91,6 +99,10 @@ export default function Orders() {
     stores: [],
     recipientTags: [],
   });
+
+  useEffect(() => {
+    setAllFilteredSelected(false);
+  }, [searchTerm, filters]);
 
   useEffect(() => {
     setSelectedIds([]);
@@ -136,6 +148,33 @@ export default function Orders() {
       document.removeEventListener('visibilitychange', refreshVisible);
     };
   }, []);
+
+  const handleOfficialRefresh = async (ids = null) => {
+    if (officialSubmitting || !canRefreshOfficialStatus) return;
+    setOfficialSubmitting(true);
+    try {
+      const input =
+        !ids && allFilteredSelected
+          ? { selection: 'filtered', filters: { keyword: searchTerm, ...filters } }
+          : { selection: 'ids', orderIds: ids || selectedIds };
+      const response = await submitOfficialOrderRefresh({
+        ...input,
+        requestKey: crypto.randomUUID(),
+      });
+      if (!response.success) throw new Error('官网更新提交失败');
+      if (response.data.batchId) setOfficialBatchId(response.data.batchId);
+      showToast(
+        response.data.queued ? 'success' : 'warning',
+        `已提交 ${response.data.queued} 单，${response.data.skipped} 单已在队列中`
+      );
+      setSelectedIds([]);
+      setAllFilteredSelected(false);
+    } catch (error) {
+      showToast('error', error.message || '官网更新提交失败');
+    } finally {
+      setOfficialSubmitting(false);
+    }
+  };
 
   const mailReplayMessage = (totals, mode) => {
     if (totals.messages === 0) return '所选订单没有关联的订单邮件';
@@ -210,6 +249,8 @@ export default function Orders() {
           id: order.id,
           orderNumber: order.order_number,
           serialNumbers: order.serial_numbers || [],
+          officialOrderStatus: order.official_order_status || null,
+          officialStatusObservedAt: order.official_status_observed_at || null,
           ingestionSource: order.ingestion_source,
           sourceRecipientTag: order.source_recipient_tag,
           recipientProfileTag: order.recipient_profile_tag,
@@ -381,6 +422,13 @@ export default function Orders() {
             </p>
           </div>
         );
+      case 'officialOrderStatus':
+        return (
+          <OfficialOrderStatus
+            status={order.officialOrderStatus}
+            observedAt={order.officialStatusObservedAt}
+          />
+        );
       case 'serialNumbers':
         return value?.length ? (
           <div className="space-y-1 font-mono text-sm text-gray-900">
@@ -535,6 +583,20 @@ export default function Orders() {
               >
                 <Mail className="w-4 h-4" />
                 邮件
+              </button>
+            )}
+            {canRefreshOfficialStatus && (
+              <button
+                className="btn btn-secondary text-sm inline-flex items-center gap-1"
+                aria-label={`更新官网状态 ${order.orderNumber}`}
+                disabled={officialSubmitting}
+                onClick={event => {
+                  event.stopPropagation();
+                  handleOfficialRefresh([order.id]);
+                }}
+              >
+                <RefreshCw className="w-4 h-4" />
+                更新官网状态
               </button>
             )}
             {canRefreshMailStatus && (
@@ -740,16 +802,75 @@ export default function Orders() {
         </div>
       </div>
 
+      {canRefreshOfficialStatus && (
+        <OfficialOrderRefreshPanel
+          batchId={officialBatchId}
+          onBatchChange={setOfficialBatchId}
+          onUpdated={refreshAfterOfficial}
+        />
+      )}
+
       {/* 订单列表 */}
       <div className="card min-w-0">
         {canSelectOrders && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-gray-600">已选择 {selectedIds.length} 项（当前页）</span>
+            <span className="text-sm text-gray-600">
+              {allFilteredSelected
+                ? `已选择筛选结果全部 ${pagination.totalItems} 单`
+                : `已选择 ${selectedIds.length} 项（当前页）`}
+            </span>
             <div className="flex flex-wrap items-center gap-2">
+              {canRefreshOfficialStatus && (
+                <>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={loading || !orders.length || officialSubmitting}
+                    onClick={() => {
+                      setAllFilteredSelected(false);
+                      setSelectedIds(orders.map(order => order.id));
+                    }}
+                  >
+                    全选本页
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={loading || !orders.length || officialSubmitting}
+                    onClick={() => {
+                      setAllFilteredSelected(true);
+                      setSelectedIds(orders.map(order => order.id));
+                    }}
+                  >
+                    全选筛选结果（{pagination.totalItems}）
+                  </button>
+                  {(allFilteredSelected || selectedIds.length > 0) && (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setAllFilteredSelected(false);
+                        setSelectedIds([]);
+                      }}
+                    >
+                      取消选择
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-primary inline-flex items-center gap-1"
+                    disabled={
+                      loading || officialSubmitting || (!allFilteredSelected && !selectedIds.length)
+                    }
+                    onClick={() => handleOfficialRefresh()}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${officialSubmitting ? 'animate-spin' : ''}`} />
+                    {officialSubmitting ? '正在提交' : '更新选中官网状态'}
+                  </button>
+                </>
+              )}
               {canExportOrders && (
                 <button
                   className="btn btn-secondary flex items-center gap-2"
-                  disabled={loading || exportingSelected || selectedIds.length === 0}
+                  disabled={
+                    loading || exportingSelected || allFilteredSelected || selectedIds.length === 0
+                  }
                   onClick={() => setShowExportModal(true)}
                 >
                   <Download className="w-4 h-4" />
@@ -759,7 +880,12 @@ export default function Orders() {
               {canRefreshMailStatus && (
                 <button
                   className="btn btn-secondary flex items-center gap-2"
-                  disabled={loading || mailBatchSubmitting || selectedIds.length === 0}
+                  disabled={
+                    loading ||
+                    mailBatchSubmitting ||
+                    allFilteredSelected ||
+                    selectedIds.length === 0
+                  }
                   onClick={handleSelectedMailStatusRefresh}
                 >
                   <RefreshCw className={`w-4 h-4 ${mailBatchSubmitting ? 'animate-spin' : ''}`} />
@@ -811,16 +937,24 @@ export default function Orders() {
                           className="h-6 w-6 shrink-0"
                           aria-label={`选择订单 ${order.orderNumber}`}
                           disabled={mailBatchSubmitting || exportingSelected}
-                          checked={selectedIds.includes(order.id)}
-                          onChange={event =>
+                          checked={allFilteredSelected || selectedIds.includes(order.id)}
+                          onChange={event => {
+                            setAllFilteredSelected(false);
                             setSelectedIds(previous =>
                               event.target.checked
-                                ? [...previous, order.id]
+                                ? [...new Set([...previous, order.id])]
                                 : previous.filter(id => id !== order.id)
-                            )
-                          }
+                            );
+                          }}
                         />
                       )}
+                    </div>
+                    <div className="mt-2 flex items-start gap-2">
+                      <span className="shrink-0 text-xs text-gray-500">官网状态</span>
+                      <OfficialOrderStatus
+                        status={order.officialOrderStatus}
+                        observedAt={order.officialStatusObservedAt}
+                      />
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <span className={`badge ${status.class}`}>{status.text}</span>
@@ -882,13 +1016,15 @@ export default function Orders() {
                           disabled={mailBatchSubmitting || exportingSelected}
                           checked={
                             orders.length > 0 &&
-                            orders.every(order => selectedIds.includes(order.id))
+                            (allFilteredSelected ||
+                              orders.every(order => selectedIds.includes(order.id)))
                           }
-                          onChange={event =>
+                          onChange={event => {
+                            setAllFilteredSelected(false);
                             setSelectedIds(
                               event.target.checked ? orders.map(order => order.id) : []
-                            )
-                          }
+                            );
+                          }}
                         />
                       </th>
                     )}
@@ -934,14 +1070,15 @@ export default function Orders() {
                             type="checkbox"
                             aria-label={`选择订单 ${order.orderNumber}`}
                             disabled={mailBatchSubmitting || exportingSelected}
-                            checked={selectedIds.includes(order.id)}
-                            onChange={event =>
+                            checked={allFilteredSelected || selectedIds.includes(order.id)}
+                            onChange={event => {
+                              setAllFilteredSelected(false);
                               setSelectedIds(previous =>
                                 event.target.checked
-                                  ? [...previous, order.id]
+                                  ? [...new Set([...previous, order.id])]
                                   : previous.filter(id => id !== order.id)
-                              )
-                            }
+                              );
+                            }}
                           />
                         </td>
                       )}
