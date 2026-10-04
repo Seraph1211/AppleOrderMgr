@@ -20,6 +20,7 @@ import {
   ListChecks,
   ClipboardCheck,
   BadgeDollarSign,
+  Warehouse,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getEmailProcessingMetrics } from '../api';
@@ -42,6 +43,7 @@ const baseNavigation = [
     icon: ClipboardCheck,
     permission: PERMISSIONS.PICKUPS_READ,
   },
+  { name: '自有库存', href: '/stock', icon: Warehouse, permission: PERMISSIONS.STOCK_READ },
   { name: 'Apple ID', href: '/apple-ids', icon: Apple, permission: PERMISSIONS.APPLE_IDS_READ },
   { name: '取机人', href: '/recipients', icon: User, permission: PERMISSIONS.RECIPIENTS_READ },
   {

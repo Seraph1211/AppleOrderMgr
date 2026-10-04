@@ -1,0 +1,114 @@
+.stock-page {
+  min-width: 0;
+  color: #374151;
+}
+.stock-page .stock-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.stock-page .stock-toolbar .input {
+  width: auto;
+  max-width: 100%;
+}
+.stock-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: white;
+}
+.stock-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  text-align: left;
+}
+.stock-table th {
+  color: #6b7280;
+  background: #f9fafb;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.stock-table th,
+.stock-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+}
+.stock-table tbody tr:hover {
+  background: #f9fafb;
+}
+.stock-table tr:last-child td {
+  border-bottom: none;
+}
+.stock-modal .input {
+  width: 100%;
+  min-width: 0;
+}
+.stock-modal .btn,
+.stock-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.stock-dialog-scroll {
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+@media (max-width: 639px) {
+  .stock-page .btn,
+  .stock-modal .btn {
+    min-height: 44px;
+  }
+  .stock-page .input,
+  .stock-modal .input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .stock-page .stock-toolbar .input {
+    flex: 1 1 140px;
+  }
+  .stock-table th,
+  .stock-table td {
+    padding: 10px 8px;
+  }
+  .stock-hide-mobile {
+    display: none;
+  }
+}
+
+.stock-page .stock-pagination .input,
+.stock-modal .stock-pagination .input {
+  width: auto;
+}
+.stock-pagination button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ledger-device-cell {
+  min-width: 130px;
+}
+.ledger-summary-cell {
+  min-width: 130px;
+}
+@media (max-width: 639px) {
+  .ledger-page .stock-table {
+    table-layout: fixed;
+  }
+  .ledger-page .stock-table th:first-child {
+    width: 38px;
+  }
+  .ledger-page .ledger-device-cell,
+  .ledger-page .ledger-summary-cell {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .ledger-page .stock-table th:nth-child(4) {
+    width: 118px;
+  }
+}

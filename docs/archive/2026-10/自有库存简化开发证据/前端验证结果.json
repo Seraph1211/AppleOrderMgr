@@ -1,0 +1,102 @@
+{
+  "status": "前端完成并冻结，待主验收",
+  "environment": {
+    "worktree": "/Users/seraph/.codex/worktrees/stock-sales-management/AppleOrderMgr",
+    "frontend": "http://127.0.0.1:5318",
+    "api": "http://127.0.0.1:3308",
+    "database": "apple_order_mgr_stock_test_1004",
+    "enabledAtFinish": true,
+    "mutatedAcceptance1005": false,
+    "productionChanged": false,
+    "committedOrPushed": false,
+    "browserViewportReset": true
+  },
+  "checks": {
+    "frontendLint": {
+      "passed": true,
+      "errors": 0,
+      "existingUnrelatedWarnings": 24,
+      "log": "final-lint.log"
+    },
+    "viteBuild": {
+      "passed": true,
+      "seconds": 3.15,
+      "existingWarning": "大于500KB共享bundle",
+      "log": "final-build.log"
+    },
+    "targetedPrettier": {
+      "passed": true,
+      "log": "final-format.log"
+    },
+    "apiPersistenceReadback": {
+      "passed": true,
+      "cases": 9,
+      "evidence": "final-readback.json"
+    }
+  },
+  "realBrowserChecks": [
+    "375x400 短视口：新规格就地创建、两台SN入库、官网成本和单台费用",
+    "第二台编辑至另一仓库，跨仓选择两台直接售出，逐台售价不同",
+    "已代收待转回批量更新为公司已到账，刷新持久化",
+    "历史直接已售：实际日期，人员/入库日/成本待补，付款待核实",
+    "重复SN报错不丢表单，跳转已有设备而不覆盖原售价",
+    "历史订单号、成本、费用、来源仓库后补，毛利和审计原因正确",
+    "误售恢复需原因和实物确认，随后按新售价重新售出，旧货款不遗留",
+    "新售非空备注保存并刷新详情可读",
+    "1366x767：名称直接新建仓库、PATCH更名，失败表单保留且重试不重复",
+    "模块暂停仍可读取，写入口禁用；重新启用成功",
+    "旧stock-sales及stock-receipts地址均重定向stock已售页",
+    "旧部分到账复杂销售：金额、售价、规格无法单台改写，基础资料仍可补",
+    "375x400：历史误售原入库日期未知，恢复表单空日期不能提交；填真实2026-09-15后恢复成功",
+    "375x720刷新现货，日期和仓库持久化，scrollWidth=375无页面横溢出"
+  ],
+  "retired": {
+    "pages": ["StockSales.jsx", "StockReceipts.jsx"],
+    "components": [
+      "StockCollectionForm.jsx",
+      "StockSaleDetail.jsx",
+      "StockSaleForm.jsx",
+      "StockImportPreview.jsx",
+      "StockExpenseForm.jsx",
+      "StockPickForm.jsx",
+      "StockReceiptForm.jsx",
+      "StockReceiveForm.jsx",
+      "StockCostForm.jsx",
+      "StockUnitDetail.jsx",
+      "StockSelectors.jsx",
+      "StockTransfers.jsx",
+      "StockReport.jsx",
+      "StockCatalog.jsx",
+      "StockCorrectionPreview.jsx",
+      "StockShipForm.jsx",
+      "StockConsignmentForm.jsx"
+    ],
+    "other": "移除无引用旧导入/导出/预览API及旧StockEditor、旧流程专用日期/求和辅助函数，源码无旧组件引用",
+    "retained": {
+      "StockSerialInput.jsx": "入库和历史补录复用扫码及图片识别入口",
+      "StockAttachments.jsx": "保存后设备照片与凭证",
+      "StockCommon.jsx": "通用表格、模态框、表单、分页和反馈",
+      "stockHooks.js": "取消陈旧查询、幂等请求键、保留错误输入",
+      "stockHelpers.js": "通用金额日期及历史只读审计操作名称"
+    }
+  },
+  "screenshots": [
+    "电脑最终台账.jpg",
+    "电脑售出备注详情.jpg",
+    "手机台账375.jpg",
+    "手机现货日期刷新375.jpg",
+    "手机重复SN保留表单.jpg",
+    "手机历史恢复日期必填.jpg",
+    "手机历史恢复成功.jpg",
+    "暂停录入仍可查询.jpg",
+    "旧复杂已售只允许资料补充.jpg"
+  ],
+  "boundaries": [
+    "全部写入仅限开发DB1004合成资料，不等于真实业务验收",
+    "本轮未使用真实手机相机、真实照片OCR或真实OSS上传；沿用既有组件",
+    "后台权限、迁移和410退役由父Agent独立验证",
+    "未提交、未推送、未生产发布"
+  ],
+  "originalEvidenceDirectory": "tmp/stock-simplification/frontend-evidence",
+  "attachmentReferenceRule": "截图和日志名称相对于 originalEvidenceDirectory；本文件为结果摘要，原始附件保留在工作树临时证据目录。"
+}

@@ -22,6 +22,7 @@ function client() {
   return new OSS(config());
 }
 
+/** 校验私有凭证文件名、MIME与10MiB边界。 */
 function validateFile({ originalName, contentType, sizeBytes }) {
   const name = String(originalName || '')
     .trim()
@@ -57,14 +58,102 @@ function createUpload(orderId, kind, metadata) {
 
 /** 核验浏览器直传对象确实存在且大小一致。 */
 async function confirmUpload(objectKey, expectedSize) {
-  const result = await client().head(objectKey);
-  const actual = Number(result.res?.headers?.['content-length']);
-  if (!Number.isFinite(actual) || actual !== Number(expectedSize))
-    throw ApiError.conflict('OSS 文件大小与登记信息不一致');
+  try {
+    const result = await client().head(objectKey);
+    const actual = Number(result.res?.headers?.['content-length']);
+    if (!Number.isFinite(actual) || actual !== Number(expectedSize))
+      throw ApiError.conflict('OSS 文件大小与登记信息不一致');
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(502, 'OSS_UPLOAD_UNVERIFIED', '无法核验凭证，请确认上传成功后重试');
+  }
 }
 
+/** 为已授权的旧取货凭证生成短期只读地址。 */
 function createReadUrl(objectKey) {
   return client().signatureUrl(objectKey, { method: 'GET', expires: 300 });
 }
 
-module.exports = { createUpload, confirmUpload, createReadUrl, validateFile };
+const STOCK_KINDS = new Set([
+  'unit_photo',
+  'sale_document',
+  'collection_proof',
+  'receipt_proof',
+  'expense_proof',
+]);
+const STOCK_OBJECT_PATTERN =
+  /^pickup-evidence\/stock\/[a-f0-9-]{36}\/(?:unit_photo|sale_document|collection_proof|receipt_proof|expense_proof)\/[a-f0-9-]{36}\.(?:jpg|png|webp|pdf)$/;
+
+function validateStockObjectKey(objectKey) {
+  if (typeof objectKey !== 'string' || !STOCK_OBJECT_PATTERN.test(objectKey))
+    throw ApiError.badRequest('库存凭证路径无效');
+}
+
+/** 在现有私有凭证目录下创建库存对象键；不接受用户指定路径。 */
+function createStockUpload(attachmentId, kind, metadata) {
+  if (!/^[a-f0-9-]{36}$/.test(String(attachmentId)) || !STOCK_KINDS.has(kind))
+    throw ApiError.badRequest('库存凭证类型或标识无效');
+  const file = validateFile(metadata);
+  const extension = {
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/webp': 'webp',
+    'application/pdf': 'pdf',
+  }[file.contentType];
+  const objectKey = `pickup-evidence/stock/${attachmentId}/${kind}/${crypto.randomUUID()}.${extension}`;
+  return { ...file, objectKey, ...createStockUploadUrl(objectKey, file) };
+}
+
+/** 短期直传强制禁止覆盖，避免确认后持旧上传 URL 改写证据。 */
+function createStockUploadUrl(objectKey, metadata) {
+  validateStockObjectKey(objectKey);
+  const file = validateFile(metadata);
+  const uploadHeaders = {
+    'Content-Type': file.contentType,
+    'x-oss-forbid-overwrite': 'true',
+  };
+  const uploadUrl = client().signatureUrl(objectKey, {
+    method: 'PUT',
+    expires: 300,
+    ...uploadHeaders,
+  });
+  return { uploadUrl, uploadHeaders, expiresInSeconds: 300 };
+}
+
+/** 在库存事务外核验 OSS 的实际大小和 MIME；供应商错误不透传。 */
+async function confirmStockUpload(objectKey, metadata) {
+  try {
+    validateStockObjectKey(objectKey);
+    const file = validateFile(metadata);
+    const result = await client().head(objectKey);
+    const headers = result.res?.headers || {};
+    const actualSize = Number(headers['content-length']);
+    const actualType = String(headers['content-type'] || '')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+    if (actualSize !== file.sizeBytes || actualType !== file.contentType)
+      throw new ApiError(409, 'ATTACHMENT_MISMATCH', '凭证实际大小或 MIME 与登记信息不一致');
+    return { objectKey, sizeBytes: actualSize, contentType: actualType };
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    throw new ApiError(502, 'OSS_UPLOAD_UNVERIFIED', '无法核验凭证，请确认上传成功后重试');
+  }
+}
+
+/** 库存凭证的只读签名；调用方必须先核实全部关联目标。 */
+function createStockReadUrl(objectKey) {
+  validateStockObjectKey(objectKey);
+  return createReadUrl(objectKey);
+}
+
+module.exports = {
+  createUpload,
+  confirmUpload,
+  createReadUrl,
+  validateFile,
+  createStockUpload,
+  createStockUploadUrl,
+  confirmStockUpload,
+  createStockReadUrl,
+};

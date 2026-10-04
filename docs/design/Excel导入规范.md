@@ -12,10 +12,10 @@
 
 ## 来源与标准表头
 
-| 类型            | 工作表与列                                                                                                                                                                              |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Apple ID 标准表 | 工作表 Apple IDs；Apple ID、密码、国家、状态、备注、密保问题1、密保答案1、密保问题2、密保答案2、密保问题3、密保答案3                                                                    |
-| 腾讯账号表      | 只读取以 26年AppleID 开头的两个来源表；A 账号、B 密码、D—I 三组问答、K 状态；大陆 L 备注，香港 L 不作备注；J、M 忽略；国家统一中国                                                      |
+| 类型            | 工作表与列                                                                                                                                                                                |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Apple ID 标准表 | 工作表 Apple IDs；Apple ID、密码、国家、状态、备注、密保问题1、密保答案1、密保问题2、密保答案2、密保问题3、密保答案3                                                                      |
+| 腾讯账号表      | 只读取以 26年AppleID 开头的两个来源表；A 账号、B 密码、D—I 三组问答、K 状态；大陆 L 备注，香港 L 不作备注；J、M 忽略；国家统一中国                                                        |
 | 取机人          | 读取含身份证号／身份证号码列的各渠道工作表；标准列为 Apple ID、密码、下单手机号码、Email、省、市、区、街道地址、使用状态、姓、名、身份证号码、TAG、渠道、信息导入模板、真实联系电话、备注 |
 
 标准模板前 1000 行预设文本格式，身份证不能以 Excel 数值存储。数值身份证列为错误，不尝试恢复丢失的低位。来源公式不执行；无缓存值的有效字段公式报错。信息导入模板列作为导出结果，导入时不参与字段解析。
@@ -56,3 +56,44 @@
 - 结果下载将原始姓名、身份证号、说明和返回业务信息全部写为文本单元格，避免证件精度丢失与公式注入。查看与导出均保留原文，这是用户明确批准的身份核验规则。
 
 接口、状态、暂停与恢复见[API 契约](API设计.md)，背景和验收边界见[接入方案](../planning/身份核验接入方案.md)。
+
+## 自有库存、历史销售与资金导入
+
+2026-10-04 本地实现。下述规则仅用于 `/api/stock`；已通过专用 PostgreSQL 合成数据验证，尚未执行生产历史数据导入或真实业务验收。来源订单可以待补，真实 SN 不能缺失；历史已售不能借道当前仓库扣减库存。模型与字段边界见[自有库存数据契约](../database/自有库存与销售数据契约.md)，全部接口见[API 契约的自有库存段](API设计.md#自有库存与销售接口目标契约)。
+
+### 文件、字段与权限
+
+- 使用仓库既有 SheetJS 制品，只接受单个 `.xlsx` 或 UTF-8 `.csv`，上传字段为 `file`。单文件不超过 10MiB、数据不超过 500 行、最多 64 列。XLSX 同时检查压缩目录与受限解压后的实际大小，展开总量不超过 50MiB；不接受加密或不完整压缩包。
+- 优先读取“数据”表，否则读取首表；可附一张“填写说明”，不接受其他有内容的数据表。表头同时接受模板中文名称及下表 camelCase 字段名，未知列、重复列和公式单元格均拒绝；不会执行公式或读取供应商图片来推断价格。
+- 商品可填 `productId`，也可精确填写 `modelName/storageGb/colorName`。容量为 GB 整数。位置和人员可填 ID，也可填对应 Name 字段；名称必须唯一且与基础资料完全相同，同时填写 ID 和名称时两者必须一致。导入不自动创建商品、仓库或人员。
+- 拿货日填写 `YYYY-MM-DD`，其他业务时间使用带时区的 ISO 文本，如 `2026-10-04T15:30:00+08:00`。不把 Excel 日期序号、系统录入时间或所在浏览器时区猜作业务时间。
+- 所有类型要求 `stock.read`、`stock.import` 及所属业务权限；填写成本另需 `stock.cost.read/edit`，填写来源订单另需 `stock.source.link`、`orders.read`、`pickups.read/edit` 及订单 TAG 范围。模板按当前权限省略无权填写的成本与来源列；预览、回读和提交再次检查当前权限。成功预览中的来源订单失去 TAG 访问权后也不能回读其旧来源信息。
+
+| kind                           | 必填及归组规则                                                                                                                                             | 可选或成组字段                                                                                                                                                                                       | 追加权限                                                               |
+| ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `opening`（期初现货）          | `serialNumber`、商品、`locationId/locationName`；SN 按现有扫码规则标准化，已在库／在途／已售不能重复导入                                                   | `acquiredOn`、`costAmount/costBasis`、`sourceOrderId`；`receivedAt` 省略时采用管理员配置的 `cutoverAt`，显式填写时也必须等于该时点                                                                   | `stock.receive`                                                        |
+| `historical_sales`（历史已售） | `saleKey`、`serialNumber`、商品、`channel`、销售负责人、交货人、`shippedAt`、`saleAmount`；重庆自销还需客户；同一 `saleKey` 的渠道、人员、时间及备注须一致 | `customerId/customerName`（代卖最终客户未知可空）、`consigneeLocationId/consigneeLocationName`（代卖必填）、`fromLocationId/fromLocationName`（未知用系统历史地点）、拿货日、成本、来源订单、`notes` | `stock.sales.read/ship`                                                |
+| `collections`（客户付款）      | `externalRecordKey`、`saleId/saleNo`、`destination`、`amount`、`receivedAt`；金额必须等于本单全部已售机器售价                                              | `collectorId/collectorName`（`agent` 必填，`company` 不填）、`notes`                                                                                                                                 | `stock.collections.read/edit`；公司直收另需 `stock.receipts.read/edit` |
+| `receipts`（公司到账）         | `externalRecordKey`、`payerId/payerName`、`amount`、`receivedAt`；只导入合作人全额或部分转回，公司直收由客户付款同时生成                                   | `saleId/saleNo`、`allocationSerialNumber`、`allocationAmount` 三组一起填写，全部为空表示暂未分配；`notes`                                                                                            | `stock.receipts.read/edit`                                             |
+
+`channel=local/consignment`，`destination=company/agent`；模板也接受“自销／重庆自销／代卖”和“公司／代收”。人员字段使用 `customerId/customerName`、`salespersonId/salespersonName`、`handlerId/handlerName`；负责人和交货人必须具备对应业务角色，代收人或转款人可以是有效的外部人员或商户。
+
+成本不明时留空，不能填 0。填写 `costAmount` 时必须同时填写拿货日期与 `costBasis`，以拿货当日对应官网价作人工确认的成本快照；之后补订单或维护价格不会自动重算已有成本。历史出货时间必须早于 `cutoverAt`，仅可新建历史已售实物或把 registered 身份补成已售，不能覆盖当前现货。
+
+每次都需填写 `sourceLabel`（来源名称），来源内资金记录的 `externalRecordKey` 必须稳定，换文件或重新排序不换键。数据库唯一键为 SHA-256（来源名称 NFKC 标准化并 trim + NUL + 原始外部键 trim）；外部键保留大小写，不根据同金额同日期猜测重复。公司到账可同键多行分配不同 SN，但每行金额都是该笔到账总额，不能逐行累计；同组转款人、总额、时间、备注必须一致，不能分配到其他代收人的货款。
+
+### 预览、确认及导出
+
+1. `GET /api/stock/imports/template?kind=...` 下载中文表头模板与填写说明，无示例业务记录。
+2. `POST /api/stock/imports/preview` 上传 `file/kind/sourceLabel`，解析后加密保存有限行载荷，返回 `previewId`、`version`、`previewHash`、`rows[{rowNumber,data,errors}]`、归组 `groups`、全体 `errors`、`canCommit` 与有效期。预览不写实物、销售或货款。
+3. `POST /api/stock/imports/:id/commit` 传 `requestKey/expectedVersion/previewHash`。服务端在统一事务锁内重新读权限、相关资料版本、SN 和资金键，整批校验及写入；任何错误均回滚，不静默部分成功。相同请求键可安全重放，失败事务不遗留成功幂等记录。单批 500 行可以在同一事务中内部拆为有限处理段，但不能分别提交。
+4. `GET /api/stock/imports/:id` 仅本人或管理员可读，并遵循当前业务及字段权限。已提交结果通过 `resultRefs` 返回实物、销售、付款或到账引用；不把预览成功当作已入账。
+5. `GET /api/stock/export` 支持 `entity=units/sales/receipts`、白名单 `fields` 与所属列表筛选，每次最多 5000 行。导出读取同一只读数据库快照和权限投影；未确认金额留空。用户文本按纯文本输出，并转义以 `= + - @` 等起始的内容，已校验金额保留数值单元格及两位格式。
+
+### 过期预览维护
+
+预览有效 24 小时。应用启动和普通查询不会自动清理；过期后提交返回冲突。维护命令 `npm run stock:cleanup-previews` 默认仅统计过期且未提交的预览，不写数据。显式加 `-- --apply` 后每次最多清理 500 条：清空加密载荷、标记 `expired` 并递增版本，保留批次元信息及追加式操作审计；已提交批次和 `resultRefs` 永远不在清理范围。
+
+可用 `--before <带时区的ISO时间>` 缩小过期范围，不允许未来时间；`--created-by <用户ID>` 可限定创建人。库存专用隔离库之外，实际清理还必须提供 `--confirm-database <实际数据库名>`，服务端按连接到的数据库名逐字核对。清理是显式运维动作，不代替生产备份或发布步骤；本轮仅在专用测试库验证。
+
+实现入口：[导入服务](../../src/services/stockImportService.js)、[接口适配](../../src/controllers/stockImportController.js)、[维护脚本](../../scripts/cleanupStockImportPreviews.js)。专项验证见[验收清单](../testing/自有库存与销售管理验收清单.md)及[真实数据库导入测试](../../test/stockImport.integration.test.js)。

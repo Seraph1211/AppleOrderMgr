@@ -1,0 +1,63 @@
+{
+  "scope": "本地隔离合成验证；无生产部署",
+  "serviceTests": {
+    "passed": 29,
+    "failed": 0,
+    "log": "tmp/stock-dev/ledger-test-service.log"
+  },
+  "stockIntegration": {
+    "suitesPassed": 4,
+    "testsPassed": 55,
+    "failed": 0,
+    "includesServiceTests": true,
+    "log": "tmp/stock-dev/ledger-all-stock-integration.log"
+  },
+  "migrationTests": {
+    "passed": 4,
+    "database": "apple_order_mgr_stock_test_1008",
+    "rerunThisFinalGate": false,
+    "log": "tmp/stock-dev/ledger-test-migration.log"
+  },
+  "defaultTests": {
+    "suitesPassed": 89,
+    "testsPassed": 999,
+    "suitesSkipped": 31,
+    "testsSkipped": 422,
+    "failed": 0,
+    "log": "tmp/stock-dev/ledger-full-final-tests.log"
+  },
+  "backendLint": {
+    "errors": 0,
+    "warnings": 3930,
+    "log": "tmp/stock-dev/ledger-backend-full-lint.log"
+  },
+  "frontendLint": {
+    "errors": 0,
+    "warnings": 24,
+    "log": "tmp/stock-simplification/frontend-evidence/final-lint.log"
+  },
+  "frontendBuild": {
+    "passed": true,
+    "warning": "共享bundle超过500KB",
+    "log": "tmp/stock-simplification/frontend-evidence/final-build.log"
+  },
+  "targetedFormat": {
+    "status": "passed",
+    "log": "tmp/stock-dev/ledger-format-final.log",
+    "codeFileCount": 82
+  },
+  "docs": {
+    "status": "passed",
+    "log": "tmp/stock-dev/ledger-docs-final.log",
+    "documents": 194,
+    "reachableDocuments": 194,
+    "documentedModels": 87,
+    "checksActualDatabase": false
+  },
+  "diffCheck": {
+    "status": "passed"
+  },
+  "sourceFreezeFileCount": 82,
+  "completedAt": "2026-10-04T09:44:06.025137+00:00",
+  "sourceFreezeVerified": true
+}

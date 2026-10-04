@@ -44,7 +44,13 @@
     "inventory:validate": "node scripts/validateInventorySource.js",
     "inventory:preflight": "node scripts/measureInventoryCoverage.js",
     "start:inventory-worker": "node src/workers/inventoryWorker.js",
-    "test:browser:inventory": "node scripts/testInventoryBrowser.js"
+    "test:browser:inventory": "node scripts/testInventoryBrowser.js",
+    "test:stock": "jest test/stockMoney.test.js test/stockRules.test.js test/stockCommand.test.js test/stockImport.test.js test/stockEvidence.test.js test/stockImportCleanup.test.js --runInBand",
+    "test:stock:integration": "jest test/stock.integration.test.js test/stockImport.integration.test.js test/stockLegacy.integration.test.js test/stockLedger.integration.test.js --runInBand",
+    "stock:repair-bridges": "node scripts/repairPickupStockBridge.js",
+    "stock:cleanup-previews": "node scripts/cleanupStockImportPreviews.js",
+    "test:stock:ledger": "jest test/stockLedger.integration.test.js --runInBand",
+    "test:stock:ledger:migration": "jest test/stockLedgerMigration.integration.test.js --runInBand"
   },
   "keywords": [
     "apple",
