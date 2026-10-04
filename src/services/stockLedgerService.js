@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { fixedCost } = require('./stockFixedCatalog');
 const db = require('../models');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
@@ -20,6 +21,7 @@ const UNIT_FIELDS = [
   'receivedOn',
   'orderNumber',
   'officialCostAmount',
+  'costBasis',
   'acquiredOn',
   'extraExpenseAmount',
   'notes',
@@ -192,7 +194,7 @@ function supplementary(ctx, item, unit) {
       costStatus: amount ? 'confirmed' : 'pending',
       costSource: amount ? 'manual' : null,
       priceId: null,
-      costBasisCiphertext: null,
+      costBasisCiphertext: encrypt(text(item.costBasis, '成本依据', 2000, true)),
     });
   }
   if (item.extraExpenseAmount !== undefined) {
@@ -240,6 +242,12 @@ async function stockAvailable(ctx, unit) {
 async function registeredUnit(ctx, item, history) {
   try {
     only(item, [...UNIT_FIELDS, ...(history ? ['saleAmount'] : [])]);
+    if (
+      item.officialCostAmount !== undefined ||
+      item.acquiredOn !== undefined ||
+      item.costBasis !== undefined
+    )
+      requirePermissions(ctx, 'stock.cost.edit');
     const serialNumber = normalizeDeviceBarcodes({ serialBarcode: item.serialNumber }).serialNumber;
     const current = await db.StockUnit.findOne({ where: { serialNumber }, ...options(ctx) });
     if (current && current.state !== 'registered')
@@ -271,6 +279,9 @@ async function registeredUnit(ctx, item, history) {
       {
         productId: product.id,
         firstReceivedAt: receivedAt,
+        ...(unit.costStatus !== 'confirmed' && supplements.officialCostAmount === undefined
+          ? await fixedCost(db, product, ctx.transaction)
+          : {}),
         ...supplementary(ctx, supplements, unit),
         ...(history ? {} : { state: 'in_stock', locationId: location.id }),
       },
@@ -295,7 +306,14 @@ async function receiveUnits(ctx, input) {
     if (new Set(serials).size !== serials.length)
       throw ApiError.conflict('本次登记存在重复 SN，请检查列表', undefined, 'SN_EXISTS');
     const ids = [];
-    for (const item of entries) ids.push((await registeredUnit(ctx, item, false)).unit.id);
+    for (const [index, item] of entries.entries()) {
+      try {
+        ids.push((await registeredUnit(ctx, item, false)).unit.id);
+      } catch (error) {
+        if (error instanceof ApiError) error.details = { ...error.details, row: index + 1 };
+        throw error;
+      }
+    }
     return { ledgerUnitIds: ids };
   } catch (error) {
     logger.debug('简化入库失败', { code: error.code || error.name });
@@ -697,9 +715,14 @@ async function importHistory(ctx, input) {
     if (new Set(serials).size !== serials.length)
       throw ApiError.conflict('本次补录存在重复 SN，请检查列表', undefined, 'SN_EXISTS');
     const ids = [];
-    for (const item of entries) {
-      const prepared = await registeredUnit(ctx, item, true);
-      ids.push(await createSale(ctx, prepared, input, item, true));
+    for (const [index, item] of entries.entries()) {
+      try {
+        const prepared = await registeredUnit(ctx, item, true);
+        ids.push(await createSale(ctx, prepared, input, item, true));
+      } catch (error) {
+        if (error instanceof ApiError) error.details = { ...error.details, row: index + 1 };
+        throw error;
+      }
     }
     await assertFinanceConsistent(ctx);
     return { ledgerUnitIds: ids };

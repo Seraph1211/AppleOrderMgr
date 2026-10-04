@@ -21,7 +21,10 @@ export function createStockRequestKey() {
 /** 查询自有库存；所有金额保留服务端小数字符串。 */
 export async function stockGet(path, params, signal) {
   try {
-    const response = await client.get(`/stock${path}`, { params: stockFilters(params), signal });
+    const response = await client.get(`/stock${path}`, {
+      params: stockFilters(params),
+      signal,
+    });
     return response.data;
   } catch (error) {
     throw normalizeStockError(error);
@@ -48,6 +51,22 @@ export async function recognizeStockSerial(_orderId, image, signal) {
     const form = new FormData();
     form.append('image', image);
     return await client.post('/stock/serial/recognize', form, {
+      headers: { 'Content-Type': undefined },
+      timeout: 40000,
+      signal,
+    });
+  } catch (error) {
+    throw normalizeStockError(error);
+  }
+}
+
+/** 盒标候选只读识别，条码结果仅作文字交叉核对。 */
+export async function recognizeStockBox(image, barcodes, signal) {
+  try {
+    const form = new FormData();
+    form.append('image', image);
+    form.append('barcodes', JSON.stringify(barcodes));
+    return await client.post('/stock/box/recognize', form, {
       headers: { 'Content-Type': undefined },
       timeout: 40000,
       signal,

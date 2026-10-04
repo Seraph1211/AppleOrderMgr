@@ -6,7 +6,7 @@ import { parseSerialBarcode, cameraErrorMessage } from '../../utils/pickupBarcod
 import { StockFeedback } from './StockCommon';
 
 /** 复用条码解析与 OCR，识别只添加候选，不产生入库或出货。 */
-export default function StockSerialInput({ onSerials, disabled = false }) {
+export default function StockSerialInput({ onSerials, disabled = false, hideOcr = false }) {
   const [value, setValue] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -128,7 +128,10 @@ export default function StockSerialInput({ onSerials, disabled = false }) {
             if (!failures.length) setOcr(false);
             return failures;
           } catch (failure) {
-            return serials.map(serial => ({ serial, message: failure.message }));
+            return serials.map(serial => ({
+              serial,
+              message: failure.message,
+            }));
           }
         }}
         onCancel={() => setOcr(false)}
@@ -174,18 +177,20 @@ export default function StockSerialInput({ onSerials, disabled = false }) {
           <Camera className="h-4 w-4" />
           {camera ? '关闭相机' : '相机扫码'}
         </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          onClick={() => {
-            stop();
-            setOcr(true);
-          }}
-          disabled={disabled}
-        >
-          <ImagePlus className="h-4 w-4" />
-          图片识别
-        </button>
+        {!hideOcr && (
+          <button
+            type="button"
+            className="btn btn-secondary"
+            onClick={() => {
+              stop();
+              setOcr(true);
+            }}
+            disabled={disabled}
+          >
+            <ImagePlus className="h-4 w-4" />
+            图片识别
+          </button>
+        )}
       </div>
       <video
         ref={video}

@@ -1036,3 +1036,11 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 | GET /deliveries          | 分页投递状态，accepted 不代表群内已读                                                                                       |
 
 库存展示与统计口径见[库存监控](库存监控.md)。个人筛选不修改全局采集清单；通知筛选仅影响提醒。不存在设置任意请求 URL 或任意 SQL 的接口。
+
+### 库存盒标结构化识别
+
+`POST /api/stock/box/recognize`：multipart `image`，最多 10MiB JPG/PNG/WebP。需 stock.read 及入库权限或完整历史补录权限；与旧 serial/recognize 共用每用户 10次/分钟和取货月额度，不自动重试。返回 `candidates` 数组：serialNumber、productId、skuCode、modelName、storageGb、colorName、matchBasis、reviewReasons、sources；成本仅 stock.cost.read 可见，不返回原始全文。冲突不自动确定规格。调用不写业务。
+
+`GET /api/stock/ledger/catalog` 增加 skuCode、entryEligible；cost.read 可见 fixedCostAmount 和 priceVersion。入库及历史补录每台独立 productId；未提供 officialCostAmount 时服务端默认匹配固定目录，显式人工金额或待补仍需 cost.edit。未知拿货日期保持空。
+
+`GET /api/stock/ledger/check-serials?serials=[...]`：最多100个 SN，返回 `existing:[{id,serialNumber}]`，只含已在库、已售、在途；registered 不拦截，正式保存仍在事务内检查规格与既有成本。人工成本的可选 `costBasis` 按成本权限校验并加密保存。单行失败错误附 `details.row`（1起始）；整批回滚。

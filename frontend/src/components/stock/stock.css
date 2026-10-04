@@ -112,3 +112,15 @@
     width: 118px;
   }
 }
+
+/* 逐台录入列使用横向滚动，不能继承主台账窄屏固定列宽。 */
+.ledger-page .stock-modal .stock-table:has(input[aria-label='本台 SN']) {
+  table-layout: auto;
+  min-width: 760px;
+}
+.ledger-page .stock-modal .stock-table:has(input[aria-label='本台 SN']) th {
+  width: auto;
+}
+.ledger-page .stock-modal .stock-table:has(input[aria-label='本台 SN']) td:nth-child(2) {
+  min-width: 200px;
+}

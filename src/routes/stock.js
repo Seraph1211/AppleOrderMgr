@@ -134,6 +134,34 @@ router.get(
   read(readStock, (ctx, req) => ledgerProjection.list(ctx, req.query))
 );
 router.get(
+  '/ledger/check-serials',
+  read(readStock, async (ctx, req) => {
+    try {
+      const serials = JSON.parse(req.query.serials || '[]');
+      if (
+        !Array.isArray(serials) ||
+        !serials.length ||
+        serials.length > 100 ||
+        serials.some(
+          value => typeof value !== 'string' || !/^(?:[A-Z0-9]{10}|[A-Z0-9]{12})$/.test(value)
+        )
+      )
+        throw ApiError.badRequest('SN 清单无效');
+      const rows = await require('../models').StockUnit.findAll({
+        where: { serialNumber: serials, state: ['in_stock', 'sold', 'in_transit'] },
+        attributes: ['id', 'serialNumber'],
+        transaction: ctx.transaction,
+        raw: true,
+      });
+      return { existing: rows };
+    } catch (error) {
+      logger.debug('库存重复预检查未完成', { code: error.code || error.name });
+      if (error instanceof SyntaxError) throw ApiError.badRequest('SN 清单无效');
+      throw error;
+    }
+  })
+);
+router.get(
   '/ledger/:id',
   read(readStock, (ctx, req) => ledgerProjection.detail(ctx, req.params.id))
 );
@@ -695,14 +723,33 @@ function upload(field, fieldsCount) {
       next(error ? ApiError.badRequest('文件无效或超过10MiB') : undefined)
     );
 }
+const stockOcrLimit = rateLimit({
+  windowMs: 60000,
+  limit: 10,
+  keyGenerator: req => String(req.user.id),
+  handler: (_req, _res, next) => next(new ApiError(429, 'OCR_RATE_LIMIT', '识别过于频繁')),
+});
+router.post(
+  '/box/recognize',
+  stockOcrLimit,
+  upload('image', 1),
+  asyncHandler(async (req, res) => {
+    try {
+      const data = await require('../services/stockBoxService').recognizeBox(
+        req.user,
+        req.file,
+        req.body.barcodes
+      );
+      res.set('Cache-Control', 'no-store').json({ success: true, data });
+    } catch (error) {
+      logger.debug('库存盒标识别未完成', { code: error.code || error.name });
+      throw error;
+    }
+  })
+);
 router.post(
   '/serial/recognize',
-  rateLimit({
-    windowMs: 60000,
-    limit: 10,
-    keyGenerator: req => String(req.user.id),
-    handler: (_req, _res, next) => next(new ApiError(429, 'OCR_RATE_LIMIT', '识别过于频繁')),
-  }),
+  stockOcrLimit,
   upload('image', 0),
   asyncHandler(async (req, res) => {
     try {

@@ -76,7 +76,7 @@ function parseResponse(body) {
 }
 
 /** 使用独立服务端凭据调用全文识别高精版一次，禁止自动重试。 */
-async function recognize(file) {
+async function recognize(file, parser = parseResponse) {
   try {
     validateImage(file);
     if (
@@ -107,7 +107,7 @@ async function recognize(file) {
         readTimeout: 30000,
       })
     );
-    return parseResponse(result.body);
+    return parser(result.body);
   } catch (error) {
     if (error instanceof ApiError) throw error;
     // SDK 错误可能含请求、响应及鉴权参数；不向日志或中间件传递原错误。

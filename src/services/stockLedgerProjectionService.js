@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { specification, PRICE_VERSION } = require('./stockFixedCatalog');
 const db = require('../models');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
@@ -20,7 +21,7 @@ async function catalog(ctx) {
     requirePermissions(ctx, 'stock.read');
     const products = await db.StockProduct.findAll({
       where: { isActive: true },
-      attributes: ['id', 'modelName', 'storageGb', 'colorName'],
+      attributes: ['id', 'modelName', 'storageGb', 'colorName', 'skuCode'],
       order: [['modelName', 'ASC']],
       transaction: ctx.transaction,
       raw: true,
@@ -43,7 +44,16 @@ async function catalog(ctx) {
       });
     const settings = await db.StockSetting.findByPk(1, { transaction: ctx.transaction });
     return {
-      products,
+      products: products.map(product => {
+        const spec = specification(product);
+        return {
+          ...product,
+          entryEligible: Boolean(spec),
+          ...(spec && has(ctx, 'stock.cost.read')
+            ? { fixedCostAmount: spec.amount, priceVersion: PRICE_VERSION }
+            : {}),
+        };
+      }),
       warehouses,
       people,
       enabled: settings.enabled,
@@ -148,6 +158,8 @@ function project(ctx, unit, g, allAllocations) {
       officialCostAmount: unit.officialCostAmount,
       acquiredOn: unit.acquiredOn,
       costStatus: unit.costStatus,
+      costSource: unit.costSource,
+      priceId: unit.priceId,
     });
   if (has(ctx, 'stock.expenses.read')) result.extraExpenseAmount = unit.extraExpenseAmount;
   if (has(ctx, 'stock.receive')) result.allowedActions.push('edit');
