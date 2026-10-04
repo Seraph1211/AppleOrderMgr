@@ -3,6 +3,29 @@ const fs = require('fs');
 const vm = require('vm');
 const { encrypt } = require('../src/utils/fieldEncryption');
 const input = require('../src/services/officialOrderInput');
+const ENCRYPTION_KEY_BYTES = 32;
+const originalEncryptionEnv = Object.fromEntries(
+  [
+    'FIELD_ENCRYPTION_KEY',
+    'FIELD_ENCRYPTION_KEY_VERSION',
+    'FIELD_ENCRYPTION_KEYS_JSON',
+    'FIELD_BLIND_INDEX_KEY',
+  ].map(name => [name, process.env[name]])
+);
+
+beforeEach(() => {
+  process.env.FIELD_ENCRYPTION_KEY = Buffer.alloc(ENCRYPTION_KEY_BYTES, 1).toString('base64');
+  process.env.FIELD_ENCRYPTION_KEY_VERSION = 'v1';
+  delete process.env.FIELD_ENCRYPTION_KEYS_JSON;
+  delete process.env.FIELD_BLIND_INDEX_KEY;
+});
+
+afterEach(() => {
+  for (const [name, value] of Object.entries(originalEncryptionEnv)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+});
 
 function row(overrides = {}) {
   return {

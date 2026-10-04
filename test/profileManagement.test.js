@@ -9,6 +9,30 @@ const { parseExcelFile } = require('../src/services/importService');
 const { matchRecipient } = require('../src/services/profileOrderMatching');
 const { recipientInput, validateAccountText } = require('../src/utils/profileInput');
 const { blindIndex } = require('../src/utils/fieldEncryption');
+const ENCRYPTION_KEY_BYTES = 32;
+const originalEncryptionEnv = Object.fromEntries(
+  [
+    'FIELD_ENCRYPTION_KEY',
+    'FIELD_ENCRYPTION_KEY_VERSION',
+    'FIELD_ENCRYPTION_KEYS_JSON',
+    'FIELD_BLIND_INDEX_KEY',
+  ].map(name => [name, process.env[name]])
+);
+
+beforeEach(() => {
+  process.env.FIELD_ENCRYPTION_KEY = Buffer.alloc(ENCRYPTION_KEY_BYTES, 1).toString('base64');
+  process.env.FIELD_ENCRYPTION_KEY_VERSION = 'v1';
+  delete process.env.FIELD_ENCRYPTION_KEYS_JSON;
+  delete process.env.FIELD_BLIND_INDEX_KEY;
+});
+
+afterEach(() => {
+  for (const [name, value] of Object.entries(originalEncryptionEnv)) {
+    if (value === undefined) delete process.env[name];
+    else process.env[name] = value;
+  }
+});
+
 const idCard = '110101199001010001';
 const data = { lastName: '欧阳', firstName: '明', idCardNumber: idCard };
 const empty = { accounts: [], recipients: [] };
@@ -277,14 +301,17 @@ describe('腾讯源表位置映射', () => {
 });
 
 describe('订单自身证据与歧义防误配', () => {
-  const person = {
-    id: 1,
-    ...data,
-    idCardHash: blindIndex(idCard),
-    idCardLast4: '0001',
-    phone: '13800000000',
-    email: '13800000000@vvv8.net',
-  };
+  let person;
+  beforeEach(() => {
+    person = {
+      id: 1,
+      ...data,
+      idCardHash: blindIndex(idCard),
+      idCardLast4: '0001',
+      phone: '13800000000',
+      email: '13800000000@vvv8.net',
+    };
+  });
   test('复姓全名加尾号唯一可关联，仅姓名或当前绑定不行', () => {
     expect(matchRecipient({ recipientName: '欧阳明', recipientIdLast4: '0001' }, [person])).toBe(
       person
