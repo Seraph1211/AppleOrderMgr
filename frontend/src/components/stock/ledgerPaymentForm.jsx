@@ -47,7 +47,7 @@ export default function LedgerPaymentForm({ units, catalog, onClose, onSaved }) 
           disabled={command.busy}
         />
         <p className="rounded-lg bg-primary-50 p-3 text-sm text-gray-600">
-          仅在本次选中机器的全款都已核实时标记公司到账。只有部分货款时保留待转回，并在备注中说明。
+          按每台结算金额核对全款后标记公司到账；未填结算时先编辑补充。只有部分货款时保留待转回，并在备注中说明。
         </p>
         <StockFields
           value={{ reason }}

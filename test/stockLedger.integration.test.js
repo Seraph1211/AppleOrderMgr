@@ -38,6 +38,7 @@ if (
       id: unit.id,
       expectedVersion: unit.version,
       saleAmount: '9000.00',
+      settlementAmount: '9000.00',
     })),
     salespersonName: `销售${prefix}`,
     handlerName: `出货${prefix}`,
@@ -244,6 +245,7 @@ if (
         duplicateInput.units = duplicateInput.units.map(item => ({
           ...item,
           saleAmount: '9000.00',
+          settlementAmount: '9000.00',
         }));
         Object.assign(duplicateInput, {
           salespersonName: null,
@@ -496,7 +498,9 @@ if (
         orderNumber: null,
         officialCostAmount: null,
         acquiredOn: null,
-        ...(method === 'importHistory' ? { saleAmount: '9000.00' } : {}),
+        ...(method === 'importHistory'
+          ? { saleAmount: '9000.00', settlementAmount: '9000.00' }
+          : {}),
       };
       const input = { units: [item] };
       if (method === 'importHistory') {
@@ -545,23 +549,29 @@ if (
     }
   });
 
-  test('批量跨仓直接售出各台独立价费，毛利不扣费用，销售和出货人不混同', async () => {
+  test('批量跨仓直接售出各台独立价费，结算毛利不重复扣费用，销售和出货人不混同', async () => {
     const rows = await receive([
       { ...newInput(), officialCostAmount: '8000.01' },
       { ...newInput(), warehouseId: warehouseB.id, officialCostAmount: '8000.01' },
     ]);
     const input = saleInput(rows);
-    input.units[0] = { ...input.units[0], saleAmount: '9000.02', extraExpenseAmount: '10.03' };
-    input.units[1] = { ...input.units[1], saleAmount: '7999.99' };
+    input.units[0] = {
+      ...input.units[0],
+      saleAmount: '9000.02',
+      settlementAmount: '9000.02',
+      extraExpenseAmount: '10.03',
+    };
+    input.units[1] = { ...input.units[1], saleAmount: '7999.99', settlementAmount: '7999.99' };
     await execute('sellUnits', input);
     const a = await detail(rows[0].id);
     const b = await detail(rows[1].id);
     expect(a).toMatchObject({
       state: 'sold',
       saleAmount: '9000.02',
+      settlementAmount: '9000.02',
       grossProfit: '1000.01',
       extraExpenseAmount: '10.03',
-      profitAfterExpenses: '989.98',
+      profitAfterExpenses: '1000.01',
       salespersonName: input.salespersonName,
       handlerName: input.handlerName,
       paymentStatus: 'unpaid',
@@ -657,7 +667,7 @@ if (
       companyReceivedOn: '2026-10-05',
       soldOn: '2026-10-04',
       grossProfit: '1000.00',
-      profitAfterExpenses: '950.00',
+      profitAfterExpenses: '1000.00',
     });
     const saleUnit = await db.StockSaleUnit.findOne({
       where: { stockUnitId: row.id, status: 'shipped' },
@@ -820,7 +830,14 @@ if (
       where: { productId: product.id, state: 'in_stock' },
     });
     const input = {
-      units: [{ serialNumber: serial(), productId: product.id, saleAmount: '8500.00' }],
+      units: [
+        {
+          serialNumber: serial(),
+          productId: product.id,
+          saleAmount: '8500.00',
+          settlementAmount: '8500.00',
+        },
+      ],
       salespersonName: null,
       handlerName: null,
       soldOn: '2026-09-15',
@@ -851,7 +868,14 @@ if (
 
   test('历史已知到账但日期不明可留空，后来补成本/人员/日期不改变销售日与库存', async () => {
     const result = await execute('importHistory', {
-      units: [{ serialNumber: serial(), productId: product.id, saleAmount: '8000.00' }],
+      units: [
+        {
+          serialNumber: serial(),
+          productId: product.id,
+          saleAmount: '8000.00',
+          settlementAmount: '8000.00',
+        },
+      ],
       salespersonName: null,
       handlerName: null,
       soldOn: '2026-09-20',
@@ -904,7 +928,14 @@ if (
     };
     const result = await execute('importHistory', {
       ...base,
-      units: [{ serialNumber: old.serialNumber, productId: product.id, saleAmount: '8500.00' }],
+      units: [
+        {
+          serialNumber: old.serialNumber,
+          productId: product.id,
+          saleAmount: '8500.00',
+          settlementAmount: '8500.00',
+        },
+      ],
     });
     expect(result.ledgerUnitIds).toEqual([old.id]);
     const [current] = await receive([newInput()]);
@@ -918,7 +949,14 @@ if (
       await expect(
         execute('importHistory', {
           ...base,
-          units: [{ serialNumber: row.serialNumber, productId: product.id, saleAmount: '8500.00' }],
+          units: [
+            {
+              serialNumber: row.serialNumber,
+              productId: product.id,
+              saleAmount: '8500.00',
+              settlementAmount: '8500.00',
+            },
+          ],
         })
       ).rejects.toMatchObject({ statusCode: 409 });
     }
@@ -1025,6 +1063,7 @@ if (
         extraExpenseAmount: '20.00',
         sale: {
           saleAmount: '8500.25',
+          settlementAmount: '8500.25',
           payment: {
             status: 'company_received',
             collectorName: `实际代收${prefix}`,
@@ -1040,8 +1079,9 @@ if (
     const after = await detail(row.id);
     expect(after).toMatchObject({
       saleAmount: '8500.25',
+      settlementAmount: '8500.25',
       grossProfit: '500.25',
-      profitAfterExpenses: '480.25',
+      profitAfterExpenses: '500.25',
       paymentStatus: 'company_received',
       collectorName: `实际代收${prefix}`,
     });
@@ -1077,7 +1117,7 @@ if (
       officialCostAmount: '7999.99',
       extraExpenseAmount: '11.11',
       notes: '失败更正不得保存',
-      sale: { saleAmount: 'NaN' },
+      sale: { saleAmount: 'NaN', settlementAmount: 'NaN' },
       reason: '合成测试整笔失败',
     };
     await expect(execute('editUnit', input, admin, row.id)).rejects.toMatchObject({
@@ -1086,6 +1126,7 @@ if (
     expect(await detail(row.id)).toMatchObject({
       version: before.version,
       saleAmount: '9000.00',
+      settlementAmount: '9000.00',
       officialCostAmount: '8000.00',
       grossProfit: '1000.00',
       extraExpenseAmount: null,
@@ -1156,6 +1197,7 @@ if (
           serialNumber: serial(),
           productId: product.id,
           saleAmount: '9000.00',
+          settlementAmount: '9000.00',
           extraExpenseAmount: '6.75',
         },
       ],
@@ -1222,7 +1264,14 @@ if (
       execute(
         'importHistory',
         {
-          units: [{ serialNumber: serial(), productId: product.id, saleAmount: '9000.00' }],
+          units: [
+            {
+              serialNumber: serial(),
+              productId: product.id,
+              saleAmount: '9000.00',
+              settlementAmount: '9000.00',
+            },
+          ],
           salespersonName: null,
           handlerName: null,
           soldOn: '2026-09-01',
@@ -1253,7 +1302,11 @@ if (
     const rows = await receive([newInput(), newInput()]);
     await execute('sellUnits', saleInput([rows[0]]), limited);
     const visible = await detail(rows[0].id, limited);
-    expect(visible).toMatchObject({ state: 'sold', saleAmount: '9000.00' });
+    expect(visible).toMatchObject({
+      state: 'sold',
+      saleAmount: '9000.00',
+      settlementAmount: '9000.00',
+    });
     expect(visible).not.toHaveProperty('paymentStatus');
     await expect(
       execute(
@@ -1293,9 +1346,10 @@ if (
     expect(sold).toMatchObject({
       state: 'sold',
       saleAmount: '9000.00',
+      settlementAmount: '9000.00',
       extraExpenseAmount: '15.25',
       grossProfit: '1000.00',
-      profitAfterExpenses: '984.75',
+      profitAfterExpenses: '1000.00',
       paymentStatus: 'unpaid',
     });
     expect(await detail(rows[0].id, limited)).not.toHaveProperty('extraExpenseAmount');
@@ -1555,7 +1609,7 @@ if (
         'editUnit',
         {
           expectedVersion: item.version,
-          sale: { saleAmount: '9100.25', soldOn: '2026-10-05' },
+          sale: { saleAmount: '9100.25', settlementAmount: '9100.25', soldOn: '2026-10-05' },
           reason: '合成核对旧售价与销售日，货款仍待核实',
         },
         admin,
@@ -1565,6 +1619,7 @@ if (
       expect(item).toMatchObject({
         paymentStatus: 'unknown',
         saleAmount: '9100.25',
+        settlementAmount: '9100.25',
         soldOn: '2026-10-05',
         isHistorical: false,
       });
@@ -1587,6 +1642,7 @@ if (
       expect(verified).toMatchObject({
         paymentStatus: status,
         saleAmount: '9100.25',
+        settlementAmount: '9100.25',
         soldOn: '2026-10-05',
       });
       expect(await db.StockSale.findByPk(verified.saleId)).toMatchObject({
@@ -1741,5 +1797,185 @@ if (
         })
       ).total
     ).toBe(0);
+  });
+  test('人工结算决定毛利和货款，其他费用不重复扣减，补改全程留痕', async () => {
+    const [row] = await receive([
+      { ...newInput(), officialCostAmount: '11999.00', notes: '入库备注' },
+    ]);
+    const input = saleInput([row]);
+    input.units[0] = {
+      ...input.units[0],
+      saleAmount: '13200.00',
+      settlementAmount: '12900.00',
+      extraExpenseAmount: '100.00',
+    };
+    input.payment = { status: 'agent_pending', collectedOn: '2026-10-04' };
+    await execute('sellUnits', input);
+    let current = await detail(row.id);
+    expect(current).toMatchObject({
+      notes: '入库备注',
+      settlementAmount: '12900.00',
+      grossProfit: '901.00',
+      profitAfterExpenses: '901.00',
+      paymentStatus: 'agent_pending',
+    });
+    expect(
+      (await db.StockCollection.findOne({ where: { saleId: current.saleId, status: 'posted' } }))
+        .amount
+    ).toBe('12900.00');
+    await execute('setPayment', {
+      units: [{ id: row.id, expectedVersion: current.version }],
+      payment: { status: 'company_received', receivedOn: '2026-10-05' },
+    });
+    current = await detail(row.id);
+    expect(current.paymentStatus).toBe('company_received');
+    const ctx = await command.createReadContext(admin);
+    expect(
+      (
+        await projection.list(ctx, {
+          view: 'sold',
+          q: row.serialNumber,
+          paymentStatus: 'company_received',
+        })
+      ).total
+    ).toBe(1);
+    await execute(
+      'editUnit',
+      {
+        expectedVersion: current.version,
+        notes: '售后备注',
+        sale: { settlementAmount: '12800.00' },
+        reason: '核对渠道结算',
+      },
+      admin,
+      row.id
+    );
+    current = await detail(row.id);
+    expect(current).toMatchObject({
+      notes: '售后备注',
+      grossProfit: '801.00',
+      paymentStatus: 'company_received',
+    });
+    expect(
+      (await db.StockCollection.findOne({ where: { saleId: current.saleId, status: 'posted' } }))
+        .amount
+    ).toBe('12800.00');
+    const old = await oldProjection.saleDetail(ctx, current.saleId);
+    expect(old.grossProfit).toBe('801.00');
+    expect(old.profitAfterExpenses).toBe('801.00');
+    await execute('editUnit', { expectedVersion: current.version, notes: null }, admin, row.id);
+    expect((await detail(row.id)).notes).toBeNull();
+  });
+
+  test('结算未知不推算、零结算允许负毛利，非法金额和旧版本整笔拒绝', async () => {
+    const [row] = await receive([{ ...newInput(), officialCostAmount: '100.00' }]);
+    const input = saleInput([row]);
+    delete input.units[0].settlementAmount;
+    await execute('sellUnits', input);
+    let current = await detail(row.id);
+    expect(current.settlementAmount).toBeNull();
+    expect(current.grossProfit).toBeNull();
+    await expect(
+      execute('setPayment', {
+        units: [{ id: row.id, expectedVersion: current.version }],
+        payment: { status: 'company_received', receivedOn: '2026-10-05' },
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    for (const value of ['-0.01', 'NaN', 'Infinity', '9000.01', '1.001']) {
+      await expect(
+        execute(
+          'editUnit',
+          {
+            expectedVersion: current.version,
+            sale: { settlementAmount: value },
+            reason: '边界测试',
+          },
+          admin,
+          row.id
+        )
+      ).rejects.toMatchObject({ statusCode: 400 });
+    }
+    expect((await detail(row.id)).version).toBe(current.version);
+    await execute(
+      'editUnit',
+      {
+        expectedVersion: current.version,
+        sale: { settlementAmount: '0.00' },
+        reason: '零结算核定',
+      },
+      admin,
+      row.id
+    );
+    current = await detail(row.id);
+    expect(current).toMatchObject({
+      settlementAmount: '0.00',
+      grossProfit: '-100.00',
+      paymentStatus: 'unpaid',
+    });
+    await expect(
+      execute(
+        'editUnit',
+        { expectedVersion: current.version - 1, notes: '过期更改' },
+        admin,
+        row.id
+      )
+    ).rejects.toMatchObject({ statusCode: 409 });
+    const hidden = await detail(row.id, limited);
+    expect(hidden).not.toHaveProperty('grossProfit');
+    expect(hidden).not.toHaveProperty('officialCostAmount');
+  });
+
+  test('人员预置按角色返回，移出不删除历史姓名与备注', async () => {
+    let result = await command.runCommand(
+      admin,
+      { requestKey: crypto.randomUUID() },
+      'test.preset',
+      ['stock.catalog.manage'],
+      ctx =>
+        oldUnits.saveCatalog(ctx, 'parties', null, {
+          name: `预置${prefix}`,
+          partyType: 'external_person',
+          roles: ['salesperson', 'handler'],
+          isActive: true,
+        })
+    );
+    const ctx = await command.createReadContext(admin);
+    const people = (await projection.catalog(ctx)).people;
+    const person = people.find(item => item.id === result.id);
+    expect(person.roles).toEqual(['salesperson', 'handler']);
+    expect(person.version).toBe(0);
+    await command.runCommand(
+      admin,
+      { requestKey: crypto.randomUUID() },
+      'test.preset.remove',
+      ['stock.catalog.manage'],
+      context =>
+        oldUnits.saveCatalog(context, 'parties', person.id, {
+          expectedVersion: person.version,
+          isActive: false,
+        })
+    );
+    expect((await projection.catalog(ctx)).people.some(item => item.id === person.id)).toBe(false);
+    expect(await db.StockParty.findByPk(person.id)).not.toBeNull();
+  });
+
+  test('数据库拒绝非法结算且有结算资料时正式down保护数据', async () => {
+    const [row] = await receive([newInput()]);
+    await execute('sellUnits', saleInput([row]));
+    const saleUnit = await db.StockSaleUnit.findOne({
+      where: { stockUnitId: row.id, status: 'shipped' },
+    });
+    for (const amount of ['-0.01', 'NaN', 'Infinity', '9000.01']) {
+      await expect(
+        db.sequelize.query('UPDATE stock_sale_units SET settlement_amount=:amount WHERE id=:id', {
+          replacements: { amount, id: saleUnit.id },
+        })
+      ).rejects.toMatchObject({ original: { code: expect.stringMatching(/^(23514|22003)$/) } });
+    }
+    const migration = require('../migrations/20261005000003-add-stock-settlement');
+    await expect(migration.down(db.sequelize.getQueryInterface())).rejects.toThrow(
+      '已有结算业务资料'
+    );
+    expect((await detail(row.id)).settlementAmount).toBe('9000.00');
   });
 });

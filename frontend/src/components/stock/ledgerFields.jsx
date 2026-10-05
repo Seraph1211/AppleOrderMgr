@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
-import { StockField, StockFields } from './StockCommon';
+import { StockFields } from './StockCommon';
 import { productLabel, stockOptions } from './stockHelpers';
 import { LEDGER_PAYMENT_LABELS } from './ledgerHelpers';
 
@@ -55,9 +55,27 @@ export function LedgerPersonField({
 }) {
   const listId = useId();
   return (
-    <StockField label={label} hint={hint}>
+    <div className="block min-w-0 space-y-1 text-sm">
+      <span className="font-medium text-gray-700">{label}</span>
+      {people.length > 0 && (
+        <select
+          className="input mb-2"
+          aria-label={`${label}预置选项`}
+          value={people.some(person => person.name === value) ? value : ''}
+          disabled={disabled}
+          onChange={event => onChange(event.target.value)}
+        >
+          <option value="">选择预置姓名，或在下方手动填写</option>
+          {people.map(person => (
+            <option key={person.id || person.name} value={person.name}>
+              {person.name}
+            </option>
+          ))}
+        </select>
+      )}
       <input
         className="input"
+        aria-label={label}
         value={value || ''}
         list={listId}
         onChange={event => onChange(event.target.value)}
@@ -71,7 +89,8 @@ export function LedgerPersonField({
           <option key={person.id || person.name} value={person.name} />
         ))}
       </datalist>
-    </StockField>
+      {hint && <span className="block text-xs text-gray-500">{hint}</span>}
+    </div>
   );
 }
 
@@ -89,7 +108,9 @@ export function LedgerPeopleFields({
         label="销售人"
         value={value.salespersonName}
         onChange={salespersonName => onChange({ ...value, salespersonName })}
-        people={catalog.people}
+        people={catalog.people.filter(
+          person => !person.roles || person.roles.includes('salesperson')
+        )}
         required={!historical}
         disabled={disabled}
         hint={historical ? '不清楚可待补' : '负责成交的人'}
@@ -98,7 +119,7 @@ export function LedgerPeopleFields({
         label="出货人"
         value={value.handlerName}
         onChange={handlerName => onChange({ ...value, handlerName })}
-        people={catalog.people}
+        people={catalog.people.filter(person => !person.roles || person.roles.includes('handler'))}
         required={!historical}
         disabled={disabled}
         hint={historical ? '不清楚可待补' : '负责从仓库交货或寄件的人'}

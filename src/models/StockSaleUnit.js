@@ -17,6 +17,11 @@ module.exports = sequelize =>
       fromLocationId: { type: DataTypes.UUID, allowNull: true, field: 'from_location_id' },
       status: { type: DataTypes.STRING(16), allowNull: false, field: 'status' },
       saleAmount: { type: DataTypes.DECIMAL(14, 2), allowNull: true, field: 'sale_amount' },
+      settlementAmount: {
+        type: DataTypes.DECIMAL(14, 2),
+        allowNull: true,
+        field: 'settlement_amount',
+      },
       costAmountSnapshot: {
         type: DataTypes.DECIMAL(14, 2),
         allowNull: true,

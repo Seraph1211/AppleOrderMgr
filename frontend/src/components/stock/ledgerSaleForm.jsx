@@ -18,7 +18,7 @@ export default function LedgerSaleForm({ units, catalog, onClose, onSaved }) {
     uniformPrice: '',
   });
   const [rows, setRows] = useState(
-    units.map(unit => ({ ...unit, saleAmount: '', extraExpenseAmount: '' }))
+    units.map(unit => ({ ...unit, saleAmount: '', settlementAmount: '', extraExpenseAmount: '' }))
   );
   const [payment, setPayment] = useState({
     status: 'unpaid',
@@ -34,6 +34,7 @@ export default function LedgerSaleForm({ units, catalog, onClose, onSaved }) {
           id: unit.id,
           expectedVersion: unit.version,
           saleAmount: moneyValue(unit.saleAmount),
+          settlementAmount: ledgerAmount(unit.settlementAmount),
           ...(can('stock.expenses.edit') && unit.extraExpenseAmount !== ''
             ? { extraExpenseAmount: ledgerAmount(unit.extraExpenseAmount) }
             : {}),
@@ -68,26 +69,33 @@ export default function LedgerSaleForm({ units, catalog, onClose, onSaved }) {
           disabled={command.busy}
           fields={[{ key: 'soldOn', label: '销售日期', type: 'date', required: true }]}
         />
-        <div className="flex flex-wrap items-end gap-2">
-          <label className="min-w-0 flex-1 text-sm">
-            统一售价（元）
-            <input
-              className="input mt-1"
-              inputMode="decimal"
-              value={value.uniformPrice}
-              onChange={event => setValue({ ...value, uniformPrice: event.target.value })}
-              disabled={command.busy}
-            />
-          </label>
-          <button
-            type="button"
-            className="btn btn-secondary"
-            disabled={command.busy || !value.uniformPrice}
-            onClick={() => setRows(rows.map(unit => ({ ...unit, saleAmount: value.uniformPrice })))}
-          >
-            应用到全部
-          </button>
-        </div>
+        {rows.length > 1 && (
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="min-w-0 flex-1 text-sm">
+              售价（元）
+              <input
+                className="input mt-1"
+                inputMode="decimal"
+                value={value.uniformPrice}
+                onChange={event => setValue({ ...value, uniformPrice: event.target.value })}
+                disabled={command.busy}
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={command.busy || !value.uniformPrice}
+              onClick={() =>
+                setRows(rows.map(unit => ({ ...unit, saleAmount: value.uniformPrice })))
+              }
+            >
+              应用到全部
+            </button>
+            <p className="w-full text-xs text-gray-500">
+              填写每台售价，点击“应用到全部”；应用后仍可逐台调整。
+            </p>
+          </div>
+        )}
         <StockTable
           items={rows}
           columns={[
@@ -123,14 +131,35 @@ export default function LedgerSaleForm({ units, catalog, onClose, onSaved }) {
                 />
               ),
             },
+            {
+              key: 'settlementAmount',
+              title: '结算金额（元）',
+              render: unit => (
+                <input
+                  aria-label={`${unit.serialNumber} 结算金额`}
+                  className="input min-w-[110px]"
+                  inputMode="decimal"
+                  placeholder="人工填写，可待补"
+                  value={unit.settlementAmount}
+                  disabled={command.busy}
+                  onChange={event =>
+                    setRows(
+                      rows.map(row =>
+                        row.id === unit.id ? { ...row, settlementAmount: event.target.value } : row
+                      )
+                    )
+                  }
+                />
+              ),
+            },
             ...(can('stock.expenses.edit')
               ? [
                   {
                     key: 'expense',
-                    title: '本台费用（元）',
+                    title: '其他费用（元）',
                     render: unit => (
                       <input
-                        aria-label={`${unit.serialNumber} 额外费用`}
+                        aria-label={`${unit.serialNumber} 其他费用`}
                         className="input min-w-[100px]"
                         inputMode="decimal"
                         placeholder="保留原费用"
@@ -152,6 +181,9 @@ export default function LedgerSaleForm({ units, catalog, onClose, onSaved }) {
               : []),
           ]}
         />
+        <p className="text-xs text-gray-500">
+          结算金额＝售价－渠道抽成－其他费用，请按实际结算手工填写；单台毛利＝结算金额－官网售价。其他费用留空保留原值，填写后替换原值。
+        </p>
         <LedgerPaymentFields
           value={payment}
           onChange={setPayment}
@@ -159,7 +191,7 @@ export default function LedgerSaleForm({ units, catalog, onClose, onSaved }) {
           disabled={command.busy}
         />
         <p className="text-xs text-gray-500">
-          以上货款状态应用到本次全部机器，只表示每台已核实的全款。费用单独记，不抵扣货款。
+          以上货款状态应用到本次全部机器，按每台结算金额记录已核实的全款；结算已含扣费，不再重复扣减。
         </p>
         <StockFields
           value={value}

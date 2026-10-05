@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Filter, History, Package, Plus, RefreshCw, Settings } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { StockBadge, StockFeedback, StockPager, StockTable } from '../components/stock/StockCommon';
+import {
+  StockBadge,
+  StockFeedback,
+  StockModal,
+  StockPager,
+  StockTable,
+} from '../components/stock/StockCommon';
 import { useStockData } from '../components/stock/stockHooks';
 import { moneyText, productLabel } from '../components/stock/stockHelpers';
 import { ledgerCan, LEDGER_PAYMENT_LABELS } from '../components/stock/ledgerHelpers';
@@ -36,6 +42,7 @@ export default function Stock() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selected, setSelected] = useState([]);
+  const [showSelected, setShowSelected] = useState(false);
   const [action, setAction] = useState(null);
   const [detail, setDetail] = useState(null);
   const [notice, setNotice] = useState('');
@@ -67,7 +74,6 @@ export default function Stock() {
   const changeFilter = (key, value) => {
     setFilters(previous => ({ ...previous, [key]: value }));
     setPage(1);
-    setSelected([]);
   };
   const changeTab = view => {
     setSearchParams(view === 'in_stock' ? {} : { view });
@@ -110,7 +116,22 @@ export default function Stock() {
       <>
         <div>{unit.soldOn || '日期待补'}</div>
         {can('stock.sales.read') && (
-          <div className="font-medium text-gray-900">{moneyText(unit.saleAmount)}</div>
+          <div className="font-medium text-gray-900">售价 {moneyText(unit.saleAmount)}</div>
+        )}
+        {can('stock.sales.read') && (
+          <div className="mt-1 text-xs text-gray-500">
+            结算 {unit.settlementAmount == null ? '待补' : moneyText(unit.settlementAmount)}
+          </div>
+        )}
+        {can('stock.profit.read') && (
+          <div className="mt-1 text-xs text-gray-500">
+            毛利{' '}
+            {unit.grossProfit == null
+              ? unit.settlementAmount == null
+                ? '待补结算'
+                : '待补官网售价'
+              : moneyText(unit.grossProfit)}
+          </div>
         )}
         {unit.paymentStatus && (
           <div className="mt-1 text-xs text-gray-500">
@@ -172,6 +193,11 @@ export default function Stock() {
               <StockBadge value={unit.state} />
             </div>
           )}
+          {unit.notes && (
+            <div className="mt-1 break-words whitespace-pre-wrap text-xs text-gray-500 sm:hidden">
+              备注：{unit.notes}
+            </div>
+          )}
           {unit.isHistorical && (
             <span className="mt-1 inline-block text-xs text-gray-500">历史补录</span>
           )}
@@ -210,6 +236,14 @@ export default function Stock() {
           },
         ]
       : []),
+    {
+      key: 'notes',
+      title: '备注',
+      mobileHidden: true,
+      render: unit => (
+        <div className="max-w-[240px] whitespace-pre-wrap break-words">{unit.notes || '—'}</div>
+      ),
+    },
     {
       key: 'actions',
       title: '操作',
@@ -285,12 +319,12 @@ export default function Stock() {
           {(can('stock.catalog.manage') || can('stock.settings.manage')) && (
             <button
               className="btn btn-secondary"
-              aria-label="仓库设置"
-              title="仓库设置"
+              aria-label="基础设置"
+              title="基础设置"
               onClick={() => setAction({ type: 'warehouses' })}
             >
               <Settings className="h-4 w-4" />
-              <span className="hidden sm:inline">仓库设置</span>
+              <span className="hidden sm:inline">基础设置</span>
             </button>
           )}
         </div>
@@ -305,7 +339,7 @@ export default function Stock() {
       )}
       {catalog.enabled === false && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          自有库存尚未启用，现有记录仍可查询。请由管理员在仓库设置中启用后录入。
+          自有库存尚未启用，现有记录仍可查询。请由管理员在基础设置中启用后录入。
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -360,22 +394,22 @@ export default function Stock() {
         </button>
       </form>
       <div className="flex flex-wrap items-end gap-3">
-          <label className="text-sm sm:min-w-[180px]">
-            仓库
-            <select
-              aria-label="按仓库筛选"
-              className="input mt-1 w-full"
-              value={filters.warehouseId}
-              onChange={event => changeFilter('warehouseId', event.target.value)}
-            >
-              <option value="">全部仓库</option>
-              {catalog.warehouses.map(warehouse => (
-                <option key={warehouse.id} value={warehouse.id}>
-                  {warehouse.name}
-                </option>
-              ))}
-            </select>
-          </label>
+        <label className="text-sm sm:min-w-[180px]">
+          仓库
+          <select
+            aria-label="按仓库筛选"
+            className="input mt-1 w-full"
+            value={filters.warehouseId}
+            onChange={event => changeFilter('warehouseId', event.target.value)}
+          >
+            <option value="">全部仓库</option>
+            {catalog.warehouses.map(warehouse => (
+              <option key={warehouse.id} value={warehouse.id}>
+                {warehouse.name}
+              </option>
+            ))}
+          </select>
+        </label>
         {filters.warehouseId && (
           <button className="btn btn-secondary" onClick={() => changeFilter('warehouseId', '')}>
             清除仓库筛选
@@ -454,7 +488,6 @@ export default function Stock() {
               setFilters(INITIAL_FILTERS);
               setQuery('');
               setPage(1);
-              setSelected([]);
             }}
           >
             清空筛选
@@ -463,7 +496,11 @@ export default function Stock() {
       )}
       {selected.length > 0 && (
         <div className="stock-toolbar rounded-lg border border-blue-100 bg-primary-50 p-3">
-          <span className="text-sm text-primary">已选 {selected.length} 台</span>
+          <span className="text-sm text-primary">已选 {selected.length} 台（最多 100 台）</span>
+          <button className="btn btn-secondary" onClick={() => setShowSelected(true)}>
+            查看已选
+          </button>
+          <span className="text-xs text-gray-500">搜索、筛选和翻页保留已选记录</span>
           {allSell && (
             <button
               className="btn btn-primary"
@@ -519,6 +556,37 @@ export default function Stock() {
           setPage(1);
         }}
       />
+      {showSelected && (
+        <StockModal
+          title={`已选设备 · ${selected.length} 台`}
+          onClose={() => setShowSelected(false)}
+        >
+          <StockTable
+            items={selected}
+            columns={[
+              { key: 'serialNumber', title: 'SN' },
+              {
+                key: 'warehouse',
+                title: '仓库',
+                render: unit => unit.warehouse?.name || unit.sourceWarehouse?.name || '—',
+              },
+              {
+                key: 'remove',
+                title: '操作',
+                render: unit => (
+                  <button
+                    className="btn btn-secondary"
+                    aria-label={`移除 ${unit.serialNumber}`}
+                    onClick={() => toggle(unit)}
+                  >
+                    移除
+                  </button>
+                ),
+              },
+            ]}
+          />
+        </StockModal>
+      )}
       {action?.type === 'receive' && (
         <LedgerEntryForm
           catalog={catalog}

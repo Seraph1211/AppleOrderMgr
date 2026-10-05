@@ -36,6 +36,7 @@ export default function LedgerEntryForm({
       reviewReasons: [],
       sources: [],
       saleAmount: '',
+      settlementAmount: '',
       extraExpenseAmount: '',
     }))
   );
@@ -219,7 +220,12 @@ export default function LedgerEntryForm({
           ...(can('stock.expenses.edit')
             ? { extraExpenseAmount: ledgerAmount(unit.extraExpenseAmount) }
             : {}),
-          ...(historical ? { saleAmount: moneyValue(unit.saleAmount) } : {}),
+          ...(historical
+            ? {
+                saleAmount: moneyValue(unit.saleAmount),
+                settlementAmount: ledgerAmount(unit.settlementAmount),
+              }
+            : {}),
           notes: value.notes.trim() || null,
         })),
         ...(historical
@@ -340,10 +346,10 @@ export default function LedgerEntryForm({
             onDirty={setQueueDirty}
             disabled={busy}
           />
-          {historical && (
+          {historical && units.length > 1 && (
             <div className="flex flex-wrap items-end gap-2">
               <label className="min-w-0 flex-1 text-sm">
-                统一售价（元）
+                售价（元）
                 <input
                   className="input mt-1"
                   inputMode="decimal"
@@ -367,7 +373,15 @@ export default function LedgerEntryForm({
               >
                 应用到全部
               </button>
+              <p className="w-full text-xs text-gray-500">
+                填写每台售价并应用到全部，仍可逐台调整。
+              </p>
             </div>
+          )}
+          {historical && (
+            <p className="text-xs text-gray-500">
+              结算金额＝售价－渠道抽成－其他费用，由人工填写；未填写时毛利待补结算。
+            </p>
           )}
           <StockTable
             rowKey="id"
@@ -521,15 +535,36 @@ export default function LedgerEntryForm({
                     },
                   ]
                 : []),
+              ...(historical
+                ? [
+                    {
+                      key: 'settlementAmount',
+                      title: '结算金额（元）',
+                      render: unit => (
+                        <input
+                          aria-label={`${unit.serialNumber} 结算金额`}
+                          className="input min-w-[110px]"
+                          inputMode="decimal"
+                          disabled={busy}
+                          placeholder="人工填写，可待补"
+                          value={unit.settlementAmount || ''}
+                          onChange={event =>
+                            changeUnit(unit.id, 'settlementAmount', event.target.value)
+                          }
+                        />
+                      ),
+                    },
+                  ]
+                : []),
               ...(can('stock.expenses.edit')
                 ? [
                     {
                       key: 'extraExpenseAmount',
-                      title: '本台费用（元）',
+                      title: '其他费用（元）',
                       render: unit => (
                         <input
                           className="input min-w-[90px]"
-                          aria-label={`${unit.serialNumber} 额外费用`}
+                          aria-label={`${unit.serialNumber} 其他费用`}
                           inputMode="decimal"
                           placeholder="可留空"
                           value={unit.extraExpenseAmount}
@@ -569,7 +604,7 @@ export default function LedgerEntryForm({
           )}
           {can('stock.expenses.edit') && (
             <p className="text-xs text-gray-500">
-              费用是这台手机的合计，可之后补录；同一笔快递费请分到各台，不要重复填写。
+              其他费用是这台手机的合计，可之后补录；同一笔快递费请分到各台，不要重复填写。
             </p>
           )}
         </section>

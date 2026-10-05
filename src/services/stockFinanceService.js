@@ -360,8 +360,8 @@ async function assertFinanceConsistent(ctx) {
   try {
     const [rows] = await db.sequelize.query(
       `SELECT 1 FROM stock_receipts r WHERE r.status='posted' AND (SELECT COALESCE(sum(a.amount),0) FROM stock_receipt_allocations a WHERE a.receipt_id=r.id AND a.status='active')>r.amount
-      UNION ALL SELECT 1 FROM stock_sale_units u WHERE (SELECT COALESCE(sum(a.amount),0) FROM stock_receipt_allocations a WHERE a.sale_unit_id=u.id AND a.status='active')>COALESCE(u.sale_amount,0)
-      UNION ALL SELECT 1 FROM stock_collections c WHERE c.status='posted' AND c.amount<>(SELECT COALESCE(sum(u.sale_amount),0) FROM stock_sale_lines l JOIN stock_sale_units u ON u.sale_line_id=l.id AND u.status='shipped' WHERE l.sale_id=c.sale_id)
+      UNION ALL SELECT 1 FROM stock_sale_units u WHERE (SELECT COALESCE(sum(a.amount),0) FROM stock_receipt_allocations a WHERE a.sale_unit_id=u.id AND a.status='active')>COALESCE(u.settlement_amount,u.sale_amount,0)
+      UNION ALL SELECT 1 FROM stock_collections c WHERE c.status='posted' AND c.amount<>(SELECT COALESCE(sum(COALESCE(u.settlement_amount,u.sale_amount)),0) FROM stock_sale_lines l JOIN stock_sale_units u ON u.sale_line_id=l.id AND u.status='shipped' WHERE l.sale_id=c.sale_id)
       UNION ALL SELECT 1 FROM stock_receipt_allocations a JOIN stock_collections c ON c.id=a.collection_id JOIN stock_receipts r ON r.id=a.receipt_id JOIN stock_sale_units u ON u.id=a.sale_unit_id WHERE a.status='active' AND (c.status<>'posted' OR r.status<>'posted' OR u.status<>'shipped' OR (r.source='agent_transfer' AND (c.destination<>'agent' OR c.collector_id<>r.payer_id))) LIMIT 1`,
       { transaction: ctx.transaction }
     );

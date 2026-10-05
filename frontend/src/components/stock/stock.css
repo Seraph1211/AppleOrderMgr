@@ -124,3 +124,12 @@
 .ledger-page .stock-modal .stock-table:has(input[aria-label='本台 SN']) td:nth-child(2) {
   min-width: 200px;
 }
+
+/* 售出金额列可横向滚动，窄屏保持输入可操作。 */
+.stock-modal .stock-table:has(input[aria-label$='结算金额']) {
+  table-layout: auto;
+  min-width: 600px;
+}
+.stock-modal .stock-table:has(input[aria-label$='结算金额']) th {
+  width: auto;
+}

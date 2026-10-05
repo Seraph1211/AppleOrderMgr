@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { StockFeedback, StockFields, StockModal, StockTable } from './StockCommon';
 import { useStockCommand } from './stockHooks';
+import LedgerPeopleSettings from './ledgerPeopleSettings';
 import { LedgerActions } from './ledgerFields';
 
 /** 仓库只需名称，不暴露代卖点和复杂基础资料。 */
@@ -9,6 +10,7 @@ export default function LedgerWarehouses({ catalog, onClose, onSaved }) {
   const { can } = useAuth();
   const command = useStockCommand();
   const [editing, setEditing] = useState(null);
+  const [tab, setTab] = useState('warehouses');
   const [name, setName] = useState('');
   const submit = async event => {
     event.preventDefault();
@@ -44,7 +46,7 @@ export default function LedgerWarehouses({ catalog, onClose, onSaved }) {
     }
   };
   return (
-    <StockModal title="仓库设置" onClose={onClose} busy={command.busy}>
+    <StockModal title="基础设置" onClose={onClose} busy={command.busy}>
       <div className="space-y-4">
         {can('stock.settings.manage') && (
           <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-50 p-3">
@@ -63,6 +65,29 @@ export default function LedgerWarehouses({ catalog, onClose, onSaved }) {
           </section>
         )}
         {can('stock.catalog.manage') && (
+          <div role="tablist" aria-label="基础设置分类" className="flex flex-wrap gap-2">
+            {[
+              ['warehouses', '仓库'],
+              ['salesperson', '销售人'],
+              ['handler', '出货人'],
+            ].map(([key, label]) => (
+              <button
+                key={key}
+                role="tab"
+                aria-selected={tab === key}
+                disabled={command.busy}
+                className={`btn ${tab === key ? 'btn-primary' : 'btn-secondary'}`}
+                onClick={() => setTab(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+        {can('stock.catalog.manage') && tab !== 'warehouses' && (
+          <LedgerPeopleSettings key={tab} catalog={catalog} role={tab} onSaved={onSaved} />
+        )}
+        {can('stock.catalog.manage') && tab === 'warehouses' && (
           <>
             <StockTable
               items={catalog.warehouses}

@@ -34,10 +34,10 @@ async function catalog(ctx) {
       raw: true,
     });
     let people = [];
-    if (has(ctx, 'stock.sales.read'))
+    if (has(ctx, 'stock.sales.read') || has(ctx, 'stock.catalog.manage'))
       people = await db.StockParty.findAll({
         where: { isActive: true, partyType: { [Op.in]: ['internal_person', 'external_person'] } },
-        attributes: ['id', 'name'],
+        attributes: ['id', 'name', 'roles', 'version', 'partyType', 'isActive'],
         order: [['name', 'ASC']],
         transaction: ctx.transaction,
         raw: true,
@@ -88,8 +88,9 @@ function financialFacts(sale, saleUnit, g, receiptAllocations) {
     items.length === 1 &&
     collections.length <= 1 &&
     receipts.length <= 1 &&
-    (amount === 0n || amount === cents(saleUnit.saleAmount));
-  if (collections.some(row => row.amount !== saleUnit.saleAmount)) compatible = false;
+    (amount === 0n || amount === cents(saleUnit.settlementAmount ?? saleUnit.saleAmount));
+  if (collections.some(row => row.amount !== (saleUnit.settlementAmount ?? saleUnit.saleAmount)))
+    compatible = false;
   if (allocations.some(row => row.saleUnitId !== saleUnit.id)) compatible = false;
   for (const receipt of receipts) {
     const related = receiptAllocations.filter(
@@ -99,7 +100,7 @@ function financialFacts(sale, saleUnit, g, receiptAllocations) {
       related.length !== 1 ||
       related[0].saleUnitId !== saleUnit.id ||
       related[0].amount !== receipt.amount ||
-      receipt.amount !== saleUnit.saleAmount
+      receipt.amount !== (saleUnit.settlementAmount ?? saleUnit.saleAmount)
     )
       compatible = false;
   }
@@ -110,7 +111,8 @@ function financialFacts(sale, saleUnit, g, receiptAllocations) {
       .sort((a, b) => new Date(b.receivedAt || 0) - new Date(a.receivedAt || 0))[0] || null;
   let status = !sale.simpleLedger || sale.paymentVerification === 'unknown' ? 'unknown' : 'unpaid';
   if (collection) status = 'agent_pending';
-  if (amount >= cents(saleUnit.saleAmount)) status = 'company_received';
+  if (amount > 0n && amount >= cents(saleUnit.settlementAmount ?? saleUnit.saleAmount))
+    status = 'company_received';
   else if (amount > 0n) status = 'legacy_partial';
   return { compatible, collection, receipt, status };
 }
@@ -182,6 +184,7 @@ function project(ctx, unit, g, allAllocations) {
     salespersonName: get(g.StockParty, sale.salespersonId)?.name || null,
     handlerName: get(g.StockParty, sale.handlerId)?.name || null,
     saleAmount: saleUnit.saleAmount,
+    settlementAmount: saleUnit.settlementAmount,
     sourceWarehouse: locationDto(get(g.StockLocation, saleUnit.fromLocationId)),
     isHistorical: sale.isHistorical,
   });
@@ -198,14 +201,11 @@ function project(ctx, unit, g, allAllocations) {
   }
   if (has(ctx, 'stock.profit.read')) {
     result.grossProfit =
-      saleUnit.costAmountSnapshot == null
+      saleUnit.costAmountSnapshot == null || saleUnit.settlementAmount == null
         ? null
-        : money(cents(saleUnit.saleAmount) - cents(saleUnit.costAmountSnapshot));
-    result.profitAfterExpenses = null;
-    if (result.grossProfit != null)
-      result.profitAfterExpenses = money(
-        cents(result.grossProfit, { signed: true }) - cents(result.extraExpenseAmount || '0.00')
-      );
+        : money(cents(saleUnit.settlementAmount) - cents(saleUnit.costAmountSnapshot));
+    // 兼容旧字段；人工结算已扣费，禁止重复扣除。
+    result.profitAfterExpenses = result.grossProfit;
   }
   if (has(ctx, 'stock.collections.read', 'stock.receipts.read')) {
     Object.assign(result, {
@@ -381,7 +381,7 @@ async function list(ctx, query = {}) {
       ]);
       // 正常全额状态按资金事实筛选；复杂旧记录在列表投影中显示兼容限制。
       filters.push(
-        "s.id IS NOT NULL AND CASE WHEN cash.received>0 AND cash.received<su.sale_amount THEN 'legacy_partial' WHEN cash.received>=su.sale_amount THEN 'company_received' WHEN c.id IS NOT NULL THEN 'agent_pending' WHEN (NOT s.simple_ledger OR s.payment_verification='unknown') THEN 'unknown' ELSE 'unpaid' END=:paymentStatus"
+        "s.id IS NOT NULL AND CASE WHEN cash.received>0 AND cash.received<COALESCE(su.settlement_amount,su.sale_amount) THEN 'legacy_partial' WHEN cash.received>0 AND cash.received>=COALESCE(su.settlement_amount,su.sale_amount) THEN 'company_received' WHEN c.id IS NOT NULL THEN 'agent_pending' WHEN (NOT s.simple_ledger OR s.payment_verification='unknown') THEN 'unknown' ELSE 'unpaid' END=:paymentStatus"
       );
     }
     const base = `FROM stock_units u LEFT JOIN stock_locations l ON l.id=u.location_id

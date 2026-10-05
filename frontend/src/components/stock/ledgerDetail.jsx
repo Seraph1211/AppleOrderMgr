@@ -24,6 +24,7 @@ function LedgerEditForm({ unit, catalog, onClose, onSaved }) {
     handlerName: unit.handlerName || '',
     soldOn: unit.soldOn || '',
     saleAmount: unit.saleAmount ?? '',
+    settlementAmount: unit.settlementAmount ?? '',
     reason: '',
   };
   const [value, setValue] = useState(initial);
@@ -67,10 +68,14 @@ function LedgerEditForm({ unit, catalog, onClose, onSaved }) {
         payload.extraExpenseAmount = ledgerAmount(value.extraExpenseAmount);
       if (canEditSale) {
         const sale = {};
-        ['salespersonName', 'handlerName', 'soldOn', 'saleAmount'].forEach(key => {
-          if (value[key] !== initial[key])
-            sale[key] = key === 'saleAmount' ? ledgerAmount(value[key]) : value[key].trim() || null;
-        });
+        ['salespersonName', 'handlerName', 'soldOn', 'saleAmount', 'settlementAmount'].forEach(
+          key => {
+            if (value[key] !== initial[key])
+              sale[key] = ['saleAmount', 'settlementAmount'].includes(key)
+                ? ledgerAmount(value[key])
+                : value[key].trim() || null;
+          }
+        );
         if (Object.keys(sale).length) payload.sale = sale;
       }
       if (value.reason.trim()) payload.reason = value.reason.trim();
@@ -131,15 +136,15 @@ function LedgerEditForm({ unit, catalog, onClose, onSaved }) {
             },
             {
               key: 'officialCostAmount',
-              label: '官网成本（元）',
+              label: '官网售价（元）',
               money: true,
               hidden: !canEditCost,
               placeholder: '留空表示待补成本',
-              hint: '更改规格时，请一并核对官网成本。',
+              hint: '更改规格时，请一并核对官网售价。',
             },
             {
               key: 'extraExpenseAmount',
-              label: '本台额外费用合计（元）',
+              label: '其他费用（元）',
               money: true,
               hidden: !canEditExpense,
               placeholder: '留空表示未录入',
@@ -162,6 +167,13 @@ function LedgerEditForm({ unit, catalog, onClose, onSaved }) {
               fields={[
                 { key: 'soldOn', label: '销售日期', type: 'date', required: true },
                 { key: 'saleAmount', label: '售价（元）', money: true, required: true },
+                {
+                  key: 'settlementAmount',
+                  label: '结算金额（元）',
+                  money: true,
+                  placeholder: '留空待补',
+                  hint: '人工填写售价扣除渠道抽成及其他费用后的金额；不再重复扣费。',
+                },
               ]}
             />
           </>
@@ -175,8 +187,7 @@ function LedgerEditForm({ unit, catalog, onClose, onSaved }) {
             {
               key: 'reason',
               label: '更正原因',
-              required: unit.state === 'sold',
-              hint: '记录修改前后值；更正已售金额或日期时请说明原因。',
+              hint: '更正已售金额或日期时请说明原因；仅修改备注可留空。',
             },
           ]}
         />
@@ -291,6 +302,10 @@ export default function LedgerDetail({ id, catalog, onClose, onSaved }) {
               ['销售人', unit.salespersonName || '待补'],
               ['出货人', unit.handlerName || '待补'],
               ['售价', moneyText(unit.saleAmount)],
+              [
+                '结算金额',
+                unit.settlementAmount == null ? '待补结算' : moneyText(unit.settlementAmount),
+              ],
             ]
           : []),
         ...(unit.paymentStatus
@@ -304,7 +319,7 @@ export default function LedgerDetail({ id, catalog, onClose, onSaved }) {
         ...(can('stock.cost.read')
           ? [
               [
-                '官网成本',
+                '官网售价',
                 unit.officialCostAmount == null ? '待补成本' : moneyText(unit.officialCostAmount),
               ],
             ]
@@ -312,19 +327,20 @@ export default function LedgerDetail({ id, catalog, onClose, onSaved }) {
         ...(can('stock.expenses.read')
           ? [
               [
-                '额外费用',
+                '其他费用',
                 unit.extraExpenseAmount == null ? '未录入' : moneyText(unit.extraExpenseAmount),
               ],
             ]
           : []),
         ...(can('stock.profit.read') && unit.state === 'sold'
           ? [
-              ['毛利', unit.grossProfit == null ? '待补成本' : moneyText(unit.grossProfit)],
               [
-                '扣已记费用后利润',
-                unit.profitAfterExpenses == null
-                  ? '待补成本或费用'
-                  : moneyText(unit.profitAfterExpenses),
+                '毛利',
+                unit.grossProfit == null
+                  ? unit.settlementAmount == null
+                    ? '待补结算'
+                    : '待补官网售价'
+                  : moneyText(unit.grossProfit),
               ],
             ]
           : []),

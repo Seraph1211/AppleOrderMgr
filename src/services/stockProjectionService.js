@@ -254,6 +254,7 @@ function projectUnit(ctx, unit, g) {
       status: sale.status,
       saleUnitId: saleUnit.id,
       saleAmount: saleUnit.saleAmount,
+      settlementAmount: saleUnit.settlementAmount,
     };
   }
   return result;
@@ -280,10 +281,14 @@ function projectSale(ctx, sale, g) {
   const activeExpenses = expenses.filter(e => e.status === 'active');
   let total = 0n;
   let knownCost = 0n;
-  let knownSale = 0n;
   let unknownCount = 0;
+  let unknownProfitCount = 0;
+  let knownProfit = 0n;
   const units = entries.map(entry => {
     const unit = byId(g.StockUnit, entry.stockUnitId);
+    const income = sale.simpleLedger ? entry.settlementAmount : entry.saleAmount;
+    if (income == null || entry.costAmountSnapshot == null) unknownProfitCount++;
+    else knownProfit += cents(income) - cents(entry.costAmountSnapshot);
     const row = base(entry);
     delete row.costAmountSnapshot;
     const allocated = activeExpenses
@@ -302,19 +307,18 @@ function projectSale(ctx, sale, g) {
     if (entry.costAmountSnapshot == null) unknownCount++;
     else {
       knownCost += cents(entry.costAmountSnapshot);
-      knownSale += cents(entry.saleAmount || '0.00');
     }
     if (ctx.permissions.has('stock.cost.read')) row.costAmount = entry.costAmountSnapshot;
     if (ctx.permissions.has('stock.expenses.read')) row.expenseAmount = money(allocated);
     if (ctx.permissions.has('stock.profit.read')) {
       row.grossProfit =
-        entry.costAmountSnapshot == null || !entry.saleAmount
+        entry.costAmountSnapshot == null || income == null
           ? null
-          : money(cents(entry.saleAmount) - cents(entry.costAmountSnapshot));
+          : money(cents(income) - cents(entry.costAmountSnapshot));
       row.profitAfterExpenses =
         row.grossProfit == null
           ? null
-          : money(cents(row.grossProfit, { signed: true }) - allocated);
+          : money(cents(row.grossProfit, { signed: true }) - (sale.simpleLedger ? 0n : allocated));
     }
     return row;
   });
@@ -351,12 +355,13 @@ function projectSale(ctx, sale, g) {
     result.expenseAmount = money(activeExpenses.reduce((sum, e) => sum + cents(e.amount), 0n));
   }
   if (ctx.permissions.has('stock.profit.read')) {
-    result.partialGrossProfit = money(knownSale - knownCost);
-    result.grossProfit = unknownCount ? null : result.partialGrossProfit;
+    result.partialGrossProfit = money(knownProfit);
+    result.unconfirmedProfitCount = unknownProfitCount;
+    result.grossProfit = unknownProfitCount ? null : result.partialGrossProfit;
     result.profitAfterExpenses =
       result.grossProfit == null
         ? null
-        : money(knownSale - knownCost - cents(result.expenseAmount));
+        : money(knownProfit - (sale.simpleLedger ? 0n : cents(result.expenseAmount)));
   }
   if (ctx.permissions.has('stock.collections.read'))
     result.collections = g.StockCollection.filter(row => row.saleId === sale.id).map(row =>
@@ -719,7 +724,7 @@ async function receivableSummary(ctx, query = {}) {
       bind.to = instant(query.to);
     }
     const [rows] = await db.sequelize.query(
-      `SELECT c.id AS "collectionId",c.collector_id AS "collectorId",c.sale_id AS "saleId",s.sale_no AS "saleNo",u.id AS "saleUnitId",p.serial_number AS "serialNumber",u.sale_amount AS "saleAmount",COALESCE(a.amount,0)::numeric(14,2) AS "receivedAmount" FROM stock_collections c JOIN stock_sales s ON s.id=c.sale_id JOIN stock_sale_lines l ON l.sale_id=s.id JOIN stock_sale_units u ON u.sale_line_id=l.id AND u.status='shipped' JOIN stock_units p ON p.id=u.stock_unit_id LEFT JOIN (SELECT collection_id,sale_unit_id,sum(amount) amount FROM stock_receipt_allocations WHERE status='active' GROUP BY collection_id,sale_unit_id) a ON a.collection_id=c.id AND a.sale_unit_id=u.id WHERE c.status='posted' AND c.destination='agent' ${filters.length ? 'AND ' + filters.join(' AND ') : ''} ORDER BY c.received_at,c.id,u.id`,
+      `SELECT c.id AS "collectionId",c.collector_id AS "collectorId",c.sale_id AS "saleId",s.sale_no AS "saleNo",u.id AS "saleUnitId",p.serial_number AS "serialNumber",COALESCE(u.settlement_amount,u.sale_amount) AS "saleAmount",COALESCE(a.amount,0)::numeric(14,2) AS "receivedAmount" FROM stock_collections c JOIN stock_sales s ON s.id=c.sale_id JOIN stock_sale_lines l ON l.sale_id=s.id JOIN stock_sale_units u ON u.sale_line_id=l.id AND u.status='shipped' JOIN stock_units p ON p.id=u.stock_unit_id LEFT JOIN (SELECT collection_id,sale_unit_id,sum(amount) amount FROM stock_receipt_allocations WHERE status='active' GROUP BY collection_id,sale_unit_id) a ON a.collection_id=c.id AND a.sale_unit_id=u.id WHERE c.status='posted' AND c.destination='agent' ${filters.length ? 'AND ' + filters.join(' AND ') : ''} ORDER BY c.received_at,c.id,u.id`,
       { replacements: bind, transaction: ctx.transaction }
     );
     const ids = [...new Set(rows.map(r => r.collectorId))];
@@ -985,7 +990,7 @@ async function reports(ctx, kind, query = {}) {
       replacements.products = ids;
     }
     const [rows] = await db.sequelize.query(
-      `SELECT count(*)::integer AS quantity,count(DISTINCT s.id) FILTER(WHERE NOT s.fees_complete)::integer AS "incompleteFeesCount",COALESCE(sum(u.sale_amount),0)::numeric(30,2)::text AS amount,COALESCE(sum(u.cost_amount_snapshot),0)::numeric(30,2)::text AS cost,count(*) FILTER(WHERE u.cost_amount_snapshot IS NULL)::integer AS unknown,COALESCE(sum(u.sale_amount-u.cost_amount_snapshot),0)::numeric(30,2)::text AS gross,COALESCE(sum(a.amount),0)::numeric(30,2)::text AS expense FROM stock_sales s JOIN stock_sale_lines l ON l.sale_id=s.id JOIN stock_sale_units u ON u.sale_line_id=l.id AND u.status='shipped' LEFT JOIN (SELECT a.sale_unit_id,sum(a.amount) amount FROM stock_expense_allocations a JOIN stock_expenses e ON e.id=a.expense_id AND e.version=a.expense_version AND e.status='active' GROUP BY a.sale_unit_id) a ON a.sale_unit_id=u.id WHERE s.status='shipped' ${filters.length ? 'AND ' + filters.join(' AND ') : ''}`,
+      `SELECT count(*)::integer AS quantity,count(DISTINCT s.id) FILTER(WHERE NOT s.fees_complete)::integer AS "incompleteFeesCount",COALESCE(sum(u.sale_amount),0)::numeric(30,2)::text AS amount,COALESCE(sum(u.cost_amount_snapshot),0)::numeric(30,2)::text AS cost,count(*) FILTER(WHERE u.cost_amount_snapshot IS NULL)::integer AS unknown,count(*) FILTER(WHERE u.cost_amount_snapshot IS NULL OR (s.simple_ledger AND u.settlement_amount IS NULL))::integer AS "unknownProfit",COALESCE(sum((CASE WHEN s.simple_ledger THEN u.settlement_amount ELSE u.sale_amount END)-u.cost_amount_snapshot),0)::numeric(30,2)::text AS gross,COALESCE(sum(a.amount),0)::numeric(30,2)::text AS expense,COALESCE(sum(CASE WHEN s.simple_ledger THEN 0 ELSE a.amount END),0)::numeric(30,2)::text AS "profitExpense" FROM stock_sales s JOIN stock_sale_lines l ON l.sale_id=s.id JOIN stock_sale_units u ON u.sale_line_id=l.id AND u.status='shipped' LEFT JOIN (SELECT a.sale_unit_id,sum(a.amount) amount FROM stock_expense_allocations a JOIN stock_expenses e ON e.id=a.expense_id AND e.version=a.expense_version AND e.status='active' GROUP BY a.sale_unit_id) a ON a.sale_unit_id=u.id WHERE s.status='shipped' ${filters.length ? 'AND ' + filters.join(' AND ') : ''}`,
       { replacements, transaction: ctx.transaction }
     );
     const row = rows[0];
@@ -1000,10 +1005,11 @@ async function reports(ctx, kind, query = {}) {
     }
     if (ctx.permissions.has('stock.profit.read')) {
       output.partialGrossProfit = row.gross;
-      output.grossProfit = row.unknown ? null : row.gross;
-      output.profitAfterExpenses = row.unknown
+      output.unconfirmedProfitCount = row.unknownProfit;
+      output.grossProfit = row.unknownProfit ? null : row.gross;
+      output.profitAfterExpenses = row.unknownProfit
         ? null
-        : money(BigInt(row.gross.replace('.', '')) - BigInt(row.expense.replace('.', '')));
+        : money(BigInt(row.gross.replace('.', '')) - BigInt(row.profitExpense.replace('.', '')));
     }
     return output;
   } catch (error) {

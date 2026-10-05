@@ -26,6 +26,13 @@ const UNIT_FIELDS = [
   'extraExpenseAmount',
   'notes',
 ];
+/** 结算为人工确认值，未知不自动推算；已含抽成和其他费用。 */
+function settlement(value, saleAmount) {
+  if (value == null || value === '') return null;
+  if (cents(value) > cents(saleAmount, { positive: true }))
+    throw ApiError.badRequest('结算金额不能超过售价');
+  return value;
+}
 const PAYMENT_STATES = ['unpaid', 'agent_pending', 'company_received', 'unknown'];
 const audit = ctx => ({ createdBy: ctx.user.id, updatedBy: ctx.user.id });
 const options = ctx => ({ transaction: ctx.transaction });
@@ -241,7 +248,7 @@ async function stockAvailable(ctx, unit) {
 }
 async function registeredUnit(ctx, item, history) {
   try {
-    only(item, [...UNIT_FIELDS, ...(history ? ['saleAmount'] : [])]);
+    only(item, [...UNIT_FIELDS, ...(history ? ['saleAmount', 'settlementAmount'] : [])]);
     if (
       item.officialCostAmount !== undefined ||
       item.acquiredOn !== undefined ||
@@ -369,12 +376,16 @@ async function saleFacts(ctx, unit, requireSimple = true) {
       ...options(ctx),
     });
     let compatible = units.length === 1 && collections.length <= 1;
-    if (collections.length === 1 && collections[0].amount !== saleUnit.saleAmount)
+    if (
+      collections.length === 1 &&
+      collections[0].amount !== (saleUnit.settlementAmount ?? saleUnit.saleAmount)
+    )
       compatible = false;
     const allocated = allocations
       .filter(row => row.saleUnitId === saleUnit.id)
       .reduce((sum, row) => sum + cents(row.amount), 0n);
-    if (allocated !== 0n && allocated !== cents(saleUnit.saleAmount)) compatible = false;
+    if (allocated !== 0n && allocated !== cents(saleUnit.settlementAmount ?? saleUnit.saleAmount))
+      compatible = false;
     if (receipts.length > 1 || allocations.some(row => row.saleUnitId !== saleUnit.id))
       compatible = false;
     for (const receipt of receipts) {
@@ -385,7 +396,7 @@ async function saleFacts(ctx, unit, requireSimple = true) {
       if (
         related.length !== 1 ||
         related[0].saleUnitId !== saleUnit.id ||
-        receipt.amount !== saleUnit.saleAmount ||
+        receipt.amount !== (saleUnit.settlementAmount ?? saleUnit.saleAmount) ||
         related[0].amount !== receipt.amount
       )
         compatible = false;
@@ -401,7 +412,8 @@ async function saleFacts(ctx, unit, requireSimple = true) {
     let status =
       !sale.simpleLedger || sale.paymentVerification === 'unknown' ? 'unknown' : 'unpaid';
     if (collection) status = 'agent_pending';
-    if (allocated >= cents(saleUnit.saleAmount)) status = 'company_received';
+    if (allocated > 0n && allocated >= cents(saleUnit.settlementAmount ?? saleUnit.saleAmount))
+      status = 'company_received';
     else if (allocated > 0n) status = 'legacy_partial';
     return {
       sale,
@@ -445,6 +457,14 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
     if (status === 'unknown' && !facts.sale.isHistorical)
       throw ApiError.badRequest('待核实仅用于历史销售');
     if (status === 'company_received') requirePermissions(ctx, 'stock.receipts.edit');
+    if (
+      !['unpaid', 'unknown'].includes(status) &&
+      facts.saleUnit.settlementAmount == null &&
+      !facts.collection
+    )
+      throw ApiError.badRequest('请先填写结算金额，再登记代收或公司到账');
+    if (!['unpaid', 'unknown'].includes(status))
+      cents(facts.saleUnit.settlementAmount ?? facts.saleUnit.saleAmount, { positive: true });
     const previous = facts.status;
     const forward = {
       unknown: ['unpaid', 'agent_pending', 'company_received'],
@@ -494,7 +514,8 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
       (effectiveCollector?.id || null) === (facts.collection?.collectorId || null) &&
       dateLabel(collectionAt) === dateLabel(facts.collection?.receivedAt) &&
       dateLabel(receiptAt) === dateLabel(facts.receipt?.receivedAt) &&
-      (!facts.collection || facts.collection.amount === facts.saleUnit.saleAmount);
+      (!facts.collection ||
+        facts.collection.amount === (facts.saleUnit.settlementAmount ?? facts.saleUnit.saleAmount));
     const changesCollection =
       facts.collection &&
       ((effectiveCollector?.id || null) !== (facts.collection.collectorId || null) ||
@@ -511,7 +532,7 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
           saleId: facts.sale.id,
           destination: agent ? 'agent' : 'company',
           collectorId: effectiveCollector?.id || null,
-          amount: facts.saleUnit.saleAmount,
+          amount: facts.saleUnit.settlementAmount ?? facts.saleUnit.saleAmount,
           receivedAt: collectionAt,
           status: 'posted',
         },
@@ -525,7 +546,7 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
             source: agent ? 'agent_transfer' : 'direct_customer',
             payerId: effectiveCollector?.id || null,
             collectionId: agent ? null : collection.id,
-            amount: facts.saleUnit.saleAmount,
+            amount: facts.saleUnit.settlementAmount ?? facts.saleUnit.saleAmount,
             receivedAt: receiptAt,
             status: 'posted',
           },
@@ -538,7 +559,7 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
             receiptId: receipt.id,
             collectionId: collection.id,
             saleUnitId: facts.saleUnit.id,
-            amount: facts.saleUnit.saleAmount,
+            amount: facts.saleUnit.settlementAmount ?? facts.saleUnit.saleAmount,
             status: 'active',
           },
           'ledger_receipt_allocation'
@@ -638,6 +659,7 @@ async function createSale(ctx, prepared, input, item, historical) {
         fromLocationId,
         status: 'shipped',
         saleAmount: item.saleAmount,
+        settlementAmount: settlement(item.settlementAmount, item.saleAmount),
         costAmountSnapshot: unit.officialCostAmount,
         productSnapshot: product.toJSON(),
       },
@@ -673,7 +695,7 @@ async function sellUnits(ctx, input) {
     requirePermissions(ctx, 'stock.sales.edit', 'stock.sales.ship');
     const ids = [];
     for (const item of array(input.units)) {
-      only(item, ['id', 'expectedVersion', 'saleAmount', 'extraExpenseAmount']);
+      only(item, ['id', 'expectedVersion', 'saleAmount', 'settlementAmount', 'extraExpenseAmount']);
       const unit = await getRow('StockUnit', item.id, ctx);
       assertVersion(unit, item.expectedVersion);
       await stockAvailable(ctx, unit);
@@ -754,10 +776,17 @@ async function setPayment(ctx, input) {
 }
 async function editSale(ctx, unit, facts, input, reason) {
   try {
-    only(input, ['saleAmount', 'salespersonName', 'handlerName', 'soldOn', 'payment']);
+    only(input, [
+      'saleAmount',
+      'settlementAmount',
+      'salespersonName',
+      'handlerName',
+      'soldOn',
+      'payment',
+    ]);
     if (!Object.keys(input).length) return;
     correction(ctx, reason);
-    requirePermissions(ctx, 'stock.sales.ship');
+    requirePermissions(ctx, 'stock.sales.edit', 'stock.sales.ship');
     const values = {};
     if (input.salespersonName !== undefined)
       values.salespersonId =
@@ -772,27 +801,33 @@ async function editSale(ctx, unit, facts, input, reason) {
       if (unit.firstReceivedAt && input.soldOn < dateLabel(unit.firstReceivedAt))
         throw ApiError.badRequest('销售日期不能早于入库日期');
     }
-    if (input.saleAmount !== undefined) {
-      cents(input.saleAmount, { positive: true });
+    if (input.saleAmount !== undefined || input.settlementAmount !== undefined) {
+      const saleAmount = input.saleAmount ?? facts.saleUnit.saleAmount;
+      cents(saleAmount, { positive: true });
+      if ((input.settlementAmount === null || input.settlementAmount === '') && facts.collection)
+        throw ApiError.badRequest('已有货款记录时请填写明确的结算金额，不能清空');
+      const settlementAmount = settlement(
+        input.settlementAmount === undefined
+          ? facts.saleUnit.settlementAmount
+          : input.settlementAmount,
+        saleAmount
+      );
       await updateRow(
         ctx,
         facts.saleUnit,
-        { saleAmount: input.saleAmount },
+        { saleAmount, settlementAmount },
         'ledger_price_correct'
       );
-      await updateRow(
-        ctx,
-        facts.line,
-        { quotedUnitAmount: input.saleAmount },
-        'ledger_price_correct'
-      );
+      await updateRow(ctx, facts.line, { quotedUnitAmount: saleAmount }, 'ledger_price_correct');
     }
     await updateRow(ctx, facts.sale, values, 'ledger_sale_correct');
     let payment = input.payment;
     if (
       !payment &&
       facts.collection &&
-      (input.saleAmount !== undefined || input.soldOn !== undefined)
+      (input.saleAmount !== undefined ||
+        input.settlementAmount !== undefined ||
+        input.soldOn !== undefined)
     )
       payment = { status: facts.status };
     if (payment) await applyPayment(ctx, unit, facts, payment, reason);
