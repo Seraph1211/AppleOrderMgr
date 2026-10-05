@@ -23,6 +23,10 @@ module.exports = {
   async down(queryInterface) {
     try {
       await queryInterface.sequelize.transaction(async transaction => {
+        await queryInterface.sequelize.query(
+          'LOCK TABLE stock_sale_units IN ACCESS EXCLUSIVE MODE',
+          { transaction }
+        );
         const [rows] = await queryInterface.sequelize.query(
           'SELECT 1 FROM stock_sale_units WHERE settlement_amount IS NOT NULL LIMIT 1',
           { transaction }
