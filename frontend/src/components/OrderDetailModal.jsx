@@ -1,6 +1,7 @@
 import AlertModal from './AlertModal';
 import OrderAmount from './OrderAmount';
 import OrderSources from './OrderSources';
+import OrderPickupPhotos from './orderPickupPhotos';
 import { getOrderDetailWithLink, updateOrder, updateOrderPayer } from '../api/ordersApi';
 import { getDisplayOrderStatusBadge } from '../constants/orderStatus';
 import { PERMISSIONS } from '../constants/permissions';
@@ -271,6 +272,8 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
               </div>
             </div>
           </div>
+
+          <OrderPickupPhotos orderId={order.id} orderNumber={order.orderNumber} />
 
           <div className="card overflow-hidden p-0">
             <div className="border-b border-gray-200 px-5 py-4">

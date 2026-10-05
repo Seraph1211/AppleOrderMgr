@@ -264,11 +264,11 @@ function LedgerRecoverForm({ unit, catalog, onClose, onSaved }) {
 }
 
 /** 单台详情将销售、货款、照片和改动轨迹放在同一处。 */
-export default function LedgerDetail({ id, catalog, initialAction = null, onClose, onSaved }) {
+export default function LedgerDetail({ id, catalog, onClose, onSaved }) {
   const { can } = useAuth();
   const resource = useStockData(`/ledger/${id}`);
   const evidence = useStockData(`/units/${id}`, {}, Boolean(resource.data));
-  const [action, setAction] = useState(initialAction);
+  const [action, setAction] = useState(null);
   const unit = resource.data;
   const saved = result => {
     setAction(null);

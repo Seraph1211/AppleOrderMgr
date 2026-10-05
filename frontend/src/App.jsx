@@ -21,6 +21,7 @@ import ChangePassword from './pages/ChangePassword';
 import EmailProcessing from './pages/EmailProcessing';
 import OrderIngestion from './pages/OrderIngestion';
 import ServerMonitor from './pages/ServerMonitor';
+import ServerLogs from './pages/ServerLogs';
 import WecomNotifications from './pages/WecomNotifications';
 import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
@@ -98,6 +99,10 @@ function ManagementApp() {
                   <Route
                     path="/server-monitor"
                     element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerMonitor />)}
+                  />
+                  <Route
+                    path="/server-monitor/logs"
+                    element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerLogs />)}
                   />
                   <Route
                     path="/identity-verifications"

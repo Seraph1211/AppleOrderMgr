@@ -291,7 +291,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
           </div>
           <div>
             <h1 className="font-semibold tracking-tight text-gray-900">
-              {mode === 'admin' ? '监控管理' : '库存监控'}
+              {mode === 'admin' ? '监控管理' : '库存查询'}
             </h1>
             <p className="text-xs sm:text-sm text-gray-500 mt-1">
               大陆 Apple 直营店{' '}

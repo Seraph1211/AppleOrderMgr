@@ -238,7 +238,7 @@ export default function Stock() {
             <button
               className="btn btn-secondary"
               disabled={writesDisabled}
-              onClick={() => setDetail({ id: unit.id, action: 'edit' })}
+              onClick={() => setDetail({ id: unit.id })}
             >
               编辑
             </button>
@@ -359,6 +359,29 @@ export default function Stock() {
           筛选
         </button>
       </form>
+      <div className="flex flex-wrap items-end gap-3">
+          <label className="text-sm sm:min-w-[180px]">
+            仓库
+            <select
+              aria-label="按仓库筛选"
+              className="input mt-1 w-full"
+              value={filters.warehouseId}
+              onChange={event => changeFilter('warehouseId', event.target.value)}
+            >
+              <option value="">全部仓库</option>
+              {catalog.warehouses.map(warehouse => (
+                <option key={warehouse.id} value={warehouse.id}>
+                  {warehouse.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        {filters.warehouseId && (
+          <button className="btn btn-secondary" onClick={() => changeFilter('warehouseId', '')}>
+            清除仓库筛选
+          </button>
+        )}
+      </div>
       {filtersOpen && (
         <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-3">
           <label className="text-sm">
@@ -372,21 +395,6 @@ export default function Stock() {
               {catalog.products.map(product => (
                 <option key={product.id} value={product.id}>
                   {productLabel(product)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="text-sm">
-            仓库
-            <select
-              className="input mt-1 w-full"
-              value={filters.warehouseId}
-              onChange={event => changeFilter('warehouseId', event.target.value)}
-            >
-              <option value="">全部仓库</option>
-              {catalog.warehouses.map(warehouse => (
-                <option key={warehouse.id} value={warehouse.id}>
-                  {warehouse.name}
                 </option>
               ))}
             </select>
@@ -552,7 +560,6 @@ export default function Stock() {
         <LedgerDetail
           key={detail.id}
           id={detail.id}
-          initialAction={detail.action}
           catalog={catalog}
           onClose={() => setDetail(null)}
           onSaved={() => {

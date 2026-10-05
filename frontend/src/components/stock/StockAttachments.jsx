@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Paperclip, ExternalLink } from 'lucide-react';
-import { stockGet } from '../../api/stockApi';
+import { Paperclip, Image } from 'lucide-react';
 import { StockFeedback } from './StockCommon';
 import { useStockCommand } from './stockHooks';
+import StockAttachmentPreview from './stockAttachmentPreview';
 
 /** 私有凭证上传确认及按需签名查看，不把照片加入公共 URL。 */
 export default function StockAttachments({ target, items = [], canWrite, onSaved }) {
@@ -10,6 +10,7 @@ export default function StockAttachments({ target, items = [], canWrite, onSaved
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [prepared, setPrepared] = useState(null);
+  const [preview, setPreview] = useState(null);
   const upload = async event => {
     const file = event.target.files?.[0];
     event.target.value = '';
@@ -73,20 +74,6 @@ export default function StockAttachments({ target, items = [], canWrite, onSaved
       setError(failure.message);
     }
   };
-  const view = async item => {
-    const tab = window.open('', '_blank');
-    try {
-      const data = await stockGet(`/attachments/${item.id}/read`);
-      if (!data.url && !data.readUrl) throw new Error('未获得凭证访问地址');
-      if (tab) {
-        tab.opener = null;
-        tab.location = data.url || data.readUrl;
-      }
-    } catch (failure) {
-      tab?.close();
-      setError(failure.message);
-    }
-  };
   return (
     <section className="space-y-3 border-t pt-3">
       <h3 className="font-medium">照片与凭证</h3>
@@ -96,9 +83,9 @@ export default function StockAttachments({ target, items = [], canWrite, onSaved
             <button
               type="button"
               className="btn btn-secondary max-w-full"
-              onClick={() => view(item)}
+              onClick={() => setPreview(item)}
             >
-              <ExternalLink className="h-4 w-4 shrink-0" />
+              <Image className="h-4 w-4 shrink-0" />
               <span className="truncate">{item.originalName || '查看凭证'}</span>
             </button>
           </li>
@@ -132,6 +119,7 @@ export default function StockAttachments({ target, items = [], canWrite, onSaved
         </button>
       )}
       <StockFeedback error={error || command.error} />
+      {preview && <StockAttachmentPreview key={preview.id} item={preview} onClose={() => setPreview(null)} />}
     </section>
   );
 }
