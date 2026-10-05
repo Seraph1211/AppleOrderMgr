@@ -1,4 +1,5 @@
 const { Op } = require('sequelize');
+const { parseStockProductFilters } = require('../utils/stockProductFilters');
 const { specification, PRICE_VERSION } = require('./stockFixedCatalog');
 const db = require('../models');
 const ApiError = require('../utils/ApiError');
@@ -26,6 +27,18 @@ async function catalog(ctx) {
       transaction: ctx.transaction,
       raw: true,
     });
+    const filterProducts = await db.StockProduct.findAll({
+      attributes: ['modelName', 'storageGb', 'colorName'],
+      transaction: ctx.transaction,
+      raw: true,
+    });
+    const filterOptions = {
+      modelNames: [...new Set(filterProducts.map(product => product.modelName))].sort(),
+      storageGbs: [...new Set(filterProducts.map(product => product.storageGb))].sort(
+        (a, b) => a - b
+      ),
+      colorNames: [...new Set(filterProducts.map(product => product.colorName))].sort(),
+    };
     const warehouses = await db.StockLocation.findAll({
       where: { kind: 'warehouse', isActive: true },
       attributes: ['id', 'name', 'version', 'isActive'],
@@ -54,6 +67,7 @@ async function catalog(ctx) {
             : {}),
         };
       }),
+      filterOptions,
       warehouses,
       people,
       enabled: settings.enabled,
@@ -315,6 +329,9 @@ async function list(ctx, query = {}) {
       'view',
       'q',
       'productId',
+      'modelNames',
+      'storageGbs',
+      'colorNames',
       'warehouseId',
       'salespersonName',
       'paymentStatus',
@@ -330,6 +347,17 @@ async function list(ctx, query = {}) {
       throw ApiError.badRequest('分页参数无效');
     const replacements = { limit: pageSize, offset: (page - 1) * pageSize };
     const filters = [];
+    const productFilters = parseStockProductFilters(query);
+    for (const [key, column] of [
+      ['modelNames', 'model_name'],
+      ['storageGbs', 'storage_gb'],
+      ['colorNames', 'color_name'],
+    ]) {
+      if (productFilters[key].length) {
+        replacements[key] = productFilters[key];
+        filters.push(`p.${column} IN (:${key})`);
+      }
+    }
     if (query.productId) {
       replacements.productId = uuid(query.productId);
       filters.push('u.product_id=:productId');
@@ -384,7 +412,7 @@ async function list(ctx, query = {}) {
         "s.id IS NOT NULL AND CASE WHEN cash.received>0 AND cash.received<COALESCE(su.settlement_amount,su.sale_amount) THEN 'legacy_partial' WHEN cash.received>0 AND cash.received>=COALESCE(su.settlement_amount,su.sale_amount) THEN 'company_received' WHEN c.id IS NOT NULL THEN 'agent_pending' WHEN (NOT s.simple_ledger OR s.payment_verification='unknown') THEN 'unknown' ELSE 'unpaid' END=:paymentStatus"
       );
     }
-    const base = `FROM stock_units u LEFT JOIN stock_locations l ON l.id=u.location_id
+    const base = `FROM stock_units u LEFT JOIN stock_products p ON p.id=u.product_id LEFT JOIN stock_locations l ON l.id=u.location_id
       LEFT JOIN stock_sale_units su ON su.stock_unit_id=u.id AND su.status='shipped'
       LEFT JOIN stock_sale_lines sl ON sl.id=su.sale_line_id LEFT JOIN stock_sales s ON s.id=sl.sale_id AND s.status='shipped'
       LEFT JOIN stock_parties sp ON sp.id=s.salesperson_id

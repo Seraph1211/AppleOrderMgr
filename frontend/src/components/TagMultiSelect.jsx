@@ -19,6 +19,7 @@ export default function TagMultiSelect({
   itemLabel = 'TAG',
   optionLabels = EMPTY_LABELS,
   searchLabels = EMPTY_LABELS,
+  compareOptions,
 }) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -42,13 +43,15 @@ export default function TagMultiSelect({
 
   const normalizedOptions = useMemo(
     () =>
-      [...new Set([...options, ...value].filter(Boolean))].sort((left, right) =>
-        getOptionLabel(left, optionLabels).localeCompare(
-          getOptionLabel(right, optionLabels),
-          'zh-CN'
-        )
+      [...new Set([...options, ...value].filter(Boolean))].sort(
+        compareOptions ||
+          ((left, right) =>
+            getOptionLabel(left, optionLabels).localeCompare(
+              getOptionLabel(right, optionLabels),
+              'zh-CN'
+            ))
       ),
-    [options, value, optionLabels]
+    [options, value, optionLabels, compareOptions]
   );
   const visibleOptions = useMemo(() => {
     const normalizeSearch = text =>

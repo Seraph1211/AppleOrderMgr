@@ -1376,6 +1376,88 @@ if (
     expect(await db.StockSaleUnit.count({ where: { stockUnitId: rows[1].id } })).toBe(0);
   });
 
+  test('机型容量颜色精确多选在分页前筛选，库存销售计数一致且包含停用历史规格', async () => {
+    const name = `筛选'_%${prefix}`;
+    const variants = await db.StockProduct.bulkCreate(
+      [
+        {
+          modelKey: `filter_a_${prefix}`,
+          modelName: name,
+          storageGb: 256,
+          colorKey: 'blue',
+          colorName: '筛选蓝',
+        },
+        {
+          modelKey: `filter_a_${prefix}`,
+          modelName: name,
+          storageGb: 512,
+          colorKey: 'blue',
+          colorName: '筛选蓝',
+        },
+        {
+          modelKey: `filter_b_${prefix}`,
+          modelName: `筛选B${prefix}`,
+          storageGb: 256,
+          colorKey: 'silver',
+          colorName: '筛选银',
+        },
+      ],
+      { returning: true }
+    );
+    const units = await receive(
+      Array.from({ length: 26 }, (_, index) => ({
+        ...newInput(),
+        productId: variants[index < 24 ? 0 : index === 24 ? 1 : 2].id,
+      }))
+    );
+    const sellable = units.filter(unit => unit.productId === variants[0].id).slice(0, 2);
+    await execute('sellUnits', saleInput(sellable));
+    const ctx = await command.createReadContext(limited);
+    const query = {
+      modelNames: JSON.stringify([name]),
+      storageGbs: '[256,512]',
+      colorNames: '["筛选蓝"]',
+      warehouseId: warehouseA.id,
+    };
+    const page1 = await projection.list(ctx, { ...query, view: 'in_stock', page: 1, pageSize: 20 });
+    const page2 = await projection.list(ctx, { ...query, view: 'in_stock', page: 2, pageSize: 20 });
+    expect(page1.total).toBe(23);
+    expect(page1.items).toHaveLength(20);
+    expect(page2.items).toHaveLength(3);
+    expect(new Set([...page1.items, ...page2.items].map(item => item.id)).size).toBe(23);
+    expect(page1.counts).toEqual({ inStock: 23, sold: 2 });
+    const sold = await projection.list(ctx, { ...query, view: 'sold' });
+    expect(sold.total).toBe(2);
+    expect(
+      sold.items.every(
+        item => !Object.hasOwn(item, 'officialCostAmount') && !Object.hasOwn(item, 'grossProfit')
+      )
+    ).toBe(true);
+    expect((await projection.list(ctx, { ...query, colorNames: '["筛选银"]' })).total).toBe(0);
+    expect(
+      (
+        await projection.list(ctx, {
+          ...query,
+          modelNames: JSON.stringify([name, `筛选B${prefix}`]),
+          colorNames: '["筛选蓝","筛选银"]',
+          view: 'all',
+        })
+      ).total
+    ).toBe(26);
+    expect((await projection.list(ctx, { ...query, warehouseId: warehouseB.id })).total).toBe(0);
+    expect(
+      (await projection.list(ctx, { ...query, modelNames: JSON.stringify(["' OR 1=1 --"]) })).total
+    ).toBe(0);
+    await variants[0].update({ isActive: false });
+    const options = await projection.catalog(ctx);
+    expect(options.filterOptions.modelNames).toContain(name);
+    expect(options.products.some(row => row.id === variants[0].id)).toBe(false);
+    expect((await projection.list(ctx, { ...query, view: 'sold' })).total).toBe(2);
+    await expect(projection.list(ctx, { storageGbs: '["256"]' })).rejects.toMatchObject({
+      statusCode: 400,
+    });
+  });
+
   test('台账只纳入自有仓库现货和本地已售，筛选分页和北京时间销售日正确', async () => {
     const local = await receive([newInput()]);
     const outsideUnit = await db.StockUnit.create({

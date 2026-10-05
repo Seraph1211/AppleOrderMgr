@@ -1059,3 +1059,9 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 `GET /api/stock/ledger/catalog` 增加 skuCode、entryEligible；cost.read 可见 fixedCostAmount 和 priceVersion。入库及历史补录每台独立 productId；未提供 officialCostAmount 时服务端默认匹配固定目录，显式人工金额或待补仍需 cost.edit。未知拿货日期保持空。
 
 `GET /api/stock/ledger/check-serials?serials=[...]`：最多100个 SN，返回 `existing:[{id,serialNumber}]`，只含已在库、已售、在途；registered 不拦截，正式保存仍在事务内检查规格与既有成本。人工成本的可选 `costBasis` 按成本权限校验并加密保存。单行失败错误附 `details.row`（1起始）；整批回滚。
+
+### 台账机型、容量与颜色筛选（2026-10-05）
+
+`GET /api/stock/ledger` 新增 `modelNames`、`storageGbs`、`colorNames`，均为 JSON 数组字符串；同维度多值 OR，三个维度及仓库、搜索、销售条件之间 AND。空数组不限制。机型与颜色按目录名称精确匹配，容量为正整数 GB；每组最多100项，名称分别最长100／64字符，非法 JSON、类型或值返回400。筛选在数据库分页前执行，total 与两个 Tab 计数使用同一条件；保留旧 productId 参数兼容。
+
+`GET /api/stock/ledger/catalog` 新增 `filterOptions: {modelNames: string[], storageGbs: number[], colorNames: string[]}`，来自完整规格目录，含停用的历史规格，不含成本等敏感字段；原 products 仍只返回可用入库规格。两处维持 stock.read 及原字段权限。前端三项常驻、支持搜索多选，切换库存／销售保留三维和仓库条件，修改筛选回到第一页、保留已选设备，清空规格只重置三维。

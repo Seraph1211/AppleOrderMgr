@@ -1,3 +1,4 @@
+import TagMultiSelect from '../components/TagMultiSelect';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Filter, History, Package, Plus, RefreshCw, Settings } from 'lucide-react';
@@ -21,7 +22,9 @@ import LedgerWarehouses from '../components/stock/ledgerWarehouses';
 const EMPTY_CATALOG = { products: [], warehouses: [], people: [] };
 const INITIAL_FILTERS = {
   q: '',
-  productId: '',
+  modelNames: [],
+  storageGbs: [],
+  colorNames: [],
   warehouseId: '',
   salespersonName: '',
   paymentStatus: '',
@@ -410,6 +413,56 @@ export default function Stock() {
             ))}
           </select>
         </label>
+        {[
+          ['modelNames', '机型', '全部机型'],
+          ['storageGbs', '容量', '全部容量'],
+          ['colorNames', '颜色', '全部颜色'],
+        ].map(([key, label, placeholder]) => (
+          <div key={key} className="min-w-0 w-full sm:w-48 text-sm">
+            <div className="mb-1">{label}</div>
+            <TagMultiSelect
+              options={(catalog.filterOptions?.[key] || []).map(String)}
+              value={filters[key].map(String)}
+              onChange={values =>
+                changeFilter(key, key === 'storageGbs' ? values.map(Number) : values)
+              }
+              ariaLabel={`按${label}筛选`}
+              placeholder={placeholder}
+              itemLabel={label}
+              compareOptions={key === 'storageGbs' ? (a, b) => Number(a) - Number(b) : undefined}
+              optionLabels={
+                key === 'storageGbs'
+                  ? Object.fromEntries(
+                      [...(catalog.filterOptions?.storageGbs || []), ...filters.storageGbs].map(
+                        value => [
+                          String(value),
+                          value >= 1024 && value % 1024 === 0 ? `${value / 1024}TB` : `${value}GB`,
+                        ]
+                      )
+                    )
+                  : undefined
+              }
+            />
+          </div>
+        ))}
+        {(filters.modelNames.length > 0 ||
+          filters.storageGbs.length > 0 ||
+          filters.colorNames.length > 0) && (
+          <button
+            className="btn btn-secondary"
+            onClick={() => {
+              setFilters(previous => ({
+                ...previous,
+                modelNames: [],
+                storageGbs: [],
+                colorNames: [],
+              }));
+              setPage(1);
+            }}
+          >
+            清除规格筛选
+          </button>
+        )}
         {filters.warehouseId && (
           <button className="btn btn-secondary" onClick={() => changeFilter('warehouseId', '')}>
             清除仓库筛选
@@ -418,21 +471,6 @@ export default function Stock() {
       </div>
       {filtersOpen && (
         <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="text-sm">
-            手机规格
-            <select
-              className="input mt-1 w-full"
-              value={filters.productId}
-              onChange={event => changeFilter('productId', event.target.value)}
-            >
-              <option value="">全部规格</option>
-              {catalog.products.map(product => (
-                <option key={product.id} value={product.id}>
-                  {productLabel(product)}
-                </option>
-              ))}
-            </select>
-          </label>
           {tab !== 'in_stock' && (
             <>
               <label className="text-sm">
