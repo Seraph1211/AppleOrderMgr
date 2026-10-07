@@ -1,7 +1,7 @@
 import TagMultiSelect from '../components/TagMultiSelect';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Filter, History, Package, Plus, RefreshCw, Settings } from 'lucide-react';
+import { Search, History, Package, Plus, RefreshCw, Settings } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   StockBadge,
@@ -41,7 +41,7 @@ export default function Stock() {
     : 'in_stock';
   const [query, setQuery] = useState('');
   const [filters, setFilters] = useState(INITIAL_FILTERS);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [isComposing, setIsComposing] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [selected, setSelected] = useState([]);
@@ -55,6 +55,14 @@ export default function Stock() {
   const writesDisabled = catalogResource.loading || catalog.enabled === false;
   const resource = useStockData('/ledger', { ...filters, view: tab, page, pageSize });
   const items = resource.data?.items || [];
+  useEffect(() => {
+    if (isComposing || query.trim() === filters.q) return undefined;
+    const timer = window.setTimeout(() => {
+      setFilters(previous => ({ ...previous, q: query.trim() }));
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query, isComposing, filters.q]);
   const salePermission = can('stock.sales.edit') && can('stock.sales.ship');
   useEffect(() => {
     const sn = searchParams.get('receiveSn');
@@ -143,10 +151,7 @@ export default function Stock() {
         )}
       </>
     ) : (
-      <>
-        <div>{unit.warehouse?.name || '仓库待补'}</div>
-        <div className="mt-1 text-xs text-gray-500">{unit.receivedOn || '日期待补'}</div>
-      </>
+      <StockBadge value={unit.state} />
     );
   const columns = [
     {
@@ -174,6 +179,12 @@ export default function Stock() {
       ),
     },
     {
+      key: 'id',
+      title: 'ID',
+      mobileHidden: true,
+      render: unit => <span className="block w-36 break-all font-mono text-xs">{unit.id}</span>,
+    },
+    {
       key: 'device',
       title: '设备',
       className: 'ledger-device-cell',
@@ -187,6 +198,7 @@ export default function Stock() {
           </button>
           <div className="text-xs leading-5 text-gray-500 sm:hidden">
             {productLabel(unit.product)}
+            <div className="break-all font-mono">ID：{unit.id}</div>
           </div>
           <div className="hidden text-xs text-gray-500 sm:block">
             订单：{unit.orderNumber || (unit.orderLinked ? '已关联' : '待补')}
@@ -214,11 +226,27 @@ export default function Stock() {
       render: unit => productLabel(unit.product),
     },
     {
-      key: 'place',
-      title: tab === 'in_stock' ? '仓库 / 入库日期' : tab === 'sold' ? '销售 / 货款' : '当前情况',
+      key: 'warehouse',
+      title: '仓库',
       className: 'ledger-summary-cell',
-      render: mobileSummary,
+      render: unit => unit.warehouse?.name || unit.sourceWarehouse?.name || '仓库待补',
     },
+    {
+      key: 'receivedOn',
+      title: '入库日期',
+      className: 'whitespace-nowrap',
+      render: unit => unit.receivedOn || '日期待补',
+    },
+    ...(tab !== 'in_stock'
+      ? [
+          {
+            key: 'place',
+            title: '销售 / 货款',
+            className: 'ledger-summary-cell',
+            render: mobileSummary,
+          },
+        ]
+      : []),
     ...(tab !== 'in_stock' && can('stock.sales.read')
       ? [
           {
@@ -369,33 +397,22 @@ export default function Stock() {
           <span className="hidden sm:inline">刷新</span>
         </button>
       </div>
-      <form
-        className="stock-toolbar"
-        onSubmit={event => {
-          event.preventDefault();
-          changeFilter('q', query.trim());
-        }}
-      >
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
         <input
-          aria-label="搜索 SN 或订单号"
-          className="input min-w-0 flex-1"
-          placeholder="搜索 SN 或订单号"
+          aria-label="搜索 SN、订单号或备注"
+          className="input w-full pl-10"
+          placeholder="搜索 SN、订单号或备注"
+          maxLength={100}
           value={query}
           onChange={event => setQuery(event.target.value)}
+          onCompositionStart={() => setIsComposing(true)}
+          onCompositionEnd={event => {
+            setIsComposing(false);
+            setQuery(event.currentTarget.value);
+          }}
         />
-        <button type="submit" className="btn btn-primary">
-          查询
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary"
-          aria-expanded={filtersOpen}
-          onClick={() => setFiltersOpen(!filtersOpen)}
-        >
-          <Filter className="h-4 w-4" />
-          筛选
-        </button>
-      </form>
+      </div>
       <div className="flex flex-wrap items-end gap-3">
         <label className="text-sm sm:min-w-[180px]">
           仓库
@@ -445,91 +462,63 @@ export default function Stock() {
             />
           </div>
         ))}
-        {(filters.modelNames.length > 0 ||
-          filters.storageGbs.length > 0 ||
-          filters.colorNames.length > 0) && (
-          <button
-            className="btn btn-secondary"
-            onClick={() => {
-              setFilters(previous => ({
-                ...previous,
-                modelNames: [],
-                storageGbs: [],
-                colorNames: [],
-              }));
-              setPage(1);
-            }}
-          >
-            清除规格筛选
-          </button>
-        )}
-        {filters.warehouseId && (
-          <button className="btn btn-secondary" onClick={() => changeFilter('warehouseId', '')}>
-            清除仓库筛选
-          </button>
-        )}
+        <button
+          className="btn btn-secondary"
+          onClick={() => {
+            setFilters(INITIAL_FILTERS);
+            setQuery('');
+            setPage(1);
+          }}
+        >
+          重置筛选
+        </button>
       </div>
-      {filtersOpen && (
+      {tab !== 'in_stock' && (
         <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-3">
-          {tab !== 'in_stock' && (
-            <>
-              <label className="text-sm">
-                销售人
-                <input
-                  className="input mt-1 w-full"
-                  value={filters.salespersonName}
-                  onChange={event => changeFilter('salespersonName', event.target.value)}
-                  placeholder="销售人姓名"
-                />
-              </label>
-              {can('stock.collections.read') && (
-                <label className="text-sm">
-                  货款状况
-                  <select
-                    className="input mt-1 w-full"
-                    value={filters.paymentStatus}
-                    onChange={event => changeFilter('paymentStatus', event.target.value)}
-                  >
-                    <option value="">全部货款状态</option>
-                    {Object.entries(LEDGER_PAYMENT_LABELS).map(([value, label]) => (
-                      <option key={value} value={value}>
-                        {label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <label className="text-sm">
-                销售日期起
-                <input
-                  className="input mt-1 w-full"
-                  type="date"
-                  value={filters.soldFrom}
-                  onChange={event => changeFilter('soldFrom', event.target.value)}
-                />
-              </label>
-              <label className="text-sm">
-                销售日期止
-                <input
-                  className="input mt-1 w-full"
-                  type="date"
-                  value={filters.soldTo}
-                  onChange={event => changeFilter('soldTo', event.target.value)}
-                />
-              </label>
-            </>
+          <label className="text-sm">
+            销售人
+            <input
+              className="input mt-1 w-full"
+              value={filters.salespersonName}
+              onChange={event => changeFilter('salespersonName', event.target.value)}
+              placeholder="销售人姓名"
+            />
+          </label>
+          {can('stock.collections.read') && (
+            <label className="text-sm">
+              货款状况
+              <select
+                className="input mt-1 w-full"
+                value={filters.paymentStatus}
+                onChange={event => changeFilter('paymentStatus', event.target.value)}
+              >
+                <option value="">全部货款状态</option>
+                {Object.entries(LEDGER_PAYMENT_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
           )}
-          <button
-            className="btn btn-secondary self-end justify-self-start"
-            type="button"
-            onClick={() => {
-              setFilters(INITIAL_FILTERS);
-              setQuery('');
-              setPage(1);
-            }}
-          >
-            清空筛选
-          </button>
+          <label className="text-sm">
+            销售日期起
+            <input
+              className="input mt-1 w-full"
+              type="date"
+              value={filters.soldFrom}
+              onChange={event => changeFilter('soldFrom', event.target.value)}
+            />
+          </label>
+          <label className="text-sm">
+            销售日期止
+            <input
+              className="input mt-1 w-full"
+              type="date"
+              value={filters.soldTo}
+              onChange={event => changeFilter('soldTo', event.target.value)}
+            />
+          </label>
         </div>
       )}
       {selected.length > 0 && (

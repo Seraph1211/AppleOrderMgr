@@ -21,7 +21,7 @@ if (
   const oldSales = require('../src/services/stockSalesService');
   const oldFinance = require('../src/services/stockFinanceService');
   const pickupController = require('../src/controllers/pickupDeviceController');
-  const { decryptJson } = require('../src/utils/fieldEncryption');
+  const { decryptJson, encrypt } = require('../src/utils/fieldEncryption');
   const prefix = crypto.randomBytes(3).toString('hex').toUpperCase();
   let sequence = 0;
   let admin, limited, product, warehouseA, warehouseB, consignee, outside, settingsBefore;
@@ -1456,6 +1456,72 @@ if (
     await expect(projection.list(ctx, { storageGbs: '["256"]' })).rejects.toMatchObject({
       statusCode: 400,
     });
+  });
+
+  test('备注模糊搜索在分页前执行，字面符号、组合筛选与售前售后设备ID一致', async () => {
+    const marker = `备注AbC'_%\\${prefix}`;
+    const rows = await receive(
+      Array.from({ length: 23 }, (_, index) => ({
+        ...newInput(),
+        notes: `前缀 ${marker} 后缀 ${index}`,
+      }))
+    );
+    const ctx = await command.createReadContext(admin);
+    const query = { q: marker.toLowerCase(), view: 'all', pageSize: 20 };
+    const first = await projection.list(ctx, query);
+    const second = await projection.list(ctx, { ...query, page: 2 });
+    expect(first.total).toBe(23);
+    expect(first.counts).toEqual({ inStock: 23, sold: 0 });
+    expect(first.items).toHaveLength(20);
+    expect(second.items).toHaveLength(3);
+    expect(new Set([...first.items, ...second.items].map(row => row.id)).size).toBe(23);
+    expect((await projection.list(ctx, { ...query, warehouseId: warehouseB.id })).total).toBe(0);
+    expect((await projection.list(ctx, { ...query, q: `${marker}不存在` })).total).toBe(0);
+    expect((await projection.list(ctx, { ...query, q: rows[0].serialNumber })).items[0].id).toBe(
+      rows[0].id
+    );
+    const originalId = rows[0].id;
+    await execute('sellUnits', saleInput([rows[0]]));
+    const sold = await projection.list(ctx, { ...query, view: 'sold' });
+    expect(sold.items).toHaveLength(1);
+    expect(sold.items[0].id).toBe(originalId);
+    expect(sold.counts).toEqual({ inStock: 22, sold: 1 });
+    const restricted = await projection.list(await command.createReadContext(limited), query);
+    expect(restricted.total).toBe(23);
+    expect(restricted.items[0]).not.toHaveProperty('officialCostAmount');
+    await execute('editUnit', { expectedVersion: rows[1].version, notes: null }, admin, rows[1].id);
+    expect((await projection.list(ctx, query)).total).toBe(22);
+  });
+
+  test('加密备注候选超过500条时跨批次完整搜索且不能搜索审计备注', async () => {
+    const marker = `分批备注${prefix}`;
+    await db.StockUnit.bulkCreate(
+      Array.from({ length: 501 }, () => ({
+        serialNumber: serial(),
+        productId: product.id,
+        locationId: warehouseB.id,
+        state: 'in_stock',
+        originMode: 'current',
+        firstReceivedAt: new Date('2026-10-01T00:00:00+08:00'),
+        notesCiphertext: encrypt(marker),
+      }))
+    );
+    const ctx = await command.createReadContext(admin);
+    const result = await projection.list(ctx, {
+      q: marker,
+      warehouseId: warehouseB.id,
+      page: 26,
+      pageSize: 20,
+    });
+    expect(result.total).toBe(501);
+    expect(result.counts).toEqual({ inStock: 501, sold: 0 });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0].notes).toBe(marker);
+    const [row] = await receive([newInput()]);
+    await execute('sellUnits', { ...saleInput([row]), notes: `仅销售审计${prefix}` });
+    const sold = await detail(row.id);
+    await execute('editUnit', { expectedVersion: sold.version, notes: null }, admin, row.id);
+    expect((await projection.list(ctx, { view: 'all', q: `仅销售审计${prefix}` })).total).toBe(0);
   });
 
   test('台账只纳入自有仓库现货和本地已售，筛选分页和北京时间销售日正确', async () => {

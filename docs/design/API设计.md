@@ -1064,4 +1064,8 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 `GET /api/stock/ledger` 新增 `modelNames`、`storageGbs`、`colorNames`，均为 JSON 数组字符串；同维度多值 OR，三个维度及仓库、搜索、销售条件之间 AND。空数组不限制。机型与颜色按目录名称精确匹配，容量为正整数 GB；每组最多100项，名称分别最长100／64字符，非法 JSON、类型或值返回400。筛选在数据库分页前执行，total 与两个 Tab 计数使用同一条件；保留旧 productId 参数兼容。
 
-`GET /api/stock/ledger/catalog` 新增 `filterOptions: {modelNames: string[], storageGbs: number[], colorNames: string[]}`，来自完整规格目录，含停用的历史规格，不含成本等敏感字段；原 products 仍只返回可用入库规格。两处维持 stock.read 及原字段权限。前端三项常驻、支持搜索多选，切换库存／销售保留三维和仓库条件，修改筛选回到第一页、保留已选设备，清空规格只重置三维。
+`GET /api/stock/ledger/catalog` 新增 `filterOptions: {modelNames: string[], storageGbs: number[], colorNames: string[]}`，来自完整规格目录，含停用的历史规格，不含成本等敏感字段；原 products 仍只返回可用入库规格。两处维持 stock.read 及原字段权限。前端三项常驻、支持搜索多选，切换库存／销售保留三维和仓库条件，修改筛选回到第一页、保留已选设备，统一“重置筛选”清空搜索、三维规格、仓库及销售条件并回到第一页，保留已选设备。
+
+### 台账设备身份与备注搜索（2026-10-07）
+
+单台 DTO 的 `id` 是 `stock_units.id`（UUID），入库、售出和恢复库存沿用同一设备身份，页面展示完整 ID，不能用销售 ID 或分页序号代替。`GET /api/stock/ledger` 的 `q` 同时对 SN、授权可见订单号和设备备注进行不区分大小写的字面包含匹配，最多100字符；百分号、下划线及反斜杠不作为通配符。备注保持加密存储，服务端在其他条件限定的台账范围内分批解密匹配，然后统一执行计数与分页；不搜索销售审计或不可见订单字段，不建立明文备注副本。搜索成本随候选备注数量增长。

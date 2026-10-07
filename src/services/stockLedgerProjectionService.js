@@ -366,7 +366,10 @@ async function list(ctx, query = {}) {
       replacements.warehouseId = uuid(query.warehouseId);
       filters.push('COALESCE(u.location_id,su.from_location_id)=:warehouseId');
     }
+    let searchFilter = '';
+    let searchText = '';
     if (query.q) {
+      searchText = text(query.q, '搜索内容', 100).toLowerCase();
       replacements.search = `%${text(query.q, '搜索内容', 100).replace(/[\\%_]/g, '\\$&')}%`;
       let orderFilter = '';
       if (has(ctx, 'orders.read')) {
@@ -379,7 +382,7 @@ async function list(ctx, query = {}) {
         replacements.orderIds = orders.map(row => row.id);
         orderFilter = ` OR (u.order_number_text ILIKE :search AND NOT EXISTS (SELECT 1 FROM pickup_devices b WHERE b.stock_unit_id=u.id))${orders.length ? ' OR EXISTS (SELECT 1 FROM pickup_devices b WHERE b.stock_unit_id=u.id AND b.order_id IN (:orderIds))' : ''}`;
       }
-      filters.push(`(u.serial_number ILIKE :search${orderFilter})`);
+      searchFilter = `u.serial_number ILIKE :search${orderFilter}`;
     }
     if (query.salespersonName) {
       requirePermissions(ctx, 'stock.sales.read');
@@ -412,13 +415,35 @@ async function list(ctx, query = {}) {
         "s.id IS NOT NULL AND CASE WHEN cash.received>0 AND cash.received<COALESCE(su.settlement_amount,su.sale_amount) THEN 'legacy_partial' WHEN cash.received>0 AND cash.received>=COALESCE(su.settlement_amount,su.sale_amount) THEN 'company_received' WHEN c.id IS NOT NULL THEN 'agent_pending' WHEN (NOT s.simple_ledger OR s.payment_verification='unknown') THEN 'unknown' ELSE 'unpaid' END=:paymentStatus"
       );
     }
-    const base = `FROM stock_units u LEFT JOIN stock_products p ON p.id=u.product_id LEFT JOIN stock_locations l ON l.id=u.location_id
+    let base = `FROM stock_units u LEFT JOIN stock_products p ON p.id=u.product_id LEFT JOIN stock_locations l ON l.id=u.location_id
       LEFT JOIN stock_sale_units su ON su.stock_unit_id=u.id AND su.status='shipped'
       LEFT JOIN stock_sale_lines sl ON sl.id=su.sale_line_id LEFT JOIN stock_sales s ON s.id=sl.sale_id AND s.status='shipped'
       LEFT JOIN stock_parties sp ON sp.id=s.salesperson_id
       LEFT JOIN stock_collections c ON c.sale_id=s.id AND c.status='posted'
       LEFT JOIN LATERAL (SELECT COALESCE(SUM(a.amount),0) received FROM stock_receipt_allocations a WHERE a.sale_unit_id=su.id AND a.status='active') cash ON true
       WHERE ((u.state='in_stock' AND l.kind='warehouse') OR (u.state='sold' AND s.channel='local'))${filters.length ? ' AND ' + filters.join(' AND ') : ''}`;
+    if (searchFilter) {
+      // 加密备注只能在服务端匹配；先限定台账及其他筛选，再按主键分批读取密文。
+      const noteIds = [];
+      let afterId = null;
+      let hasMore = true;
+      while (hasMore) {
+        const [candidates] = await db.sequelize.query(
+          `SELECT DISTINCT u.id, u.notes_ciphertext AS "notesCiphertext" ${base}
+           AND u.notes_ciphertext IS NOT NULL ${afterId ? 'AND u.id > :afterId' : ''}
+           ORDER BY u.id LIMIT 500`,
+          { replacements: { ...replacements, afterId }, transaction: ctx.transaction }
+        );
+        for (const candidate of candidates) {
+          if ((decrypt(candidate.notesCiphertext) || '').toLowerCase().includes(searchText))
+            noteIds.push(candidate.id);
+        }
+        hasMore = candidates.length === 500;
+        afterId = candidates[candidates.length - 1]?.id;
+      }
+      replacements.noteIds = noteIds;
+      base += ` AND (${searchFilter}${noteIds.length ? ' OR u.id IN (:noteIds)' : ''})`;
+    }
     const [counts] = await db.sequelize.query(
       `SELECT COUNT(*) FILTER(WHERE u.state='in_stock')::integer AS "inStock",COUNT(*) FILTER(WHERE u.state='sold')::integer AS sold ${base}`,
       { replacements, transaction: ctx.transaction }
