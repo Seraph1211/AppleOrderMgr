@@ -12,6 +12,13 @@ module.exports = sequelize =>
         defaultValue: DataTypes.UUIDV4,
         field: 'id',
       },
+      deviceNumber: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        autoIncrement: true,
+        unique: true,
+        field: 'device_number',
+      },
       serialNumber: { type: DataTypes.STRING(12), allowNull: false, field: 'serial_number' },
       orderNumberText: { type: DataTypes.STRING(100), allowNull: true, field: 'order_number_text' },
       notesCiphertext: { type: DataTypes.TEXT, allowNull: true, field: 'notes_ciphertext' },

@@ -179,10 +179,10 @@ export default function Stock() {
       ),
     },
     {
-      key: 'id',
+      key: 'deviceNumber',
       title: 'ID',
       mobileHidden: true,
-      render: unit => <span className="block w-36 break-all font-mono text-xs">{unit.id}</span>,
+      render: unit => <span className="font-mono">{unit.deviceNumber}</span>,
     },
     {
       key: 'device',
@@ -198,7 +198,7 @@ export default function Stock() {
           </button>
           <div className="text-xs leading-5 text-gray-500 sm:hidden">
             {productLabel(unit.product)}
-            <div className="break-all font-mono">ID：{unit.id}</div>
+            <div className="font-mono">ID：{unit.deviceNumber}</div>
           </div>
           <div className="hidden text-xs text-gray-500 sm:block">
             订单：{unit.orderNumber || (unit.orderLinked ? '已关联' : '待补')}

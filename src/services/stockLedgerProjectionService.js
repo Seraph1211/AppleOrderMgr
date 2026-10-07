@@ -149,6 +149,7 @@ function project(ctx, unit, g, allAllocations) {
   const order = get(g.Order, binding?.orderId);
   const result = {
     id: unit.id,
+    deviceNumber: unit.deviceNumber,
     version: unit.version,
     serialNumber: unit.serialNumber,
     state: unit.state,

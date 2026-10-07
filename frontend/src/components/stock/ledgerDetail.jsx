@@ -295,6 +295,7 @@ export default function LedgerDetail({ id, catalog, onClose, onSaved }) {
           unit.state === 'sold' ? '出库仓库' : '所在仓库',
           (unit.state === 'sold' ? unit.sourceWarehouse : unit.warehouse)?.name || '待补',
         ],
+        ['ID', unit.deviceNumber],
         ['入库日期', unit.receivedOn || '待补'],
         ...(unit.state === 'sold' && can('stock.sales.read')
           ? [

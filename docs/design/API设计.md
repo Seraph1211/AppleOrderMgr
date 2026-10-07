@@ -761,7 +761,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 payment={status,collectorName?,collectedOn?,receivedOn?}；status为unpaid/agent_pending/company_received，历史另可unknown；旧部分到账只读标legacy_partial。代收人默认销售人，代收转回保留原代收与客户付款日期。正常公司到账须receivedOn，历史未知可空。货款按人工结算金额核对；结算已经扣费，不再次抵扣。成功写返回{items:[单台DTO],ledgerUnitIds,idempotent}。
 
-单台DTO为id,version,serialNumber,state,orderNumber,orderLinked,product,warehouse,receivedOn,officialCostAmount,costStatus,acquiredOn,extraExpenseAmount,notes,saleId,soldOn,salespersonName,handlerName,saleAmount,settlementAmount,sourceWarehouse,isHistorical,paymentStatus,collectorName,collectedOn,companyReceivedOn,grossProfit,profitAfterExpenses,compatibilityReason,allowedActions；未知值null；敏感金额、订单、销售与货款字段按原独立权限省略。allowedActions只含当前允许的sell/edit/payment/recover。库存仅warehouse，已售仅local。旧复杂多台、部分到账或共享到账分配保留，不自动变更事实。旧版没有客户付款登记的记录显示待核实，不能直接推断未付款；新台账明确选择未收款才记unpaid。
+单台DTO为id,deviceNumber,version,serialNumber,state,orderNumber,orderLinked,product,warehouse,receivedOn,officialCostAmount,costStatus,acquiredOn,extraExpenseAmount,notes,saleId,soldOn,salespersonName,handlerName,saleAmount,settlementAmount,sourceWarehouse,isHistorical,paymentStatus,collectorName,collectedOn,companyReceivedOn,grossProfit,profitAfterExpenses,compatibilityReason,allowedActions；未知值null；敏感金额、订单、销售与货款字段按原独立权限省略。allowedActions只含当前允许的sell/edit/payment/recover。库存仅warehouse，已售仅local。旧复杂多台、部分到账或共享到账分配保留，不自动变更事实。旧版没有客户付款登记的记录显示待核实，不能直接推断未付款；新台账明确选择未收款才记unpaid。
 
 新售需要stock.sales.edit和ship，未收款的新销售不额外要求货款编辑权限；历史另需stock.import；成本/费用/真实货款使用既有独立权限，公司到账需stock.receipts.edit。销售或资金更正需stock.correct及简短原因，普通资料也做版本检查。更正保留前后值与操作者。历史误售记录若原入库日期未知，恢复现货前须补receivedOn；原日期已知时沿用，不能自动填今天。
 
@@ -1070,4 +1070,4 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 ### 台账设备身份与备注搜索（2026-10-07）
 
-单台 DTO 的 `id` 是 `stock_units.id`（UUID），入库、售出和恢复库存沿用同一设备身份，页面展示完整 ID，不能用销售 ID 或分页序号代替。`GET /api/stock/ledger` 的 `q` 同时对 SN、授权可见订单号和设备备注进行不区分大小写的字面包含匹配，最多100字符；百分号、下划线及反斜杠不作为通配符。备注保持加密存储，服务端在其他条件限定的台账范围内分批解密匹配，然后统一执行计数与分页；不搜索销售审计或不可见订单字段，不建立明文备注副本。搜索成本随候选备注数量增长。
+单台 DTO 的 `id` 是 `stock_units.id`（UUID），入库、售出和恢复库存沿用同一设备身份，新增只读 `deviceNumber`（正整数）供页面 ID 展示，从1递增且售前售后不变；`id` 保留UUID用于请求路径及内部关联，不能用销售ID或分页序号代替。`GET /api/stock/ledger` 的 `q` 同时对 SN、授权可见订单号和设备备注进行不区分大小写的字面包含匹配，最多100字符；百分号、下划线及反斜杠不作为通配符。备注保持加密存储，服务端在其他条件限定的台账范围内分批解密匹配，然后统一执行计数与分页；不搜索销售审计或不可见订单字段，不建立明文备注副本。搜索成本随候选备注数量增长。

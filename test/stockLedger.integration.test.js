@@ -180,6 +180,65 @@ if (
     }
   });
 
+  test('设备整数编号由数据库递增生成，跨状态固定且并发不重复', async () => {
+    const batches = await Promise.all([
+      receive([newInput(), newInput()]),
+      receive([newInput(), newInput()]),
+    ]);
+    const rows = batches.flat();
+    const numbers = rows.map(row => row.deviceNumber).sort((a, b) => a - b);
+    expect(numbers.every(number => Number.isInteger(number) && number > 0)).toBe(true);
+    expect(new Set(numbers).size).toBe(4);
+    expect(numbers).toEqual(Array.from({ length: 4 }, (_, index) => numbers[0] + index));
+    const row = rows[0];
+    const before = await detail(row.id);
+    await execute('sellUnits', saleInput([row]));
+    const sold = await detail(row.id);
+    expect(sold.deviceNumber).toBe(before.deviceNumber);
+    await execute(
+      'recoverUnit',
+      {
+        expectedVersion: sold.version,
+        warehouseId: warehouseA.id,
+        confirmInWarehouse: true,
+        reason: '合成编号恢复验证',
+      },
+      admin,
+      row.id
+    );
+    expect((await detail(row.id)).deviceNumber).toBe(before.deviceNumber);
+    const after = await receive([newInput()]);
+    expect(after[0].deviceNumber).toBeGreaterThan(numbers[3]);
+    await execute(
+      'editUnit',
+      {
+        expectedVersion: (await detail(row.id)).version,
+        deviceNumber: 99999,
+      },
+      admin,
+      row.id
+    );
+    expect((await detail(row.id)).deviceNumber).toBe(before.deviceNumber);
+  });
+
+  test('设备编号禁止重复或非正数，已有实物时迁移回退拒绝删除编号', async () => {
+    const [row] = await receive([newInput()]);
+    const create = deviceNumber =>
+      db.StockUnit.create({
+        serialNumber: serial(),
+        originMode: 'current',
+        state: 'registered',
+        deviceNumber,
+      });
+    await expect(create(row.deviceNumber)).rejects.toMatchObject({
+      name: 'SequelizeUniqueConstraintError',
+    });
+    await expect(create(0)).rejects.toMatchObject({ parent: { code: '23514' } });
+    const migration = require('../migrations/20261007000002-add-stock-device-number');
+    await expect(migration.down(db.sequelize.getQueryInterface())).rejects.toThrow('已有设备编号');
+    expect((await detail(row.id)).deviceNumber).toBe(row.deviceNumber);
+  });
+
   test('入库无需订单和拿货日期，逐台成本待补；同表单就地创建并复用规格', async () => {
     const specification = {
       modelName: `就地机型${prefix}`,
