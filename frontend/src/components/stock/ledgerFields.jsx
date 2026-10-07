@@ -56,25 +56,14 @@ export function LedgerPersonField({
   const listId = useId();
   return (
     <div className="block min-w-0 space-y-1 text-sm">
-      <span className="font-medium text-gray-700">{label}</span>
-      {people.length > 0 && (
-        <select
-          className="input mb-2"
-          aria-label={`${label}预置选项`}
-          value={people.some(person => person.name === value) ? value : ''}
-          disabled={disabled}
-          onChange={event => onChange(event.target.value)}
-        >
-          <option value="">选择预置姓名，或在下方手动填写</option>
-          {people.map(person => (
-            <option key={person.id || person.name} value={person.name}>
-              {person.name}
-            </option>
-          ))}
-        </select>
-      )}
+      <label htmlFor={`${listId}-input`} className="block font-medium text-gray-700">
+        {label}
+      </label>
       <input
+        id={`${listId}-input`}
         className="input"
+        autoComplete="off"
+        aria-describedby={hint ? `${listId}-hint` : undefined}
         aria-label={label}
         value={value || ''}
         list={listId}
@@ -82,14 +71,18 @@ export function LedgerPersonField({
         required={required}
         disabled={disabled}
         maxLength={100}
-        placeholder={required ? '选择或填写姓名' : '不知道时留空，保存为待补'}
+        placeholder={required ? '选择或输入姓名' : '选择或输入姓名，不清楚可留空'}
       />
       <datalist id={listId}>
         {people.map(person => (
           <option key={person.id || person.name} value={person.name} />
         ))}
       </datalist>
-      {hint && <span className="block text-xs text-gray-500">{hint}</span>}
+      {hint && (
+        <span id={`${listId}-hint`} className="block text-xs text-gray-500">
+          {hint}
+        </span>
+      )}
     </div>
   );
 }
