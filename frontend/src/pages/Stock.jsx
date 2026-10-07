@@ -209,10 +209,40 @@ export default function Stock() {
             </div>
           )}
           {unit.notes && (
-            <div className="mt-1 break-words whitespace-pre-wrap text-xs text-gray-500 sm:hidden">
+            <div className="mt-1 line-clamp-2 break-words text-xs text-gray-500 sm:hidden">
               备注：{unit.notes}
             </div>
           )}
+          <div className="mt-2 space-y-2 sm:hidden">
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-gray-500">
+              <span>仓库：{unit.warehouse?.name || unit.sourceWarehouse?.name || '待补'}</span>
+              <span>入库：{unit.receivedOn || '待补'}</span>
+            </div>
+            {unit.state === 'sold' && <div className="text-sm">{mobileSummary(unit)}</div>}
+            <div className="flex flex-wrap gap-2">
+              {ledgerCan(unit, 'sell') && (
+                <button
+                  className="btn btn-primary"
+                  disabled={writesDisabled}
+                  onClick={() => setAction({ type: 'sell', units: [unit] })}
+                >
+                  售出
+                </button>
+              )}
+              {ledgerCan(unit, 'payment') && (
+                <button
+                  className="btn btn-primary"
+                  disabled={writesDisabled}
+                  onClick={() => setAction({ type: 'payment', units: [unit] })}
+                >
+                  更新货款
+                </button>
+              )}
+              <button className="btn btn-secondary" onClick={() => setDetail({ id: unit.id })}>
+                {ledgerCan(unit, 'edit') ? '查看 / 编辑' : '查看详情'}
+              </button>
+            </div>
+          </div>
           {unit.isHistorical && (
             <span className="mt-1 inline-block text-xs text-gray-500">历史补录</span>
           )}
@@ -228,12 +258,14 @@ export default function Stock() {
     {
       key: 'warehouse',
       title: '仓库',
+      mobileHidden: true,
       className: 'ledger-summary-cell',
       render: unit => unit.warehouse?.name || unit.sourceWarehouse?.name || '仓库待补',
     },
     {
       key: 'receivedOn',
       title: '入库日期',
+      mobileHidden: true,
       className: 'whitespace-nowrap',
       render: unit => unit.receivedOn || '日期待补',
     },
@@ -242,6 +274,7 @@ export default function Stock() {
           {
             key: 'place',
             title: '销售 / 货款',
+            mobileHidden: true,
             className: 'ledger-summary-cell',
             render: mobileSummary,
           },
@@ -314,8 +347,10 @@ export default function Stock() {
     },
   ];
   return (
-    <div className="stock-page ledger-page space-y-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <div
+      className={`stock-page ledger-page space-y-4 ${selected.length ? 'ledger-has-selection' : ''}`}
+    >
+      <header className="ledger-header flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
             <Package className="h-6 w-6" />
@@ -413,8 +448,8 @@ export default function Stock() {
           }}
         />
       </div>
-      <div className="flex flex-wrap items-end gap-3">
-        <label className="text-sm sm:min-w-[180px]">
+      <div className="ledger-filters grid grid-cols-2 items-end gap-3 sm:flex sm:flex-wrap">
+        <label className="min-w-0 text-sm sm:min-w-[180px]">
           仓库
           <select
             aria-label="按仓库筛选"
@@ -435,7 +470,7 @@ export default function Stock() {
           ['storageGbs', '容量', '全部容量'],
           ['colorNames', '颜色', '全部颜色'],
         ].map(([key, label, placeholder]) => (
-          <div key={key} className="min-w-0 w-full sm:w-48 text-sm">
+          <div key={key} className="min-w-0 w-full text-sm sm:w-48">
             <div className="mb-1">{label}</div>
             <TagMultiSelect
               options={(catalog.filterOptions?.[key] || []).map(String)}
@@ -474,8 +509,8 @@ export default function Stock() {
         </button>
       </div>
       {tab !== 'in_stock' && (
-        <div className="grid grid-cols-1 gap-3 rounded-lg border border-gray-200 bg-white p-3 sm:grid-cols-2 lg:grid-cols-3">
-          <label className="text-sm">
+        <div className="grid grid-cols-2 gap-3 rounded-lg border border-gray-200 bg-white p-3 lg:grid-cols-3">
+          <label className="min-w-0 text-sm">
             销售人
             <input
               className="input mt-1 w-full"
@@ -485,7 +520,7 @@ export default function Stock() {
             />
           </label>
           {can('stock.collections.read') && (
-            <label className="text-sm">
+            <label className="min-w-0 text-sm">
               货款状况
               <select
                 className="input mt-1 w-full"
@@ -501,7 +536,7 @@ export default function Stock() {
               </select>
             </label>
           )}
-          <label className="text-sm">
+          <label className="min-w-0 text-sm">
             销售日期起
             <input
               className="input mt-1 w-full"
@@ -510,7 +545,7 @@ export default function Stock() {
               onChange={event => changeFilter('soldFrom', event.target.value)}
             />
           </label>
-          <label className="text-sm">
+          <label className="min-w-0 text-sm">
             销售日期止
             <input
               className="input mt-1 w-full"
@@ -522,12 +557,14 @@ export default function Stock() {
         </div>
       )}
       {selected.length > 0 && (
-        <div className="stock-toolbar rounded-lg border border-blue-100 bg-primary-50 p-3">
+        <div className="ledger-selection stock-toolbar rounded-lg border border-blue-100 bg-primary-50 p-3">
           <span className="text-sm text-primary">已选 {selected.length} 台（最多 100 台）</span>
           <button className="btn btn-secondary" onClick={() => setShowSelected(true)}>
             查看已选
           </button>
-          <span className="text-xs text-gray-500">搜索、筛选和翻页保留已选记录</span>
+          <span className="hidden text-xs text-gray-500 sm:inline">
+            搜索、筛选和翻页保留已选记录
+          </span>
           {allSell && (
             <button
               className="btn btn-primary"
@@ -561,6 +598,7 @@ export default function Stock() {
       />
       {!resource.loading && !resource.error && (
         <StockTable
+          tableClassName="ledger-main-table"
           columns={columns}
           items={items}
           onRow={unit => setDetail({ id: unit.id })}

@@ -187,7 +187,7 @@ export function LedgerPaymentFields({
 /** 始终保留取消和提交，短视口中随表单一起滚动可达。 */
 export function LedgerActions({ busy, onClose, submitLabel = '保存', disabled = false }) {
   return (
-    <div className="flex flex-wrap justify-end gap-2 border-t pt-4">
+    <div className="ledger-form-actions flex flex-wrap justify-end gap-2 border-t pt-4">
       <button type="button" className="btn btn-secondary" onClick={onClose} disabled={busy}>
         取消
       </button>

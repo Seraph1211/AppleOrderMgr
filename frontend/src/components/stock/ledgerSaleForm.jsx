@@ -97,6 +97,7 @@ export default function LedgerSaleForm({ units, catalog, onClose, onSaved }) {
           </div>
         )}
         <StockTable
+          mobileFields
           items={rows}
           columns={[
             {

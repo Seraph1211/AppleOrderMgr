@@ -125,10 +125,12 @@ export function StockTable({
   rowKey = 'id',
   empty = '暂无符合条件的记录',
   onRow,
+  mobileFields = false,
+  tableClassName = '',
 }) {
   return (
-    <div className="stock-table-wrap">
-      <table className="stock-table">
+    <div className={`stock-table-wrap ${mobileFields ? 'stock-mobile-fields' : ''}`}>
+      <table className={`stock-table ${tableClassName}`}>
         <thead>
           <tr>
             {columns.map(column => (
@@ -144,6 +146,7 @@ export function StockTable({
               {columns.map(column => (
                 <td
                   key={column.key}
+                  data-label={typeof column.title === 'string' ? column.title : undefined}
                   className={`${column.mobileHidden ? 'stock-hide-mobile ' : ''}${column.className || ''}`}
                 >
                   {column.render ? column.render(item) : (item[column.key] ?? '—')}

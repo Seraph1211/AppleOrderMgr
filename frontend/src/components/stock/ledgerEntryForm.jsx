@@ -384,6 +384,7 @@ export default function LedgerEntryForm({
             </p>
           )}
           <StockTable
+            mobileFields
             rowKey="id"
             items={units}
             empty="请扫描或输入 SN 后点击“加入”"
