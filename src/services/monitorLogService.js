@@ -11,6 +11,8 @@ const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
 const p = require('./monitorPolicy');
 const policy = require('./monitorLogPolicy');
+const blockStore = require('./monitorLogBlockStore');
+const blockCompactor = require('./monitorLogBlockCompactor');
 const ORDER = 'sort_at, file_id, byte_offset, id';
 const TUPLE = '(sort_at, file_id, byte_offset, id)';
 const MARK = '(:anchorAt::timestamptz, :anchorFile::uuid, :anchorOffset::bigint, :anchorId::uuid)';
@@ -20,6 +22,7 @@ const fail = error => {
 const safe = row => {
   const item = row.toJSON ? row.toJSON() : row;
   delete item.payloadHash;
+  delete item.contextAt;
   return item;
 };
 async function lockDevice(deviceId, transaction) {
@@ -70,6 +73,7 @@ async function receive(deviceId, body) {
           existing.map(item => [`${item.deviceId}:${item.fileId}:${item.byteOffset}`, item])
         );
         const create = [];
+        const committedAt = new Date();
         for (const item of active) {
           const payloadHash = policy.digest(item);
           const position = `${deviceId}:${item.fileId}:${item.byteOffset}`;
@@ -81,6 +85,8 @@ async function receive(deviceId, body) {
               ...item,
               deviceId,
               payloadHash,
+              createdAt: committedAt,
+              updatedAt: committedAt,
               sortAt: item.loggedAt || item.contextAt || `${item.businessDate}T00:00:00+08:00`,
             };
             create.push(row);
@@ -88,10 +94,29 @@ async function receive(deviceId, body) {
             byPosition.set(position, row);
           }
         }
-        if (create.length) await MonitorLogEntry.bulkCreate(create, { transaction });
+        if (create.length) {
+          const modes = new Map();
+          for (const localId of [...new Set(create.map(row => row.localId))].sort())
+            modes.set(localId, await blockStore.mode(deviceId, localId, transaction));
+          const legacy = create.filter(row => modes.get(row.localId) !== 'blocks');
+          const compressed = create.filter(row => modes.get(row.localId) !== 'rows');
+          if (legacy.length) await MonitorLogEntry.bulkCreate(legacy, { transaction });
+          let blockResult = { inserted: 0, blocks: 0 };
+          if (compressed.length) blockResult = await blockStore.append(compressed, transaction);
+          logger.info('完整日志上传指标', {
+            storageModes: [...new Set(modes.values())],
+            inserted:
+              create.filter(row => modes.get(row.localId) === 'rows').length + blockResult.inserted,
+            blocksCreated: blockResult.blocks,
+            accepted: active.length,
+            expired: expired.length,
+          });
+        }
         return { accepted: active.map(item => item.id), expired };
       } catch (error) {
         fail(error);
+        if (error.name === 'SequelizeUniqueConstraintError')
+          throw new ApiError(409, 'LOG_PAYLOAD_CONFLICT', '日志事件或位置载荷冲突');
         throw error instanceof ApiError
           ? error
           : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
@@ -259,6 +284,8 @@ async function list(input) {
     const query = policy.query(input);
     const { clauses, replacements } = filters(query);
     const scope = policy.digest({ ...query, cursor: '' });
+    const compressed = (await blockStore.mode(query.deviceId, query.localId)) === 'blocks';
+    let blockAnchor = null;
     if (query.cursor) {
       let cursor;
       try {
@@ -269,19 +296,31 @@ async function list(input) {
       p.fields(cursor, ['id', 'scope']);
       p.uuid(cursor.id);
       if (cursor.scope !== scope) throw ApiError.badRequest('筛选已变化，请从首页查询');
-      const anchor = await MonitorLogEntry.findOne({
-        where: {
-          id: cursor.id,
-          deviceId: query.deviceId,
-          localId: query.localId,
-          businessDate: query.date,
-        },
-      });
-      if (!anchor) throw ApiError.badRequest('日志游标已过期，请重新查询');
+      let anchor;
+      if (compressed) anchor = await blockStore.findById(cursor.id.toLowerCase());
+      else
+        anchor = await MonitorLogEntry.findOne({
+          where: {
+            id: cursor.id,
+            deviceId: query.deviceId,
+            localId: query.localId,
+            businessDate: query.date,
+          },
+        });
+      if (
+        !anchor ||
+        anchor.deviceId !== query.deviceId ||
+        anchor.localId !== query.localId ||
+        anchor.businessDate !== query.date
+      )
+        throw ApiError.badRequest('日志游标已过期，请重新查询');
+      blockAnchor = anchor;
       clauses.push(`${TUPLE} > ${MARK}`);
       Object.assign(replacements, anchorValues(anchor));
     }
-    const rows = await select(clauses, replacements, 'ASC', query.limit + 1);
+    const rows = compressed
+      ? await blockStore.select(query, blockAnchor, 'ASC', query.limit + 1)
+      : await select(clauses, replacements, 'ASC', query.limit + 1);
     const items = rows.slice(0, query.limit).map(safe);
     return {
       items,
@@ -318,6 +357,8 @@ async function accounts(input) {
       clauses.push('account_number > :after');
       replacements.after = input.after;
     }
+    if ((await blockStore.mode(query.deviceId, query.localId)) === 'blocks')
+      return await blockStore.accounts(query, input);
     const rows = await sequelize.query(
       `SELECT DISTINCT account_number AS account FROM monitor_log_entries WHERE ${clauses.join(' AND ')} ORDER BY account_number LIMIT 101`,
       { replacements, type: QueryTypes.SELECT }
@@ -339,7 +380,11 @@ async function context(id, input) {
     p.uuid(id);
     p.fields(input, ['scope']);
     if (!['account', 'instance'].includes(input.scope)) throw ApiError.badRequest('上下文范围无效');
-    const anchor = await MonitorLogEntry.findByPk(id);
+    const legacyAnchor = await MonitorLogEntry.findByPk(id);
+    const candidate = legacyAnchor || (await blockStore.findById(id.toLowerCase()));
+    const compressed =
+      candidate && (await blockStore.mode(candidate.deviceId, candidate.localId)) === 'blocks';
+    const anchor = compressed ? await blockStore.findById(id.toLowerCase()) : legacyAnchor;
     const { first, today } = policy.retention();
     if (!anchor || anchor.businessDate < first || anchor.businessDate > today)
       throw ApiError.notFound();
@@ -352,10 +397,25 @@ async function context(id, input) {
       account: input.scope === 'account' ? anchor.accountNumber : '',
     });
     Object.assign(replacements, anchorValues(anchor));
-    const [before, after] = await Promise.all([
-      select([...clauses, `${TUPLE} < ${MARK}`], replacements, 'DESC', 20),
-      select([...clauses, `${TUPLE} > ${MARK}`], replacements, 'ASC', 20),
-    ]);
+    let before;
+    let after;
+    if (compressed) {
+      const query = {
+        deviceId: anchor.deviceId,
+        localId: anchor.localId,
+        date: anchor.businessDate,
+        account: input.scope === 'account' ? anchor.accountNumber : '',
+      };
+      [before, after] = await Promise.all([
+        blockStore.select(query, anchor, 'DESC', 20),
+        blockStore.select(query, anchor, 'ASC', 20),
+      ]);
+    } else {
+      [before, after] = await Promise.all([
+        select([...clauses, `${TUPLE} < ${MARK}`], replacements, 'DESC', 20),
+        select([...clauses, `${TUPLE} > ${MARK}`], replacements, 'ASC', 20),
+      ]);
+    }
     return {
       anchorId: id,
       scope: input.scope,
@@ -368,22 +428,113 @@ async function context(id, input) {
       : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
   }
 }
-/** 有界清理30天外原文；不改变90天告警。 @returns {Promise<void>} 完成 */
+/** 有界清理30天外原文；独立数据库互斥、小批提交及耗时预算。 @returns {Promise<Object>} 清理指标 */
 async function cleanup() {
+  const started = Date.now();
+  const budgetMs = Math.max(
+    1000,
+    Math.min(60000, Number(process.env.MONITOR_LOG_CLEANUP_BUDGET_MS) || 15000)
+  );
+  const maxPages = Math.max(1, Math.min(200, Number(process.env.MONITOR_LOG_CLEANUP_PAGES) || 40));
+  let deleted = 0;
+  let receipts = 0;
   try {
-    const { first } = policy.retention();
-    for (let page = 0; page < 20; page++) {
-      const rows = await sequelize.query(
-        'DELETE FROM monitor_log_entries WHERE id IN (SELECT id FROM monitor_log_entries WHERE business_date < :first ORDER BY business_date LIMIT 5000) RETURNING id',
-        { replacements: { first }, type: QueryTypes.SELECT }
+    const { first, today } = policy.retention();
+    // A dedicated pooled connection holds the session lock across individual batch commits.
+    const connection = await sequelize.connectionManager.getConnection({ type: 'WRITE' });
+    let locked = false;
+    try {
+      const result = await connection.query('SELECT pg_try_advisory_lock(709101,1) AS locked');
+      locked = result.rows[0].locked;
+      if (!locked) return { skipped: true, reason: 'busy' };
+      for (let page = 0; page < maxPages && Date.now() - started < budgetMs; page++) {
+        const progress = await sequelize.transaction(async transaction => {
+          try {
+            await sequelize.query("SET LOCAL lock_timeout='1s'; SET LOCAL statement_timeout='5s'", {
+              transaction,
+            });
+            const rows = await sequelize.query(
+              'DELETE FROM monitor_log_entries WHERE id IN (SELECT id FROM monitor_log_entries WHERE business_date < :first ORDER BY business_date LIMIT 5000) RETURNING id',
+              { replacements: { first }, transaction, type: QueryTypes.SELECT }
+            );
+            const blocks = await blockStore.cleanup(first, transaction, 5000);
+            return { legacy: rows.length, receipts: blocks.deleted };
+          } catch (error) {
+            fail(error);
+            throw error;
+          }
+        });
+        deleted += progress.legacy;
+        receipts += progress.receipts;
+        if (progress.legacy < 5000 && progress.receipts < 5000) break;
+      }
+      await MonitorLogState.destroy({
+        where: { observedAt: { [Op.lt]: new Date(`${first}T00:00:00+08:00`) } },
+      });
+      const remainingBudget = budgetMs - (Date.now() - started);
+      let compaction = { skipped: true, reason: 'cleanup-budget' };
+      if (remainingBudget >= 1000)
+        compaction = await blockCompactor.compact({
+          first,
+          today,
+          budgetMs: Math.min(5000, remainingBudget),
+          maxBatches: Math.max(
+            1,
+            Math.min(100, Number(process.env.MONITOR_LOG_COMPACTION_BATCHES) || 100)
+          ),
+        });
+      const oldest = await sequelize.query(
+        `
+        SELECT min(day) AS oldest FROM (
+          SELECT min(business_date) AS day FROM monitor_log_entries
+          UNION ALL SELECT min(business_date) FROM monitor_log_receipts) d`,
+        { type: QueryTypes.SELECT }
       );
-      if (rows.length < 5000) break;
+      const metrics = {
+        compaction,
+        deleted,
+        receipts,
+        first,
+        oldest: oldest[0]?.oldest,
+        durationMs: Date.now() - started,
+        budgetExhausted: Date.now() - started >= budgetMs,
+      };
+      await sequelize.query(
+        `INSERT INTO monitor_log_storage_metrics(name,value) VALUES('cleanup',:value::jsonb)
+        ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value,updated_at=now()`,
+        { replacements: { value: JSON.stringify(metrics) } }
+      );
+      const capacity = await blockStore.capacity();
+      await sequelize.query(
+        `INSERT INTO monitor_log_storage_metrics(name,value) VALUES('capacity',:value::jsonb)
+        ON CONFLICT(name) DO UPDATE SET value=EXCLUDED.value,updated_at=now()`,
+        {
+          replacements: {
+            value: JSON.stringify({ ...capacity, observedAt: new Date().toISOString() }),
+          },
+        }
+      );
+      logger.info('完整日志清理指标', metrics);
+      logger.info('完整日志容量指标', capacity);
+      return metrics;
+    } finally {
+      let destroyed = false;
+      try {
+        if (locked) await connection.query('SELECT pg_advisory_unlock(709101,1)');
+      } catch (error) {
+        logger.warn('完整日志清理连接解锁失败，销毁连接', { errorCode: error.code || error.name });
+        await sequelize.connectionManager.destroyConnection(connection);
+        destroyed = true;
+      }
+      if (!destroyed) await sequelize.connectionManager.releaseConnection(connection);
     }
-    await MonitorLogState.destroy({
-      where: { observedAt: { [Op.lt]: new Date(`${first}T00:00:00+08:00`) } },
-    });
   } catch (error) {
-    fail(error);
+    logger.warn('完整日志清理失败', {
+      deleted,
+      receipts,
+      durationMs: Date.now() - started,
+      errorCode: error.code || error.name,
+    });
     throw error instanceof ApiError
       ? error
       : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');

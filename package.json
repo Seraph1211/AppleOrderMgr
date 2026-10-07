@@ -54,7 +54,9 @@
     "stock:repair-bridges": "node scripts/repairPickupStockBridge.js",
     "stock:cleanup-previews": "node scripts/cleanupStockImportPreviews.js",
     "test:stock:ledger": "jest test/stockLedger.integration.test.js --runInBand",
-    "test:stock:ledger:migration": "jest test/stockLedgerMigration.integration.test.js --runInBand"
+    "test:stock:ledger:migration": "jest test/stockLedgerMigration.integration.test.js --runInBand",
+    "logs:storage:migrate": "node scripts/monitorLogStorageMigration.js",
+    "logs:storage:benchmark": "node scripts/monitorLogStorageBenchmark.js"
   },
   "keywords": [
     "apple",
