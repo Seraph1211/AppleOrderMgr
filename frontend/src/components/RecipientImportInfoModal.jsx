@@ -39,7 +39,7 @@ export default function RecipientImportInfoModal({ content, loading, error, onCl
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-5 overflow-auto flex-1">
+        <div className="p-5 overflow-y-auto flex-1">
           {loading ? (
             <p className="text-gray-500 py-10 text-center">正在生成录入信息…</p>
           ) : error ? (

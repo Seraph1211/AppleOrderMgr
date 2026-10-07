@@ -7,6 +7,10 @@
     @apply border-gray-200;
   }
 
+  fieldset {
+    min-inline-size: 0;
+  }
+
   body {
     @apply bg-gray-50 text-sm text-gray-900 antialiased;
   }
@@ -32,7 +36,7 @@
   }
 
   .input {
-    @apply w-full min-w-0 min-h-[34px] px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg;
+    @apply w-full min-w-0 max-w-full min-h-[34px] px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg;
     @apply text-gray-900 placeholder-gray-400;
     @apply focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
     @apply transition-all duration-200;
@@ -595,4 +599,56 @@
 }
 .pickups-page [role='dialog'] > div {
   min-width: 0;
+}
+
+/* 手机表单统一尺寸，避免聚焦缩放及 iOS 日期控件的固有宽度撑开页面。
+   保留用户双指缩放；宽表格只在自己的 overflow-x-auto 容器内滚动。 */
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+  }
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 16px;
+  }
+  textarea {
+    resize: vertical;
+  }
+  input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], [type='week']) {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+  input::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: left;
+  }
+  input::-webkit-datetime-edit {
+    padding: 0;
+  }
+  .app-content,
+  [role='dialog'] {
+    overflow-wrap: anywhere;
+  }
+  [role='dialog'],
+  [role='dialog'] > * {
+    min-width: 0;
+  }
+  /* 仅纵向滚动的容器显式关掉横轴，避免 overflow-y:auto 隐式开启横轴。 */
+  .overflow-y-auto:not(.overflow-x-auto) {
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+  .overflow-x-auto {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
 }

@@ -1,3 +1,4 @@
+import { getOrderPickupDisplay } from '../utils/orderPickupDisplay';
 import OrderDateFilter from '../components/OrderDateFilter';
 import { formatOrderTime } from '../utils/orderTime';
 import { EMAIL_ORDER_STATUS_BADGES, EMAIL_ORDER_STATUS_LABELS } from '../constants/orderStatus';
@@ -248,7 +249,11 @@ export default function ChannelOrders() {
                       <span className="text-gray-900">{order.pickupStore || '-'}</span>
                     </td>
                     <td className="py-4 px-4">
-                      <span className="text-gray-900">{order.pickupTimeSlot || '-'}</span>
+                      <span className="text-gray-900">
+                        {typeof order.pickupTimeSlot === 'string'
+                          ? order.pickupTimeSlot || '时间待确认'
+                          : getOrderPickupDisplay(order.pickupTimeSlot).schedule}
+                      </span>
                     </td>
                     <td className="py-4 px-4">
                       {order.orderUrl && order.orderUrl !== '-' ? (
@@ -286,7 +291,7 @@ export default function ChannelOrders() {
 
         {/* 分页 */}
         {pagination.total > pagination.pageSize && (
-          <div className="flex justify-between items-center mt-4 pt-4 border-t border-gray-200">
+          <div className="flex flex-wrap justify-between items-center gap-3 mt-4 pt-4 border-t border-gray-200">
             <div className="text-sm text-gray-500">
               共 {pagination.total} 条记录，第 {pagination.page} /{' '}
               {Math.ceil(pagination.total / pagination.pageSize)} 页

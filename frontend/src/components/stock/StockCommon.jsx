@@ -61,7 +61,7 @@ export function StockModal({ title, children, onClose, busy = false, wide = fals
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`stock-modal flex h-[100dvh] w-full min-w-0 flex-col bg-white sm:h-auto sm:max-h-[92dvh] sm:rounded-xl ${wide ? 'sm:max-w-5xl' : 'sm:max-w-2xl'}`}
+        className={`stock-modal overflow-hidden flex h-[100dvh] w-full min-w-0 flex-col bg-white sm:h-auto sm:max-h-[92dvh] sm:rounded-xl ${wide ? 'sm:max-w-5xl' : 'sm:max-w-2xl'}`}
       >
         <header className="flex shrink-0 items-center justify-between gap-3 border-b p-4">
           <h2 id={titleId} className="text-lg font-semibold text-gray-900">
@@ -77,7 +77,7 @@ export function StockModal({ title, children, onClose, busy = false, wide = fals
             <X className="h-4 w-4" />
           </button>
         </header>
-        <div className="stock-dialog-scroll min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+        <div className="stock-dialog-scroll min-w-0 min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
       </section>
     </div>
   );
