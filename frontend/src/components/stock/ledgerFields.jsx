@@ -1,4 +1,5 @@
 import { useId } from 'react';
+import LedgerPersonInput from './ledgerPersonInput';
 import { useAuth } from '../../contexts/AuthContext';
 import { StockFields } from './StockCommon';
 import { productLabel, stockOptions } from './stockHelpers';
@@ -59,25 +60,16 @@ export function LedgerPersonField({
       <label htmlFor={`${listId}-input`} className="block font-medium text-gray-700">
         {label}
       </label>
-      <input
+      <LedgerPersonInput
         id={`${listId}-input`}
-        className="input"
-        autoComplete="off"
-        aria-describedby={hint ? `${listId}-hint` : undefined}
-        aria-label={label}
-        value={value || ''}
-        list={listId}
-        onChange={event => onChange(event.target.value)}
+        label={label}
+        hintId={hint ? `${listId}-hint` : undefined}
+        value={value}
+        onChange={onChange}
+        people={people}
         required={required}
         disabled={disabled}
-        maxLength={100}
-        placeholder={required ? '选择或输入姓名' : '选择或输入姓名，不清楚可留空'}
       />
-      <datalist id={listId}>
-        {people.map(person => (
-          <option key={person.id || person.name} value={person.name} />
-        ))}
-      </datalist>
       {hint && (
         <span id={`${listId}-hint`} className="block text-xs text-gray-500">
           {hint}
