@@ -225,7 +225,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - `GET /api/order-refresh/batches/:id` 返回批次六类计数和完成时间；只能查询本人批次，admin 可查询全部。
 - 列表和详情新增 `refresh` 对象：`freshness_status`、`last_attempt_at`、`last_success_at`、`last_failure_at`、`last_error_code`、`last_error_message` 和当前活动 `job`。超过 90 秒没有成功结果的待付款/未知订单由服务端序列化为 `stale`。
 - PUT /api/orders/:id 只允许 paymentScreenshot，不再接受 payerName。付款人必须经 `PUT /api/orders/:id/payer` 或本人任务入口更新，body 为 `{ payerName: string | null, expectedVersion, reason? }`，幂等键通过请求头传入。`payerName` 去除首尾空白后最长 100 个字符，空字符串按 null 清空；付款人不是系统账号，也不存在候选目录。
-- 官网金额、支付与取货状态是独立字段。列表不返回 Apple 密码或原始订单链接；`GET /api/orders/:id` 仅在当前用户具有管理员保留权限 `orders.secrets.read` 时返回订单密码快照 `apple_password` 明文，否则为 `null`，并统一设置 `Cache-Control: no-store`。详情响应不直接携带原始订单链接，页面打开详情后另经 `GET /api/orders/:id/link` 按订单范围读取。身份证和地址保持脱敏；详情顶层 `recipient_email`、`recipient_phone` 表示订单入库时保存的下单联系方式，不使用之后变更的取机人档案覆盖，其中 `recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
+- 官网金额、支付与取货状态是独立字段。列表不返回 Apple 密码或原始订单链接；`GET /api/orders/:id` 在当前用户具有 `orders.read` 且订单属于其授权 TAG 范围时返回订单密码快照 `apple_password` 明文（管理员、普通操作员及只读用户均适用），快照为空时为 `null`；无需 `orders.secrets.read` 或 `apple_ids.read`，并统一设置 `Cache-Control: no-store`。详情响应不直接携带原始订单链接，页面打开详情后另经 `GET /api/orders/:id/link` 按订单范围读取。身份证和地址保持脱敏；详情顶层 `recipient_email`、`recipient_phone` 表示订单入库时保存的下单联系方式，不使用之后变更的取机人档案覆盖，其中 `recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
 - 导出使用当前筛选条件，下载按 Blob 处理；订单金额改用已确认价格映射，无法完整映射时显示待确认，不回退官网金额。
 
 ## 邮件处理

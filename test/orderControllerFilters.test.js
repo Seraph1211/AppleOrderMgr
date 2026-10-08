@@ -112,7 +112,7 @@ test('订单 DTO 只返回邮件生命周期和历史限制', () => {
   expect(detail.official_order_status).toBeNull();
 });
 
-test('订单详情仅在订单敏感字段权限通过后返回密码快照', () => {
+test('订单密码快照仅在显式允许详情读取时返回，列表始终隐藏密码', () => {
   const order = {
     toJSON: () => ({
       id: 1,
@@ -123,41 +123,99 @@ test('订单详情仅在订单敏感字段权限通过后返回密码快照', ()
     }),
   };
 
+  expect(serializeOrderListItem(order).apple_password).toBeNull();
   expect(serializeOrderDetail(order).apple_password).toBeNull();
   expect(serializeOrderDetail(order, false, true).apple_password).toBe('synthetic-password');
 });
 
-test('订单详情按权限返回密码并禁止缓存', async () => {
-  const { Order } = require('../src/models');
-  Order.findOne = jest.fn().mockResolvedValue({
+test.each([null, ''])('订单密码快照为空 %j 时不回退到关联账号密码', applePassword => {
+  const order = {
     toJSON: () => ({
-      id: 1,
-      orderNumber: 'W1234567890',
-      appleId: 'account@example.test',
-      applePassword: 'synthetic-password',
       products: [],
+      applePassword,
+      appleAccount: { id: 2, appleId: 'synthetic@example.test', password: 'other-password' },
     }),
-  });
-  const res = { set: jest.fn(), json: jest.fn() };
+  };
+  expect(serializeOrderDetail(order, false, true).apple_password).toBeNull();
+});
 
-  await getOrderDetail(
-    {
+test.each(['admin', 'operator', 'readOnly'])(
+  '%s 仅有订单查看权限也可读密码，电话保持脱敏并禁止缓存',
+  async role => {
+    const { Order } = require('../src/models');
+    Order.findOne = jest.fn().mockResolvedValue({
+      toJSON: () => ({
+        id: 1,
+        orderNumber: 'W1234567890',
+        appleId: 'account@example.test',
+        applePassword: 'synthetic-password',
+        recipientPhone: '13800138000',
+        products: [],
+      }),
+    });
+    const res = { set: jest.fn(), json: jest.fn() };
+    const req = {
       params: { id: '1' },
       user: {
-        role: 'admin',
-        permissions: ['orders.read', 'orders.secrets.read'],
-        orderAccess: { mode: 'all' },
+        role,
+        permissions: ['orders.read'],
+        orderAccess: { mode: 'tags', tags: ['合成授权 TAG'] },
       },
-    },
-    res
-  );
+    };
 
-  expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
-  expect(res.json).toHaveBeenCalledWith(
-    expect.objectContaining({
-      data: expect.objectContaining({ apple_password: 'synthetic-password' }),
-    })
+    await getOrderDetail(req, res);
+
+    expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          apple_password: 'synthetic-password',
+          recipient_phone: '138****8000',
+        }),
+      })
+    );
+    if (role !== 'admin') {
+      expect(Order.findOne.mock.calls[0][0].where).toEqual({
+        [Op.and]: [{ id: 1 }, { tag: { [Op.in]: ['合成授权 TAG'] } }],
+      });
+    }
+  }
+);
+
+test('订单范围外查询不返回密码或详情', async () => {
+  const { Order } = require('../src/models');
+  Order.findOne = jest.fn().mockResolvedValue(null);
+  const res = { set: jest.fn(), json: jest.fn() };
+  await expect(
+    getOrderDetail(
+      {
+        params: { id: '1' },
+        user: {
+          role: 'operator',
+          permissions: ['orders.read'],
+          orderAccess: { mode: 'tags', tags: [] },
+        },
+      },
+      res
+    )
+  ).rejects.toMatchObject({ statusCode: 404 });
+  expect(Order.findOne.mock.calls[0][0].where).toEqual({
+    [Op.and]: [{ id: 1 }, { tag: { [Op.in]: [] } }],
+  });
+  expect(res.json).not.toHaveBeenCalled();
+});
+
+test('没有订单查看权限时订单入口拒绝访问', () => {
+  const { requirePermission } = require('../src/middleware/authMiddleware');
+  const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+  const next = jest.fn();
+  requirePermission('orders.read')(
+    { user: { role: 'operator', permissions: ['apple_ids.read'] } },
+    res,
+    next
   );
+  expect(res.status).toHaveBeenCalledWith(403);
+  expect(next).not.toHaveBeenCalled();
 });
 
 test('订单链接按订单范围单独读取且禁止缓存', async () => {
