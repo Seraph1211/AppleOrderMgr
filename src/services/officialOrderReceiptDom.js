@@ -132,7 +132,10 @@ async function observeReceiptDom(collector, candidate, observationMs) {
       Date.parse(collector.leaseContext.startedAt) +
       proxyLeaseWindowMs(collector.leaseContext, true);
     const hardDeadline = Math.min(totalDeadline, leaseDeadline);
-    const deadline = Math.min(candidate.createdAt + DOM_WINDOW_MS, hardDeadline);
+    const deadline = Math.min(
+      candidate.createdAt + (collector.receiptDomWindowMs || DOM_WINDOW_MS),
+      hardDeadline
+    );
     const remaining = () => Math.max(1, Math.min(SLICE_MS, deadline - Date.now()));
     // 六秒仅限制 DOM 条件观察；来源核验、快照读取和清理独立有界，仍不能越过硬时限。
     const readRemaining = () => Math.max(1, Math.min(READ_LIMIT_MS, hardDeadline - Date.now()));

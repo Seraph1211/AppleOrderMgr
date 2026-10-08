@@ -72,3 +72,6 @@ collector/artifacts/
 *.sqlite
 *.sqlite-shm
 *.sqlite-wal
+
+# Python batch CLI local bytecode
+__pycache__/

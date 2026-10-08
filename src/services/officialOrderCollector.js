@@ -1323,7 +1323,7 @@ class OfficialOrderCollector {
         };
         if (this.stopped === 'SUCCEEDED' && this.result) result.resultFile = this.saveOrderResult();
         if (this.captureReceipt && result.outcome === 'SUCCEEDED') {
-          if (!this.isStopRequested()) result.receipt = await collectBrowserReceipt(this);
+          if (!this.isStopRequested()) result.receipt = await this.collectReceipt();
         }
         this.isStopRequested();
         this.accountResults.push(result);
@@ -1376,6 +1376,16 @@ class OfficialOrderCollector {
     }
   }
 
+  /** 子类可以提供同一尝试内的严格收据采集，旧入口保持原有行为。 */
+  async collectReceipt() {
+    try {
+      return await collectBrowserReceipt(this);
+    } catch (error) {
+      error.component = 'officialOrderCollectorReceipt';
+      throw error;
+    }
+  }
+
   async run() {
     let summary;
     try {
@@ -1407,7 +1417,7 @@ class OfficialOrderCollector {
         const resultName = `order-${this.sample.id}-run-${this.id}.json`;
         this.resultFile = path.join(this.root, 'private/results', resultName);
         writePrivate(this.resultFile, JSON.stringify(output, null, LIMITS.jsonIndent));
-        if (this.captureReceipt) this.receiptResult = await collectBrowserReceipt(this);
+        if (this.captureReceipt) this.receiptResult = await this.collectReceipt();
       }
     } catch (error) {
       if (this.logger) {
