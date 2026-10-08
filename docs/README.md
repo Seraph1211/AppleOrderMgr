@@ -10,6 +10,8 @@
 
 ## 按任务阅读
 
+- 官网 HTTP 采集维护：[技术说明](design/官网订单HTTP采集技术说明.md) → [运维手册](deployment/服务器官网订单取数.md) → [验收清单](testing/测试与验收指南.md#官网订单-http-补录验收)。
+
 - 新成员：[本地开发](development/本地开发指南.md) → [系统架构](design/系统架构.md) → [当前进度](development/开发进度.md)。
 - 开发：[编码规范](development/编码规范.md)、[前端规范](development/前端设计规范.md)、[数据库](database/数据库架构.md)、[API](design/API设计.md)，再读对应专题。
 - 产品和测试：[优化计划](planning/项目优化计划.md)、[用户权限分配](planning/用户权限分配与访问控制方案.md)、[付款任务分配与处理](planning/订单付款任务分配与处理方案.md)、[邮件解析与处理可靠性](planning/邮件解析与处理可靠性优化方案.md)、[订单刷新与爬虫重构](planning/订单状态刷新与爬虫重构方案.md)、[结算规划](planning/付款人与内部结算方案.md)、[测试指南](testing/测试与验收指南.md)。
