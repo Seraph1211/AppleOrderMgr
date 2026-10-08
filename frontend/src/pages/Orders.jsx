@@ -24,11 +24,13 @@ import {
   Mail,
   MapPin,
   Clock3,
+  Pencil,
 } from 'lucide-react';
-import { getOrders, getOrderLink, getOrderFilterOptions, exportOrders } from '../api';
+import { getOrders, getOrderLink, getOrderFilterOptions, exportOrders, updateOrder } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
 import ColumnConfigModal from '../components/ColumnConfigModal';
 import OrderDetailModal from '../components/OrderDetailModal';
+import OrderNotesModal from '../components/OrderNotesModal';
 import { DISPLAY_ORDER_STATUS_LABELS, getDisplayOrderStatusBadge } from '../constants/orderStatus';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
@@ -42,6 +44,7 @@ export default function Orders() {
   const { can, user } = useAuth();
   const canReadMail = can(PERMISSIONS.ORDER_MAIL_READ) || can(PERMISSIONS.ORDER_MAIL_MANAGE);
   const canRefreshMailStatus = can(PERMISSIONS.ORDER_MAIL_MANAGE);
+  const canEditOrders = can(PERMISSIONS.ORDERS_EDIT);
   const canExportOrders = can(PERMISSIONS.ORDERS_EXPORT);
   const canRefreshOfficialStatus = user?.role === 'admin' && can(PERMISSIONS.ORDERS_EDIT);
   const canSelectOrders = canRefreshMailStatus || canExportOrders || canRefreshOfficialStatus;
@@ -52,6 +55,10 @@ export default function Orders() {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [notesOrder, setNotesOrder] = useState(null);
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesError, setNotesError] = useState('');
+  const notesSavingRef = useRef(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -176,6 +183,39 @@ export default function Orders() {
     }
   };
 
+  const openNotesEditor = order => {
+    setNotesError('');
+    setNotesOrder(order);
+  };
+
+  const handleSaveNotes = async notes => {
+    if (!notesOrder || !canEditOrders || notesSavingRef.current) return;
+    notesSavingRef.current = true;
+    setNotesSaving(true);
+    setNotesError('');
+    try {
+      const response = await updateOrder(notesOrder.id, { notes });
+      if (!response.success) throw new Error('备注保存失败');
+      // 使保存前发出的列表请求失效，避免旧响应短暂覆盖刚保存的备注。
+      ordersRequestSequence.current += 1;
+      setLoading(false);
+      setOrders(previous =>
+        previous.map(order =>
+          order.id === notesOrder.id
+            ? { ...order, notes: response.data.notes ?? '', updatedAt: response.data.updated_at }
+            : order
+        )
+      );
+      setNotesOrder(null);
+      showToast('success', '备注已保存');
+    } catch (error) {
+      setNotesError(error.message || '备注保存失败，请重试');
+    } finally {
+      notesSavingRef.current = false;
+      setNotesSaving(false);
+    }
+  };
+
   const mailReplayMessage = (totals, mode) => {
     if (totals.messages === 0) return '所选订单没有关联的订单邮件';
     const queued = totals.enqueued + totals.active;
@@ -288,7 +328,7 @@ export default function Orders() {
           paymentScreenshot: order.payment_screenshot || [],
           // 业务字段
           tag: order.tag || '-',
-          notes: order.notes || '-',
+          notes: order.notes ?? '',
           // 时间戳
           createdAt: order.created_at,
           updatedAt: order.updated_at,
@@ -548,6 +588,26 @@ export default function Orders() {
           <span className="text-sm text-gray-600 font-mono">******</span>
         ) : (
           <span className="text-sm text-gray-600">{value}</span>
+        );
+
+      case 'notes':
+        return (
+          <div className="flex max-w-xs items-start gap-2 whitespace-normal">
+            <span className="min-w-0 whitespace-pre-wrap break-words text-sm text-gray-600">
+              {value || '-'}
+            </span>
+            {canEditOrders && (
+              <button
+                type="button"
+                className="btn btn-secondary shrink-0 p-1.5"
+                aria-label={`编辑备注 ${order.orderNumber}`}
+                title="修改备注"
+                onClick={() => openNotesEditor(order)}
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         );
 
       case 'actions': {
@@ -983,6 +1043,11 @@ export default function Orders() {
                         <span className="min-w-0 break-words text-gray-900">{pickup.schedule}</span>
                       </p>
                     </div>
+                    {order.notes && (
+                      <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600">
+                        备注：{order.notes}
+                      </p>
+                    )}
                     <div className="orders-mobile-actions mt-3 border-t border-gray-100 pt-3">
                       {renderCell(order, { key: 'actions' })}
                     </div>
@@ -1109,7 +1174,20 @@ export default function Orders() {
       )}
 
       {/* 订单详情弹窗 */}
+      {notesOrder && canEditOrders && (
+        <OrderNotesModal
+          key={notesOrder.id}
+          order={notesOrder}
+          saving={notesSaving}
+          error={notesError}
+          onClose={() => {
+            if (!notesSavingRef.current) setNotesOrder(null);
+          }}
+          onSave={handleSaveNotes}
+        />
+      )}
       <OrderDetailModal
+        onEditNotes={openNotesEditor}
         order={orders.find(order => order.id === selectedOrder?.id) || selectedOrder}
         isOpen={showDetailModal}
         onClose={() => {

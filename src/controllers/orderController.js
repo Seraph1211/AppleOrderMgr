@@ -895,8 +895,20 @@ async function updateOrder(req, res) {
       }
     }
 
+    const MAX_ORDER_NOTES_LENGTH = 2000;
+    if (req.body.notes !== undefined) {
+      if (req.body.notes !== null && typeof req.body.notes !== 'string') {
+        throw ApiError.badRequest('备注必须是字符串或 null');
+      }
+      const notes = req.body.notes?.trim() || null;
+      if (notes && notes.length > MAX_ORDER_NOTES_LENGTH) {
+        throw ApiError.badRequest('备注不能超过 2000 个字符');
+      }
+      updates.notes = notes;
+    }
+
     if (Object.keys(updates).length === 0) {
-      throw ApiError.badRequest('没有可更新的字段', { allowedFields });
+      throw ApiError.badRequest('没有可更新的字段', { allowedFields: [...allowedFields, 'notes'] });
     }
 
     await order.update(updates);
@@ -914,6 +926,7 @@ async function updateOrder(req, res) {
         id: order.id,
         order_number: order.orderNumber,
         payment_screenshot: order.paymentScreenshot,
+        notes: order.notes,
         updated_at: order.updatedAt,
       },
     });
