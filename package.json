@@ -44,7 +44,12 @@
     "inventory:validate": "node scripts/validateInventorySource.js",
     "inventory:preflight": "node scripts/measureInventoryCoverage.js",
     "start:inventory-worker": "node src/workers/inventoryWorker.js",
-    "test:browser:inventory": "node scripts/testInventoryBrowser.js"
+    "test:browser:inventory": "node scripts/testInventoryBrowser.js",
+    "receipts:batch": "python3 scripts/officialReceiptBatch.py",
+    "receipts:package": "python3 scripts/packageOfficialReceipt.py",
+    "test:receipts:batch": "python3 -m unittest discover -s test -p 'officialReceipt*Test.py'",
+    "test:receipts:binding": "node scripts/testOfficialReceiptBinding.js",
+    "test:receipts:browser": "node scripts/testOfficialReceiptBrowser.js"
   },
   "keywords": [
     "apple",
