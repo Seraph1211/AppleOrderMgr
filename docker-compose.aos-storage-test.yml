@@ -1,0 +1,93 @@
+# AOS 压缩存储专用隔离环境；不加载 .env 或任何生产秘密，不启动 Worker。
+name: aos-log-storage-test
+services:
+  cold-postgres:
+    profiles: [cold]
+    image: postgres:15.18-alpine
+    environment:
+      POSTGRES_DB: aos_log_test_synthetic_restore
+      POSTGRES_USER: aos_storage_test
+      POSTGRES_PASSWORD: isolated-synthetic-only
+    command: ['postgres', '-c', 'shared_buffers=256MB', '-c', 'max_wal_size=2GB']
+    volumes:
+      - cold-database:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aos_storage_test -d aos_log_test_synthetic_restore']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks:
+      cold:
+        aliases: [postgres]
+  init-results:
+    image: node:20-alpine
+    command: ['chown', '-R', '1000:1000', '/results']
+    user: '0:0'
+    volumes:
+      - results:/results
+    networks: [isolated]
+  postgres:
+    image: postgres:15.18-alpine
+    environment:
+      POSTGRES_DB: aos_log_test_storage
+      POSTGRES_USER: aos_storage_test
+      POSTGRES_PASSWORD: isolated-synthetic-only
+    command: ['postgres', '-c', 'shared_buffers=256MB', '-c', 'max_wal_size=2GB']
+    volumes:
+      - database:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aos_storage_test -d aos_log_test_storage']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [isolated]
+  runtime:
+    image: ${AOS_STORAGE_TEST_IMAGE:-apple-order-mgr-dev-backend:local}
+    command: ['sleep', 'infinity']
+    init: true
+    environment:
+      NODE_ENV: test
+      DB_NAME: aos_log_test_storage
+      DB_NAME_TEST: aos_log_test_storage
+      DB_HOST: postgres
+      DB_USER: aos_storage_test
+      DB_PASSWORD: isolated-synthetic-only
+      DB_SSL: 'false'
+      DB_POOL_MAX: '12'
+      RUN_WORKERS_IN_API: 'false'
+      RUN_FULL_LOG_DB: 'true'
+      RUN_LOG_BLOCK_DB: 'true'
+      LOG_LEVEL: warn
+    volumes:
+      - ./src:/app/src:ro
+      - ./config:/app/config:ro
+      - ./migrations:/app/migrations:ro
+      - ./scripts:/app/scripts:ro
+      - ./test:/app/test:ro
+      - ./docs:/app/docs:ro
+      - ./frontend:/app/frontend:ro
+      - ./templates:/app/templates:ro
+      - ./vendor:/app/vendor:ro
+      - ./package.json:/app/package.json:ro
+      - ./.sequelizerc:/app/.sequelizerc:ro
+      - ./.eslintrc.json:/app/.eslintrc.json:ro
+      - ./.eslintignore:/app/.eslintignore:ro
+      - ./.prettierrc:/app/.prettierrc:ro
+      - results:/app/test-artifacts
+      - logs:/app/logs
+    depends_on:
+      init-results:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    networks: [isolated]
+networks:
+  cold:
+    internal: true
+  isolated:
+    internal: true
+volumes:
+  cold-database:
+  database:
+  results:
+  logs:

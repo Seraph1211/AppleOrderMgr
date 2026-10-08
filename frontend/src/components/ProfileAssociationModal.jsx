@@ -57,7 +57,7 @@ export default function ProfileAssociationModal({ onClose, onComplete }) {
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-5 overflow-auto space-y-4">
+        <div className="p-5 overflow-y-auto space-y-4">
           <p className="text-sm text-gray-600">
             每批检查 500 条尚未完整关联的订单。取机人需有订单本身的姓名及身份等证据；账号按订单
             Apple ID 匹配。只补空关联，不改已有归属、密码、TAG 或订单快照。

@@ -7,6 +7,10 @@
     @apply border-gray-200;
   }
 
+  fieldset {
+    min-inline-size: 0;
+  }
+
   body {
     @apply bg-gray-50 text-sm text-gray-900 antialiased;
   }
@@ -16,6 +20,23 @@
   .btn {
     @apply min-h-[34px] px-3 py-1.5 text-sm rounded-lg font-medium transition-all duration-200 cursor-pointer;
     @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2;
+  }
+
+  .btn.tag-select-all {
+    @apply flex w-full items-center gap-2 rounded-md px-3 py-2 text-left font-normal text-gray-700;
+    @apply bg-gray-50 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-40;
+    @apply transition-colors focus:ring-0 focus:ring-offset-0;
+    box-shadow: none;
+  }
+
+  .btn.tag-select-all:focus {
+    box-shadow: none;
+    outline: none;
+    @apply focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-2 focus-visible:outline-primary;
+  }
+
+  .tag-select-option {
+    @apply shadow-none focus:outline-none focus-visible:outline focus-visible:outline-1 focus-visible:-outline-offset-2 focus-visible:outline-primary;
   }
 
   .btn-primary {
@@ -32,7 +53,7 @@
   }
 
   .input {
-    @apply w-full min-w-0 min-h-[34px] px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg;
+    @apply w-full min-w-0 max-w-full min-h-[34px] px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg;
     @apply text-gray-900 placeholder-gray-400;
     @apply focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
     @apply transition-all duration-200;
@@ -59,6 +80,27 @@
   }
 }
 
+/* 库存视图共用一组分段页签，数量与标签分开呈现。 */
+.stock-view-tabs {
+  @apply inline-grid min-w-0 grid-cols-3 gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1;
+  width: 320px;
+  max-width: calc(100% - 52px);
+}
+.stock-view-tab {
+  @apply flex min-h-[44px] min-w-0 items-center justify-center gap-2 whitespace-nowrap rounded-lg px-2 py-2 text-gray-500 sm:px-3;
+  @apply hover:bg-white/60 hover:text-gray-700 focus:ring-0 focus:ring-offset-0;
+  @apply focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
+}
+.stock-view-tab[aria-selected='true'] {
+  @apply bg-white text-primary shadow-sm;
+}
+.stock-view-count {
+  @apply inline-flex min-w-[22px] items-center justify-center rounded-md bg-gray-200/70 px-1.5 py-0.5 text-xs font-semibold tabular-nums text-gray-500;
+}
+.stock-view-tab[aria-selected='true'] .stock-view-count {
+  @apply bg-blue-50 text-primary;
+}
+
 /* 页面标题遵循全局紧凑规范，局部强调文字不受影响。 */
 .app-content h1 {
   font-size: 24px;
@@ -77,7 +119,7 @@
   width: 100%;
   min-height: 36px;
 }
-/* 订单筛选按内容收紧宽度，大屏六项同排；下拉选项保留阅读空间。 */
+/* 订单筛选按内容收紧宽度，大屏七项同排；下拉选项保留阅读空间。 */
 .order-filter-fields {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -110,8 +152,8 @@
 @media (min-width: 1280px) {
   .order-filter-fields {
     grid-template-columns:
-      minmax(0, 136px) minmax(0, 280px) minmax(0, 112px)
-      minmax(0, 144px) minmax(0, 160px) 156px;
+      minmax(0, 128px) minmax(0, 224px) minmax(0, 136px)
+      minmax(0, 128px) minmax(0, 144px) minmax(0, 128px) 156px;
   }
 }
 
@@ -568,10 +610,62 @@
   flex-shrink: 0;
 }
 .pickups-page .card,
-.pickups-page [role="dialog"] {
+.pickups-page [role='dialog'] {
   min-width: 0;
   overflow-wrap: anywhere;
 }
-.pickups-page [role="dialog"] > div {
+.pickups-page [role='dialog'] > div {
   min-width: 0;
+}
+
+/* 手机表单统一尺寸，避免聚焦缩放及 iOS 日期控件的固有宽度撑开页面。
+   保留用户双指缩放；宽表格只在自己的 overflow-x-auto 容器内滚动。 */
+@media (max-width: 767px) {
+  html,
+  body {
+    overflow-x: clip;
+    overscroll-behavior-x: none;
+  }
+  input:not([type='checkbox']):not([type='radio']):not([type='range']):not([type='color']),
+  select,
+  textarea {
+    min-width: 0;
+    max-width: 100%;
+    font-size: 16px;
+  }
+  textarea {
+    resize: vertical;
+  }
+  input:is([type='date'], [type='time'], [type='datetime-local'], [type='month'], [type='week']) {
+    -webkit-appearance: none;
+    appearance: none;
+    display: block;
+    box-sizing: border-box;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+  }
+  input::-webkit-date-and-time-value {
+    min-width: 0;
+    text-align: left;
+  }
+  input::-webkit-datetime-edit {
+    padding: 0;
+  }
+  .app-content,
+  [role='dialog'] {
+    overflow-wrap: anywhere;
+  }
+  [role='dialog'],
+  [role='dialog'] > * {
+    min-width: 0;
+  }
+  /* 仅纵向滚动的容器显式关掉横轴，避免 overflow-y:auto 隐式开启横轴。 */
+  .overflow-y-auto:not(.overflow-x-auto) {
+    overflow-x: hidden;
+    overscroll-behavior-x: none;
+  }
+  .overflow-x-auto {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
 }

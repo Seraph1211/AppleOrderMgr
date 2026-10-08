@@ -74,7 +74,10 @@ client.interceptors.response.use(
       } else if (status === 404) {
         return Promise.reject(new Error(data?.error?.message || '请求的资源不存在'));
       } else if (status >= 500) {
-        return Promise.reject(new Error(data?.error?.message || data?.message || '服务器错误'));
+        const failure = new Error(data?.error?.message || data?.message || '服务器错误');
+        failure.code = data?.error?.code;
+        failure.response = error.response;
+        return Promise.reject(failure);
       }
 
       // 对于登录请求的 401/403，保留原始错误信息

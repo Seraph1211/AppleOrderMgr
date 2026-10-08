@@ -1,3 +1,7 @@
+const {
+  collectOfficialStatusOptions,
+  buildOfficialStatusCondition,
+} = require('../utils/officialStatusFilter');
 const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 const { buildOrderProductCondition } = require('../utils/productFilterQuery');
 const { collectProductOptions } = require('../utils/productFilter');
@@ -31,6 +35,7 @@ const {
   DISPLAY_ORDER_STATUSES,
   DISPLAY_ORDER_STATUS_SQL,
   getDisplayOrderStatus,
+  getDisplayOrderStatusLabel,
 } = require('../utils/orderDisplayStatus');
 
 const MAX_MULTI_SELECT_ITEMS = 100;
@@ -59,7 +64,10 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
         })
         .join('、'),
   },
-  emailOrderStatus: { label: '订单状态', value: item => item.display_order_status || 'unknown' },
+  emailOrderStatus: {
+    label: '订单状态',
+    value: item => getDisplayOrderStatusLabel(item.display_order_status),
+  },
   emailPaymentStatus: {
     label: '邮件付款状态',
     value: item => item.email_payment_status || 'unknown',
@@ -76,6 +84,7 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
     label: '邮件取货门店',
     value: item => item.email_pickup_info?.storeName || '',
   },
+  actualPickupDate: { label: '实际取货日期', value: item => item.actual_pickup_date || '' },
   emailPickupDate: { label: '邮件取货日期', value: item => item.email_pickup_date || '' },
   emailPickupSchedule: {
     label: '邮件取货安排',
@@ -148,6 +157,9 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
   return {
     id: plain.id,
     order_number: plain.orderNumber,
+    actual_pickup_date: plain.actualPickupDate || null,
+    official_order_status: plain.officialRawStatus || null,
+    official_status_observed_at: plain.officialStatusObservedAt || null,
     serial_numbers: plain.serialNumbers || [],
     ingestion_source: plain.ingestionSource || 'unknown',
     source_recipient_tag: plain.sourceRecipientTag || null,
@@ -194,10 +206,10 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
  * 完整订单详情序列化
  * @param {Order} order - Sequelize Order 实例
  * @param {boolean} includeRecipientPhone - 是否包含取机人手机号明文
- * @param {boolean} includeOrderSecrets - 是否包含订单敏感字段明文
+ * @param {boolean} includeOrderPassword - 是否包含获准查看订单的密码快照
  * @returns {Object} 详情对象
  */
-function serializeOrderDetail(order, includeRecipientPhone = false, includeOrderSecrets = false) {
+function serializeOrderDetail(order, includeRecipientPhone = false, includeOrderPassword = false) {
   const plain = order.toJSON();
   let appleId = null;
   if (plain.appleAccount) {
@@ -233,6 +245,9 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
   return {
     id: plain.id,
     order_number: plain.orderNumber,
+    actual_pickup_date: plain.actualPickupDate || null,
+    official_order_status: plain.officialRawStatus || null,
+    official_status_observed_at: plain.officialStatusObservedAt || null,
     ingestion_source: plain.ingestionSource || 'unknown',
     source_recipient_tag: plain.sourceRecipientTag || null,
     recipient_profile_tag: plain.recipient?.tag || null,
@@ -244,7 +259,7 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
       plain.recipient.tag !== plain.sourceRecipientTag
     ),
     apple_id: appleId,
-    apple_password: includeOrderSecrets ? plain.applePassword || null : null,
+    apple_password: includeOrderPassword ? plain.applePassword || null : null,
     recipient_email: plain.recipientEmail,
     recipient_phone: includeRecipientPhone ? plain.recipientPhone : maskPhone(plain.recipientPhone),
     recipient,
@@ -381,6 +396,20 @@ function buildListFilters(query) {
       })
     );
   }
+  const officialOrderStatuses = parseMultiSelectFilter(
+    query.officialOrderStatuses,
+    'officialOrderStatuses',
+    {
+      maxItems: 100,
+      maxLength: 100,
+    }
+  );
+  const officialCondition = buildOfficialStatusCondition(
+    officialOrderStatuses,
+    sequelize,
+    Sequelize
+  );
+  if (officialCondition) where[Op.and] = (where[Op.and] || []).concat(officialCondition);
   const emailPaymentStatuses = parseMultiSelectFilter(
     query.emailPaymentStatuses,
     'emailPaymentStatuses',
@@ -427,7 +456,9 @@ function buildListFilters(query) {
       })
     );
   }
-  if (query.payerName) where.payerName = { [Op.iLike]: `%${String(query.payerName).trim()}%` };
+  const payerNames = parseMultiSelectFilter(query.payerNames, 'payerNames', { maxLength: 100 });
+  if (payerNames.length) where.payerName = { [Op.in]: payerNames };
+  else if (query.payerName) where.payerName = { [Op.iLike]: `%${String(query.payerName).trim()}%` };
   const productNames = parseMultiSelectFilter(query.productNames, 'productNames');
   const productNamesCondition =
     buildOrderProductCondition(query, sequelize, productNames) ||
@@ -443,6 +474,22 @@ function buildListFilters(query) {
     const pickupDate = normalizePickupDate(query.pickupDate);
     if (!pickupDate) throw ApiError.badRequest('pickupDate 必须是有效的 YYYY-MM-DD 日期');
     where.emailPickupDate = pickupDate.replaceAll('/', '-');
+  }
+  for (const [key, operator] of [
+    ['actualPickupDateFrom', Op.gte],
+    ['actualPickupDateTo', Op.lte],
+  ]) {
+    if (query[key] === undefined || query[key] === '') continue;
+    const value = normalizePickupDate(query[key]);
+    if (!value) throw ApiError.badRequest(key + ' 必须是有效的 YYYY-MM-DD 日期');
+    where.actualPickupDate = { ...where.actualPickupDate, [operator]: value.replaceAll('/', '-') };
+  }
+  if (
+    where.actualPickupDate?.[Op.gte] &&
+    where.actualPickupDate?.[Op.lte] &&
+    where.actualPickupDate[Op.gte] > where.actualPickupDate[Op.lte]
+  ) {
+    throw ApiError.badRequest('实际取货开始日期不能晚于结束日期');
   }
   if (query.recipientName) {
     const recipientName = String(query.recipientName).trim();
@@ -618,7 +665,7 @@ async function getOrderDetail(req, res) {
       data: serializeOrderDetail(
         order,
         canDisplayLocalSensitiveFields(req, PERMISSIONS.ORDERS_SECRETS_READ),
-        Boolean(req.user?.permissions?.includes(PERMISSIONS.ORDERS_SECRETS_READ))
+        Boolean(req.user?.permissions?.includes(PERMISSIONS.ORDERS_READ))
       ),
     });
   } catch (error) {
@@ -827,19 +874,44 @@ async function getFilterOptions(req, res) {
       include: [{ model: Recipient, as: 'recipient', attributes: [] }],
       raw: true,
     });
+    const officialStatusRows = await Order.findAll({
+      where: scopeOrderWhere(
+        req.user,
+        buildListFilters({ ...req.query, officialOrderStatuses: undefined }).where
+      ),
+      attributes: [
+        [Sequelize.fn('DISTINCT', Sequelize.col('Order.official_raw_status')), 'officialRawStatus'],
+      ],
+      include: [
+        { model: Recipient, as: 'recipient', attributes: [] },
+        { model: AppleId, as: 'appleAccount', attributes: [] },
+      ],
+      raw: true,
+    });
+    const payerRows = await Order.findAll({
+      where: scopeOrderWhere(
+        req.user,
+        buildListFilters({ ...req.query, payerNames: undefined, payerName: undefined }).where
+      ),
+      attributes: [[Sequelize.fn('DISTINCT', Sequelize.col('Order.payer_name')), 'payerName']],
+      include: [
+        { model: Recipient, as: 'recipient', attributes: [] },
+        { model: AppleId, as: 'appleAccount', attributes: [] },
+      ],
+      raw: true,
+    });
     const recipientTags = tagRows.map(row => row.recipientTag).filter(Boolean);
     const productModels = new Set();
     const productNames = new Set();
     const stores = new Set(storeRows.map(row => row.store).filter(Boolean));
     const recipients = new Set();
-    const payers = new Set();
+    const payers = new Set(payerRows.map(row => row.payerName).filter(Boolean));
     rows.forEach(row => {
       (row.products || []).forEach(product => {
         if (product.model || product.modelId) productModels.add(product.model || product.modelId);
         if (product.name) productNames.add(product.name);
       });
       if (row.recipientName) recipients.add(row.recipientName);
-      if (row.payerName) payers.add(row.payerName);
     });
     res.json({
       success: true,
@@ -847,6 +919,7 @@ async function getFilterOptions(req, res) {
         recipientTags: [...new Set(recipientTags)].sort((left, right) =>
           left.localeCompare(right, 'zh-CN')
         ),
+        officialOrderStatuses: collectOfficialStatusOptions(officialStatusRows),
         productOptions: collectProductOptions(rows),
         productModels: [...productModels].sort(),
         productNames: [...productNames].sort((left, right) => left.localeCompare(right, 'zh-CN')),
@@ -856,6 +929,7 @@ async function getFilterOptions(req, res) {
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) throw error;
     logger.error('获取订单筛选项失败', { error: error.message });
     throw ApiError.database('获取订单筛选项失败', { reason: error.message });
   }
@@ -887,8 +961,20 @@ async function updateOrder(req, res) {
       }
     }
 
+    const MAX_ORDER_NOTES_LENGTH = 2000;
+    if (req.body.notes !== undefined) {
+      if (req.body.notes !== null && typeof req.body.notes !== 'string') {
+        throw ApiError.badRequest('备注必须是字符串或 null');
+      }
+      const notes = req.body.notes?.trim() || null;
+      if (notes && notes.length > MAX_ORDER_NOTES_LENGTH) {
+        throw ApiError.badRequest('备注不能超过 2000 个字符');
+      }
+      updates.notes = notes;
+    }
+
     if (Object.keys(updates).length === 0) {
-      throw ApiError.badRequest('没有可更新的字段', { allowedFields });
+      throw ApiError.badRequest('没有可更新的字段', { allowedFields: [...allowedFields, 'notes'] });
     }
 
     await order.update(updates);
@@ -906,6 +992,7 @@ async function updateOrder(req, res) {
         id: order.id,
         order_number: order.orderNumber,
         payment_screenshot: order.paymentScreenshot,
+        notes: order.notes,
         updated_at: order.updatedAt,
       },
     });

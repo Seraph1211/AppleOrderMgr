@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Search, X } from 'lucide-react';
+import { Check, ChevronDown, Minus, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 const EMPTY_LABELS = Object.freeze({});
@@ -19,6 +19,8 @@ export default function TagMultiSelect({
   itemLabel = 'TAG',
   optionLabels = EMPTY_LABELS,
   searchLabels = EMPTY_LABELS,
+  compareOptions,
+  enableSelectAll = false,
 }) {
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
@@ -42,13 +44,15 @@ export default function TagMultiSelect({
 
   const normalizedOptions = useMemo(
     () =>
-      [...new Set([...options, ...value].filter(Boolean))].sort((left, right) =>
-        getOptionLabel(left, optionLabels).localeCompare(
-          getOptionLabel(right, optionLabels),
-          'zh-CN'
-        )
+      [...new Set([...options, ...value].filter(Boolean))].sort(
+        compareOptions ||
+          ((left, right) =>
+            getOptionLabel(left, optionLabels).localeCompare(
+              getOptionLabel(right, optionLabels),
+              'zh-CN'
+            ))
       ),
-    [options, value, optionLabels]
+    [options, value, optionLabels, compareOptions]
   );
   const visibleOptions = useMemo(() => {
     const normalizeSearch = text =>
@@ -59,6 +63,17 @@ export default function TagMultiSelect({
       normalizeSearch(searchLabels[option] || getOptionLabel(option, optionLabels)).includes(search)
     );
   }, [keyword, normalizedOptions, optionLabels, searchLabels]);
+
+  const allVisibleSelected =
+    visibleOptions.length > 0 && visibleOptions.every(option => value.includes(option));
+  const someVisibleSelected = visibleOptions.some(option => value.includes(option));
+  const toggleAllVisible = () => {
+    onChange(
+      allVisibleSelected
+        ? value.filter(option => !visibleOptions.includes(option))
+        : [...new Set([...value, ...visibleOptions])]
+    );
+  };
 
   const toggleOption = option => {
     onChange(
@@ -94,7 +109,9 @@ export default function TagMultiSelect({
             ? placeholder
             : value.length === 1
               ? getOptionLabel(value[0], optionLabels)
-              : `已选择 ${value.length} 个${itemLabel === 'TAG' ? ' TAG' : itemLabel}`}
+              : enableSelectAll
+                ? `已选 ${value.length} 项`
+                : `已选择 ${value.length} 个${itemLabel === 'TAG' ? ' TAG' : itemLabel}`}
         </span>
         <ChevronDown
           className={`h-4 w-4 shrink-0 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
@@ -116,12 +133,45 @@ export default function TagMultiSelect({
                   if (event.key === 'Escape') {
                     event.stopPropagation();
                     closeDropdown();
+                    containerRef.current?.querySelector('button')?.focus();
                   }
                   if (event.key === 'Enter') event.preventDefault();
                 }}
               />
             </div>
           </div>
+          {enableSelectAll && (
+            <div className="border-b border-gray-100 p-1">
+              <button
+                type="button"
+                className="btn tag-select-all"
+                disabled={!visibleOptions.length}
+                onClick={toggleAllVisible}
+                aria-pressed={allVisibleSelected ? true : someVisibleSelected ? 'mixed' : false}
+                aria-label={`${ariaLabel}${allVisibleSelected ? '取消全选' : '全选'}${keyword.trim() ? '搜索结果' : ''}`}
+              >
+                <span
+                  aria-hidden="true"
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    someVisibleSelected
+                      ? 'border-primary bg-primary text-white'
+                      : 'border-gray-300 bg-white'
+                  }`}
+                >
+                  {allVisibleSelected ? (
+                    <Check className="h-3 w-3" />
+                  ) : someVisibleSelected ? (
+                    <Minus className="h-3 w-3" />
+                  ) : null}
+                </span>
+                <span className="flex-1">
+                  {allVisibleSelected ? '取消全选' : '全选'}
+                  {keyword.trim() ? '搜索结果' : ''}
+                </span>
+                <span className="text-xs font-normal text-gray-500">{visibleOptions.length} 项</span>
+              </button>
+            </div>
+          )}
           <div className="max-h-64 overflow-y-auto p-1" role="listbox" aria-multiselectable="true">
             {visibleOptions.length === 0 ? (
               <p className="px-3 py-6 text-center text-sm text-gray-400">
@@ -137,7 +187,11 @@ export default function TagMultiSelect({
                     aria-selected={selected}
                     key={option}
                     className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                      selected ? 'bg-primary-light text-primary' : 'text-gray-700 hover:bg-gray-50'
+                      enableSelectAll
+                        ? `tag-select-option bg-white text-gray-700 hover:bg-gray-50`
+                        : selected
+                          ? 'bg-primary-light text-primary'
+                          : 'text-gray-700 hover:bg-gray-50'
                     }`}
                     onClick={() => toggleOption(option)}
                   >

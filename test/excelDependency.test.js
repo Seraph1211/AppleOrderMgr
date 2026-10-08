@@ -368,6 +368,7 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
     const sheet = book.Sheets['订单'];
     const data = XLSX.utils.sheet_to_json(sheet);
+    expect(data[0]['订单状态']).toBe('待确认');
     expect(data[0]['标签']).toBe("'=1+1");
     expect(data[0]['订单金额']).toBe('21998.00');
     expect(data[0]['金额来源']).toBe('按官方售价计算');
@@ -376,33 +377,43 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     expect(Object.values(sheet).filter(cell => cell?.f)).toHaveLength(0);
   });
 
-  test.each(['payment_timeout', 'partially_cancelled', 'expired', 'cancelled'])(
-    '订单导出保留独立展示状态 %s',
-    async status => {
-      Order.findAll.mockResolvedValue([
-        {
-          toJSON: () => ({
-            id: 41,
-            orderNumber: 'W1234567890',
-            products: [],
-            emailOrderStatus: status === 'payment_timeout' ? 'confirmed' : status,
-            emailPaymentStatus: 'unknown',
-            orderDate: new Date('2020-01-01T00:00:00Z'),
-          }),
-        },
-      ]);
-      const res = response();
-      await exportOrders(
-        {
-          query: { fields: '["emailOrderStatus"]', displayOrderStatuses: JSON.stringify([status]) },
-          user: { id: 1, role: 'admin' },
-        },
-        res
-      );
-      const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
-      expect(XLSX.utils.sheet_to_json(book.Sheets['订单'])).toEqual([{ 订单状态: status }]);
-    }
-  );
+  test.each([
+    ['unknown', '待确认'],
+    ['confirmed', '订单已确认'],
+    ['payment_timeout', '付款超时'],
+    ['processing', '处理中'],
+    ['ready_for_pickup', '可取货'],
+    ['picked_up', '已取货'],
+    ['partially_cancelled', '部分取消'],
+    ['cancelled', '已取消'],
+    ['expired', '已过期'],
+    [null, '待确认'],
+    ['invalid_status', '待确认'],
+    ['toString', '待确认'],
+  ])('选中订单 Excel 状态 %s 输出页面中文 %s', async (status, label) => {
+    Order.findAll.mockResolvedValue([
+      {
+        toJSON: () => ({
+          id: 41,
+          orderNumber: 'W1234567890',
+          products: [],
+          emailOrderStatus: status === 'payment_timeout' ? 'confirmed' : status,
+          emailPaymentStatus: 'unknown',
+          orderDate: status === 'payment_timeout' ? new Date('2020-01-01T00:00:00Z') : null,
+        }),
+      },
+    ]);
+    const res = response();
+    await exportOrders(
+      {
+        query: { orderIds: '[41]', fields: '["emailOrderStatus"]' },
+        user: { id: 1, role: 'admin' },
+      },
+      res
+    );
+    const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
+    expect(XLSX.utils.sheet_to_json(book.Sheets['订单'])).toEqual([{ 订单状态: label }]);
+  });
 
   test('选中订单按字段白名单导出且不包含未选择或敏感字段', async () => {
     Order.findAll.mockResolvedValue([

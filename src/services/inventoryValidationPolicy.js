@@ -25,7 +25,11 @@ function reserveBudget(original, now, attemptId, jitterMs = 0, egress = '') {
   if (state.requiredAlternateEgress === egress) return { blocked: 'ALTERNATE_EGRESS_REQUIRED' };
   if ((state.cooldownUntil || 0) > now)
     return { blocked: 'TARGET_COOLDOWN', until: state.cooldownUntil };
-  const waitUntil = Math.max(state.nextAt || 0, state.leaseUntil || 0);
+  const waitUntil = Math.max(
+    state.nextAt || 0,
+    state.leaseUntil || 0,
+    ...Object.values(state.requestLeases || {}).map(lease => lease.until || 0)
+  );
   if (waitUntil > now) return { waitMs: waitUntil - now };
   const hour = Math.floor(now / 3600000);
   const day = Math.floor(now / 86400000);

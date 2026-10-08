@@ -1,4 +1,9 @@
-const { getDisplayOrderStatus } = require('../src/utils/orderDisplayStatus');
+const { execFileSync } = require('node:child_process');
+const {
+  getDisplayOrderStatus,
+  getDisplayOrderStatusLabel,
+  DISPLAY_ORDER_STATUSES,
+} = require('../src/utils/orderDisplayStatus');
 
 const now = new Date('2026-09-28T12:00:00.000Z');
 const order = {
@@ -36,4 +41,25 @@ test('付款邮件到达后从付款超时切换为处理中', () => {
       now
     )
   ).toBe('processing');
+});
+
+test('Excel 中文名称与页面状态映射逐项一致，未知值回退待确认', () => {
+  const labels = JSON.parse(
+    execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        "import { DISPLAY_ORDER_STATUS_LABELS } from './frontend/src/constants/orderStatus.js'; process.stdout.write(JSON.stringify(DISPLAY_ORDER_STATUS_LABELS));",
+      ],
+      { cwd: require('node:path').resolve(__dirname, '..'), encoding: 'utf8' }
+    )
+  );
+  expect(Object.keys(labels).sort()).toEqual([...DISPLAY_ORDER_STATUSES].sort());
+  for (const status of DISPLAY_ORDER_STATUSES) {
+    expect(getDisplayOrderStatusLabel(status)).toBe(labels[status]);
+  }
+  for (const status of [undefined, null, '', 'invalid_status', 'toString', '__proto__']) {
+    expect(getDisplayOrderStatusLabel(status)).toBe(labels.unknown);
+  }
 });

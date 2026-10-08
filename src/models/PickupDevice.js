@@ -6,6 +6,7 @@ module.exports = sequelize => {
     'PickupDevice',
     {
       id: { type: DataTypes.UUID, primaryKey: true, defaultValue: DataTypes.UUIDV4 },
+      stockUnitId: { type: DataTypes.UUID, allowNull: true, unique: true, field: 'stock_unit_id' },
       orderId: { type: DataTypes.INTEGER, allowNull: false, field: 'order_id' },
       serialNumber: {
         type: DataTypes.STRING(12),

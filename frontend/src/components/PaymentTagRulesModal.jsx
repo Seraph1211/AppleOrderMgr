@@ -194,7 +194,7 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="overflow-auto min-h-0 p-4 sm:p-5 space-y-4">
+        <div className="overflow-y-auto min-h-0 p-4 sm:p-5 space-y-4">
           {error && (
             <div role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700 break-words">
               {error}

@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import { mergeColumnConfig } from '../utils/columnConfig';
+import {
+  mergeColumnConfig,
+  restoreOfficialStatusColumn,
+  restoreActualPickupDateColumn,
+} from '../utils/columnConfig';
 
 /**
  * 列配置 Hook
@@ -14,7 +18,31 @@ export default function useColumnConfig(tableName, defaultColumns) {
     if (saved) {
       try {
         const config = JSON.parse(saved);
-        return mergeColumnConfig(defaultColumns, config.columns);
+        const merged = mergeColumnConfig(defaultColumns, config.columns);
+        if (
+          tableName === 'orders' &&
+          (config.officialStatusVersion !== 1 || config.actualPickupDateVersion !== 2)
+        ) {
+          let migrated =
+            config.officialStatusVersion !== 1 ? restoreOfficialStatusColumn(merged) : merged;
+          if (config.actualPickupDateVersion !== 2)
+            migrated = restoreActualPickupDateColumn(migrated);
+          localStorage.setItem(
+            storageKey,
+            JSON.stringify({
+              ...config,
+              officialStatusVersion: 1,
+              actualPickupDateVersion: 2,
+              columns: migrated.map((column, order) => ({
+                key: column.key,
+                visible: column.visible,
+                order,
+              })),
+            })
+          );
+          return migrated;
+        }
+        return merged;
       } catch (e) {
         console.error('Failed to parse column config:', e);
       }
@@ -30,6 +58,7 @@ export default function useColumnConfig(tableName, defaultColumns) {
   const saveConfig = newColumns => {
     const config = {
       version: '1.0',
+      ...(tableName === 'orders' ? { officialStatusVersion: 1, actualPickupDateVersion: 2 } : {}),
       columns: newColumns.map((col, index) => ({
         key: col.key,
         visible: col.visible,

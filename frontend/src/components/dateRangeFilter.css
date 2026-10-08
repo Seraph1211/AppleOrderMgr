@@ -1,0 +1,121 @@
+.order-date-filters {
+  @apply col-span-full flex flex-wrap gap-3 border-b border-gray-100 pb-4;
+}
+.date-range-filter {
+  min-width: 0;
+  max-width: 100%;
+}
+.date-range-trigger {
+  @apply flex max-w-full items-center gap-2 border-gray-200 shadow-none;
+  min-height: 40px;
+}
+.date-range-trigger-label {
+  @apply shrink-0 text-gray-700;
+}
+.date-range-summary {
+  @apply min-w-0 text-gray-500;
+  overflow-wrap: anywhere;
+}
+.date-range-trigger.is-selected {
+  @apply border-blue-200 bg-primary-50;
+}
+.date-range-trigger.is-selected .date-range-summary {
+  @apply text-primary;
+}
+.date-range-popover {
+  @apply fixed z-[80] rounded-xl border border-gray-200 bg-white p-4 text-sm text-gray-700 shadow-xl;
+  width: 360px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.date-range-icon {
+  @apply flex items-center justify-center p-2 text-gray-500 hover:bg-gray-100;
+}
+.date-range-toolbar {
+  @apply mb-4 flex items-center justify-between gap-4;
+}
+.date-range-toolbar select {
+  @apply w-auto min-w-0 flex-1;
+}
+.date-range-inputs {
+  @apply grid gap-2;
+}
+.date-range-inputs.has-range {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+}
+.date-range-inputs label {
+  @apply min-w-0;
+}
+.date-range-inputs label > span {
+  @apply mb-1 block text-xs text-gray-500;
+}
+.date-range-inputs .input {
+  @apply min-w-0 w-full px-2 text-sm;
+}
+.date-range-inputs .is-active .input {
+  @apply border-blue-400 bg-blue-50/40;
+}
+.date-range-month {
+  @apply mb-2 mt-2 flex items-center justify-between;
+}
+.date-range-calendar {
+  @apply grid grid-cols-7;
+}
+.date-range-weekday {
+  @apply py-2 text-center text-xs text-gray-400;
+}
+.date-range-day {
+  @apply relative cursor-pointer rounded-lg text-center text-sm text-gray-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:z-10;
+  height: 34px;
+}
+.date-range-day.is-outside {
+  @apply text-gray-400;
+}
+.date-range-day.is-inside {
+  @apply rounded-none bg-primary-50 text-primary;
+}
+.date-range-day.is-edge {
+  @apply bg-primary font-semibold text-white hover:bg-primary-700;
+}
+.date-range-day.is-today::after {
+  content: '';
+  @apply absolute bottom-1 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-current;
+}
+.date-range-hint {
+  @apply mb-3 mt-3 text-xs text-gray-500;
+}
+.date-range-footer {
+  @apply border-t border-gray-100 pt-3;
+}
+.date-range-footer > p {
+  @apply mb-3 text-xs text-gray-500;
+}
+.date-range-popover button:disabled {
+  @apply cursor-not-allowed opacity-40;
+}
+@media (max-width: 767px) {
+  .date-range-filter,
+  .date-range-trigger {
+    width: 100%;
+  }
+  .date-range-trigger {
+    min-height: 44px;
+    text-align: left;
+  }
+  .date-range-trigger > svg:last-child {
+    margin-left: auto;
+  }
+  .date-range-popover .input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .date-range-popover .btn,
+  .date-range-day {
+    min-height: 44px;
+  }
+  .date-range-popover {
+    padding: 12px;
+  }
+}

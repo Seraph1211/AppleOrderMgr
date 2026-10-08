@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import Layout from './components/Layout';
@@ -20,6 +21,7 @@ import ChangePassword from './pages/ChangePassword';
 import EmailProcessing from './pages/EmailProcessing';
 import OrderIngestion from './pages/OrderIngestion';
 import ServerMonitor from './pages/ServerMonitor';
+import ServerLogs from './pages/ServerLogs';
 import WecomNotifications from './pages/WecomNotifications';
 import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
@@ -28,6 +30,22 @@ import Pickups from './pages/Pickups';
 import PublicIphone18Quotes from './pages/PublicIphone18Quotes';
 import Iphone18QuotePricing from './pages/Iphone18QuotePricing';
 import { PERMISSIONS } from './constants/permissions';
+
+const Stock = lazy(() => import('./pages/Stock'));
+
+function stockPage(element) {
+  return (
+    <Suspense
+      fallback={
+        <p role="status" className="py-8 text-center text-gray-500">
+          正在加载库存模块…
+        </p>
+      }
+    >
+      {element}
+    </Suspense>
+  );
+}
 
 function permissionRoute(permission, element) {
   return <ProtectedRoute requiredPermission={permission}>{element}</ProtectedRoute>;
@@ -83,6 +101,10 @@ function ManagementApp() {
                     element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerMonitor />)}
                   />
                   <Route
+                    path="/server-monitor/logs"
+                    element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerLogs />)}
+                  />
+                  <Route
                     path="/identity-verifications"
                     element={permissionRoute(PERMISSIONS.IDENTITY_READ, <IdentityVerifications />)}
                   />
@@ -118,6 +140,15 @@ function ManagementApp() {
                   <Route
                     path="/orders"
                     element={permissionRoute(PERMISSIONS.ORDERS_READ, <Orders />)}
+                  />
+                  <Route
+                    path="/stock"
+                    element={permissionRoute(PERMISSIONS.STOCK_READ, stockPage(<Stock />))}
+                  />
+                  <Route path="/stock-sales" element={<Navigate to="/stock?view=sold" replace />} />
+                  <Route
+                    path="/stock-receipts"
+                    element={<Navigate to="/stock?view=sold" replace />}
                   />
                   <Route
                     path="/pickups"

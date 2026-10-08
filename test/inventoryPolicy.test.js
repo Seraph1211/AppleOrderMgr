@@ -108,7 +108,7 @@ describe('生产保护与费用上限', () => {
       blocked
     )
   );
-  test('串行许可、抖动、预算跨出口与重启不清空', () => {
+  test('限速许可、抖动、预算跨出口与重启不清空', () => {
     const { state } = reserveProduction({}, now, 'id', 100, 'main', 'inventory', config);
     expect(state.hourCount).toBe(1);
     expect(state.nextAt).toBe(now + 1100);
@@ -189,24 +189,30 @@ describe('生产保护与费用上限', () => {
       ).cooldownUntil
     ).toBe(now + 600000);
   });
-  test('恢复三次失败后停；三次有效库存才恢复，目录成功不算', () => {
+  test('恢复三次失败后停；三次有许可的有效库存才恢复，目录成功不算', () => {
     let state = { recovering: true };
-    for (let i = 0; i < 3; i += 1)
+    for (let i = 0; i < 3; i += 1) {
+      const at = now + i * 3000000;
+      state = reserveProduction(state, at, String(i), 0, 'main', 'inventory', config).state;
       state = settleProduction(
         state,
-        { purpose: 'inventory', outcome: 'UPSTREAM_ERROR' },
-        now + i * 3000000
+        { id: String(i), purpose: 'inventory', outcome: 'UPSTREAM_ERROR' },
+        at + 1
       );
+    }
     expect(state.pausedReason).toBe('RECOVERY_EXHAUSTED');
     state = { recovering: true };
     state = settleProduction(state, { purpose: 'catalog', outcome: 'CATALOG_RECEIVED' }, now);
     expect(state.recoverySuccesses).toBeUndefined();
-    for (let i = 0; i < 3; i += 1)
+    for (let i = 0; i < 3; i += 1) {
+      const at = now + i * 6000;
+      state = reserveProduction(state, at, String(i), 0, 'main', 'inventory', config).state;
       state = settleProduction(
         state,
-        { purpose: 'inventory', outcome: 'INVENTORY_VALID' },
-        now + i * 5000
+        { id: String(i), purpose: 'inventory', outcome: 'INVENTORY_VALID' },
+        at + 1
       );
+    }
     expect(state.recovering).toBe(false);
   });
   test.each(['UPSTREAM_ERROR', 'PROXY_TUNNEL_UNAVAILABLE'])(

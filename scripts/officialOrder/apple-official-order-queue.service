@@ -1,0 +1,18 @@
+[Unit]
+Description=Apple manual official order HTTP queue
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment=OFFICIAL_ORDER_ROOT=/var/www/apple-order-mgr/shared/official-http-refresh
+ExecStart=/usr/bin/python3 /var/www/apple-order-mgr/shared/official-http-refresh/release/scripts/runOfficialOrderHttpQueue.py
+Restart=always
+RestartSec=10
+TimeoutStopSec=1200
+KillMode=process
+UMask=0077
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

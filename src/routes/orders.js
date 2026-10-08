@@ -14,6 +14,32 @@ const orderMailLifecycleController = require('../controllers/orderMailLifecycleC
 const retiredFeature = require('../middleware/retiredFeature');
 
 const router = express.Router();
+const devices = require('../controllers/pickupDeviceController');
+const orderSerial = require('../controllers/orderSerialController');
+router.delete('/:orderId/devices/:deviceId', requirePermission(PERMISSIONS.ORDERS_READ), requirePermission(PERMISSIONS.ORDERS_EDIT), asyncHandler(orderSerial.remove));
+router.get(
+  '/:orderId/devices',
+  requirePermission(PERMISSIONS.ORDERS_READ),
+  asyncHandler(devices.list)
+);
+router.post(
+  '/:orderId/devices',
+  requirePermission(PERMISSIONS.ORDERS_READ),
+  requirePermission(PERMISSIONS.ORDERS_EDIT),
+  asyncHandler(devices.create)
+);
+router.put(
+  '/:orderId/devices/:deviceId',
+  requirePermission(PERMISSIONS.ORDERS_READ),
+  requirePermission(PERMISSIONS.ORDERS_EDIT),
+  asyncHandler(orderSerial.update)
+);
+
+
+
+router.use('/official-refresh', require('./officialOrderRefresh'));
+
+router.use('/official-refresh', require('./officialOrderRefresh'));
 
 router.use('/:id/emails', require('./orderMail'));
 

@@ -1,8 +1,12 @@
+import { OFFICIAL_ORDER_STATUS_LABELS } from '../constants/officialOrderStatus';
+import OfficialOrderStatus from '../components/OfficialOrderStatus';
+import OfficialOrderRefreshModal from '../components/OfficialOrderRefreshModal';
+import { submitOfficialOrderRefresh } from '../api/officialOrderRefreshApi';
 import OrderAmount from '../components/OrderAmount';
 import OrderMailDrawer from '../components/OrderMailDrawer';
 import AutoDismissToast from '../components/AutoDismissToast';
 import OrderExportModal from '../components/OrderExportModal';
-import OrderDateFilter from '../components/OrderDateFilter';
+import DateRangeFilter from '../components/dateRangeFilter';
 import ProductFilter from '../components/ProductFilter';
 import ProductSummary from '../components/ProductSummary';
 import TableHeaderHint from '../components/TableHeaderHint';
@@ -21,11 +25,14 @@ import {
   Mail,
   MapPin,
   Clock3,
+  Activity,
+  Pencil,
 } from 'lucide-react';
-import { getOrders, getOrderLink, getOrderFilterOptions, exportOrders } from '../api';
+import { getOrders, getOrderLink, getOrderFilterOptions, exportOrders, updateOrder } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
 import ColumnConfigModal from '../components/ColumnConfigModal';
 import OrderDetailModal from '../components/OrderDetailModal';
+import OrderNotesModal from '../components/OrderNotesModal';
 import { DISPLAY_ORDER_STATUS_LABELS, getDisplayOrderStatusBadge } from '../constants/orderStatus';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
@@ -36,15 +43,26 @@ import { PERMISSIONS } from '../constants/permissions';
 import { replayOrderMailLifecycle, replayOrderMailLifecycleBatch } from '../api/orderMailApi';
 
 export default function Orders() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const canReadMail = can(PERMISSIONS.ORDER_MAIL_READ) || can(PERMISSIONS.ORDER_MAIL_MANAGE);
   const canRefreshMailStatus = can(PERMISSIONS.ORDER_MAIL_MANAGE);
+  const canEditOrders = can(PERMISSIONS.ORDERS_EDIT);
   const canExportOrders = can(PERMISSIONS.ORDERS_EXPORT);
-  const canSelectOrders = canRefreshMailStatus || canExportOrders;
+  const canRefreshOfficialStatus = user?.role === 'admin' && can(PERMISSIONS.ORDERS_EDIT);
+  const canSelectOrders = canRefreshMailStatus || canExportOrders || canRefreshOfficialStatus;
+  const [officialSubmitting, setOfficialSubmitting] = useState(false);
+  const [showOfficialProgress, setShowOfficialProgress] = useState(false);
+  const closeOfficialProgress = useCallback(() => setShowOfficialProgress(false), []);
+  const [officialBatchId, setOfficialBatchId] = useState(null);
+  const [allFilteredSelected, setAllFilteredSelected] = useState(false);
   const [mailOrder, setMailOrder] = useState(null);
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [notesOrder, setNotesOrder] = useState(null);
+  const [notesSaving, setNotesSaving] = useState(false);
+  const [notesError, setNotesError] = useState('');
+  const notesSavingRef = useRef(false);
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -59,6 +77,7 @@ export default function Orders() {
   const showToast = useCallback((type, message) => {
     if (message) setToast({ id: Date.now(), type, message });
   }, []);
+  const refreshAfterOfficial = useCallback(() => loadOrdersRef.current?.(true), []);
   const dismissToast = useCallback(() => setToast(null), []);
 
   // 分页状态
@@ -73,10 +92,13 @@ export default function Orders() {
   const [filters, setFilters] = useState({
     displayOrderStatuses: [],
     productKeys: [],
-    recipientName: '',
+    officialOrderStatuses: [],
+    payerNames: [],
     recipientTags: [],
     pickupStores: [],
     pickupDate: '',
+    actualPickupDateFrom: '',
+    actualPickupDateTo: '',
     dateFrom: '',
     dateTo: '',
   });
@@ -91,6 +113,10 @@ export default function Orders() {
     stores: [],
     recipientTags: [],
   });
+
+  useEffect(() => {
+    setAllFilteredSelected(false);
+  }, [searchTerm, filters]);
 
   useEffect(() => {
     setSelectedIds([]);
@@ -115,10 +141,13 @@ export default function Orders() {
     searchTerm,
     filters.displayOrderStatuses,
     filters.productKeys,
-    filters.recipientName,
+    filters.officialOrderStatuses,
+    filters.payerNames,
     filters.recipientTags,
     filters.pickupStores,
     filters.pickupDate,
+    filters.actualPickupDateFrom,
+    filters.actualPickupDateTo,
     filters.dateFrom,
     filters.dateTo,
   ]);
@@ -136,6 +165,69 @@ export default function Orders() {
       document.removeEventListener('visibilitychange', refreshVisible);
     };
   }, []);
+
+  const handleOfficialRefresh = async (ids = null) => {
+    if (officialSubmitting || !canRefreshOfficialStatus) return;
+    setOfficialSubmitting(true);
+    try {
+      const input =
+        !ids && allFilteredSelected
+          ? { selection: 'filtered', filters: { keyword: searchTerm, ...filters } }
+          : { selection: 'ids', orderIds: ids || selectedIds };
+      const response = await submitOfficialOrderRefresh({
+        ...input,
+        requestKey: crypto.randomUUID(),
+      });
+      if (!response.success) throw new Error('官网更新提交失败');
+      if (response.data.batchId) {
+        setOfficialBatchId(response.data.batchId);
+        setShowOfficialProgress(true);
+      }
+      showToast(
+        response.data.queued ? 'success' : 'warning',
+        `已选择 ${response.data.total} 单；新增 ${response.data.queued} 单，${response.data.skipped} 单已在队列中，跳过重复提交`
+      );
+      setSelectedIds([]);
+      setAllFilteredSelected(false);
+    } catch (error) {
+      showToast('error', error.message || '官网更新提交失败');
+    } finally {
+      setOfficialSubmitting(false);
+    }
+  };
+
+  const openNotesEditor = order => {
+    setNotesError('');
+    setNotesOrder(order);
+  };
+
+  const handleSaveNotes = async notes => {
+    if (!notesOrder || !canEditOrders || notesSavingRef.current) return;
+    notesSavingRef.current = true;
+    setNotesSaving(true);
+    setNotesError('');
+    try {
+      const response = await updateOrder(notesOrder.id, { notes });
+      if (!response.success) throw new Error('备注保存失败');
+      // 使保存前发出的列表请求失效，避免旧响应短暂覆盖刚保存的备注。
+      ordersRequestSequence.current += 1;
+      setLoading(false);
+      setOrders(previous =>
+        previous.map(order =>
+          order.id === notesOrder.id
+            ? { ...order, notes: response.data.notes ?? '', updatedAt: response.data.updated_at }
+            : order
+        )
+      );
+      setNotesOrder(null);
+      showToast('success', '备注已保存');
+    } catch (error) {
+      setNotesError(error.message || '备注保存失败，请重试');
+    } finally {
+      notesSavingRef.current = false;
+      setNotesSaving(false);
+    }
+  };
 
   const mailReplayMessage = (totals, mode) => {
     if (totals.messages === 0) return '所选订单没有关联的订单邮件';
@@ -194,7 +286,14 @@ export default function Orders() {
         keyword: searchTerm || undefined,
         ...filters,
       };
-      for (const key of ['displayOrderStatuses', 'productKeys', 'pickupStores', 'recipientTags']) {
+      for (const key of [
+        'displayOrderStatuses',
+        'officialOrderStatuses',
+        'payerNames',
+        'productKeys',
+        'pickupStores',
+        'recipientTags',
+      ]) {
         if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
         else delete params[key];
       }
@@ -210,6 +309,9 @@ export default function Orders() {
           id: order.id,
           orderNumber: order.order_number,
           serialNumbers: order.serial_numbers || [],
+          officialOrderStatus: order.official_order_status || null,
+          officialStatusObservedAt: order.official_status_observed_at || null,
+          actualPickupDate: order.actual_pickup_date || null,
           ingestionSource: order.ingestion_source,
           sourceRecipientTag: order.source_recipient_tag,
           recipientProfileTag: order.recipient_profile_tag,
@@ -247,7 +349,7 @@ export default function Orders() {
           paymentScreenshot: order.payment_screenshot || [],
           // 业务字段
           tag: order.tag || '-',
-          notes: order.notes || '-',
+          notes: order.notes ?? '',
           // 时间戳
           createdAt: order.created_at,
           updatedAt: order.updated_at,
@@ -272,15 +374,6 @@ export default function Orders() {
   };
 
   loadOrdersRef.current = loadOrders;
-
-  const handleExport = async () => {
-    const params = { keyword: searchTerm || undefined, ...filters };
-    for (const key of ['displayOrderStatuses', 'productKeys', 'pickupStores', 'recipientTags']) {
-      if (params[key].length > 0) params[key] = JSON.stringify(params[key]);
-      else delete params[key];
-    }
-    await exportOrders(params);
-  };
 
   const handleSelectedExport = async fields => {
     if (!canExportOrders || selectedIds.length === 0 || exportingSelected) return;
@@ -324,10 +417,13 @@ export default function Orders() {
     setFilters({
       displayOrderStatuses: [],
       productKeys: [],
-      recipientName: '',
+      officialOrderStatuses: [],
+      payerNames: [],
       recipientTags: [],
       pickupStores: [],
       pickupDate: '',
+      actualPickupDateFrom: '',
+      actualPickupDateTo: '',
       dateFrom: '',
       dateTo: '',
     });
@@ -380,6 +476,22 @@ export default function Orders() {
                   : '来源未知'}
             </p>
           </div>
+        );
+      case 'actualPickupDate':
+        return (
+          <span
+            className={value ? 'text-sm text-gray-900' : 'text-sm text-gray-400'}
+            title="官网明确返回的实际取货日期"
+          >
+            {value || '尚未获取'}
+          </span>
+        );
+      case 'officialOrderStatus':
+        return (
+          <OfficialOrderStatus
+            status={order.officialOrderStatus}
+            observedAt={order.officialStatusObservedAt}
+          />
         );
       case 'serialNumbers':
         return value?.length ? (
@@ -511,6 +623,26 @@ export default function Orders() {
           <span className="text-sm text-gray-600">{value}</span>
         );
 
+      case 'notes':
+        return (
+          <div className="flex max-w-xs items-start gap-2 whitespace-normal">
+            <span className="min-w-0 whitespace-pre-wrap break-words text-sm text-gray-600">
+              {value || '-'}
+            </span>
+            {canEditOrders && (
+              <button
+                type="button"
+                className="btn btn-secondary shrink-0 p-1.5"
+                aria-label={`编辑备注 ${order.orderNumber}`}
+                title="修改备注"
+                onClick={() => openNotesEditor(order)}
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        );
+
       case 'actions': {
         return (
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -524,6 +656,20 @@ export default function Orders() {
             >
               查看
             </button>
+            {canEditOrders && (
+              <button
+                type="button"
+                className="btn btn-secondary inline-flex items-center gap-1 text-sm"
+                aria-label={`修改备注 ${order.orderNumber}`}
+                onClick={event => {
+                  event.stopPropagation();
+                  openNotesEditor(order);
+                }}
+              >
+                <Pencil className="h-4 w-4" />
+                备注
+              </button>
+            )}
             {canReadMail && (
               <button
                 onClick={event => {
@@ -535,6 +681,21 @@ export default function Orders() {
               >
                 <Mail className="w-4 h-4" />
                 邮件
+              </button>
+            )}
+            {canRefreshOfficialStatus && (
+              <button
+                className="btn btn-secondary text-sm inline-flex items-center gap-1"
+                aria-label={`更新官网状态 ${order.orderNumber}`}
+                title="仅更新此订单的官网状态"
+                disabled={officialSubmitting}
+                onClick={event => {
+                  event.stopPropagation();
+                  handleOfficialRefresh([order.id]);
+                }}
+              >
+                <RefreshCw className="w-4 h-4" />
+                更新官网状态
               </button>
             )}
             {canRefreshMailStatus && (
@@ -600,17 +761,6 @@ export default function Orders() {
             />
           </div>
 
-          {/* 导出按钮 */}
-          {can(PERMISSIONS.ORDERS_EXPORT) && (
-            <button
-              onClick={handleExport}
-              className="btn btn-secondary flex items-center space-x-2"
-            >
-              <Download className="w-4 h-4" />
-              <span>导出</span>
-            </button>
-          )}
-
           {/* 列设置按钮 */}
           <button
             onClick={() => setShowColumnConfig(true)}
@@ -657,18 +807,36 @@ export default function Orders() {
         </div>
 
         <div className="order-filter-fields">
-          <OrderDateFilter
-            dateFrom={filters.dateFrom}
-            dateTo={filters.dateTo}
-            onChange={range => {
-              setFilters(previous => ({ ...previous, ...range }));
-              setPagination(previous => ({ ...previous, currentPage: 1 }));
-            }}
-          />
+          <div className="order-date-filters">
+            <DateRangeFilter
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              onChange={range => {
+                setFilters(previous => ({ ...previous, ...range }));
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+            />
+            <DateRangeFilter
+              label="实际取货日期"
+              hint="按实际取货日筛选，结束日期包含当天"
+              ariaPrefix="实际取货"
+              dateFrom={filters.actualPickupDateFrom}
+              dateTo={filters.actualPickupDateTo}
+              onChange={({ dateFrom, dateTo }) => {
+                setFilters(previous => ({
+                  ...previous,
+                  actualPickupDateFrom: dateFrom,
+                  actualPickupDateTo: dateTo,
+                }));
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+            />
+          </div>
           {/* 邮件订单状态 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">订单状态</label>
             <TagMultiSelect
+              enableSelectAll
               options={Object.keys(DISPLAY_ORDER_STATUS_LABELS)}
               optionLabels={DISPLAY_ORDER_STATUS_LABELS}
               value={filters.displayOrderStatuses}
@@ -683,27 +851,32 @@ export default function Orders() {
           <div className="order-filter-product">
             <label className="block text-sm font-medium text-gray-700 mb-2">商品信息</label>
             <ProductFilter
+              enableSelectAll
+              hideProductCode
               options={filterOptions.productOptions || []}
               value={filters.productKeys}
               onChange={value => handleFilterChange('productKeys', value)}
             />
           </div>
 
-          {/* 取件人 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">取件人</label>
-            <input
-              type="text"
-              placeholder="输入姓名"
-              value={filters.recipientName}
-              onChange={e => handleFilterChange('recipientName', e.target.value)}
-              className="input"
+            <label className="block text-sm font-medium text-gray-700 mb-2">官网订单状态</label>
+            <TagMultiSelect
+              enableSelectAll
+              options={filterOptions.officialOrderStatuses || []}
+              optionLabels={OFFICIAL_ORDER_STATUS_LABELS}
+              value={filters.officialOrderStatuses}
+              onChange={value => handleFilterChange('officialOrderStatuses', value)}
+              ariaLabel="官网订单状态筛选"
+              placeholder="全部官网状态"
+              itemLabel="官网状态"
             />
           </div>
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">取机人 TAG</label>
             <TagMultiSelect
+              enableSelectAll
               options={filterOptions.recipientTags || []}
               value={filters.recipientTags}
               onChange={value => handleFilterChange('recipientTags', value)}
@@ -717,12 +890,26 @@ export default function Orders() {
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">取货门店</label>
             <TagMultiSelect
+              enableSelectAll
               options={filterOptions.stores}
               value={filters.pickupStores}
               onChange={value => handleFilterChange('pickupStores', value)}
               ariaLabel="取货门店筛选"
               placeholder="全部门店"
               itemLabel="门店"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">付款人</label>
+            <TagMultiSelect
+              enableSelectAll
+              options={filterOptions.payers || []}
+              value={filters.payerNames}
+              onChange={value => handleFilterChange('payerNames', value)}
+              ariaLabel="付款人筛选"
+              placeholder="全部付款人"
+              itemLabel="付款人"
             />
           </div>
 
@@ -740,16 +927,91 @@ export default function Orders() {
         </div>
       </div>
 
+      {canRefreshOfficialStatus && (
+        <p className="text-sm text-gray-500">
+          更新官网状态仅查询选中的订单；全选筛选结果仅查询符合当前筛选条件的订单。
+        </p>
+      )}
+      {canRefreshOfficialStatus && showOfficialProgress && (
+        <OfficialOrderRefreshModal
+          onClose={closeOfficialProgress}
+          batchId={officialBatchId}
+          onBatchChange={setOfficialBatchId}
+          onUpdated={refreshAfterOfficial}
+        />
+      )}
+
       {/* 订单列表 */}
       <div className="card min-w-0">
         {canSelectOrders && (
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-gray-600">已选择 {selectedIds.length} 项（当前页）</span>
+            <span className="text-sm text-gray-600">
+              {allFilteredSelected
+                ? `已选择筛选结果全部 ${pagination.totalItems} 单`
+                : `已选择 ${selectedIds.length} 项（当前页）`}
+            </span>
             <div className="flex flex-wrap items-center gap-2">
+              {canRefreshOfficialStatus && (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-secondary p-2"
+                    title="官网更新进度"
+                    aria-label="官网更新进度"
+                    aria-haspopup="dialog"
+                    onClick={() => setShowOfficialProgress(true)}
+                  >
+                    <Activity className="h-4 w-4" />
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={loading || !orders.length || officialSubmitting}
+                    onClick={() => {
+                      setAllFilteredSelected(false);
+                      setSelectedIds(orders.map(order => order.id));
+                    }}
+                  >
+                    全选本页
+                  </button>
+                  <button
+                    className="btn btn-secondary"
+                    disabled={loading || !orders.length || officialSubmitting}
+                    onClick={() => {
+                      setAllFilteredSelected(true);
+                      setSelectedIds(orders.map(order => order.id));
+                    }}
+                  >
+                    全选筛选结果（{pagination.totalItems}）
+                  </button>
+                  {(allFilteredSelected || selectedIds.length > 0) && (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => {
+                        setAllFilteredSelected(false);
+                        setSelectedIds([]);
+                      }}
+                    >
+                      取消选择
+                    </button>
+                  )}
+                  <button
+                    className="btn btn-primary inline-flex items-center gap-1"
+                    disabled={
+                      loading || officialSubmitting || (!allFilteredSelected && !selectedIds.length)
+                    }
+                    onClick={() => handleOfficialRefresh()}
+                  >
+                    <RefreshCw className={`w-4 h-4 ${officialSubmitting ? 'animate-spin' : ''}`} />
+                    {officialSubmitting ? '正在提交' : '更新选中官网状态'}
+                  </button>
+                </>
+              )}
               {canExportOrders && (
                 <button
                   className="btn btn-secondary flex items-center gap-2"
-                  disabled={loading || exportingSelected || selectedIds.length === 0}
+                  disabled={
+                    loading || exportingSelected || allFilteredSelected || selectedIds.length === 0
+                  }
                   onClick={() => setShowExportModal(true)}
                 >
                   <Download className="w-4 h-4" />
@@ -759,7 +1021,12 @@ export default function Orders() {
               {canRefreshMailStatus && (
                 <button
                   className="btn btn-secondary flex items-center gap-2"
-                  disabled={loading || mailBatchSubmitting || selectedIds.length === 0}
+                  disabled={
+                    loading ||
+                    mailBatchSubmitting ||
+                    allFilteredSelected ||
+                    selectedIds.length === 0
+                  }
                   onClick={handleSelectedMailStatusRefresh}
                 >
                   <RefreshCw className={`w-4 h-4 ${mailBatchSubmitting ? 'animate-spin' : ''}`} />
@@ -811,16 +1078,24 @@ export default function Orders() {
                           className="h-6 w-6 shrink-0"
                           aria-label={`选择订单 ${order.orderNumber}`}
                           disabled={mailBatchSubmitting || exportingSelected}
-                          checked={selectedIds.includes(order.id)}
-                          onChange={event =>
+                          checked={allFilteredSelected || selectedIds.includes(order.id)}
+                          onChange={event => {
+                            setAllFilteredSelected(false);
                             setSelectedIds(previous =>
                               event.target.checked
-                                ? [...previous, order.id]
+                                ? [...new Set([...previous, order.id])]
                                 : previous.filter(id => id !== order.id)
-                            )
-                          }
+                            );
+                          }}
                         />
                       )}
+                    </div>
+                    <div className="mt-2 flex items-start gap-2">
+                      <span className="shrink-0 text-xs text-gray-500">官网状态</span>
+                      <OfficialOrderStatus
+                        status={order.officialOrderStatus}
+                        observedAt={order.officialStatusObservedAt}
+                      />
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <span className={`badge ${status.class}`}>{status.text}</span>
@@ -843,6 +1118,9 @@ export default function Orders() {
                         ? ` · ${order.recipientTag}`
                         : ''}
                     </p>
+                    <p className="mt-1 text-xs text-gray-600">
+                      实际取货日期：{order.actualPickupDate || '尚未获取'}
+                    </p>
                     <div className="mt-2 space-y-1.5 rounded-lg bg-primary-50 px-2.5 py-2 text-xs text-gray-700">
                       <p className="flex min-w-0 items-start gap-1.5">
                         <MapPin
@@ -863,6 +1141,11 @@ export default function Orders() {
                         <span className="min-w-0 break-words text-gray-900">{pickup.schedule}</span>
                       </p>
                     </div>
+                    {order.notes && (
+                      <p className="mt-2 whitespace-pre-wrap break-words text-sm text-gray-600">
+                        备注：{order.notes}
+                      </p>
+                    )}
                     <div className="orders-mobile-actions mt-3 border-t border-gray-100 pt-3">
                       {renderCell(order, { key: 'actions' })}
                     </div>
@@ -882,13 +1165,15 @@ export default function Orders() {
                           disabled={mailBatchSubmitting || exportingSelected}
                           checked={
                             orders.length > 0 &&
-                            orders.every(order => selectedIds.includes(order.id))
+                            (allFilteredSelected ||
+                              orders.every(order => selectedIds.includes(order.id)))
                           }
-                          onChange={event =>
+                          onChange={event => {
+                            setAllFilteredSelected(false);
                             setSelectedIds(
                               event.target.checked ? orders.map(order => order.id) : []
-                            )
-                          }
+                            );
+                          }}
                         />
                       </th>
                     )}
@@ -934,14 +1219,15 @@ export default function Orders() {
                             type="checkbox"
                             aria-label={`选择订单 ${order.orderNumber}`}
                             disabled={mailBatchSubmitting || exportingSelected}
-                            checked={selectedIds.includes(order.id)}
-                            onChange={event =>
+                            checked={allFilteredSelected || selectedIds.includes(order.id)}
+                            onChange={event => {
+                              setAllFilteredSelected(false);
                               setSelectedIds(previous =>
                                 event.target.checked
-                                  ? [...previous, order.id]
+                                  ? [...new Set([...previous, order.id])]
                                   : previous.filter(id => id !== order.id)
-                              )
-                            }
+                              );
+                            }}
                           />
                         </td>
                       )}
@@ -986,7 +1272,20 @@ export default function Orders() {
       )}
 
       {/* 订单详情弹窗 */}
+      {notesOrder && canEditOrders && (
+        <OrderNotesModal
+          key={notesOrder.id}
+          order={notesOrder}
+          saving={notesSaving}
+          error={notesError}
+          onClose={() => {
+            if (!notesSavingRef.current) setNotesOrder(null);
+          }}
+          onSave={handleSaveNotes}
+        />
+      )}
       <OrderDetailModal
+        onEditNotes={openNotesEditor}
         order={orders.find(order => order.id === selectedOrder?.id) || selectedOrder}
         isOpen={showDetailModal}
         onClose={() => {

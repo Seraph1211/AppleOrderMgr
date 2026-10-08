@@ -1,0 +1,130 @@
+[
+  {
+    "sku": "MJY64CH/A",
+    "title": "iPhone 18 Pro Max 256GB 黑色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "256GB",
+    "color": "黑色"
+  },
+  {
+    "sku": "MJY74CH/A",
+    "title": "iPhone 18 Pro Max 256GB 银色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "256GB",
+    "color": "银色"
+  },
+  {
+    "sku": "MJY84CH/A",
+    "title": "iPhone 18 Pro Max 256GB 勃艮第酒红色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "256GB",
+    "color": "勃艮第酒红色"
+  },
+  {
+    "sku": "MJY94CH/A",
+    "title": "iPhone 18 Pro Max 256GB 冰川蓝色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "256GB",
+    "color": "冰川蓝色"
+  },
+  {
+    "sku": "MJYA4CH/A",
+    "title": "iPhone 18 Pro Max 512GB 黑色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "512GB",
+    "color": "黑色"
+  },
+  {
+    "sku": "MJYC4CH/A",
+    "title": "iPhone 18 Pro Max 512GB 银色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "512GB",
+    "color": "银色"
+  },
+  {
+    "sku": "MJYD4CH/A",
+    "title": "iPhone 18 Pro Max 512GB 勃艮第酒红色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "512GB",
+    "color": "勃艮第酒红色"
+  },
+  {
+    "sku": "MJYE4CH/A",
+    "title": "iPhone 18 Pro Max 512GB 冰川蓝色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "512GB",
+    "color": "冰川蓝色"
+  },
+  {
+    "sku": "MJYF4CH/A",
+    "title": "iPhone 18 Pro Max 1TB 黑色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "1TB",
+    "color": "黑色"
+  },
+  {
+    "sku": "MJYG4CH/A",
+    "title": "iPhone 18 Pro Max 1TB 银色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "1TB",
+    "color": "银色"
+  },
+  {
+    "sku": "MJYH4CH/A",
+    "title": "iPhone 18 Pro Max 1TB 勃艮第酒红色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "1TB",
+    "color": "勃艮第酒红色"
+  },
+  {
+    "sku": "MJYJ4CH/A",
+    "title": "iPhone 18 Pro Max 1TB 冰川蓝色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "1TB",
+    "color": "冰川蓝色"
+  },
+  {
+    "sku": "MJYK4CH/A",
+    "title": "iPhone 18 Pro Max 2TB 黑色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "2TB",
+    "color": "黑色"
+  },
+  {
+    "sku": "MJYL4CH/A",
+    "title": "iPhone 18 Pro Max 2TB 银色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "2TB",
+    "color": "银色"
+  },
+  {
+    "sku": "MJYM4CH/A",
+    "title": "iPhone 18 Pro Max 2TB 勃艮第酒红色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "2TB",
+    "color": "勃艮第酒红色"
+  },
+  {
+    "sku": "MJYN4CH/A",
+    "title": "iPhone 18 Pro Max 2TB 冰川蓝色",
+    "family": "iphone_18_pro",
+    "model": "iPhone 18 Pro Max",
+    "capacity": "2TB",
+    "color": "冰川蓝色"
+  }
+]

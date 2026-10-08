@@ -44,3 +44,24 @@ export function mergeColumnConfig(defaultColumns, savedColumns) {
     })
     .sort((left, right) => Number(Boolean(left.pinned)) - Number(Boolean(right.pinned)));
 }
+
+/** 首次恢复官网状态列，其他用户配置保持原样；后续保存不再强制位置。 */
+export function restoreOfficialStatusColumn(columns) {
+  const status = columns.find(column => column.key === 'officialOrderStatus');
+  if (!status) return columns;
+  const result = columns.filter(column => column.key !== status.key);
+  const index = result.findIndex(column => column.key === 'orderNumber');
+  result.splice(index + 1, 0, { ...status, visible: true });
+  return result;
+}
+
+/** 迁移实际取货日期到取货信息之后，保留已保存可见性及其他列的相对顺序。 */
+export function restoreActualPickupDateColumn(columns) {
+  const column = columns.find(item => item.key === 'actualPickupDate');
+  if (!column) return columns;
+  const result = columns.filter(item => item.key !== column.key);
+  const index = result.findIndex(item => item.key === 'emailPickupInfo');
+  if (index < 0) return columns;
+  result.splice(index + 1, 0, column);
+  return result;
+}

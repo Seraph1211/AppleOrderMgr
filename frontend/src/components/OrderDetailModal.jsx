@@ -1,13 +1,15 @@
+import OrderSerialEditor from './OrderSerialEditor';
 import AlertModal from './AlertModal';
 import OrderAmount from './OrderAmount';
 import OrderSources from './OrderSources';
+import OrderPickupPhotos from './orderPickupPhotos';
 import { getOrderDetailWithLink, updateOrder, updateOrderPayer } from '../api/ordersApi';
 import { getDisplayOrderStatusBadge } from '../constants/orderStatus';
 import { PERMISSIONS } from '../constants/permissions';
 import { useAuth } from '../contexts/AuthContext';
 import { formatOrderTime } from '../utils/orderTime';
-import { ExternalLink, Save, Upload, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { ExternalLink, Pencil, Save, Upload, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 
 function readScreenshots(order) {
   const value = order.paymentScreenshots || order.paymentScreenshot;
@@ -22,8 +24,8 @@ function formatPickup(pickup) {
   return [pickup.pickupDate, range].filter(Boolean).join(' ') || '时间待确认';
 }
 
-/** 展示订单邮件状态与来源数据，并支持既有付款信息维护。 */
-export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
+/** 展示订单邮件状态与来源数据，并支持备注及既有付款信息维护。 */
+export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onEditNotes }) {
   const { can } = useAuth();
   const [formData, setFormData] = useState({ payerName: '', paymentScreenshots: [] });
   const [uploading, setUploading] = useState(false);
@@ -36,13 +38,25 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
   });
   const [detailLoading, setDetailLoading] = useState(false);
 
+  const formOrderIdRef = useRef(null);
+  const orderId = order?.id;
+  const payerName = order?.payerName;
+  const paymentScreenshots = order?.paymentScreenshots;
+  const paymentScreenshot = order?.paymentScreenshot;
+
   useEffect(() => {
-    if (!order) return;
+    if (!isOpen || !orderId) {
+      formOrderIdRef.current = null;
+      return;
+    }
+    // 同一次详情打开期间，备注回显和列表轮询均不覆盖付款草稿。
+    if (formOrderIdRef.current === orderId) return;
+    formOrderIdRef.current = orderId;
     setFormData({
-      payerName: order.payerName || '',
-      paymentScreenshots: readScreenshots(order),
+      payerName: payerName || '',
+      paymentScreenshots: readScreenshots({ paymentScreenshots, paymentScreenshot }),
     });
-  }, [order]);
+  }, [isOpen, orderId, payerName, paymentScreenshots, paymentScreenshot]);
 
   useEffect(() => {
     if (!isOpen || !order?.id) return undefined;
@@ -220,18 +234,12 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
                 <p className="text-sm text-gray-600">下单邮箱号</p>
                 <p className="mt-1 break-all text-sm">{order.recipientEmail || '-'}</p>
               </div>
-              <div>
-                <p className="text-sm text-gray-600">Serial No.</p>
-                {order.serialNumbers?.length ? (
-                  order.serialNumbers.map(serial => (
-                    <p key={serial} className="mt-1 break-all font-mono text-sm">
-                      {serial}
-                    </p>
-                  ))
-                ) : (
-                  <p className="mt-1 text-sm">-</p>
-                )}
-              </div>
+              <OrderSerialEditor
+                key={order.id}
+                orderId={order.id}
+                canEdit={can(PERMISSIONS.ORDERS_EDIT)}
+                onChange={serialNumbers => onUpdate?.({ ...order, serialNumbers })}
+              />
               <div>
                 <p className="text-sm text-gray-600">Apple ID</p>
                 <p className="mt-1 break-all text-sm">{order.appleId}</p>
@@ -271,6 +279,30 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate }) {
               </div>
             </div>
           </div>
+
+          <section className="card" aria-labelledby="order-detail-notes-title">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h3 id="order-detail-notes-title" className="text-lg font-semibold">
+                订单备注
+              </h3>
+              {can(PERMISSIONS.ORDERS_EDIT) && onEditNotes && (
+                <button
+                  type="button"
+                  className="btn btn-secondary inline-flex shrink-0 items-center gap-2"
+                  disabled={saving || uploading}
+                  onClick={() => onEditNotes(order)}
+                >
+                  <Pencil className="h-4 w-4" />
+                  修改备注
+                </button>
+              )}
+            </div>
+            <p className="whitespace-pre-wrap break-words text-sm text-gray-700">
+              {order.notes || '暂无备注'}
+            </p>
+          </section>
+
+          <OrderPickupPhotos orderId={order.id} orderNumber={order.orderNumber} />
 
           <div className="card overflow-hidden p-0">
             <div className="border-b border-gray-200 px-5 py-4">

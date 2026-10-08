@@ -76,7 +76,7 @@ export default function ProfileDetailsModal({ kind, item, onClose }) {
             <X className="w-5 h-5" />
           </button>
         </div>
-        <div className="p-5 overflow-auto space-y-5">
+        <div className="p-5 overflow-y-auto space-y-5">
           {error && (
             <p role="alert" className="text-red-700 bg-red-50 p-3">
               {error}

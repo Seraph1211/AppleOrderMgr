@@ -1,0 +1,1074 @@
+{
+  "scope": "仅本地隔离合成数据；不含登录凭据",
+  "baseline": "42bae455c001217afc2c1c53ce504b91665955e3",
+  "sets": [
+    {
+      "source": "schema-results.json",
+      "sha256": "e5c458b513fed2d037206bb4d68e15497f91eb0852f2ec3e5928b993c02e924c",
+      "results": [
+        {
+          "name": "formal empty up created 21 stock tables",
+          "status": "pass"
+        },
+        {
+          "name": "empty down preserved baseline and removed stock schema",
+          "status": "pass"
+        },
+        {
+          "name": "legacy pickup bridge preserves UUID/SN/order/time and all order fields",
+          "status": "pass",
+          "detail": {
+            "state": "registered"
+          }
+        },
+        {
+          "name": "legacy-only down/up keeps original binding intact",
+          "status": "pass"
+        },
+        {
+          "name": "confirmed cost NULL rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23514"
+          }
+        },
+        {
+          "name": "confirmed cost source NULL rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23514"
+          }
+        },
+        {
+          "name": "confirmed cost NaN rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23514"
+          }
+        },
+        {
+          "name": "shipped price NULL rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23514"
+          }
+        },
+        {
+          "name": "shipped price NaN rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23514"
+          }
+        },
+        {
+          "name": "transfer missing real origin rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23514"
+          }
+        },
+        {
+          "name": "expense NaN rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23514"
+          }
+        },
+        {
+          "name": "receipt NaN rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23514"
+          }
+        },
+        {
+          "name": "duplicate physical SN rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23505"
+          }
+        },
+        {
+          "name": "in-stock missing location rejected",
+          "status": "pass",
+          "detail": {
+            "sqlState": "23514"
+          }
+        },
+        {
+          "name": "down refuses business data and preserves all schema",
+          "status": "pass"
+        }
+      ],
+      "migrationSha256": "4208b6ca5221b79ab8185beee0f518c37c5b9a19bca09db8c83e2274fdaf9f10",
+      "database": "apple_order_mgr_stock_test_1006",
+      "at": "2026-10-03T18:50:10.263Z"
+    },
+    {
+      "source": "service-results.json",
+      "sha256": "aed866f69f238a6784c4feb6baf8b49162246a35c5cb51ec328f63b81957e34a",
+      "results": [
+        {
+          "name": "five units received across warehouses with frozen costs",
+          "status": "pass"
+        },
+        {
+          "name": "two concurrent 3-unit reservations cannot oversell 5 units",
+          "status": "pass"
+        },
+        {
+          "name": "pick across A2+B1 does not double subtract reservation",
+          "status": "pass"
+        },
+        {
+          "name": "invalid last price rolls back the whole shipment",
+          "status": "pass",
+          "observed": {
+            "code": "MONEY_INVALID"
+          }
+        },
+        {
+          "name": "atomic shipping reduces physical and reserved counts exactly once",
+          "status": "pass"
+        },
+        {
+          "name": "deterministic cent shares and separate expenses preserve gross",
+          "status": "pass",
+          "observed": {
+            "gross": "3000.00",
+            "fees": "21.00",
+            "afterExpenses": "2979.00"
+          }
+        },
+        {
+          "name": "another agent cannot settle this seller collection",
+          "status": "pass",
+          "observed": {
+            "code": "COLLECTOR_MISMATCH"
+          }
+        },
+        {
+          "name": "over-allocation is rejected without extra receipt",
+          "status": "pass",
+          "observed": {
+            "code": "RECEIPT_OVERALLOCATED"
+          }
+        },
+        {
+          "name": "next-day 20000+13000 remittance clears 33000, expenses excluded",
+          "status": "pass"
+        },
+        {
+          "name": "company direct customer money has one receipt and no agent balance; negative gross allowed",
+          "status": "pass"
+        },
+        {
+          "name": "source-less direct consignment creates no Chongqing receipt, only reported SN sells",
+          "status": "pass"
+        },
+        {
+          "name": "historical sold backfill never changes opening/current physical count",
+          "status": "pass"
+        }
+      ],
+      "database": "apple_order_mgr_stock_test_1006",
+      "at": "2026-10-03T18:58:01.593Z"
+    },
+    {
+      "source": "api-results.json",
+      "sha256": "b9b52fb2bc791499fab1686a96fc3be3d436a4eae04b7ab2efcf394ce2c90ca7",
+      "results": [
+        {
+          "id": "H01",
+          "name": "module defaults and public-route authentication",
+          "status": "pass",
+          "elapsedMs": 34
+        },
+        {
+          "id": "H02",
+          "name": "catalog setup through public API",
+          "status": "pass",
+          "elapsedMs": 81
+        },
+        {
+          "id": "H03",
+          "name": "receive request replay and SN uniqueness",
+          "status": "pass",
+          "elapsedMs": 80
+        },
+        {
+          "id": "H04",
+          "name": "public API concurrency and quantity reservation",
+          "status": "pass",
+          "elapsedMs": 48
+        },
+        {
+          "id": "H05",
+          "name": "cross-warehouse picks, atomic failed ship, final shipment and replay",
+          "status": "pass",
+          "elapsedMs": 63
+        },
+        {
+          "id": "H06",
+          "name": "fee cent allocation and profit projections",
+          "status": "pass",
+          "elapsedMs": 27
+        },
+        {
+          "id": "H07",
+          "name": "full proceeds collected, partial remittance and unrelated payer rejection",
+          "status": "pass",
+          "elapsedMs": 39,
+          "observed": {
+            "summary": {
+              "items": [
+                {
+                  "collectorId": "1da3b763-d0b6-482c-a8a4-7022ddc0012b",
+                  "collector": {
+                    "id": "1da3b763-d0b6-482c-a8a4-7022ddc0012b",
+                    "name": "HTTPRB19D外部销售",
+                    "partyType": "external_person",
+                    "roles": ["salesperson"],
+                    "userId": null,
+                    "isActive": true,
+                    "version": 0,
+                    "createdBy": 1,
+                    "updatedBy": 1,
+                    "createdAt": "2026-10-03T18:59:57.767Z",
+                    "updatedAt": "2026-10-03T18:59:57.767Z",
+                    "contact": null
+                  },
+                  "units": [
+                    {
+                      "collectionId": "254a8481-eac3-472a-813e-f88c9791f76e",
+                      "saleUnitId": "0c2b17b0-9287-435f-8fed-e686824200a5",
+                      "saleId": "20d8b938-fb5a-40a2-948b-f44b843f2158",
+                      "saleNo": "S20261003-000002",
+                      "serialNumber": "HTTPRB19D0",
+                      "saleAmount": "11000.00",
+                      "collectedAmount": "11000.00",
+                      "receivedAmount": "11000.00",
+                      "outstandingAmount": "0.00"
+                    },
+                    {
+                      "collectionId": "254a8481-eac3-472a-813e-f88c9791f76e",
+                      "saleUnitId": "19b0383b-427a-40fb-bd5e-713056e1c6cd",
+                      "saleId": "20d8b938-fb5a-40a2-948b-f44b843f2158",
+                      "saleNo": "S20261003-000002",
+                      "serialNumber": "HTTPRB19D1",
+                      "saleAmount": "11100.00",
+                      "collectedAmount": "11100.00",
+                      "receivedAmount": "9000.00",
+                      "outstandingAmount": "2100.00"
+                    },
+                    {
+                      "collectionId": "254a8481-eac3-472a-813e-f88c9791f76e",
+                      "saleUnitId": "aa6eb0a2-1174-4259-916c-f0e45ff28b04",
+                      "saleId": "20d8b938-fb5a-40a2-948b-f44b843f2158",
+                      "saleNo": "S20261003-000002",
+                      "serialNumber": "HTTPRB19D2",
+                      "saleAmount": "10900.00",
+                      "collectedAmount": "10900.00",
+                      "receivedAmount": "0.00",
+                      "outstandingAmount": "10900.00"
+                    }
+                  ],
+                  "collectedAmount": "33000.00",
+                  "receivedAmount": "20000.00",
+                  "outstandingAmount": "13000.00"
+                }
+              ],
+              "unregisteredCount": 0
+            }
+          }
+        },
+        {
+          "id": "H08",
+          "name": "one command key cannot target a different entity",
+          "status": "pass",
+          "elapsedMs": 26
+        },
+        {
+          "id": "H09",
+          "name": "nonexistent business calendar date rejected",
+          "status": "pass",
+          "elapsedMs": 6
+        },
+        {
+          "id": "H10",
+          "name": "warehouse operator cannot see or write cost and cash",
+          "status": "pass",
+          "elapsedMs": 135
+        },
+        {
+          "id": "H11",
+          "name": "correction token rejects changed payload and accepts exact preview",
+          "status": "pass",
+          "elapsedMs": 41
+        },
+        {
+          "id": "H12",
+          "name": "disabled module preserves history but refuses new business",
+          "status": "pass",
+          "elapsedMs": 33
+        }
+      ]
+    },
+    {
+      "source": "extended-results.json",
+      "sha256": "a23a99ea4a41ce662da9966971bfb0739e07c6c47d12a9beea6fff77e4e474e7",
+      "results": [
+        {
+          "id": "E01",
+          "name": "mobile sale persisted and direct cash created exactly once",
+          "status": "pass",
+          "elapsedMs": 51,
+          "observed": {
+            "saleId": "3a99dc1f-83a7-489e-baf5-fb327d1acc52",
+            "unitId": "4a54a35f-7810-4d7e-b60b-5539cc759735",
+            "receiptId": "e55451a4-341b-44c5-a702-6ad0f6fe9c05",
+            "agentOutstanding": "13000.00"
+          }
+        },
+        {
+          "id": "E02",
+          "name": "confirmed identity and acquisition basis cannot be overwritten by receiver",
+          "status": "pass",
+          "elapsedMs": 112
+        },
+        {
+          "id": "E03",
+          "name": "collector and existing receipt payer corrected atomically",
+          "status": "pass",
+          "elapsedMs": 66
+        },
+        {
+          "id": "E04",
+          "name": "invalid price correction rolls back and cross-user preview token rejected",
+          "status": "pass",
+          "elapsedMs": 133
+        },
+        {
+          "id": "E05",
+          "name": "100 unit receive and bounded list with response timing",
+          "status": "pass",
+          "elapsedMs": 242,
+          "observed": {
+            "receivedMs": 216.5015,
+            "listMs": 9.570667000000014,
+            "count": 100
+          }
+        },
+        {
+          "id": "E06",
+          "name": "500 row opening import preview commit and idempotent retry",
+          "status": "pass",
+          "elapsedMs": 926,
+          "observed": {
+            "previewMs": 48.86500000000001,
+            "commitMs": 809.0795,
+            "rows": 500,
+            "unitCount": 600
+          }
+        },
+        {
+          "id": "E07",
+          "name": "one invalid import row blocks whole batch and stale preview blocks commit",
+          "status": "pass",
+          "elapsedMs": 104
+        }
+      ]
+    },
+    {
+      "source": "resilience-results.json",
+      "sha256": "06fe2d6915be46cbf677becdd9a1a11b9a0842f2189848a6ae82d4daea273f3d",
+      "results": [
+        {
+          "id": "R01",
+          "status": "pass",
+          "name": "Terminate database backend after unit/event creation; transaction fully rolls back and same key retries once",
+          "errorCode": "STOCK_CONNECTION_LOST"
+        },
+        {
+          "id": "R02",
+          "status": "pass",
+          "name": "Real advisory lock timeout returns retryable STOCK_BUSY without partial data",
+          "elapsedMs": 5017
+        },
+        {
+          "id": "R03",
+          "status": "pass",
+          "name": "Retry original request after timeout succeeds exactly once"
+        }
+      ],
+      "database": "apple_order_mgr_stock_test_1006"
+    },
+    {
+      "source": "deadlock-results.json",
+      "sha256": "339529cbbc7b43301263bb729b4fde6ef5201d2a83335936617fcf01cd5900c4",
+      "results": [
+        {
+          "id": "D01",
+          "status": "pass",
+          "name": "Real PostgreSQL two-connection row-lock deadlock becomes STOCK_BUSY; all partial rows roll back and original key resumes once"
+        }
+      ],
+      "database": "apple_order_mgr_stock_test_1006"
+    },
+    {
+      "source": "download-results.json",
+      "sha256": "d4d5de783d8451a79abda70a2936886e869df51b6160831348a4f01d7861dc86",
+      "results": [
+        {
+          "route": "/imports/template?kind=opening",
+          "file": "模板实际HTTP下载.xlsx",
+          "bytes": 21949,
+          "sha256": "c7724ac6f7d717e5f3f055ed457cf611f9746d219864878cc115af9a5611bc75"
+        },
+        {
+          "route": "/export?entity=units&q=UIR000000",
+          "file": "普通仓管导出.xlsx",
+          "bytes": 16894,
+          "sha256": "7abf5fa0c4a8964196f4065ba9eb27d1e6544ccd32d7cd9a51da09ceb70e2416"
+        },
+        {
+          "route": "/export?entity=units&q=UIR000000&fields=%5B%22serialNumber%22%2C%22officialCostAmount%22%5D",
+          "file": "管理员成本导出.xlsx",
+          "bytes": 16276,
+          "sha256": "9b5f06057e9786763ff74cc0414c664ff821f4589fe5b176a28c3a13068da261"
+        }
+      ],
+      "unauthorizedCostExport": "403",
+      "parsed": {
+        "emptyTemplate": true,
+        "limitedRowCount": 2,
+        "limitedHasFinancialColumns": false,
+        "adminCostCellNumeric": true
+      }
+    },
+    {
+      "source": "final-smoke-results.json",
+      "sha256": "122e931e2eb5ac299ca33c524b88e52b1a6860a3d7adb56ce413a8c2306371f0",
+      "results": [
+        {
+          "id": "F01",
+          "name": "New sale number uses Shanghai date",
+          "status": "pass",
+          "saleNo": "S20261004-000005"
+        },
+        {
+          "id": "F02",
+          "name": "Business-day sales and receipt reports keep distinct dates",
+          "status": "pass",
+          "sales": {
+            "quantity": 1,
+            "totalAmount": "12000.00",
+            "incompleteFeesCount": 1,
+            "confirmedCostAmount": "10000.00",
+            "unconfirmedCostCount": 0,
+            "partialGrossProfit": "2000.00",
+            "grossProfit": "2000.00",
+            "profitAfterExpenses": "2000.00"
+          },
+          "receipts": {
+            "quantity": 1,
+            "totalAmount": "12000.00",
+            "unallocatedAmount": "0.00"
+          }
+        },
+        {
+          "id": "F03",
+          "name": "UI-imported XLSX units read back with two actual warehouses and fixed cost",
+          "status": "pass"
+        },
+        {
+          "id": "F04",
+          "name": "Public query cannot impersonate internal export pagination flag",
+          "status": "pass"
+        }
+      ]
+    }
+  ],
+  "browser": {
+    "source": "主Agent CUA实际浏览器交互",
+    "api": "http://127.0.0.1:3309",
+    "frontend": "http://127.0.0.1:5319",
+    "viewports": [
+      {
+        "width": 1366,
+        "height": 767,
+        "pageScrollWidth": 1366
+      },
+      {
+        "width": 1440,
+        "height": 900,
+        "pageScrollWidth": 1440
+      },
+      {
+        "width": 1920,
+        "height": 1080,
+        "pageScrollWidth": 1920
+      },
+      {
+        "width": 375,
+        "height": 400,
+        "pageScrollWidth": 375
+      },
+      {
+        "width": 375,
+        "height": 720
+      }
+    ],
+    "cases": [
+      {
+        "name": "电脑创建销售单，手机输入SN/重复输入不增数量，短屏确认出货，再刷新读回",
+        "status": "pass",
+        "saleNo": "S20261003-000004",
+        "serialNumber": "HTTPRB19D3",
+        "saleAmount": "12000.00",
+        "cost": "10000.00",
+        "grossProfit": "2000.00"
+      },
+      {
+        "name": "公司直收后货款页与销售详情显示已到账，移除重复登记入口",
+        "status": "pass",
+        "directAmount": "12000.00",
+        "outstanding": "0.00"
+      },
+      {
+        "name": "上传实际XLSX→预览→提交→刷新按SN查回两台成本及两仓",
+        "status": "pass",
+        "serialNumbers": ["UIR0000001", "UIR0000002"]
+      },
+      {
+        "name": "IAB模板下载按钮无错误但download事件超时；HTTP文件下载及XLSX解析通过",
+        "status": "tool_observation_limited"
+      }
+    ],
+    "boundaries": [
+      "本地浏览器短视口不等于真实手机软键盘与相机",
+      "真实包装盒、OCR、OSS、资金、现场盘点和生产未执行"
+    ]
+  },
+  "finalVerification": {
+    "result": "本地技术验收通过，未发布生产或使用真实业务数据",
+    "verifiedAt": "2026-10-03T19:24:05.550304+00:00",
+    "implementationFreeze": {
+      "capturedAt": "2026-10-03T19:20:46.588978+00:00",
+      "all104FilesMatchedBeforeDocumentationClosure": true,
+      "codeFilesUnchangedAfterAcceptance": 89,
+      "codeFiles": [
+        {
+          "path": "frontend/src/App.jsx",
+          "change": "modified",
+          "sha256": "dd55c58548d8c3d01cd6538942f0b741cb92ca93ce82e3ce42192dcf73d46ad4"
+        },
+        {
+          "path": "frontend/src/api/stockApi.js",
+          "change": "added",
+          "sha256": "2c67a5473d3eece074655165b85a8d5c8df9fbd1eba54b76f967f2c547eb7ab1"
+        },
+        {
+          "path": "frontend/src/components/Layout.jsx",
+          "change": "modified",
+          "sha256": "66a540e989dfa2fdde838459aece375d2f514620b5e0182a49dc8d6c79edc41d"
+        },
+        {
+          "path": "frontend/src/components/PickupDeviceScanner.jsx",
+          "change": "modified",
+          "sha256": "4c50628a0f47b065a08d27f89b04ef3092a6a5d4bdde0d04c69b0353fb79b0db"
+        },
+        {
+          "path": "frontend/src/components/PickupSerialOcr.jsx",
+          "change": "modified",
+          "sha256": "408703df084eb004c562b963a887c0883d66127d2de0267d180e39d3ddf3e02a"
+        },
+        {
+          "path": "frontend/src/components/stock/StockAttachments.jsx",
+          "change": "added",
+          "sha256": "ba58613ad8a4a9d669b3dde6e2b8a641bcec0c1451137ccbe166e48fa9576775"
+        },
+        {
+          "path": "frontend/src/components/stock/StockCatalog.jsx",
+          "change": "added",
+          "sha256": "66f106611173c68d85074a41e4c98e3976b2adb47b0a40aa4db5c2f276acbe7d"
+        },
+        {
+          "path": "frontend/src/components/stock/StockCollectionForm.jsx",
+          "change": "added",
+          "sha256": "dd5f4ea7916cdd671b06d8f66d50a0871c87719843e416c49f4de8a69afd4e4a"
+        },
+        {
+          "path": "frontend/src/components/stock/StockCommon.jsx",
+          "change": "added",
+          "sha256": "4243c68b95407cf58b0b707e32bd5939cd4b126252defff3e0d2c8bf13891ce3"
+        },
+        {
+          "path": "frontend/src/components/stock/StockConsignmentForm.jsx",
+          "change": "added",
+          "sha256": "1f8d0984bf0914955c81e0eeb35b0c277a1b5280020af4144bd420d812c05da8"
+        },
+        {
+          "path": "frontend/src/components/stock/StockCorrectionPreview.jsx",
+          "change": "added",
+          "sha256": "eac6da184b31d1f8993682f653b35d0a204897e212e06d2f5ef4f3acb83d66ab"
+        },
+        {
+          "path": "frontend/src/components/stock/StockCostForm.jsx",
+          "change": "added",
+          "sha256": "aa65fe0ec44d643ed1edd08df071a27d288e9259668583f7d1266273d8b8514a"
+        },
+        {
+          "path": "frontend/src/components/stock/StockExpenseForm.jsx",
+          "change": "added",
+          "sha256": "32dced6a7c473b5a23b2ef430e04bfb1dc36b35fcca3d97c46847e467c70bd26"
+        },
+        {
+          "path": "frontend/src/components/stock/StockImportPreview.jsx",
+          "change": "added",
+          "sha256": "4b5a6d5e0de1a5176955330d1887b4f5fc2d49244468d9ebc56a4371e9a11e71"
+        },
+        {
+          "path": "frontend/src/components/stock/StockPickForm.jsx",
+          "change": "added",
+          "sha256": "e984aea3c7764c6b8351e26c8149a5b1e9ae5946746d3bbe8886fdb1bbb8af34"
+        },
+        {
+          "path": "frontend/src/components/stock/StockReceiptForm.jsx",
+          "change": "added",
+          "sha256": "c7fd2115838e5e011733d29908bd0a7923209ab56d3de31dbff35328224bf507"
+        },
+        {
+          "path": "frontend/src/components/stock/StockReceiveForm.jsx",
+          "change": "added",
+          "sha256": "19c7ef3c2f6157911179208ce0c33747c27cda96bfaf50e7a91bed31b93edca2"
+        },
+        {
+          "path": "frontend/src/components/stock/StockReport.jsx",
+          "change": "added",
+          "sha256": "e0dd2de591cdef57a4fc9e737b7976a66d52ea69a4a31956e5f0d2832915a686"
+        },
+        {
+          "path": "frontend/src/components/stock/StockSaleDetail.jsx",
+          "change": "added",
+          "sha256": "26de50abd6c5b962850997cab48b8255b3cc8fda38e965a1a27c3dd92e47cc95"
+        },
+        {
+          "path": "frontend/src/components/stock/StockSaleForm.jsx",
+          "change": "added",
+          "sha256": "a8216fee3ee08c35050c13a65bcfdb379e5422eef163e91cf517060348cb8240"
+        },
+        {
+          "path": "frontend/src/components/stock/StockSelectors.jsx",
+          "change": "added",
+          "sha256": "ecb95bb789494e9ffc0654264894d554a96f95db31645af8ae14a5ef3ef9fee0"
+        },
+        {
+          "path": "frontend/src/components/stock/StockSerialInput.jsx",
+          "change": "added",
+          "sha256": "b361d0039e396fb79e4a174f2fac4149e48d9b349078326dc657097e4f0a1a35"
+        },
+        {
+          "path": "frontend/src/components/stock/StockShipForm.jsx",
+          "change": "added",
+          "sha256": "7d34ae10cbe72a25a02ead87cec4790afa48a310301464bad84c91a80fdac712"
+        },
+        {
+          "path": "frontend/src/components/stock/StockTransfers.jsx",
+          "change": "added",
+          "sha256": "8b90844d85562798a7c58d6079fd785567aa822c9673e0f297be403c4347e1a6"
+        },
+        {
+          "path": "frontend/src/components/stock/StockUnitDetail.jsx",
+          "change": "added",
+          "sha256": "7d6e4751dc0c1f889af9bdc6ce498d6062623fba24145ab6823e5542f32a07a5"
+        },
+        {
+          "path": "frontend/src/components/stock/stock.css",
+          "change": "added",
+          "sha256": "0976d1331594fe9fa5f92476775c25dfb3c6edbde12c8aa632637b6654b36c79"
+        },
+        {
+          "path": "frontend/src/components/stock/stockHelpers.js",
+          "change": "added",
+          "sha256": "81847e3dd48736a02e06046a78176a3146481cacf974cb2a620aaecabf516635"
+        },
+        {
+          "path": "frontend/src/components/stock/stockHooks.js",
+          "change": "added",
+          "sha256": "1052f57298ea60d406d7c0b90859abbf3be5771744755ec22b54095db9992fae"
+        },
+        {
+          "path": "frontend/src/constants/permissions.js",
+          "change": "modified",
+          "sha256": "00f3fcc2614aa8c8fd28ee4530d413a66544183525881e03f2e45c2092276a01"
+        },
+        {
+          "path": "frontend/src/pages/Stock.jsx",
+          "change": "added",
+          "sha256": "f2eb2870ee3e88f7c1af67aa780240f983a4f09e9b2f258bbc82840e9edc630b"
+        },
+        {
+          "path": "frontend/src/pages/StockReceipts.jsx",
+          "change": "added",
+          "sha256": "c598b86cbc8efb90f4b491c2ecdd0f898d39d58c3db066a9f114f9f18e7e2734"
+        },
+        {
+          "path": "frontend/src/pages/StockSales.jsx",
+          "change": "added",
+          "sha256": "1489267182d211feadfe52a44ebcca79cc6f5640eef0105f1af02f033c002ad3"
+        },
+        {
+          "path": "migrations/20261004000001-create-stock-management.js",
+          "change": "added",
+          "sha256": "b6c3ca65165db5efb6e39ff354c804cba4f5f0afa2cbf62b9a481256b1173752"
+        },
+        {
+          "path": "package.json",
+          "change": "modified",
+          "sha256": "0ca374f557be1c1ec4bcd98dd2e7bece25f8075b886448e5f6e40c84cc0caf47"
+        },
+        {
+          "path": "scripts/cleanupStockImportPreviews.js",
+          "change": "added",
+          "sha256": "fb9a92a23b164296a266e576cf0ea3dcef3afd949604bfb7eca9f5e9ed2978c1"
+        },
+        {
+          "path": "scripts/repairPickupStockBridge.js",
+          "change": "added",
+          "sha256": "e2510b5fbb0876c4dbe63cb2cc0f9d9655d5cc1fce376b3a6cce9a558bd31893"
+        },
+        {
+          "path": "scripts/seedStockAcceptance.js",
+          "change": "added",
+          "sha256": "2248b555090c5a4a950bc50712adbbb1d14270e7e90385a3c185a0d691d32af0"
+        },
+        {
+          "path": "src/app.js",
+          "change": "modified",
+          "sha256": "0c586a86fff1d6e26f4843326816fd376cc8fcb5a553b688cd007c90bf31ba2c"
+        },
+        {
+          "path": "src/constants/business.js",
+          "change": "modified",
+          "sha256": "103a3dd2163ae5f6845d59607a78b71644f852e5ef3c0e4268894c29e9f54592"
+        },
+        {
+          "path": "src/constants/permissionCatalog.js",
+          "change": "modified",
+          "sha256": "9b2b13b23878102bf3ced903da4613182c49ff5dcb5dc142e08405358398054b"
+        },
+        {
+          "path": "src/controllers/pickupDeviceController.js",
+          "change": "modified",
+          "sha256": "480e10bb2f6ca423e46cd8adbe67f4a16d09cf331cccafd82d76760be85acdb4"
+        },
+        {
+          "path": "src/controllers/stockImportController.js",
+          "change": "added",
+          "sha256": "030532b2fa31cd2089048098e387d67ab740b353c8b0e7e1b942c15ffda3ad18"
+        },
+        {
+          "path": "src/models/PickupDevice.js",
+          "change": "modified",
+          "sha256": "6cc07e4fefc51cf27a4624f68f17b351c932cd053d94daee7d44f64add6b1331"
+        },
+        {
+          "path": "src/models/StockAttachment.js",
+          "change": "added",
+          "sha256": "7be69d6472920ad9fbd7fce6b20d837c7425ef120e9825618a65f91b0ed858c6"
+        },
+        {
+          "path": "src/models/StockAttachmentLink.js",
+          "change": "added",
+          "sha256": "ce136be243f0ff1e523733d0fd16918fba69ea4a7daa249ab3f3b4cc7b3f8aef"
+        },
+        {
+          "path": "src/models/StockCollection.js",
+          "change": "added",
+          "sha256": "1c8fba271b8de1321ad91fccdf68a94c2c2251a0455b982c8cb2c1556b477c01"
+        },
+        {
+          "path": "src/models/StockEvent.js",
+          "change": "added",
+          "sha256": "f08b23f7aef1d69e4f600dfc737dbbbcfb69876f832076c196b244b527663b28"
+        },
+        {
+          "path": "src/models/StockExpense.js",
+          "change": "added",
+          "sha256": "384eefb0b1e571c0f6317b7a0053357f6ba1f26a44cf133c53e18269731d7126"
+        },
+        {
+          "path": "src/models/StockExpenseAllocation.js",
+          "change": "added",
+          "sha256": "317654281000c5ef15a3f3c2075bf53a08e151edd713b591b27e61505061d1fb"
+        },
+        {
+          "path": "src/models/StockImportJob.js",
+          "change": "added",
+          "sha256": "901b3b6068a5a82e8d360b184ad09e39e87fd3026a18e11e2b8ab4d5a3385c70"
+        },
+        {
+          "path": "src/models/StockLocation.js",
+          "change": "added",
+          "sha256": "2204543f59c29d1c61e8b0110f469f11fd5854ebc0fbb52ce519f0cc8a993a30"
+        },
+        {
+          "path": "src/models/StockOfficialPrice.js",
+          "change": "added",
+          "sha256": "0d59d4999cde79f92a37a6ddb41222815635cff533bf7d654dac1f6af7bcd157"
+        },
+        {
+          "path": "src/models/StockOperation.js",
+          "change": "added",
+          "sha256": "ea5d57c6604730de29b3e4a679971f1c63da250552ab858db8809fcf57cf7156"
+        },
+        {
+          "path": "src/models/StockParty.js",
+          "change": "added",
+          "sha256": "43d5ea3bcb5985f4ef59be1feb733430d2d041d6bba6b8618018e924d4dcc209"
+        },
+        {
+          "path": "src/models/StockProduct.js",
+          "change": "added",
+          "sha256": "97e3083f94f76a2e0410a987011b63c66adaf9feda0796abc990b2cf9e0d9988"
+        },
+        {
+          "path": "src/models/StockReceipt.js",
+          "change": "added",
+          "sha256": "620ecde94bef58b64b2c10f7e4b0fb5076300ac0bb4f846ece4f6f997743c6a5"
+        },
+        {
+          "path": "src/models/StockReceiptAllocation.js",
+          "change": "added",
+          "sha256": "42aaf4d8fdc648fcc4ac3a83d2d6626394ee7e1ae191315f2823c4de1fc6388b"
+        },
+        {
+          "path": "src/models/StockSale.js",
+          "change": "added",
+          "sha256": "011ade3bcefa5d4deb8c21bede015be5e757dda78a9a680886561ede5f87cbd5"
+        },
+        {
+          "path": "src/models/StockSaleLine.js",
+          "change": "added",
+          "sha256": "1c1841382b474b6fdb38800b24f9b61a1f5b11116c11c8df54c079e2cc2ed1b3"
+        },
+        {
+          "path": "src/models/StockSaleUnit.js",
+          "change": "added",
+          "sha256": "8a3d6dc9790681b771812da1bd51f543a2e386786c8994d23eb2c88b89691098"
+        },
+        {
+          "path": "src/models/StockSetting.js",
+          "change": "added",
+          "sha256": "7687dd8fa5babe3d6d05aa47a2a5e802bcbfc55e7bf535e8b998e2b4df719ef9"
+        },
+        {
+          "path": "src/models/StockTransfer.js",
+          "change": "added",
+          "sha256": "b7c060009da5fa8e96bbf9582794e791763c27f235d686b09ecddf4d2da5ea54"
+        },
+        {
+          "path": "src/models/StockTransferUnit.js",
+          "change": "added",
+          "sha256": "fe6a77573d34efe22d3a2a3f6af2f8573b32b712dff684f40c9b26c68469b356"
+        },
+        {
+          "path": "src/models/StockUnit.js",
+          "change": "added",
+          "sha256": "7b872dbcacd74442b98a40a342a40ddae8db6b889ceff799e81c35dda462893e"
+        },
+        {
+          "path": "src/models/index.js",
+          "change": "modified",
+          "sha256": "3a83031d082eca94353cd53717085b8527188a4cc3537789c357900b03bb78de"
+        },
+        {
+          "path": "src/routes/stock.js",
+          "change": "added",
+          "sha256": "f64d2df1d17f5e99605b0778166d3518f89163204a1112b3fe2c481b801a854d"
+        },
+        {
+          "path": "src/services/ossService.js",
+          "change": "modified",
+          "sha256": "191503ddac1ea6f217df115722a5b698f8ee5afa7563d1f645bf54d0ded64cd5"
+        },
+        {
+          "path": "src/services/permissionService.js",
+          "change": "modified",
+          "sha256": "dddd097b5d640fe6d21c0f100b83cd89632c3f22e677b43b3ff09fa5f8121dc3"
+        },
+        {
+          "path": "src/services/stockCommandService.js",
+          "change": "added",
+          "sha256": "92f32f56d1cef9f184c00852859e461a8cc9b387d46d8f206da2f317b417d998"
+        },
+        {
+          "path": "src/services/stockCorrectionService.js",
+          "change": "added",
+          "sha256": "73fe8d6c657a55443736a27a45283594477b9d7a9facb0c5c662da7d28012eb0"
+        },
+        {
+          "path": "src/services/stockEvidenceService.js",
+          "change": "added",
+          "sha256": "0831bb705ba7fa04218e2f0f5ad784529ab04dd52b7e7e6f214476133e319148"
+        },
+        {
+          "path": "src/services/stockExpenseService.js",
+          "change": "added",
+          "sha256": "c19c1d17ec457ae74d5d3c1b888c1408d91ef8cbb066805822cf950a7ed348fe"
+        },
+        {
+          "path": "src/services/stockFinanceService.js",
+          "change": "added",
+          "sha256": "9b6b77967991242ffa729ec7974ed29d6946d27aacad963ee17095d40655856d"
+        },
+        {
+          "path": "src/services/stockImportService.js",
+          "change": "added",
+          "sha256": "34f28515f956c22a6335e2d8b853d25e04d9e931c977f0c0926c55df3038a186"
+        },
+        {
+          "path": "src/services/stockProjectionService.js",
+          "change": "added",
+          "sha256": "7c692d76f8f8f436e46b924fa1274f4815491573c434bed9895362c91948f70a"
+        },
+        {
+          "path": "src/services/stockSalesService.js",
+          "change": "added",
+          "sha256": "fd0410bbeccae89651f1199128d6f435e7a0bd1467d3394da5bc40c7e6edef5a"
+        },
+        {
+          "path": "src/services/stockTransferService.js",
+          "change": "added",
+          "sha256": "27dd79431f3b59fd6aed0007236da47283a402dade3b5765b6f304e3f0411b73"
+        },
+        {
+          "path": "src/services/stockUnitService.js",
+          "change": "added",
+          "sha256": "92a8500370dc77060cb313253b105611afead9422d773df5a99563054da25b7a"
+        },
+        {
+          "path": "src/utils/stockMoney.js",
+          "change": "added",
+          "sha256": "9ee8a06fae81fcd5809a732d49f487eaff15490fff18d8c6b3bfb79e2d7eec2d"
+        },
+        {
+          "path": "src/utils/stockRules.js",
+          "change": "added",
+          "sha256": "b82011622312a178655c2192ae9f5c7e36b47aba2161683ffdcefc470e4ab65c"
+        },
+        {
+          "path": "test/stock.integration.test.js",
+          "change": "added",
+          "sha256": "a2593b16359c782effd75283b9c8eb6f01e7c2cda4e6fbed7abbc04b10d0d773"
+        },
+        {
+          "path": "test/stockCommand.test.js",
+          "change": "added",
+          "sha256": "13aa2d8f09cd3860c23e22d1126d1f41d93c7b213dbde62de41db192ff2a88b6"
+        },
+        {
+          "path": "test/stockEvidence.test.js",
+          "change": "added",
+          "sha256": "a04bf98edea91797df2921c5b9c79036b37c1280dc2355e8f75924e744756ba9"
+        },
+        {
+          "path": "test/stockImport.integration.test.js",
+          "change": "added",
+          "sha256": "c829428762151686a6695d86abf0e1cd805fc402cf97e79e7272bdb17813f088"
+        },
+        {
+          "path": "test/stockImport.test.js",
+          "change": "added",
+          "sha256": "fc84c8f2ae3d6c449bea646b9eceaff919ac817178bad2563b5031ccc9f7404d"
+        },
+        {
+          "path": "test/stockImportCleanup.test.js",
+          "change": "added",
+          "sha256": "baf698d5b97091eece2dc92dd3f8e91222b1af640732300f42a25158b75a2f5b"
+        },
+        {
+          "path": "test/stockLegacy.integration.test.js",
+          "change": "added",
+          "sha256": "9caa63bc4aae278fa2d266d15466a539b36a2609f34d32f058f545c2a074a706"
+        },
+        {
+          "path": "test/stockMoney.test.js",
+          "change": "added",
+          "sha256": "2951e721eab5c9b372d32fe799b953c98935c60e0e0545c4ef3809e39b7fcef8"
+        },
+        {
+          "path": "test/stockRules.test.js",
+          "change": "added",
+          "sha256": "004cd0a439919f5dd54c5f61320b0443bda7cc598f756f30b426ebbfc21546ef"
+        }
+      ]
+    },
+    "independentApiDatabaseScenarios": 54,
+    "developerStockTests": {
+      "suites": 9,
+      "passed": 112,
+      "realPostgresTests": 26,
+      "lineCoveragePercent": 82.28,
+      "statementCoveragePercent": 79.24,
+      "branchCoveragePercent": 66.56
+    },
+    "defaultBackendTests": {
+      "suitesPassed": 89,
+      "passed": 999,
+      "suitesSkipped": 29,
+      "skipped": 389
+    },
+    "frontendBrowser": {
+      "groups": 6,
+      "passed": 28,
+      "pageErrors": 0,
+      "syntheticDeviceAndRetryCases": 8
+    },
+    "lint": {
+      "backendErrors": 0,
+      "backendWarnings": 3840,
+      "frontendErrors": 0,
+      "frontendWarnings": 24
+    },
+    "checkedLogs": [
+      {
+        "path": "tmp/stock-dev/stock-final-tests.log",
+        "sha256": "b54eb6194b4f0f845c781262db4175b7f4b4834a6752ca1025b62d14a4a8ed00"
+      },
+      {
+        "path": "tmp/stock-dev/full-final-tests.log",
+        "sha256": "b2a67645e574333659f1db16142cf59fc8d2a84a7479bd009d8e2b4ccff42a34"
+      },
+      {
+        "path": "tmp/stock-dev/backend-lint.log",
+        "sha256": "d131416cd6806fa2c9adc8925ea1ab111247489f3f0904ae451fd2aa2b86e1b3"
+      },
+      {
+        "path": "tmp/stock-dev/backend-format-check.log",
+        "sha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+      },
+      {
+        "path": "tmp/stock-dev/docs-check.log",
+        "sha256": "369ba60b0aacaedb79ffc2684a3d72ef8b2701a7ccf21feed85e103c4e974a59"
+      },
+      {
+        "path": "tmp/stock-dev/all-format-check.log",
+        "sha256": "17aa973d3f004560237d9a95171210b0671deff23d61628eecf7322ff5938f20"
+      },
+      {
+        "path": "tmp/stock-dev/frontend-evidence/prettier-check.log",
+        "sha256": "e6b6f907aa650691202279ee76e079161c499e5ec891cef15425e5df31463572"
+      },
+      {
+        "path": "tmp/stock-dev/frontend-evidence/lint-final.log",
+        "sha256": "d042bdba23d782b322656235d972593c487257d875f4d39c6f98e2fa5af3c8c0"
+      },
+      {
+        "path": "tmp/stock-dev/frontend-evidence/build-final.log",
+        "sha256": "e9a06171a322ecf710d54db5ef77d262cdb3d93eb34dd0c3359d17fa0df9aa6e"
+      }
+    ]
+  }
+}

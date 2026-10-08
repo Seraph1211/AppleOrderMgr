@@ -1,0 +1,396 @@
+{
+  "verifiedAt": "2026-10-04T10:03:01.161144+00:00",
+  "release": {
+    "releaseId": "20261004T095424Z-786596e35218",
+    "builtAtUtc": "2026-10-04T09:55:05Z",
+    "branch": "main",
+    "sourceCommit": "cb4382e9d98d9759669de0c9c1b01beed4fa371a",
+    "sourceTree": "786596e35218070f3805e4ce4f2c3c3e56010fb4",
+    "workingTreeClean": true,
+    "platform": "linux/amd64",
+    "runtimeImage": "apple-order-mgr-runtime:20261004T095424Z-786596e35218-amd64",
+    "migratorImage": "apple-order-mgr-migrator:20261004T095424Z-786596e35218-amd64",
+    "frontendApiBaseUrl": "/api"
+  },
+  "mergedSourcePreservation": {
+    "mainCommit": "cb4382e9d98d9759669de0c9c1b01beed4fa371a",
+    "mainRemoteCommit": "cb4382e9d98d9759669de0c9c1b01beed4fa371a",
+    "frozenFilesIdentical": 81,
+    "productionCodeFilesIdentical": 43,
+    "previousMainCodeFilesIdentical": 12,
+    "clean": true
+  },
+  "backup": {
+    "bytes": 3143818452,
+    "sha256": "9f228097221b8d0602e8ec3c0ea1be81cd6da924657bf7a8f84334992db673fc",
+    "tocEntries": 786,
+    "dumpExitCode": 0,
+    "tocExitCode": 0
+  },
+  "isolatedRestoreAndMigrations": {
+    "fullRestoreExitCode": 0,
+    "migrationExitCode": 0,
+    "preservedTables": 72,
+    "hashedTables": 67,
+    "migrationsBefore": 64,
+    "migrationsAfter": 66,
+    "addedMigrations": [
+      "20261004000001-create-stock-management.js",
+      "20261004000002-simplify-stock-ledger.js"
+    ],
+    "stock": {
+      "stockTables": 21,
+      "units": 2,
+      "registered": 2,
+      "inStock": 0,
+      "sales": 0,
+      "enabled": false,
+      "sourceLinks": 2
+    }
+  },
+  "productionMigrations": {
+    "coreTables": 11,
+    "changedTables": {},
+    "addedMigrations": [
+      "20261004000001-create-stock-management.js",
+      "20261004000002-simplify-stock-ledger.js"
+    ],
+    "migrationCount": 66
+  },
+  "activation": {
+    "activated": true,
+    "activatedAtUnix": 1791108021
+  },
+  "publicAssets": {
+    "verifiedAt": "2026-10-04T10:00:50.558040+00:00",
+    "allPublicAssetsMatch": true,
+    "assets": [
+      {
+        "asset": "assets/Stock-BULmH7XD.js",
+        "sha256": "d99c5f4b1279dda0f4774f23d9ab033b6c5ac1ad8f2776f00e955798b530c1cf",
+        "status": 200
+      },
+      {
+        "asset": "assets/Stock-UctuqlWp.css",
+        "sha256": "074eb4a4f1c5c064bb83b348383edb0ee94dc4ee0d8a78664cad23f7fac0656c",
+        "status": 200
+      },
+      {
+        "asset": "assets/index-84469jgD.js",
+        "sha256": "d3de843dea10a158cbf88fe1134fea4f1a21a33aae24d2cf975e163542720c71",
+        "status": 200
+      },
+      {
+        "asset": "assets/index-CzFnS5vd.js",
+        "sha256": "2a06328590ebaa44392889951af4efdf4ad66c0700f5577f9d4c28754dfe4c6d",
+        "status": 200
+      },
+      {
+        "asset": "assets/index-DJM1ZJ7D.js",
+        "sha256": "87f90f23778a7680765809447beb9399a497c78f2e29ec9cf3977d475988a068",
+        "status": 200
+      },
+      {
+        "asset": "assets/index-OE1p62C8.css",
+        "sha256": "3ddb62857a620f216b3cff79309a58e750c6f74155a44983d87f78163e8f2976",
+        "status": 200
+      },
+      {
+        "asset": "assets/jsQR-CE5pzyiM.js",
+        "sha256": "80286a1faf1e35ca3f47b21bf8a8d5b82df5f4eb0eaa5792fee761acc780a323",
+        "status": 200
+      },
+      {
+        "asset": "debug.html",
+        "sha256": "6b7fbea26323ab37180c0822bfeae695f42fd333743ca9babb8f6f6213b9b6ec",
+        "status": 200
+      },
+      {
+        "asset": "index.html",
+        "sha256": "9c77b1447fe34915b5cc85b7f5af23c7de2cf111b2658c233356d981386eae4d",
+        "status": 200
+      },
+      {
+        "asset": "templates/apple_ids_import_template.xlsx",
+        "sha256": "d35963212f1311d186668726f233e72df59b10c28538db4781d0dd27afa6d40b",
+        "status": 200
+      },
+      {
+        "asset": "templates/recipients_import_template.xlsx",
+        "sha256": "251052ff1ec8d919e74f1cfa17a7b42b5f58f91f80f32075d316cf317f0858d2",
+        "status": 200
+      }
+    ],
+    "publicRoutes": [
+      "/api/health/ready",
+      "/login",
+      "/stock"
+    ]
+  },
+  "publicApi": {
+    "passed": true,
+    "usedExistingAdminSession": true,
+    "noCredentialRetained": true,
+    "enabled": true,
+    "warehouses": 0,
+    "results": [
+      {
+        "path": "/health/ready",
+        "method": "GET",
+        "status": 200,
+        "authenticated": false,
+        "cacheControl": null
+      },
+      {
+        "path": "/stock/ledger/catalog",
+        "method": "GET",
+        "status": 401,
+        "authenticated": false,
+        "cacheControl": null
+      },
+      {
+        "path": "/stock/settings",
+        "method": "GET",
+        "status": 200,
+        "authenticated": true,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/stock/settings",
+        "method": "PATCH",
+        "status": 200,
+        "authenticated": true,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/stock/settings",
+        "method": "GET",
+        "status": 200,
+        "authenticated": true,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/stock/ledger/catalog",
+        "method": "GET",
+        "status": 200,
+        "authenticated": true,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/stock/ledger?view=in_stock&page=1&pageSize=20",
+        "method": "GET",
+        "status": 200,
+        "authenticated": true,
+        "cacheControl": "no-store",
+        "total": 0,
+        "itemCount": 0,
+        "counts": {
+          "inStock": 0,
+          "sold": 0
+        }
+      },
+      {
+        "path": "/stock/ledger?view=sold&page=1&pageSize=20",
+        "method": "GET",
+        "status": 200,
+        "authenticated": true,
+        "cacheControl": "no-store",
+        "total": 0,
+        "itemCount": 0,
+        "counts": {
+          "inStock": 0,
+          "sold": 0
+        }
+      },
+      {
+        "path": "/stock/ledger?view=all&page=1&pageSize=20",
+        "method": "GET",
+        "status": 200,
+        "authenticated": true,
+        "cacheControl": "no-store",
+        "total": 0,
+        "itemCount": 0,
+        "counts": {
+          "inStock": 0,
+          "sold": 0
+        }
+      },
+      {
+        "path": "/orders?page=1&pageSize=1",
+        "method": "GET",
+        "status": 200,
+        "authenticated": true,
+        "cacheControl": null
+      },
+      {
+        "path": "/pickups?page=1&pageSize=1",
+        "method": "GET",
+        "status": 200,
+        "authenticated": true,
+        "cacheControl": null
+      }
+    ]
+  },
+  "production": {
+    "api": {
+      "image": "apple-order-mgr-runtime:20261004T095424Z-786596e35218-amd64",
+      "healthy": true,
+      "restarts": 0,
+      "startedAt": "2026-10-04T10:00:17.740610741Z",
+      "errorLogs": 0,
+      "environmentAndMountsUnchanged": true
+    },
+    "unchangedWorkers": [
+      {
+        "name": "apple-order-mgr-prod-inventory-worker-1",
+        "image": "apple-order-mgr-runtime:20261003T092335Z-4bc8d6d7e662-amd64",
+        "sameContainer": true,
+        "sameStartAndRestartCount": true
+      },
+      {
+        "name": "apple-order-mgr-prod-order-mail-worker-1",
+        "image": "apple-order-mgr-runtime:20260927T182816Z-f063a22125d5-amd64",
+        "sameContainer": true,
+        "sameStartAndRestartCount": true
+      },
+      {
+        "name": "apple-order-mgr-prod-wecom-worker-1",
+        "image": "apple-order-mgr-runtime:20260922T011712Z-ae3a050284e2-amd64",
+        "sameContainer": true,
+        "sameStartAndRestartCount": true
+      },
+      {
+        "name": "apple-order-mgr-prod-email-worker-1",
+        "image": "apple-order-mgr-runtime:20260922T011712Z-ae3a050284e2-amd64",
+        "sameContainer": true,
+        "sameStartAndRestartCount": true
+      }
+    ],
+    "unchangedOtherContainerCount": 12,
+    "protectedConfigurationUnchanged": true,
+    "nginxPostgresUnchanged": true,
+    "officialQueueServiceUnchanged": true,
+    "stock": {
+      "units": 2,
+      "registered": 2,
+      "inStock": 0,
+      "sales": 0,
+      "products": 0,
+      "parties": 0,
+      "warehouses": 0,
+      "collections": 0,
+      "receipts": 0,
+      "enabled": true,
+      "settingVersion": 1,
+      "operations": 1,
+      "events": 1
+    }
+  },
+  "originalCheckout": {
+    "protectedFiles": 935,
+    "changed": []
+  },
+  "temporaryCandidateAndRestorationDatabaseRemoved": true,
+  "backupRetained": true,
+  "browserValidation": {
+    "localPcAnd375x400SyntheticFlowsPassed": true,
+    "productionAuthenticatedBrowserFlowsTested": false,
+    "productionRealBusinessAcceptance": "由用户使用真实资料验收，未写入合成库存或销售数据",
+    "productionUnauthenticatedStockRoute": "未登录时正常跳转登录页面",
+    "productionLoginConsoleErrors": 0
+  },
+  "qualityGate": {
+    "initialRun": "https://github.com/Seraph1211/AppleOrderMgr/actions/runs/37193522763",
+    "status": "远程测试初始化问题已验证修复；两端唯一失败步骤仍为沿用依赖的npm安全审计",
+    "productionLockfilesUnchanged": [
+      {
+        "file": "package-lock.json",
+        "sha256": "0b7148199a8f944566be66e3f35ff66cbc17e9daf7ea9b06bd00f502a2ccd095",
+        "unchangedFromPreviouslyDeployedSource": true
+      },
+      {
+        "file": "frontend/package-lock.json",
+        "sha256": "ca048e4e39daa238431ea3cc11e48388c81a3fa0bce29d1df35f4e5463ed9b74",
+        "unchangedFromPreviouslyDeployedSource": true
+      }
+    ],
+    "backendAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 3,
+      "high": 37,
+      "critical": 0,
+      "total": 40
+    },
+    "frontendAudit": {
+      "info": 0,
+      "low": 0,
+      "moderate": 0,
+      "high": 7,
+      "critical": 0,
+      "total": 7
+    },
+    "auditNumbersAreDependencyEntriesNotUniqueAdvisories": true,
+    "thresholdNotWeakened": true,
+    "requiresSeparateDependencyRemediation": true,
+    "testEnvironmentFix": {
+      "commit": "a46f742d7e222bc7a00f0550efa0021e76eb3b1f",
+      "files": [
+        "test/profileManagement.test.js",
+        "test/officialOrderInput.test.js"
+      ],
+      "targetedSuites": 2,
+      "targetedTests": 39,
+      "noDevelopmentKeyRegressionPassed": true,
+      "invalidExistingKeyRegressionPassed": true,
+      "environmentRestored": true,
+      "fullSuitesPassed": 96,
+      "fullTestsPassed": 1129,
+      "skippedSuites": 33,
+      "skippedTests": 435,
+      "lintErrors": 0,
+      "productionRuntimeCodeChanged": false
+    },
+    "initialRunFailureScope": [
+      "两组测试依赖开发环境密钥，后已修复",
+      "前端沿用依赖安全审计未通过，后端独立audit亦确认沿用依赖告警"
+    ],
+    "followupRun": {
+      "url": "https://github.com/Seraph1211/AppleOrderMgr/actions/runs/37194326583",
+      "conclusion": "failure",
+      "jobs": [
+        {
+          "conclusion": "success",
+          "failedSteps": [],
+          "name": "secret-scan",
+          "status": "completed",
+          "testSteps": []
+        },
+        {
+          "conclusion": "failure",
+          "failedSteps": [
+            "Run npm audit --audit-level=high"
+          ],
+          "name": "backend",
+          "status": "completed",
+          "testSteps": [
+            {
+              "conclusion": "success",
+              "name": "Run npm test -- --runInBand"
+            }
+          ]
+        },
+        {
+          "conclusion": "failure",
+          "failedSteps": [
+            "Run npm audit --audit-level=high"
+          ],
+          "name": "frontend",
+          "status": "completed",
+          "testSteps": []
+        }
+      ],
+      "status": "completed"
+    }
+  }
+}

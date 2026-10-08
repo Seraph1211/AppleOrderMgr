@@ -61,6 +61,28 @@ const EMAIL_TERMINAL_STATUSES = Object.freeze([
 ]);
 
 const PERMISSIONS = Object.freeze({
+  STOCK_READ: 'stock.read',
+  STOCK_RECEIVE: 'stock.receive',
+  STOCK_TRANSFER: 'stock.transfer',
+  STOCK_SOURCE_LINK: 'stock.source.link',
+  STOCK_CATALOG_MANAGE: 'stock.catalog.manage',
+  STOCK_COST_READ: 'stock.cost.read',
+  STOCK_COST_EDIT: 'stock.cost.edit',
+  STOCK_SALES_READ: 'stock.sales.read',
+  STOCK_SALES_EDIT: 'stock.sales.edit',
+  STOCK_SALES_SHIP: 'stock.sales.ship',
+  STOCK_EXPENSES_READ: 'stock.expenses.read',
+  STOCK_EXPENSES_EDIT: 'stock.expenses.edit',
+  STOCK_PROFIT_READ: 'stock.profit.read',
+  STOCK_COLLECTIONS_READ: 'stock.collections.read',
+  STOCK_COLLECTIONS_EDIT: 'stock.collections.edit',
+  STOCK_RECEIPTS_READ: 'stock.receipts.read',
+  STOCK_RECEIPTS_EDIT: 'stock.receipts.edit',
+  STOCK_IMPORT: 'stock.import',
+  STOCK_EXPORT: 'stock.export',
+  STOCK_CORRECT: 'stock.correct',
+  STOCK_SETTINGS_MANAGE: 'stock.settings.manage',
+
   INVENTORY_READ: 'inventory.read',
   PROXY_READ: 'proxy_orders.read',
   PROXY_EDIT: 'proxy_orders.edit',

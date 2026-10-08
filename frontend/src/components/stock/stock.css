@@ -1,0 +1,230 @@
+.stock-page {
+  min-width: 0;
+  color: #374151;
+}
+.stock-page .stock-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.stock-page .stock-toolbar .input {
+  width: auto;
+  max-width: 100%;
+}
+.stock-table-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: white;
+}
+.stock-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  text-align: left;
+}
+.stock-table th {
+  color: #6b7280;
+  background: #f9fafb;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.stock-table th,
+.stock-table td {
+  padding: 12px;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+}
+.stock-table tbody tr:hover {
+  background: #f9fafb;
+}
+.stock-table tr:last-child td {
+  border-bottom: none;
+}
+.stock-modal .input {
+  width: 100%;
+  min-width: 0;
+}
+.stock-modal .btn,
+.stock-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.stock-dialog-scroll {
+  overflow-x: hidden;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+@media (max-width: 639px) {
+  .stock-page .btn,
+  .stock-modal .btn {
+    min-height: 44px;
+  }
+  .stock-page .input,
+  .stock-modal .input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  .stock-page .stock-toolbar .input {
+    flex: 1 1 140px;
+  }
+  .stock-table th,
+  .stock-table td {
+    padding: 10px 8px;
+  }
+  .stock-hide-mobile {
+    display: none;
+  }
+}
+
+.stock-page .stock-pagination .input,
+.stock-modal .stock-pagination .input {
+  width: auto;
+}
+.stock-pagination button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+.ledger-device-cell {
+  min-width: 130px;
+}
+.ledger-summary-cell {
+  min-width: 130px;
+}
+@media (min-width: 640px) {
+  /* 逐台录入列使用横向滚动，不能继承主台账窄屏固定列宽。 */
+  .ledger-page .stock-modal .stock-table:has(input[aria-label='本台 SN']) {
+    table-layout: auto;
+    min-width: 760px;
+  }
+  .ledger-page .stock-modal .stock-table:has(input[aria-label='本台 SN']) th {
+    width: auto;
+  }
+  .ledger-page .stock-modal .stock-table:has(input[aria-label='本台 SN']) td:nth-child(2) {
+    min-width: 200px;
+  }
+
+  /* 售出金额列可横向滚动，窄屏保持输入可操作。 */
+  .stock-modal .stock-table:has(input[aria-label$='结算金额']) {
+    table-layout: auto;
+    min-width: 600px;
+  }
+  .stock-modal .stock-table:has(input[aria-label$='结算金额']) th {
+    width: auto;
+  }
+}
+
+/* 手机台账使用两列紧凑表格，单台操作与摘要留在设备列内。 */
+@media (max-width: 639px) {
+  .ledger-main-table {
+    width: 100%;
+    table-layout: fixed;
+    min-width: 0;
+  }
+  .ledger-main-table th:first-child {
+    width: 44px;
+  }
+  .ledger-main-table .ledger-device-cell {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .ledger-main-table input[type='checkbox'] {
+    margin: 12px 0;
+  }
+  .ledger-header h1 {
+    font-size: 20px;
+  }
+  .ledger-header > div:first-child > p {
+    display: none;
+  }
+  .ledger-header .stock-toolbar {
+    width: 100%;
+  }
+  .ledger-header .stock-toolbar > .btn-primary {
+    flex: 1;
+  }
+  .ledger-filters .input {
+    width: 100%;
+    min-width: 0;
+  }
+  .ledger-filters .input > span {
+    min-width: 0;
+  }
+  .ledger-has-selection {
+    padding-bottom: calc(140px + env(safe-area-inset-bottom));
+  }
+  .ledger-selection.stock-toolbar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 30;
+    gap: 8px;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -4px 16px #0000000d;
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  }
+  .ledger-selection > span:first-child {
+    flex: 1 0 calc(100% - 120px);
+  }
+  .ledger-selection > .btn-primary {
+    flex: 1;
+  }
+  .stock-mobile-fields .stock-table,
+  .ledger-page .stock-modal .stock-mobile-fields .stock-table {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .stock-mobile-fields thead {
+    display: none;
+  }
+  .stock-mobile-fields tbody {
+    display: block;
+  }
+  .stock-mobile-fields tr {
+    display: block;
+    border-bottom: 1px solid #e5e7eb;
+    padding: 8px 12px;
+  }
+  .stock-mobile-fields tr:last-child {
+    border-bottom: 0;
+  }
+  .stock-mobile-fields td,
+  .ledger-page .stock-modal .stock-mobile-fields td:nth-child(2) {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    padding: 6px 0;
+    overflow-wrap: anywhere;
+  }
+  .stock-mobile-fields td::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 4px;
+    color: #6b7280;
+    font-size: 12px;
+  }
+  .stock-mobile-fields .input {
+    width: 100%;
+    min-width: 0;
+  }
+  .stock-modal .ledger-form-actions {
+    position: sticky;
+    bottom: -16px;
+    z-index: 10;
+    margin-inline: -16px;
+    padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+    background: white;
+    box-shadow: 0 -4px 12px #00000008;
+  }
+  .ledger-form-actions .btn-primary {
+    flex: 1;
+  }
+}

@@ -20,86 +20,55 @@ import {
   ListChecks,
   ClipboardCheck,
   BadgeDollarSign,
+  Warehouse,
+  ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getEmailProcessingMetrics } from '../api';
 import AlertModal from './AlertModal';
 import { PERMISSIONS } from '../constants/permissions';
+import {
+  DASHBOARD_NAVIGATION,
+  PROFILE_NAVIGATION,
+  NAVIGATION_GROUPS,
+  getVisibleNavigationGroups,
+  isNavigationItemActive,
+} from '../constants/navigation';
 
-const baseNavigation = [
-  {
-    name: '库存监控',
-    href: '/inventory-monitor',
-    icon: Package,
-    permission: PERMISSIONS.INVENTORY_READ,
-  },
-  { name: '仪表板', href: '/', icon: LayoutDashboard, permission: PERMISSIONS.DASHBOARD_READ },
-  { name: '订单管理', href: '/orders', icon: Package, permission: PERMISSIONS.ORDERS_READ },
-  { name: '代抢管理', href: '/proxy-orders', icon: Package, permission: PERMISSIONS.PROXY_READ },
-  {
-    name: '取货记录',
-    href: '/pickups',
-    icon: ClipboardCheck,
-    permission: PERMISSIONS.PICKUPS_READ,
-  },
-  { name: 'Apple ID', href: '/apple-ids', icon: Apple, permission: PERMISSIONS.APPLE_IDS_READ },
-  { name: '取机人', href: '/recipients', icon: User, permission: PERMISSIONS.RECIPIENTS_READ },
-  {
-    name: '身份核验',
-    href: '/identity-verifications',
-    icon: ShieldCheck,
-    permission: PERMISSIONS.IDENTITY_READ,
-  },
-  { name: '渠道管理', href: '/channels', icon: TrendingUp, permission: PERMISSIONS.CHANNELS_READ },
-];
+const navigationIcons = {
+  ShieldCheck,
+  Bell,
+  LayoutDashboard,
+  Package,
+  User,
+  Mail,
+  Apple,
+  TrendingUp,
+  Users,
+  Settings,
+  ScrollText,
+  CreditCard,
+  ListChecks,
+  ClipboardCheck,
+  BadgeDollarSign,
+  Warehouse,
+};
 
-const adminNavigation = [
-  { name: '监控管理', href: '/inventory-monitor/manage', icon: Settings, adminOnly: true },
-  {
-    name: '公开报价',
-    href: '/quote-pricing',
-    icon: BadgeDollarSign,
-    adminOnly: true,
-  },
-  {
-    name: '企微订单通知',
-    href: '/wecom-notifications',
-    icon: Bell,
-    permission: PERMISSIONS.WECOM_READ,
-  },
-  {
-    name: '付款调度',
-    href: '/payment-dispatch',
-    icon: ListChecks,
-    permission: PERMISSIONS.PAYMENT_DISPATCH_READ,
-  },
-  {
-    name: '付款任务',
-    href: '/payment-tasks',
-    icon: CreditCard,
-    permission: PERMISSIONS.PAYMENT_TASKS_READ_OWN,
-  },
-  {
-    name: '订单数据源',
-    href: '/order-ingestion',
-    icon: Mail,
-    permission: PERMISSIONS.INGESTION_READ,
-  },
-  {
-    name: '服务器监控',
-    href: '/server-monitor',
-    icon: TrendingUp,
-    permission: PERMISSIONS.MONITOR_MANAGE,
-  },
-  { name: '邮件处理', href: '/email-processing', icon: Mail, permission: PERMISSIONS.EMAIL_READ },
-  {
-    name: '操作记录',
-    href: '/operation-logs',
-    icon: ScrollText,
-    permission: PERMISSIONS.SYSTEM_LOGS_READ,
-  },
-  { name: '用户管理', href: '/users', icon: Users, permission: PERMISSIONS.USERS_READ },
-];
+function NavigationLink({ item, pathname, nested = false, onNavigate }) {
+  const Icon = navigationIcons[item.icon];
+  const active = isNavigationItemActive(item, pathname);
+  return (
+    <Link
+      to={item.href}
+      onClick={onNavigate}
+      aria-current={active ? 'page' : undefined}
+      className={`flex min-h-11 items-center gap-2 rounded-lg px-3 py-2.5 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${nested ? 'ml-5' : ''} ${active ? 'bg-primary text-white shadow-sm' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'}`}
+    >
+      <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+      <span className="font-medium">{item.name}</span>
+    </Link>
+  );
+}
 
 export default function Layout({ children }) {
   const [logoutError, setLogoutError] = useState('');
@@ -111,16 +80,53 @@ export default function Layout({ children }) {
   const navigate = useNavigate();
   const { user, logout, can } = useAuth();
 
-  // 根据用户角色生成导航菜单
-  const navigation = [
-    ...baseNavigation,
-    ...adminNavigation,
-    ...(user?.role === 'admin'
-      ? [{ name: '邮件联系人', href: '/mail-contacts', icon: Mail, adminOnly: true }]
-      : []),
-  ]
-    .filter(item => (item.adminOnly ? user?.role === 'admin' : can(item.permission)))
-    .concat({ name: '个人设置', href: '/profile', icon: Settings });
+  const navigationGroups = getVisibleNavigationGroups(user, can);
+  const activeGroupId = navigationGroups.find(group =>
+    group.children.some(item => isNavigationItemActive(item, location.pathname))
+  )?.id;
+  const navigationStorageKey = `navigation-groups:v1:${user?.id}`;
+  const [expandedGroups, setExpandedGroups] = useState(() => {
+    let saved = [];
+    try {
+      const stored = JSON.parse(localStorage.getItem(navigationStorageKey) || '[]');
+      if (Array.isArray(stored))
+        saved = stored.filter(id => NAVIGATION_GROUPS.some(group => group.id === id));
+    } catch (_error) {
+      // 存储被禁用或旧值损坏时，仍可正常使用导航。
+    }
+    return [...new Set([...saved, ...(activeGroupId ? [activeGroupId] : [])])];
+  });
+
+  useEffect(() => {
+    if (activeGroupId) {
+      setExpandedGroups(current =>
+        current.includes(activeGroupId) ? current : [...current, activeGroupId]
+      );
+    }
+  }, [location.pathname, activeGroupId]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(navigationStorageKey, JSON.stringify(expandedGroups));
+    } catch (_error) {
+      // 无存储权限时，只在本次页面会话保留展开状态。
+    }
+  }, [navigationStorageKey, expandedGroups]);
+
+  useEffect(() => {
+    if (!sidebarOpen) return undefined;
+    const closeOnEscape = event => {
+      if (event.key === 'Escape') setSidebarOpen(false);
+    };
+    document.addEventListener('keydown', closeOnEscape);
+    return () => document.removeEventListener('keydown', closeOnEscape);
+  }, [sidebarOpen]);
+
+  const toggleNavigationGroup = id => {
+    setExpandedGroups(current =>
+      current.includes(id) ? current.filter(value => value !== id) : [...current, id]
+    );
+  };
 
   // 处理登出
   const handleLogout = async () => {
@@ -208,29 +214,56 @@ export default function Layout({ children }) {
             aria-label="主导航"
             className="min-h-0 flex-1 px-3 py-4 space-y-1 overflow-y-auto overscroll-contain"
           >
-            {navigation.map(item => {
-              const isActive = location.pathname === item.href;
+            {can(DASHBOARD_NAVIGATION.permission) && (
+              <NavigationLink
+                item={DASHBOARD_NAVIGATION}
+                pathname={location.pathname}
+                onNavigate={() => setSidebarOpen(false)}
+              />
+            )}
+            {navigationGroups.map(group => {
+              const Icon = navigationIcons[group.icon];
+              const expanded = expandedGroups.includes(group.id);
+              const active = activeGroupId === group.id;
               return (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  onClick={() => setSidebarOpen(false)}
-                  className={`
-                    flex items-center space-x-2 px-3 py-2.5 rounded-lg transition-all duration-200
-                    ${
-                      isActive
-                        ? 'bg-primary text-white shadow-sm'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
-                    }
-                  `}
-                >
-                  <item.icon className="w-5 h-5" />
-                  <span className="font-medium">{item.name}</span>
-                </Link>
+                <div key={group.id}>
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    aria-controls={`navigation-${group.id}`}
+                    onClick={() => toggleNavigationGroup(group.id)}
+                    className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-3 py-2.5 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${active ? 'text-primary' : 'text-gray-600 hover:text-gray-900'} hover:bg-gray-100`}
+                  >
+                    <Icon className="h-5 w-5 shrink-0" aria-hidden="true" />
+                    <span className="flex-1 font-semibold">{group.name}</span>
+                    <ChevronDown
+                      className={`h-4 w-4 shrink-0 transition-transform ${expanded ? 'rotate-180' : ''}`}
+                      aria-hidden="true"
+                    />
+                  </button>
+                  <div id={`navigation-${group.id}`} hidden={!expanded} className="mt-1 space-y-1">
+                    {group.children.map(item => (
+                      <NavigationLink
+                        key={item.href}
+                        item={item}
+                        pathname={location.pathname}
+                        nested
+                        onNavigate={() => setSidebarOpen(false)}
+                      />
+                    ))}
+                  </div>
+                </div>
               );
             })}
           </nav>
 
+          <div className="shrink-0 border-t border-gray-200 px-3 py-2">
+            <NavigationLink
+              item={PROFILE_NAVIGATION}
+              pathname={location.pathname}
+              onNavigate={() => setSidebarOpen(false)}
+            />
+          </div>
           {/* 底部信息 */}
           <div className="shrink-0 p-4 border-t border-gray-200">
             <div className="text-xs text-gray-500">

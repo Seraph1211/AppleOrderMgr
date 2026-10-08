@@ -79,7 +79,8 @@ export const exportOrders = async (params = {}) => {
  * 更新订单信息
  * @param {number} id - 订单 ID
  * @param {Object} data - 更新数据
- * @param {string[]} data.paymentScreenshot - 付款截图 URL 数组
+ * @param {string|null} [data.notes] - 订单备注，留空可清除
+ * @param {string[]} [data.paymentScreenshot] - 付款截图 URL 数组
  * @returns {Promise<Object>} 更新结果
  */
 export const updateOrder = (id, data) => {

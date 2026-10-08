@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Camera, ImagePlus, RotateCcw, X } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
 import { getPickupDevices, bindPickupDevice, unbindPickupDevice } from '../api/pickupsApi';
 import { parseSerialBarcode, cameraErrorMessage } from '../utils/pickupBarcode';
 
@@ -7,6 +9,7 @@ import PickupSerialOcr from './PickupSerialOcr';
 
 /** 当前订单的逐台扫码窗口；序列号连续识别一致后自动绑定。 */
 export default function PickupDeviceScanner({ order, canEdit, onClose, onSaved }) {
+  const { can } = useAuth();
   const [ocrOpen, setOcrOpen] = useState(false);
   const [devices, setDevices] = useState([]);
   const [removing, setRemoving] = useState(false);
@@ -406,6 +409,7 @@ export default function PickupDeviceScanner({ order, canEdit, onClose, onSaved }
                     <thead className="bg-gray-50 text-gray-500">
                       <tr>
                         <th className="p-2">Serial No.</th>
+                        {can('stock.receive') && <th className="p-2">实物入库</th>}
                         {canEdit && <th className="p-2">操作</th>}
                       </tr>
                     </thead>
@@ -413,6 +417,17 @@ export default function PickupDeviceScanner({ order, canEdit, onClose, onSaved }
                       {devices.map(device => (
                         <tr key={device.id} className="border-t">
                           <td className="break-all p-2 font-mono">{device.serialNumber}</td>
+                          {can('stock.receive') && (
+                            <td className="p-2">
+                              <Link
+                                className="btn btn-secondary min-h-[44px] whitespace-nowrap"
+                                onClick={stopCamera}
+                                to={`/stock?receiveSn=${encodeURIComponent(device.serialNumber)}&sourceOrderId=${encodeURIComponent(order.orderId)}`}
+                              >
+                                确认入库
+                              </Link>
+                            </td>
+                          )}
                           {canEdit && (
                             <td className="p-2">
                               <button

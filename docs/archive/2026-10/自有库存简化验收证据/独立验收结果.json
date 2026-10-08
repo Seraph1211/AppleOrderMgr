@@ -1,0 +1,1885 @@
+{
+  "日期": "2026-10-04",
+  "验证边界": "主 Agent 独立真实本地 HTTP / PostgreSQL / 浏览器合成验收，不是生产或真实业务验收",
+  "http": {
+    "passed": 36,
+    "failed": 0,
+    "cases": [
+      {
+        "id": "S01",
+        "name": "新台账鉴权与目录可读",
+        "status": "pass",
+        "elapsedMs": 38
+      },
+      {
+        "id": "S02",
+        "name": "原订单号未导入仍可入库且官网成本不强制编造拿货日期",
+        "status": "pass",
+        "elapsedMs": 52
+      },
+      {
+        "id": "S03",
+        "name": "入库重放不重复建档与同订单多SN检索",
+        "status": "pass",
+        "elapsedMs": 28
+      },
+      {
+        "id": "S04",
+        "name": "批量售出末项版本冲突全部回滚",
+        "status": "pass",
+        "elapsedMs": 59
+      },
+      {
+        "id": "S05",
+        "name": "跨仓逐台直接售出无需客户且费用不抵货款",
+        "status": "pass",
+        "elapsedMs": 65
+      },
+      {
+        "id": "S06",
+        "name": "销售幂等和次日全额转回保留原代收事实",
+        "status": "pass",
+        "elapsedMs": 62
+      },
+      {
+        "id": "S07",
+        "name": "已到账售价及费用更正同步资金事实和利润",
+        "status": "pass",
+        "elapsedMs": 48
+      },
+      {
+        "id": "S08",
+        "name": "资料后补和仓库更改不重建身份",
+        "status": "pass",
+        "elapsedMs": 38
+      },
+      {
+        "id": "S09",
+        "name": "历史直接补录未知字段不造数据且不改变现货",
+        "status": "pass",
+        "elapsedMs": 41
+      },
+      {
+        "id": "S10",
+        "name": "历史入口不受切换日限制且重复SN不覆盖在库或已售",
+        "status": "pass",
+        "elapsedMs": 47
+      },
+      {
+        "id": "S11",
+        "name": "同SN并发售出只允许一次",
+        "status": "pass",
+        "elapsedMs": 44
+      },
+      {
+        "id": "S12",
+        "name": "误售恢复需实物确认且作废销售费用货款",
+        "status": "pass",
+        "elapsedMs": 57
+      },
+      {
+        "id": "S13",
+        "name": "历史记录更正必须显式确认实物和原因",
+        "status": "pass",
+        "elapsedMs": 41
+      },
+      {
+        "id": "S14",
+        "name": "旧多台部分到账保持原事实并拒绝简化覆盖",
+        "status": "pass",
+        "elapsedMs": 35,
+        "observed": {
+          "unchangedLegacySale": true,
+          "paymentStatus": "company_received"
+        }
+      },
+      {
+        "id": "S15",
+        "name": "不真实日期和非法金额拒绝且无部分入库",
+        "status": "pass",
+        "elapsedMs": 43
+      },
+      {
+        "id": "S16",
+        "name": "正常新销售必须分别填写销售人及出货人",
+        "status": "pass",
+        "elapsedMs": 32
+      },
+      {
+        "id": "S17",
+        "name": "公司直收不重复建客户付款且单台费用不抵售价",
+        "status": "pass",
+        "elapsedMs": 41
+      },
+      {
+        "id": "S18",
+        "name": "仓管金额与订单字段访问边界及写权限",
+        "status": "pass",
+        "elapsedMs": 146
+      },
+      {
+        "id": "S19",
+        "name": "改单请求键不可跨目标复用",
+        "status": "pass",
+        "elapsedMs": 35
+      },
+      {
+        "id": "E01",
+        "name": "旧取货SN入库默认空订单号保留原绑定及身份",
+        "status": "pass",
+        "elapsedMs": 51
+      },
+      {
+        "id": "E02",
+        "name": "已售设备后补订单仍保留售价日期与资金事实",
+        "status": "pass",
+        "elapsedMs": 66
+      },
+      {
+        "id": "E03",
+        "name": "订单TAG仍限制详情和按订单号搜索",
+        "status": "pass",
+        "elapsedMs": 153
+      },
+      {
+        "id": "E04",
+        "name": "授权销售人无收款权限也可登记未收款新销售",
+        "status": "pass",
+        "elapsedMs": 150
+      },
+      {
+        "id": "E05",
+        "name": "旧复杂单台实收与筛选一致并且每SN只一行",
+        "status": "pass",
+        "elapsedMs": 11
+      },
+      {
+        "id": "U01",
+        "name": "界面保存后API读回四台且SN无重复",
+        "status": "pass",
+        "elapsedMs": 24
+      },
+      {
+        "id": "U02",
+        "name": "电脑入库手机售出后的日期仓库人员利润及货款一致",
+        "status": "pass",
+        "elapsedMs": 0
+      },
+      {
+        "id": "U03",
+        "name": "手机历史补录未知值保持待核实且未造入库日期",
+        "status": "pass",
+        "elapsedMs": 0
+      },
+      {
+        "id": "U04",
+        "name": "手机新增入库可单独查回且默认日期正确",
+        "status": "pass",
+        "elapsedMs": 0
+      },
+      {
+        "id": "R01",
+        "name": "旧复杂写入口全部退役并保持台账不变",
+        "status": "pass",
+        "elapsedMs": 85,
+        "observed": {
+          "routes": 11,
+          "noSideEffects": true
+        }
+      },
+      {
+        "id": "F01",
+        "name": "旧单台无货款事实仍待核实，改单不编造货款，核实后筛选一致",
+        "status": "pass",
+        "elapsedMs": 154
+      },
+      {
+        "id": "F02",
+        "name": "批内重复SN在写入前拒绝且不返回不存在的记录链接",
+        "status": "pass",
+        "elapsedMs": 50
+      },
+      {
+        "id": "F03",
+        "name": "缺原入库日期的历史误售恢复须补真实日期且拒绝时完全不变",
+        "status": "pass",
+        "elapsedMs": 107
+      },
+      {
+        "id": "F04",
+        "name": "旧复杂记录对无资金权限者仍有操作限制且不泄漏金额与货款",
+        "status": "pass",
+        "elapsedMs": 133
+      },
+      {
+        "id": "G01",
+        "name": "升级前已冗余保存订单号的已售机器经旧解绑后不泄漏原号且销售货款不变",
+        "status": "pass",
+        "elapsedMs": 99
+      },
+      {
+        "id": "G02",
+        "name": "新台账关联订单后遵守TAG，旧取货解绑保持同一SN及真实入库事实",
+        "status": "pass",
+        "elapsedMs": 73
+      },
+      {
+        "id": "G03",
+        "name": "待关联文本经旧扫码绑定及重复绑定后清理冗余，解绑不恢复旧文本",
+        "status": "pass",
+        "elapsedMs": 104
+      }
+    ]
+  },
+  "migration": {
+    "database": "apple_order_mgr_stock_test_1006",
+    "results": [
+      {
+        "name": "无新业务时增量迁移可逆，不撤销原库存表",
+        "status": "pass"
+      },
+      {
+        "name": "数据库拒绝费用NaN、无穷和负数",
+        "status": "pass"
+      },
+      {
+        "name": "待核实货款仅允许简化历史销售",
+        "status": "pass"
+      },
+      {
+        "name": "增量存在业务值时拒绝回退且保留结构与资料",
+        "status": "pass"
+      }
+    ]
+  },
+  "legacyDataPreservation": [
+    {
+      "database": "apple_order_mgr_stock_test_1005",
+      "status": "pass",
+      "tableCount": 23,
+      "rowsAndExistingFieldsUnchanged": true,
+      "snapshot": {
+        "orders": {
+          "count": 0,
+          "digest": null
+        },
+        "pickup_devices": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_attachment_links": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_attachments": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_collections": {
+          "count": 2,
+          "digest": "0d06338a45b8462098ae57922812eb76"
+        },
+        "stock_events": {
+          "count": 1475,
+          "digest": "59bd0bceb1e3ed91409af00833d11cbc"
+        },
+        "stock_expense_allocations": {
+          "count": 4,
+          "digest": "8c89d8937686f88aa15bc0ea387ff0a9"
+        },
+        "stock_expenses": {
+          "count": 2,
+          "digest": "7e0a5ebc57ad9c33cfa3c23f3305f0c8"
+        },
+        "stock_import_jobs": {
+          "count": 7,
+          "digest": "939605d12bb845d9d2a819755612048a"
+        },
+        "stock_locations": {
+          "count": 3,
+          "digest": "2370c59599185ed7525c263a5c561cd5"
+        },
+        "stock_official_prices": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_operations": {
+          "count": 49,
+          "digest": "41422e977df330d31ce279b5a9b0cd29"
+        },
+        "stock_parties": {
+          "count": 4,
+          "digest": "c472174a4ff5bb9a5e362338f3a7213e"
+        },
+        "stock_products": {
+          "count": 4,
+          "digest": "159950e3164ceca4b0c7e00dc21c5b39"
+        },
+        "stock_receipt_allocations": {
+          "count": 9,
+          "digest": "3f72406c1b01cc17c7eed0874ccb435a"
+        },
+        "stock_receipts": {
+          "count": 2,
+          "digest": "f355e074e9c6fc4dec3f742da9dc2d48"
+        },
+        "stock_sale_lines": {
+          "count": 5,
+          "digest": "ac24c96fa4f3ddfa24d49ea65a9789bc"
+        },
+        "stock_sale_units": {
+          "count": 4,
+          "digest": "15e0dc326b0c62424514d616a5afc21b"
+        },
+        "stock_sales": {
+          "count": 5,
+          "digest": "e4fea7cf08e6b85209ccb796ed91bfb2"
+        },
+        "stock_settings": {
+          "count": 1,
+          "digest": "ac979a72cec731d53b0f35c6eda342fd"
+        },
+        "stock_transfer_units": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_transfers": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_units": {
+          "count": 709,
+          "digest": "e7ef5288c9175865ea7add071fc62168"
+        }
+      }
+    },
+    {
+      "database": "apple_order_mgr_stock_test_1006",
+      "status": "pass",
+      "tableCount": 23,
+      "rowsAndExistingFieldsUnchanged": true,
+      "snapshot": {
+        "orders": {
+          "count": 1,
+          "digest": "66ad3bf022df6f0b9e8898702bfdc0d4"
+        },
+        "pickup_devices": {
+          "count": 1,
+          "digest": "3092f8442a03cf51cef1229a4873b3b9"
+        },
+        "stock_attachment_links": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_attachments": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_collections": {
+          "count": 2,
+          "digest": "75021cb6e6c0338db088887c7a8e1c03"
+        },
+        "stock_events": {
+          "count": 76,
+          "digest": "d1ae38277f2b2d495e6252e65c7d1714"
+        },
+        "stock_expense_allocations": {
+          "count": 4,
+          "digest": "06b56b1d30da71d7bab1006c874a2948"
+        },
+        "stock_expenses": {
+          "count": 2,
+          "digest": "ca027907409dc95215e0bf648685fac5"
+        },
+        "stock_import_jobs": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_locations": {
+          "count": 4,
+          "digest": "0fdc7157e5ba1c592dc5daafadc3da14"
+        },
+        "stock_official_prices": {
+          "count": 0,
+          "digest": null
+        },
+        "stock_operations": {
+          "count": 38,
+          "digest": "544b546230c573e7cc7d7e90eb00f410"
+        },
+        "stock_parties": {
+          "count": 5,
+          "digest": "d595a10130768eea25fb735ca8d831be"
+        },
+        "stock_products": {
+          "count": 7,
+          "digest": "1b0b9747acf7692c8870ce7ddf0f03e4"
+        },
+        "stock_receipt_allocations": {
+          "count": 5,
+          "digest": "59fe9f214bd3de8ba598140f0c12374b"
+        },
+        "stock_receipts": {
+          "count": 3,
+          "digest": "a769857182cadf1adcef20294dee420c"
+        },
+        "stock_sale_lines": {
+          "count": 5,
+          "digest": "f0d8234de49a4910f0eb56c0f03e2456"
+        },
+        "stock_sale_units": {
+          "count": 6,
+          "digest": "85707817c8c90e928cb2fdc4aecc2fe2"
+        },
+        "stock_sales": {
+          "count": 5,
+          "digest": "49383d2e3b42d3df2dae870da0a5051a"
+        },
+        "stock_settings": {
+          "count": 1,
+          "digest": "5cd5e479d4b93dbee3683a56d67a029c"
+        },
+        "stock_transfer_units": {
+          "count": 2,
+          "digest": "b8ec9125952c415fc063f9dc13f0d6ad"
+        },
+        "stock_transfers": {
+          "count": 1,
+          "digest": "14daa64a7690486d743c968e598decce"
+        },
+        "stock_units": {
+          "count": 15,
+          "digest": "c79a2f43d6e53808aeae87054b84924a"
+        }
+      }
+    }
+  ],
+  "originalMigration": {
+    "path": "migrations/20261004000001-create-stock-management.js",
+    "sha256": "b6c3ca65165db5efb6e39ff354c804cba4f5f0afa2cbf62b9a481256b1173752",
+    "unchangedFromOriginalVersion": true
+  },
+  "removedOldFrontendFiles": [
+    "frontend/src/components/stock/StockCatalog.jsx",
+    "frontend/src/components/stock/StockCollectionForm.jsx",
+    "frontend/src/components/stock/StockConsignmentForm.jsx",
+    "frontend/src/components/stock/StockCorrectionPreview.jsx",
+    "frontend/src/components/stock/StockCostForm.jsx",
+    "frontend/src/components/stock/StockExpenseForm.jsx",
+    "frontend/src/components/stock/StockImportPreview.jsx",
+    "frontend/src/components/stock/StockPickForm.jsx",
+    "frontend/src/components/stock/StockReceiptForm.jsx",
+    "frontend/src/components/stock/StockReceiveForm.jsx",
+    "frontend/src/components/stock/StockReport.jsx",
+    "frontend/src/components/stock/StockSaleDetail.jsx",
+    "frontend/src/components/stock/StockSaleForm.jsx",
+    "frontend/src/components/stock/StockSelectors.jsx",
+    "frontend/src/components/stock/StockShipForm.jsx",
+    "frontend/src/components/stock/StockTransfers.jsx",
+    "frontend/src/components/stock/StockUnitDetail.jsx",
+    "frontend/src/pages/StockReceipts.jsx",
+    "frontend/src/pages/StockSales.jsx"
+  ],
+  "browser": {
+    "pcReceiveAndReadback": "pass",
+    "mobileViewport": {
+      "width": 375,
+      "height": 400
+    },
+    "mobileSalePaymentHistoryReceive": "pass",
+    "desktopViewportRestored": true,
+    "oldRoutesRedirect": "pass",
+    "noOldNavLinks": true,
+    "recoveryUnknownReceiptDate": {
+      "value": "",
+      "required": true,
+      "submitted": false
+    },
+    "uiRows": {
+      "UISH100404": {
+        "id": "5c1ae69e-6894-472f-bb76-3581d8616dab",
+        "version": 1,
+        "serialNumber": "UISH100404",
+        "state": "in_stock",
+        "product": {
+          "id": "1cb504e7-e4d3-4ca8-9d42-b2dced201923",
+          "modelName": "简化验收手机",
+          "storageGb": 256,
+          "colorName": "白色"
+        },
+        "warehouse": {
+          "id": "c5cb3deb-64f1-4a16-93b3-080c194951ca",
+          "name": "HTTPRB19D甲仓"
+        },
+        "receivedOn": "2026-10-04",
+        "notes": "手机端入库验收，订单号待补。",
+        "orderLinked": false,
+        "allowedActions": ["edit", "sell"],
+        "compatibilityReason": null,
+        "orderNumber": null,
+        "officialCostAmount": "9999.00",
+        "acquiredOn": null,
+        "costStatus": "confirmed",
+        "extraExpenseAmount": null
+      },
+      "UISH100402": {
+        "id": "deb364d3-c8d8-448d-ace5-e777bd563ab1",
+        "version": 5,
+        "serialNumber": "UISH100402",
+        "state": "sold",
+        "product": {
+          "id": "1cb504e7-e4d3-4ca8-9d42-b2dced201923",
+          "modelName": "简化验收手机",
+          "storageGb": 256,
+          "colorName": "白色"
+        },
+        "warehouse": null,
+        "receivedOn": "2026-10-02",
+        "notes": "主 Agent 独立界面验收：两台手机，原订单暂未导入。",
+        "orderLinked": false,
+        "allowedActions": ["edit", "payment", "recover"],
+        "compatibilityReason": null,
+        "orderNumber": "W9876543210",
+        "officialCostAmount": "9999.00",
+        "acquiredOn": null,
+        "costStatus": "confirmed",
+        "extraExpenseAmount": "10.00",
+        "saleId": "83cfb986-8049-46c8-b9cd-9123f77193a3",
+        "soldOn": "2026-10-03",
+        "salespersonName": "本地验收销售",
+        "handlerName": "本地验收出货",
+        "saleAmount": "10299.00",
+        "sourceWarehouse": {
+          "id": "c668f798-93f2-4b12-8887-5b89a95503a1",
+          "name": "HTTPRB19D乙仓"
+        },
+        "isHistorical": false,
+        "grossProfit": "300.00",
+        "profitAfterExpenses": "290.00",
+        "paymentStatus": "company_received",
+        "collectorName": "本地验收销售",
+        "collectedOn": "2026-10-03",
+        "companyReceivedOn": "2026-10-04"
+      },
+      "UISH100401": {
+        "id": "7413254e-20d1-442a-a13a-9f60a0c6abd4",
+        "version": 4,
+        "serialNumber": "UISH100401",
+        "state": "sold",
+        "product": {
+          "id": "1cb504e7-e4d3-4ca8-9d42-b2dced201923",
+          "modelName": "简化验收手机",
+          "storageGb": 256,
+          "colorName": "白色"
+        },
+        "warehouse": null,
+        "receivedOn": "2026-10-02",
+        "notes": "主 Agent 独立界面验收：两台手机，原订单暂未导入。",
+        "orderLinked": false,
+        "allowedActions": ["edit", "payment", "recover"],
+        "compatibilityReason": null,
+        "orderNumber": "W9876543210",
+        "officialCostAmount": "9999.00",
+        "acquiredOn": null,
+        "costStatus": "confirmed",
+        "extraExpenseAmount": "20.00",
+        "saleId": "954139aa-9090-4a4a-9976-987e46af8703",
+        "soldOn": "2026-10-03",
+        "salespersonName": "本地验收销售",
+        "handlerName": "本地验收出货",
+        "saleAmount": "10499.00",
+        "sourceWarehouse": {
+          "id": "c5cb3deb-64f1-4a16-93b3-080c194951ca",
+          "name": "HTTPRB19D甲仓"
+        },
+        "isHistorical": false,
+        "grossProfit": "500.00",
+        "profitAfterExpenses": "480.00",
+        "paymentStatus": "company_received",
+        "collectorName": "本地验收销售",
+        "collectedOn": "2026-10-03",
+        "companyReceivedOn": "2026-10-04"
+      },
+      "UISH100403": {
+        "id": "c984170a-e700-416c-b372-bcb94e090200",
+        "version": 2,
+        "serialNumber": "UISH100403",
+        "state": "sold",
+        "product": {
+          "id": "1cb504e7-e4d3-4ca8-9d42-b2dced201923",
+          "modelName": "简化验收手机",
+          "storageGb": 256,
+          "colorName": "白色"
+        },
+        "warehouse": null,
+        "receivedOn": null,
+        "notes": "合成历史记录：原入库、出货人员、成本及货款尚未核实。",
+        "orderLinked": false,
+        "allowedActions": ["edit", "payment", "recover"],
+        "compatibilityReason": null,
+        "orderNumber": null,
+        "officialCostAmount": null,
+        "acquiredOn": null,
+        "costStatus": "pending",
+        "extraExpenseAmount": null,
+        "saleId": "6f9d7e76-9c91-4a3b-a735-fd25695636bc",
+        "soldOn": "2026-09-15",
+        "salespersonName": null,
+        "handlerName": null,
+        "saleAmount": "9700.00",
+        "sourceWarehouse": null,
+        "isHistorical": true,
+        "grossProfit": null,
+        "profitAfterExpenses": null,
+        "paymentStatus": "unknown",
+        "collectorName": null,
+        "collectedOn": null,
+        "companyReceivedOn": null
+      }
+    }
+  },
+  "requests": {
+    "api-results.json": [
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.204Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger",
+        "status": 401,
+        "at": "2026-10-04T09:24:29.210Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/catalog",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.219Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/locations",
+        "status": 201,
+        "at": "2026-10-04T09:24:29.234Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/locations",
+        "status": 201,
+        "at": "2026-10-04T09:24:29.243Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 201,
+        "at": "2026-10-04T09:24:29.291Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.305Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 409,
+        "code": "SN_EXISTS",
+        "at": "2026-10-04T09:24:29.313Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W-SIMPLE-SLTM6TK9",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.324Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/46477a56-4349-472b-a3da-59d6774d98d0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.335Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.338Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.347Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 409,
+        "code": "VERSION_CONFLICT",
+        "at": "2026-10-04T09:24:29.366Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.375Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/46477a56-4349-472b-a3da-59d6774d98d0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.381Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.383Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.391Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/9b55ed32-0db8-48cc-a07e-2b6758843879",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.397Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.406Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 201,
+        "at": "2026-10-04T09:24:29.439Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.447Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.458Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.467Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/payment",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.485Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/payment",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.494Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.502Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/65a6cb0a-e067-4d7f-a056-3a903ae9e31a",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.510Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.518Z"
+      },
+      {
+        "method": "PATCH",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.544Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.552Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/65a6cb0a-e067-4d7f-a056-3a903ae9e31a",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.558Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/46477a56-4349-472b-a3da-59d6774d98d0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.566Z"
+      },
+      {
+        "method": "PATCH",
+        "route": "/stock/ledger/46477a56-4349-472b-a3da-59d6774d98d0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.578Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/46477a56-4349-472b-a3da-59d6774d98d0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.585Z"
+      },
+      {
+        "method": "PATCH",
+        "route": "/stock/ledger/46477a56-4349-472b-a3da-59d6774d98d0",
+        "status": 409,
+        "code": "VERSION_CONFLICT",
+        "at": "2026-10-04T09:24:29.591Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/46477a56-4349-472b-a3da-59d6774d98d0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.597Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.605Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/history",
+        "status": 201,
+        "at": "2026-10-04T09:24:29.622Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/e0fa184e-8b44-4f3f-acdb-6db3c82a9378",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.630Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.638Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.646Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/history",
+        "status": 409,
+        "code": "SN_EXISTS",
+        "at": "2026-10-04T09:24:29.653Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/history",
+        "status": 409,
+        "code": "SN_EXISTS",
+        "at": "2026-10-04T09:24:29.658Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/history",
+        "status": 409,
+        "code": "SN_EXISTS",
+        "at": "2026-10-04T09:24:29.664Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/history",
+        "status": 201,
+        "at": "2026-10-04T09:24:29.678Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.686Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/97879212-fee2-4b25-b19f-e08250f36b2c",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.693Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.699Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 409,
+        "code": "VERSION_CONFLICT",
+        "at": "2026-10-04T09:24:29.714Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 201,
+        "at": "2026-10-04T09:24:29.716Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.724Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/97879212-fee2-4b25-b19f-e08250f36b2c",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.731Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.739Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.747Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5/recover",
+        "status": 400,
+        "code": "VALIDATION_ERROR",
+        "at": "2026-10-04T09:24:29.753Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5/recover",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.768Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/1fe82346-7829-4191-b34d-75b811561fd5",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.775Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.782Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/65a6cb0a-e067-4d7f-a056-3a903ae9e31a",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.788Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/e0fa184e-8b44-4f3f-acdb-6db3c82a9378",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.796Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.803Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/e0fa184e-8b44-4f3f-acdb-6db3c82a9378/recover",
+        "status": 400,
+        "code": "VALIDATION_ERROR",
+        "at": "2026-10-04T09:24:29.808Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/e0fa184e-8b44-4f3f-acdb-6db3c82a9378/recover",
+        "status": 400,
+        "code": "VALIDATION_ERROR",
+        "at": "2026-10-04T09:24:29.814Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.822Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/e0fa184e-8b44-4f3f-acdb-6db3c82a9378",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.830Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/20d8b938-fb5a-40a2-948b-f44b843f2158",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.840Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/70d293f8-34cc-44dc-99cb-abd1d1422115",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.851Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/payment",
+        "status": 409,
+        "code": "LEGACY_LEDGER_CONFLICT",
+        "at": "2026-10-04T09:24:29.858Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/20d8b938-fb5a-40a2-948b-f44b843f2158",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.865Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.874Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 400,
+        "code": "DATE_INVALID",
+        "at": "2026-10-04T09:24:29.881Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 400,
+        "code": "MONEY_INVALID",
+        "at": "2026-10-04T09:24:29.888Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 400,
+        "code": "MONEY_INVALID",
+        "at": "2026-10-04T09:24:29.895Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 400,
+        "code": "MONEY_INVALID",
+        "at": "2026-10-04T09:24:29.902Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock&pageSize=20",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.909Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.916Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 400,
+        "code": "VALIDATION_ERROR",
+        "at": "2026-10-04T09:24:29.922Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 400,
+        "code": "VALIDATION_ERROR",
+        "at": "2026-10-04T09:24:29.927Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 400,
+        "code": "VALIDATION_ERROR",
+        "at": "2026-10-04T09:24:29.937Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.942Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.948Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 201,
+        "at": "2026-10-04T09:24:29.968Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.977Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/a90697a9-1e86-4943-8602-5c53ad2a9352",
+        "status": 200,
+        "at": "2026-10-04T09:24:29.984Z"
+      },
+      {
+        "method": "POST",
+        "route": "/users",
+        "status": 201,
+        "at": "2026-10-04T09:24:30.046Z"
+      },
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:24:30.103Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/46477a56-4349-472b-a3da-59d6774d98d0",
+        "status": 200,
+        "at": "2026-10-04T09:24:30.111Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 403,
+        "code": "FIELD_FORBIDDEN",
+        "at": "2026-10-04T09:24:30.116Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=sold",
+        "status": 200,
+        "at": "2026-10-04T09:24:30.126Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=sold&paymentStatus=company_received",
+        "status": 403,
+        "code": "FORBIDDEN",
+        "at": "2026-10-04T09:24:30.131Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/5b45ab72-be74-4925-aff0-6194fc70e1cb",
+        "status": 200,
+        "at": "2026-10-04T09:24:30.138Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/5f63b1d6-dda4-4bdf-a6dc-b6f135223d7e",
+        "status": 200,
+        "at": "2026-10-04T09:24:30.144Z"
+      },
+      {
+        "method": "PATCH",
+        "route": "/stock/ledger/5b45ab72-be74-4925-aff0-6194fc70e1cb",
+        "status": 200,
+        "at": "2026-10-04T09:24:30.156Z"
+      },
+      {
+        "method": "PATCH",
+        "route": "/stock/ledger/5f63b1d6-dda4-4bdf-a6dc-b6f135223d7e",
+        "status": 409,
+        "code": "IDEMPOTENCY_CONFLICT",
+        "at": "2026-10-04T09:24:30.161Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/5f63b1d6-dda4-4bdf-a6dc-b6f135223d7e",
+        "status": 200,
+        "at": "2026-10-04T09:24:30.166Z"
+      }
+    ],
+    "source-results.json": [
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:26:05.876Z"
+      },
+      {
+        "method": "POST",
+        "route": "/pickups/1/devices",
+        "status": 201,
+        "at": "2026-10-04T09:26:05.895Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/units?states=%5B%22registered%22%5D&q=SAEF1D219EDD",
+        "status": 200,
+        "at": "2026-10-04T09:26:05.907Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 201,
+        "at": "2026-10-04T09:26:05.921Z"
+      },
+      {
+        "method": "GET",
+        "route": "/pickups/1/devices",
+        "status": 200,
+        "at": "2026-10-04T09:26:05.927Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:26:05.940Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/a90697a9-1e86-4943-8602-5c53ad2a9352",
+        "status": 200,
+        "at": "2026-10-04T09:26:05.952Z"
+      },
+      {
+        "method": "PATCH",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:26:05.976Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:26:05.986Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/a90697a9-1e86-4943-8602-5c53ad2a9352",
+        "status": 200,
+        "at": "2026-10-04T09:26:05.993Z"
+      },
+      {
+        "method": "POST",
+        "route": "/users",
+        "status": 201,
+        "at": "2026-10-04T09:26:06.055Z"
+      },
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:26:06.111Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:26:06.121Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W5620331112",
+        "status": 200,
+        "at": "2026-10-04T09:26:06.129Z"
+      },
+      {
+        "method": "PATCH",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 404,
+        "code": "NOT_FOUND",
+        "at": "2026-10-04T09:26:06.141Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:26:06.147Z"
+      },
+      {
+        "method": "POST",
+        "route": "/users",
+        "status": 201,
+        "at": "2026-10-04T09:26:06.207Z"
+      },
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:26:06.262Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/5f63b1d6-dda4-4bdf-a6dc-b6f135223d7e",
+        "status": 200,
+        "at": "2026-10-04T09:26:06.270Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/sell",
+        "status": 201,
+        "at": "2026-10-04T09:26:06.289Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/5f63b1d6-dda4-4bdf-a6dc-b6f135223d7e",
+        "status": 200,
+        "at": "2026-10-04T09:26:06.298Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=sold&q=HTTPRB19D0&paymentStatus=company_received",
+        "status": 200,
+        "at": "2026-10-04T09:26:06.310Z"
+      }
+    ],
+    "ui-readback-results.json": [
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:32:08.334Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=UISH1004",
+        "status": 200,
+        "at": "2026-10-04T09:32:08.358Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&pageSize=100",
+        "status": 200,
+        "at": "2026-10-04T09:32:08.381Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/sales",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.387Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/consignment-sales",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.391Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/transfers",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.395Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/collections",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.400Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/receipts",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.404Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/expenses",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.408Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/corrections",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.413Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/imports",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.417Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/units/register",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.422Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/units/receive",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.425Z"
+      },
+      {
+        "method": "PATCH",
+        "route": "/stock/units/5c1ae69e-6894-472f-bb76-3581d8616dab",
+        "status": 410,
+        "code": "STOCK_FLOW_RETIRED",
+        "at": "2026-10-04T09:32:08.429Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&pageSize=100",
+        "status": 200,
+        "at": "2026-10-04T09:32:08.444Z"
+      }
+    ],
+    "final-results.json": [
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.681Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/5e185f19-b47e-4bb9-988d-362e717b15d3",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.703Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=sold&q=FU7EA75493&paymentStatus=unknown",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.718Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=sold&q=FU7EA75493&paymentStatus=unpaid",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.728Z"
+      },
+      {
+        "method": "PATCH",
+        "route": "/stock/ledger/5e185f19-b47e-4bb9-988d-362e717b15d3",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.752Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/5e185f19-b47e-4bb9-988d-362e717b15d3",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.765Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/e5592699-86f5-4516-9270-6d780bde8703",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.775Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/payment",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.806Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/5e185f19-b47e-4bb9-988d-362e717b15d3",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.816Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=sold&q=FU7EA75493&paymentStatus=unknown",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.826Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=sold&q=FU7EA75493&paymentStatus=unpaid",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.836Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.846Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 409,
+        "code": "SN_EXISTS",
+        "at": "2026-10-04T09:36:36.854Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=FUTMMEW201",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.863Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/history",
+        "status": 409,
+        "code": "SN_EXISTS",
+        "at": "2026-10-04T09:36:36.870Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=FUTMMEW201",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.878Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.887Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/history",
+        "status": 201,
+        "at": "2026-10-04T09:36:36.909Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/63d91bfc-c311-468d-90d6-a4b462100317",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.918Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.926Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/63d91bfc-c311-468d-90d6-a4b462100317/recover",
+        "status": 400,
+        "code": "VALIDATION_ERROR",
+        "at": "2026-10-04T09:36:36.931Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/63d91bfc-c311-468d-90d6-a4b462100317",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.940Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/63d91bfc-c311-468d-90d6-a4b462100317/recover",
+        "status": 400,
+        "code": "DATE_INVALID",
+        "at": "2026-10-04T09:36:36.946Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.955Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/63d91bfc-c311-468d-90d6-a4b462100317/recover",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.972Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/63d91bfc-c311-468d-90d6-a4b462100317",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.979Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=in_stock",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.988Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/0f7b823d-73b8-435b-bf8b-e4c8cee9768f",
+        "status": 200,
+        "at": "2026-10-04T09:36:36.994Z"
+      },
+      {
+        "method": "POST",
+        "route": "/users",
+        "status": 201,
+        "at": "2026-10-04T09:36:37.056Z"
+      },
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:36:37.113Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/70d293f8-34cc-44dc-99cb-abd1d1422115",
+        "status": 200,
+        "at": "2026-10-04T09:36:37.123Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=sold&paymentStatus=company_received",
+        "status": 403,
+        "code": "FORBIDDEN",
+        "at": "2026-10-04T09:36:37.128Z"
+      }
+    ],
+    "unbind-results.json": [
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.660Z"
+      },
+      {
+        "method": "POST",
+        "route": "/users",
+        "status": 201,
+        "at": "2026-10-04T09:40:03.728Z"
+      },
+      {
+        "method": "POST",
+        "route": "/auth/login",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.787Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.805Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.816Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W5620331112",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.824Z"
+      },
+      {
+        "method": "GET",
+        "route": "/pickups/2/devices",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.829Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/a90697a9-1e86-4943-8602-5c53ad2a9352",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.839Z"
+      },
+      {
+        "method": "DELETE",
+        "route": "/pickups/2/devices/e35e97ad-ff88-45c7-8218-47627ec6a7b8",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.851Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.861Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/0538a070-dea5-474d-b6fc-194c316a70c0",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.871Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W5620331112",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.878Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/sales/a90697a9-1e86-4943-8602-5c53ad2a9352",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.886Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 201,
+        "at": "2026-10-04T09:40:03.908Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/45302c21-f0be-4717-9a0b-b82efbcd8a76",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.916Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W5620331112",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.924Z"
+      },
+      {
+        "method": "GET",
+        "route": "/pickups/2/devices",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.929Z"
+      },
+      {
+        "method": "DELETE",
+        "route": "/pickups/2/devices/0a50138c-84fa-4c2c-bf98-a3ce6baa6acd",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.937Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/45302c21-f0be-4717-9a0b-b82efbcd8a76",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.944Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/45302c21-f0be-4717-9a0b-b82efbcd8a76",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.951Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W5620331112",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.959Z"
+      },
+      {
+        "method": "POST",
+        "route": "/stock/ledger/receive",
+        "status": 201,
+        "at": "2026-10-04T09:40:03.974Z"
+      },
+      {
+        "method": "POST",
+        "route": "/pickups/2/devices",
+        "status": 201,
+        "at": "2026-10-04T09:40:03.982Z"
+      },
+      {
+        "method": "POST",
+        "route": "/pickups/2/devices",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.988Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/68954e27-3d47-4e1d-9244-49d5766336a9",
+        "status": 200,
+        "at": "2026-10-04T09:40:03.995Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/68954e27-3d47-4e1d-9244-49d5766336a9",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.002Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W5620331112",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.009Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/68954e27-3d47-4e1d-9244-49d5766336a9",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.015Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W-PENDING-UB8A2F0B5",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.021Z"
+      },
+      {
+        "method": "DELETE",
+        "route": "/pickups/2/devices/cd916abd-6dc4-4c6b-afcc-9bbb10ad63e0",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.029Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/68954e27-3d47-4e1d-9244-49d5766336a9",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.035Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/68954e27-3d47-4e1d-9244-49d5766336a9",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.041Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W5620331112",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.049Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger/68954e27-3d47-4e1d-9244-49d5766336a9",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.055Z"
+      },
+      {
+        "method": "GET",
+        "route": "/stock/ledger?view=all&q=W-PENDING-UB8A2F0B5",
+        "status": 200,
+        "at": "2026-10-04T09:40:04.063Z"
+      }
+    ]
+  }
+}

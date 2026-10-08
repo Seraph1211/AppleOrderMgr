@@ -7,3 +7,4 @@ test_recipients_debug.js
 test_recipients_modals.js
 price_scraper.js
 seeders/
+tmp/

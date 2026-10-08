@@ -1,0 +1,221 @@
+{
+  "activation": {
+    "releaseId": "20261004T102121Z-8c64a326fa5c",
+    "sourceCommit": "ec4b2b80f0bdbe4c1b6a96bef09490f666d286df",
+    "scope": "frontend-only",
+    "oldCurrent": "/var/www/apple-order-mgr/releases/20261004T095424Z-786596e35218",
+    "current": "/var/www/apple-order-mgr/releases/20261004T102121Z-8c64a326fa5c",
+    "backup": "/var/backups/apple-order-mgr/20261004T102121Z-8c64a326fa5c-stock-tabs-ui",
+    "rollback": "/var/backups/apple-order-mgr/20261004T102121Z-8c64a326fa5c-stock-tabs-ui/rollbackFrontend.py",
+    "publishedAtUtc": "2026-10-04T10:22:40.876310Z",
+    "migrationExecuted": false,
+    "containersRecreated": false
+  },
+  "publicAssets": [
+    {
+      "url": "/",
+      "status": 200,
+      "sha256": "01d8d5982757d9a35b6f96216c03e48ff36f63c28f7dbb56df0316f9ad61b364",
+      "bytes": 800
+    },
+    {
+      "url": "/debug.html",
+      "status": 200,
+      "sha256": "6b7fbea26323ab37180c0822bfeae695f42fd333743ca9babb8f6f6213b9b6ec",
+      "bytes": 3294
+    },
+    {
+      "url": "/templates/apple_ids_import_template.xlsx",
+      "status": 200,
+      "sha256": "d35963212f1311d186668726f233e72df59b10c28538db4781d0dd27afa6d40b",
+      "bytes": 16859
+    },
+    {
+      "url": "/templates/recipients_import_template.xlsx",
+      "status": 200,
+      "sha256": "251052ff1ec8d919e74f1cfa17a7b42b5f58f91f80f32075d316cf317f0858d2",
+      "bytes": 16297
+    },
+    {
+      "url": "/assets/jsQR-BkP5U0aU.js",
+      "status": 200,
+      "sha256": "a731ee672bbee09709a9de02f7965ed935df4a148761335e09c4cbc6a5f6d5c3",
+      "bytes": 130716
+    },
+    {
+      "url": "/assets/index-84469jgD.js",
+      "status": 200,
+      "sha256": "d3de843dea10a158cbf88fe1134fea4f1a21a33aae24d2cf975e163542720c71",
+      "bytes": 416506
+    },
+    {
+      "url": "/assets/index-CRlfdZUm.js",
+      "status": 200,
+      "sha256": "ca69b5da97e3154a82950f960092e8b87053c5ac8d9b53a9b545f941f1dac7e9",
+      "bytes": 1305890
+    },
+    {
+      "url": "/assets/index-BT9MXnfC.css",
+      "status": 200,
+      "sha256": "d510da3fc003ba0f9c66bff23e11f014f8556c6f2a88b8164097ead57a04c2b4",
+      "bytes": 65190
+    },
+    {
+      "url": "/assets/index-CzFnS5vd.js",
+      "status": 200,
+      "sha256": "2a06328590ebaa44392889951af4efdf4ad66c0700f5577f9d4c28754dfe4c6d",
+      "bytes": 27126
+    },
+    {
+      "url": "/assets/Stock-UctuqlWp.css",
+      "status": 200,
+      "sha256": "074eb4a4f1c5c064bb83b348383edb0ee94dc4ee0d8a78664cad23f7fac0656c",
+      "bytes": 1641
+    },
+    {
+      "url": "/assets/Stock-CPN3dJKE.js",
+      "status": 200,
+      "sha256": "49da73aca56858b004f9213cbcb04f457a992392e4bb7139b965923284d23e65",
+      "bytes": 54844
+    }
+  ],
+  "health": {
+    "success": true,
+    "data": {
+      "service": "apple-order-manager",
+      "status": "healthy",
+      "db": "ok",
+      "uptimeSeconds": 1430,
+      "nodeEnv": "production",
+      "timestamp": "2026-10-04T10:24:07.739Z"
+    }
+  },
+  "routes": ["/login", "/stock"],
+  "anonymousLedgerStatus": 401,
+  "preservedContainers": [
+    {
+      "name": "/apple-order-mgr-prod-api-1",
+      "id": "d3239c15ea8881e41c06c89634657d3096533e31ad2a71a7324f59b19c3ec4e6",
+      "image": "apple-order-mgr-runtime:20261004T095424Z-786596e35218-amd64",
+      "startedAt": "2026-10-04T10:00:17.740610741Z",
+      "restarts": 0,
+      "environmentSha256": "f34f28e972a7584aad67982da616ab0550e33971c7f9c528e583ccb0cf7c5440",
+      "mountsSha256": "d88ee5b6ef479a27c7148349d86459cc7a5b78a0c1bf58927cb71328b6bfcd26"
+    },
+    {
+      "name": "/apple-order-mgr-prod-inventory-worker-1",
+      "id": "830aefd039cf902829ebcc3106c1fd7dce477da33aca16442c65b7a4b1556057",
+      "image": "apple-order-mgr-runtime:20261003T092335Z-4bc8d6d7e662-amd64",
+      "startedAt": "2026-10-03T09:32:13.603260696Z",
+      "restarts": 0,
+      "environmentSha256": "6d0f4423a57b485ed5dcf2aa6c03c583bc9249220ffbb53a1420cd2315399628",
+      "mountsSha256": "2acc974c0246378fde67248bbc538258b4eaa30b3a1c34ff6b94c00d43487c19"
+    },
+    {
+      "name": "/apple-account-research-db",
+      "id": "c777ff7517feeada0a0d3516dd0a3582c7446d57652d2e492d101d8d20a36b06",
+      "image": "postgres:15-bookworm",
+      "startedAt": "2026-10-03T05:57:08.144246556Z",
+      "restarts": 0,
+      "environmentSha256": "eea34b545bf3d232be113f4886a3310588c4395c668a3f6f3212f265a9ee9f6e",
+      "mountsSha256": "6ffbbfe5d94a423e3029e1cf1bb9a69ba465b8073fd0bf24d32560655bc62c74"
+    },
+    {
+      "name": "/apple-order-mgr-prod-order-mail-worker-1",
+      "id": "a8aa4c6faca8b05435bce9b7d44422fd927c62b0d52e3210c0e1266e575b8a51",
+      "image": "apple-order-mgr-runtime:20260927T182816Z-f063a22125d5-amd64",
+      "startedAt": "2026-09-27T18:32:21.785000064Z",
+      "restarts": 0,
+      "environmentSha256": "09ae6b644931f930471b846cbdea4bd933887cdef50f1ba6503d4b44e98e71c5",
+      "mountsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "/apple-order-mgr-prod-wecom-worker-1",
+      "id": "f48be16da4b55334a04cc26c7ca09e39d33ac7e705c9a56e4396ff9aa10ab27e",
+      "image": "apple-order-mgr-runtime:20260922T011712Z-ae3a050284e2-amd64",
+      "startedAt": "2026-09-22T01:34:33.001269132Z",
+      "restarts": 0,
+      "environmentSha256": "d92a98e0be8c5f8a24b7a288f0ebf72c701b447b6d405e45deb48985fb9561af",
+      "mountsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "/apple-order-mgr-prod-email-worker-1",
+      "id": "04674442fbafca3a627e4f1023a6f63d6ecd05dcd838c8c11814a76567590328",
+      "image": "apple-order-mgr-runtime:20260922T011712Z-ae3a050284e2-amd64",
+      "startedAt": "2026-09-24T18:25:54.480710637Z",
+      "restarts": 27,
+      "environmentSha256": "edc45ea29721dfca50e13c39640030abbd1fe914975ceb9f2df3b1d12adf5f1e",
+      "mountsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "/metabase",
+      "id": "ef815c39ceb751b9d11c0f6ec9cc90230c2102facc987c38874276e89144256e",
+      "image": "metabase/metabase:latest",
+      "startedAt": "2026-09-29T14:26:18.611557826Z",
+      "restarts": 0,
+      "environmentSha256": "2a0ce19b9f1d0e98cb39ad6cd65ee3be06e0f88f7a43065d52b84c9bfd9ef6ab",
+      "mountsSha256": "189795a24ad4a0bebd63af554970eeff3d2e8b483cdd8b5f2f7292dcba077910"
+    },
+    {
+      "name": "/crawlab_master",
+      "id": "28cf700d807df58b2fc27bacea23a02bc7e67e31bdd3e2b54b0b693066d6a967",
+      "image": "crawlabteam/crawlab:latest",
+      "startedAt": "2026-09-24T18:23:22.460413981Z",
+      "restarts": 31,
+      "environmentSha256": "caa96e7815280bdfcaef7b16752ca8df48b5b09d3bfbff34c2daf8971754ee7c",
+      "mountsSha256": "795cb714d6248779d716b2e1fe8a0d910a6243ac1a4ff66b8b4eefd098e927d6"
+    },
+    {
+      "name": "/crawlab_mongo",
+      "id": "7ae55d90c38f26a90d2da89e384ab1bd12c782e49de542e8160f69610c7f114c",
+      "image": "mongo:4.2",
+      "startedAt": "2026-09-24T18:23:40.22572125Z",
+      "restarts": 40,
+      "environmentSha256": "0fcadc00de4004e6fef4501511bbfbb570cd596b304c9c65e9015fc77775d4bf",
+      "mountsSha256": "adec459a37d4ce0f6af91cd07b1730bf74075cbb0b2a3ad5843e45040592062a"
+    },
+    {
+      "name": "/accworth-analytics-collector-1",
+      "id": "69fb7bc09daaa0d8c69901f9989fa0a5d5c229c727c113b2c3c0dfb7fe66a943",
+      "image": "accworth-analytics-collector:node24.4.1-v1",
+      "startedAt": "2026-07-30T16:40:05.048451442Z",
+      "restarts": 0,
+      "environmentSha256": "91b4cf435ff8d75d7347625a9c8604fe50f52443e3b6a3f9332dd1a6365e8aa5",
+      "mountsSha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+    },
+    {
+      "name": "/accworth-analytics-postgres-1",
+      "id": "38b767fb340d015377e8a47f6566dfa9063ddc56e6d22c6c929756ffc2a915c8",
+      "image": "postgres:17.5-alpine3.22",
+      "startedAt": "2026-07-30T16:13:35.36250716Z",
+      "restarts": 0,
+      "environmentSha256": "5c2653b2fb64d243ac9e057c2b38330f1842f522ed0b1d5c33520ac55529f135",
+      "mountsSha256": "9a38edc461f5ecc7ff9a47f7a2999e029934d1148799bc29171ad281da6c14be"
+    },
+    {
+      "name": "/1Panel-openresty-rPjq",
+      "id": "86537ce05946d1d781d0c79e3e538b53c085410eb03974e4204bfc33c14767aa",
+      "image": "1panel/openresty:1.31.1.1-0-noble",
+      "startedAt": "2026-07-22T08:16:29.162186837Z",
+      "restarts": 0,
+      "environmentSha256": "909d155fc77cfed919d1c42e6986e84eba6c9dd4c454acc2af38d406f0395ce5",
+      "mountsSha256": "3d142bbccd2ec1adab7c936fe2150569ea09d857c77403212fe87b5c05b06544"
+    },
+    {
+      "name": "/goofish-monitor",
+      "id": "b6839613b2a05a32b5d03190eed31f8f962f6a32cbd6ecf269c30ef4f98dbf9b",
+      "image": "ghcr.io/usagi-org/ai-goofish:latest",
+      "startedAt": "2026-07-14T07:03:28.264944786Z",
+      "restarts": 0,
+      "environmentSha256": "cfa2ee7119da9d48a6557e3959ee5d57382f53ba19e960ba1bbbf04f0066da81",
+      "mountsSha256": "ad6a2c89a2d306c50b1e22b1c5c55c00cc8f6bd207d5d0aaac17ec3a2b81bd95"
+    }
+  ],
+  "protectedConfigurationUnchanged": true,
+  "releaseConfigurationUnchanged": true,
+  "nginxPostgresQueueUnchanged": true,
+  "mountSetsUnchanged": true,
+  "originalCheckoutFilesUnchanged": 935,
+  "databaseMigrationExecuted": false,
+  "businessDataWritten": false
+}

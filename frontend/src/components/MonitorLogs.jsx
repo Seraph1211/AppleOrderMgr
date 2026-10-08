@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Copy, Maximize2, Minimize2, RefreshCw, Search, X } from 'lucide-react';
+import { Copy, Maximize2, Minimize2, RefreshCw, Search, ScrollText, X } from 'lucide-react';
 import client from '../api/client';
 import MonitorLogAccountSelect from './MonitorLogAccountSelect';
 import { copyDeferredText } from '../utils/copyDeferredText';
@@ -47,7 +47,8 @@ const initial = () => ({
 });
 
 /** 完整日志筛选与上下文；原文只作为文本渲染。 */
-export default function MonitorLogs() {
+export default function MonitorLogs({ standalone = false }) {
+  const Heading = standalone ? 'h1' : 'h2';
   const [catalog, setCatalog] = useState(null);
   const [catalogError, setCatalogError] = useState('');
   const [filters, setFilters] = useState(initial);
@@ -448,7 +449,12 @@ export default function MonitorLogs() {
   return (
     <section ref={sectionRef} className="space-y-4" aria-label="完整日志查询">
       <div>
-        <h2 className="text-lg font-semibold text-gray-900">日志查询</h2>
+        <Heading
+          className={`flex items-center gap-2 text-gray-900 ${standalone ? 'text-2xl font-bold' : 'text-lg font-semibold'}`}
+        >
+          {standalone && <ScrollText className="h-5 w-5" aria-hidden="true" />}
+          日志查询
+        </Heading>
         <p className="mt-1 text-sm text-gray-500">
           北京时间 · 最近30天 · 正常在线约1分钟同步 · 原始内容按文件位置保留，长行分段展示
         </p>

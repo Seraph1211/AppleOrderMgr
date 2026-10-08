@@ -1,0 +1,170 @@
+{
+  "recordedAt": "2026-10-04T09:40:47.539891+00:00",
+  "scope": "真实PostgreSQL服务与迁移验收，不含真实HTTP认证、UI或生产业务验收",
+  "service": {
+    "database": "apple_order_mgr_stock_test_1007",
+    "passed": 29,
+    "failed": 0,
+    "scenarios": [
+      {
+        "name": "入库无需订单和拿货日期，逐台成本待补；同表单就地创建并复用规格",
+        "status": "passed"
+      },
+      {
+        "name": "入库幂等、重复SN与批量末项非法不留下半批资料",
+        "status": "passed"
+      },
+      {
+        "name": "同订单两台身份独立，后补订单号不改成本或库存，已有订单关联保留TAG边界",
+        "status": "passed"
+      },
+      {
+        "name": "旧取货绑定和解绑清理待关联号码，不绕过TAG权限且保留物理与资金事实",
+        "status": "passed"
+      },
+      {
+        "name": "旧取货身份的空白订单和成本表单不覆盖已核定事实，非空不同成本仍拒绝",
+        "status": "passed"
+      },
+      {
+        "name": "批量跨仓直接售出各台独立价费，毛利不扣费用，销售和出货人不混同",
+        "status": "passed"
+      },
+      {
+        "name": "正常销售人员、日期和货款必填，不能接受历史待核实或非法金额",
+        "status": "passed"
+      },
+      {
+        "name": "批量最后一台无效回滚销售、人员、费用和货款；同时售出同台仅一请求成功",
+        "status": "passed"
+      },
+      {
+        "name": "收款三态跨日保持销售日期，代收全额和费用独立，公司到账重试不重复",
+        "status": "passed"
+      },
+      {
+        "name": "公司直收只有一份全款，正常到账日期必填，已知资金回退需原因和更正权限",
+        "status": "passed"
+      },
+      {
+        "name": "付款与交货前后两讫可保存真实先收款日期，不强制编造成销售日",
+        "status": "passed"
+      },
+      {
+        "name": "批量更新货款遇到末项旧版本，第一台的到账与操作记录全部回滚",
+        "status": "passed"
+      },
+      {
+        "name": "代收转回是正向流程，但同时更改已知代收人或日期仍需更正权限和原因",
+        "status": "passed"
+      },
+      {
+        "name": "历史人员、出库仓、入库和收款日期未知可留空，缺成本不伪造毛利，现货数量不变",
+        "status": "passed"
+      },
+      {
+        "name": "历史已知到账但日期不明可留空，后来补成本/人员/日期不改变销售日与库存",
+        "status": "passed"
+      },
+      {
+        "name": "历史补录可复用旧取货身份，在库/在途/已售SN冲突不能静默覆盖",
+        "status": "passed"
+      },
+      {
+        "name": "在库更改仓库和资料有版本保护，未知日期不能自然归一化，审计可查前后值",
+        "status": "passed"
+      },
+      {
+        "name": "已关联订单的SN更正维持同一物理身份和绑定，重复SN更正全部回滚",
+        "status": "passed"
+      },
+      {
+        "name": "已售售价、代收人、费用更正同步资金事实，不出现旧额或错误付款人",
+        "status": "passed"
+      },
+      {
+        "name": "已售更正末项非法时资料、成本快照、费用、资金与版本均不部分保存",
+        "status": "passed"
+      },
+      {
+        "name": "误售恢复需要实物确认和原因，销售/费用/货款同时作废，可再次正常出售",
+        "status": "passed"
+      },
+      {
+        "name": "历史未知入库日期的误售恢复必须补真实日期，失败不改销售费用或资金",
+        "status": "passed"
+      },
+      {
+        "name": "普通授权人员可无成本入库，敏感字段写入/历史更正和成功请求撤权重放均拒绝",
+        "status": "passed"
+      },
+      {
+        "name": "普通销售授权可记未收款销售，但不能写已收款或通过筛选获知资金",
+        "status": "passed"
+      },
+      {
+        "name": "无费用编辑权限的销售可自动结转已存单台费用，手工改费仍拒绝",
+        "status": "passed"
+      },
+      {
+        "name": "台账只纳入自有仓库现货和本地已售，筛选分页和北京时间销售日正确",
+        "status": "passed"
+      },
+      {
+        "name": "无资金读取权限仍显示旧部分共享记录的兼容限制，不泄露货款和审计状态",
+        "status": "passed"
+      },
+      {
+        "name": "旧单台未登记付款保持待核实，改单不编造未收款，核实后三态与筛选一致",
+        "status": "passed"
+      },
+      {
+        "name": "旧多台销售和部分到账仍可查、只限不兼容操作，不能被简化流程误认为全额到账",
+        "status": "passed"
+      }
+    ]
+  },
+  "migration": {
+    "database": "apple_order_mgr_stock_test_1008",
+    "passed": 4,
+    "failed": 0,
+    "evidence": "tmp/stock-dev/ledger-test-migration.log",
+    "notice": "1008保留前轮4组迁移验证的增量业务证据；本次补测未重复DDL，也未清空资料"
+  },
+  "coverage": {
+    "statements": {
+      "covered": 577,
+      "total": 671,
+      "percentage": 85.99
+    },
+    "functions": {
+      "covered": 73,
+      "total": 80,
+      "percentage": 91.25
+    },
+    "branches": {
+      "covered": 505,
+      "total": 642,
+      "percentage": 78.66
+    },
+    "lines": {
+      "covered": 535,
+      "total": 615,
+      "percentage": 86.99
+    }
+  },
+  "sourceSha256": {
+    "test/stockLedger.integration.test.js": "bf384eafa44e0405114bc1ca73c4ac1b706d8458c42791c9d68e467dcc3bcc51",
+    "test/stockLedgerMigration.integration.test.js": "4b832efc18c815e87f59731610cca55139ea7aff534661ff48c51e49c52a4100",
+    "src/services/stockLedgerService.js": "ce88fd18a602918c02b3823c754c6ca8d6d4cfe364773322e834afcfe14c69fb",
+    "src/services/stockLedgerProjectionService.js": "e208e67b87ea4f2b5b1f2279611c6c5c036c4d1e59ddf03bced24ec9cc17ae77",
+    "migrations/20261004000002-simplify-stock-ledger.js": "947d87948f946bbf1ec582975d4885916cceeef91bd371d3fa999f077374bc91",
+    "src/services/stockProjectionService.js": "a893e47988fa4c933c1fd22752be2ff4a2ee542aec701f994ef799a82b70c30c",
+    "src/controllers/pickupDeviceController.js": "5b04579705fc614aa250b407ae358a008ca54c0a90cb23d0f19b9741a3198c5b"
+  },
+  "staticChecks": {
+    "prettier": "passed",
+    "eslintErrors": 0,
+    "eslintWarnings": 39
+  }
+}

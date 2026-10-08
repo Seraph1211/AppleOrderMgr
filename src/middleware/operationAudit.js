@@ -25,6 +25,7 @@ const MODULE_LABELS = {
   import: '导入',
 };
 const ACTION_LABELS = {
+  devices: '设备序列号',
   test: '发送测试消息',
   retry: '重试通知',
   deliveries: '投递记录',

@@ -2,7 +2,13 @@ import { useRef } from 'react';
 import TagMultiSelect from './TagMultiSelect';
 
 /** 保留已选零结果项的名称，搜索同时支持来源别名和完整型号。 */
-export default function ProductFilter({ options = [], value = [], onChange }) {
+export default function ProductFilter({
+  options = [],
+  value = [],
+  onChange,
+  enableSelectAll = false,
+  hideProductCode = false,
+}) {
   const remembered = useRef(new Map());
   for (const option of options) remembered.current.set(option.value, option);
   const current = new Map(options.map(option => [option.value, option]));
@@ -29,11 +35,15 @@ export default function ProductFilter({ options = [], value = [], onChange }) {
   for (const key of keys) {
     const option = current.get(key) || remembered.current.get(key);
     const label = option?.label || '已选商品';
-    labels[key] = `${label}（${current.get(key)?.count || 0}）`;
+    const displayLabel = hideProductCode
+      ? label.replace(/\s*·\s*[a-z0-9]+\/[a-z0-9]+(?=\s*(?:·|$))/gi, '').trim()
+      : label;
+    labels[key] = `${displayLabel}（${current.get(key)?.count || 0}）`;
     searchLabels[key] = [label, ...(option?.aliases || [])].join(' ');
   }
   return (
     <TagMultiSelect
+      enableSelectAll={enableSelectAll}
       options={keys}
       value={value}
       onChange={onChange}

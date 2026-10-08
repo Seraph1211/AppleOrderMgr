@@ -1,0 +1,86 @@
+{
+  "description": "官网补录模块复用来源；摘要为复制前原文件，不代表当前修改后内容。",
+  "sourceRoot": "/Users/seraph/.codex/worktrees/official-actual-pickup-date/AppleOrderMgr",
+  "files": [
+    {
+      "path": "src/services/officialPickupBackfill.js",
+      "sha256": "82cded98d25ef56b943db7a4d496777ea40da62c6b5677cc4a0c52aeafdf5e14"
+    },
+    {
+      "path": "src/services/officialPickupDate.js",
+      "sha256": "31196e7f49f2246986b27474f2159363ac98390d48f71241e439e3e46954628a"
+    },
+    {
+      "path": "src/services/officialOrderReceipt.js",
+      "sha256": "44ad64b8dbd2708ded9ea1fc310f1b5a6a119cdb83aac9236f33c9835887a80b"
+    },
+    {
+      "path": "src/services/officialOrderBrowserReceipt.js",
+      "sha256": "c8cf13929c2da226e4a5b5384a8b7e8acafa3a13828d406d6cc4a177c9d35200"
+    },
+    {
+      "path": "scripts/officialPickupBackfill/receiptWorkflow.py",
+      "sha256": "4e9a2eafc3b34cfaa3bcee206835955312c12b53ac8776cfd216f056ae688e98"
+    },
+    {
+      "path": "scripts/officialPickupBackfill/bindReceipt.js",
+      "sha256": "8bc10f4e297b0605aa5f4dad15fd037f1adaac753f4b72d64853329b871bfc77"
+    },
+    {
+      "path": "scripts/officialPickupBackfill/checkBackfill.py",
+      "sha256": "f029dd657012d9b64534392504bfae1013d2d45d4c26c9d535dfa9e41a766ce1"
+    },
+    {
+      "path": "scripts/officialPickupBackfill/preflightGate.js",
+      "sha256": "027421bab909fbd44dccd416da2397d69595350ea505b9fe51e3a174c75305bd"
+    },
+    {
+      "path": "scripts/officialPickupBackfill/auditWhenFinished.py",
+      "sha256": "754c59036af5ae4ecbf84660ff6acfd98fb5964cdd4c2791c8bbe0e6360872c6"
+    },
+    {
+      "path": "scripts/officialPickupBackfill/runtime.py",
+      "sha256": "e6b2e2016bd5a2cfd34b8c4bcdeef5f25cb69fd89fa81503a102379c732698bc"
+    },
+    {
+      "path": "scripts/officialPickupBackfill/runBackfill.py",
+      "sha256": "ee0ad57e4b23eb8b9d2fc97446a5ae50821107f8f0280f708f8fb87080286de5"
+    },
+    {
+      "path": "scripts/officialPickupBackfill/proxyPool.py",
+      "sha256": "dfda7ae713bc663fde4995ee7f186eea695cd83048e014827f2ec1f8a5dd85d8"
+    },
+    {
+      "path": "scripts/officialPickupBackfill/verifyReceipt.js",
+      "sha256": "f2dc6fc8d05b01ea7e6b58bf56895627b3c07594193351a211562cf12707dd5a"
+    },
+    {
+      "path": "test/officialPickupBackfill.integration.test.js",
+      "sha256": "d5e34983347a26376085efbc4ca5bdd3a74e3218231c46c06ca11f7b6a7d6cda"
+    },
+    {
+      "path": "test/officialPickupDate.test.js",
+      "sha256": "c27dcf1b4a34758b2839168272a382a0732610190f7b3c9b6a35c77f6cbb5089"
+    },
+    {
+      "path": "test/officialOrderReceipt.test.js",
+      "sha256": "ff7d8aec882bdac234273221b6282ff37cdae49d427035c617e46737ed85ec0b"
+    },
+    {
+      "path": "test/officialOrderBrowserReceipt.test.js",
+      "sha256": "7104870ca16be5dfd232a3a7f56fe1470fa7d96bd98a082c28997a2deca0dcf3"
+    },
+    {
+      "path": "test/officialPickupReceiptBinding.test.js",
+      "sha256": "0cba22275d94b8d240b4a79e628cfc5794c8288b41a6f9788818f719f7e3408b"
+    },
+    {
+      "path": "test/officialPickupBackfill_test.py",
+      "sha256": "51a78b6bb6e2538308323af647bbc20a6e1d0a1a6d67a612beaca1d16cb8988d"
+    },
+    {
+      "path": "test/officialPickupProxyPool_test.py",
+      "sha256": "78f19f2b938c5809ee87459a4ab1ff0a9306454654aa9912832db88288fbcee0"
+    }
+  ]
+}

@@ -108,11 +108,11 @@ test('订单 DTO 只返回邮件生命周期和历史限制', () => {
     email_payment_status: 'paid',
     payment_assignment_hold_reason: 'legacy_payment_restriction',
   });
-  expect(list).not.toHaveProperty('official_order_status');
-  expect(detail).not.toHaveProperty('official_order_status');
+  expect(list.official_order_status).toBeNull();
+  expect(detail.official_order_status).toBeNull();
 });
 
-test('订单详情仅在订单敏感字段权限通过后返回密码快照', () => {
+test('订单密码快照仅在显式允许详情读取时返回，列表始终隐藏密码', () => {
   const order = {
     toJSON: () => ({
       id: 1,
@@ -123,41 +123,99 @@ test('订单详情仅在订单敏感字段权限通过后返回密码快照', ()
     }),
   };
 
+  expect(serializeOrderListItem(order).apple_password).toBeNull();
   expect(serializeOrderDetail(order).apple_password).toBeNull();
   expect(serializeOrderDetail(order, false, true).apple_password).toBe('synthetic-password');
 });
 
-test('订单详情按权限返回密码并禁止缓存', async () => {
-  const { Order } = require('../src/models');
-  Order.findOne = jest.fn().mockResolvedValue({
+test.each([null, ''])('订单密码快照为空 %j 时不回退到关联账号密码', applePassword => {
+  const order = {
     toJSON: () => ({
-      id: 1,
-      orderNumber: 'W1234567890',
-      appleId: 'account@example.test',
-      applePassword: 'synthetic-password',
       products: [],
+      applePassword,
+      appleAccount: { id: 2, appleId: 'synthetic@example.test', password: 'other-password' },
     }),
-  });
-  const res = { set: jest.fn(), json: jest.fn() };
+  };
+  expect(serializeOrderDetail(order, false, true).apple_password).toBeNull();
+});
 
-  await getOrderDetail(
-    {
+test.each(['admin', 'operator', 'readOnly'])(
+  '%s 仅有订单查看权限也可读密码，电话保持脱敏并禁止缓存',
+  async role => {
+    const { Order } = require('../src/models');
+    Order.findOne = jest.fn().mockResolvedValue({
+      toJSON: () => ({
+        id: 1,
+        orderNumber: 'W1234567890',
+        appleId: 'account@example.test',
+        applePassword: 'synthetic-password',
+        recipientPhone: '13800138000',
+        products: [],
+      }),
+    });
+    const res = { set: jest.fn(), json: jest.fn() };
+    const req = {
       params: { id: '1' },
       user: {
-        role: 'admin',
-        permissions: ['orders.read', 'orders.secrets.read'],
-        orderAccess: { mode: 'all' },
+        role,
+        permissions: ['orders.read'],
+        orderAccess: { mode: 'tags', tags: ['合成授权 TAG'] },
       },
-    },
-    res
-  );
+    };
 
-  expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
-  expect(res.json).toHaveBeenCalledWith(
-    expect.objectContaining({
-      data: expect.objectContaining({ apple_password: 'synthetic-password' }),
-    })
+    await getOrderDetail(req, res);
+
+    expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          apple_password: 'synthetic-password',
+          recipient_phone: '138****8000',
+        }),
+      })
+    );
+    if (role !== 'admin') {
+      expect(Order.findOne.mock.calls[0][0].where).toEqual({
+        [Op.and]: [{ id: 1 }, { tag: { [Op.in]: ['合成授权 TAG'] } }],
+      });
+    }
+  }
+);
+
+test('订单范围外查询不返回密码或详情', async () => {
+  const { Order } = require('../src/models');
+  Order.findOne = jest.fn().mockResolvedValue(null);
+  const res = { set: jest.fn(), json: jest.fn() };
+  await expect(
+    getOrderDetail(
+      {
+        params: { id: '1' },
+        user: {
+          role: 'operator',
+          permissions: ['orders.read'],
+          orderAccess: { mode: 'tags', tags: [] },
+        },
+      },
+      res
+    )
+  ).rejects.toMatchObject({ statusCode: 404 });
+  expect(Order.findOne.mock.calls[0][0].where).toEqual({
+    [Op.and]: [{ id: 1 }, { tag: { [Op.in]: [] } }],
+  });
+  expect(res.json).not.toHaveBeenCalled();
+});
+
+test('没有订单查看权限时订单入口拒绝访问', () => {
+  const { requirePermission } = require('../src/middleware/authMiddleware');
+  const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+  const next = jest.fn();
+  requirePermission('orders.read')(
+    { user: { role: 'operator', permissions: ['apple_ids.read'] } },
+    res,
+    next
   );
+  expect(res.status).toHaveBeenCalledWith(403);
+  expect(next).not.toHaveBeenCalled();
 });
 
 test('订单链接按订单范围单独读取且禁止缓存', async () => {
@@ -191,4 +249,168 @@ test('付款超时与 Apple 终态分别筛选且兼容邮件原始状态参数'
     expect(serializeOrderDetail(order).display_order_status).toBe(status);
   }
   expect(() => buildListFilters({ emailOrderStatuses: '["payment_timeout"]' })).toThrow();
+});
+
+test('实际取货日期在列表、详情中同源只读返回，缺失保留 null', () => {
+  const plain = { id: 1, products: [], actualPickupDate: '2026-09-22' };
+  const order = { toJSON: () => plain };
+  expect(serializeOrderListItem(order).actual_pickup_date).toBe('2026-09-22');
+  expect(serializeOrderDetail(order).actual_pickup_date).toBe('2026-09-22');
+  plain.actualPickupDate = null;
+  expect(serializeOrderListItem(order).actual_pickup_date).toBeNull();
+});
+
+test('实际取货日期范围包含两端、支持单边并独立于预约日期', () => {
+  const { where } = buildListFilters({
+    actualPickupDateFrom: '2026-09-23',
+    actualPickupDateTo: '2026-09-25',
+    pickupDate: '2026-09-18',
+  });
+  expect(where.actualPickupDate).toEqual({ [Op.gte]: '2026-09-23', [Op.lte]: '2026-09-25' });
+  expect(where.emailPickupDate).toBe('2026-09-18');
+  expect(buildListFilters({ actualPickupDateFrom: '2026-09-23' }).where.actualPickupDate).toEqual({
+    [Op.gte]: '2026-09-23',
+  });
+  expect(buildListFilters({ actualPickupDateTo: '2026-09-25' }).where.actualPickupDate).toEqual({
+    [Op.lte]: '2026-09-25',
+  });
+  expect(
+    buildListFilters({ actualPickupDateFrom: '', actualPickupDateTo: '' }).where.actualPickupDate
+  ).toBeUndefined();
+});
+test.each([
+  { actualPickupDateFrom: '2026-02-30' },
+  { actualPickupDateTo: ['2026-09-25'] },
+  { actualPickupDateFrom: '2026-09-25', actualPickupDateTo: '2026-09-24' },
+])('拒绝非法实际取货日期范围 %j', query => expect(() => buildListFilters(query)).toThrow());
+
+test('官网状态独立组合，按原始分隔项匹配并兼容同义状态', () => {
+  const { where } = buildListFilters({
+    officialOrderStatuses: '["PICKUP_READY","__not_observed__"]',
+    displayOrderStatuses: '["processing"]',
+    recipientTags: '["授权TAG"]',
+  });
+  expect(where[Op.and][0].logic[Op.in]).toEqual(['processing']);
+  const sql = where[Op.and][1].val;
+  expect(sql).toContain('"Order"."official_raw_status"');
+  expect(sql).toContain('regexp_split_to_array');
+  expect(sql).toContain("'READY_FOR_PICKUP'");
+  expect(sql).toContain("'PICKUP_READY'");
+  expect(sql).toContain("= '' OR");
+  expect(where[Op.and][2].logic[Op.in]).toEqual(['授权TAG']);
+  expect(buildListFilters({ officialOrderStatuses: '[]' }).where[Op.and]).toBeUndefined();
+});
+
+test.each([
+  '[',
+  '[1]',
+  {},
+  JSON.stringify(['A'.repeat(101)]),
+  JSON.stringify(Array(101).fill('PICKED_UP')),
+  '["A | B"]',
+])('非法官网状态输入被拒绝 %s', value => {
+  expect(() => buildListFilters({ officialOrderStatuses: value })).toThrow();
+});
+
+test('官网未知状态使用值转义而不是拼接 SQL 控制字符', () => {
+  const { where } = buildListFilters({ officialOrderStatuses: ["UNKNOWN'); SELECT 1; --"] });
+  expect(where[Op.and][0].val).toContain("'UNKNOWN''); SELECT 1; --'");
+});
+
+test('官网候选来自受限订单，拆分归一、排除自身筛选并保留其他筛选', async () => {
+  const { Order } = require('../src/models');
+  const { getFilterOptions } = require('../src/controllers/orderController');
+  Order.findAll = jest
+    .fn()
+    .mockResolvedValue([])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([
+      { officialRawStatus: 'PICKUP_READY | PICKED_UP' },
+      { officialRawStatus: 'READY_FOR_PICKUP' },
+      { officialRawStatus: null },
+      { officialRawStatus: 'CANCELED | NEW_STATUS' },
+    ]);
+  const res = { json: jest.fn() };
+  await getFilterOptions(
+    {
+      query: { officialOrderStatuses: '["PICKED_UP"]', displayOrderStatuses: '["processing"]' },
+      user: { role: 'operator', orderAccess: { mode: 'tags', tags: ['授权TAG'] } },
+    },
+    res
+  );
+  const options = res.json.mock.calls[0][0].data.officialOrderStatuses;
+  expect(new Set(options)).toEqual(
+    new Set(['READY_FOR_PICKUP', 'PICKED_UP', '__not_observed__', 'CANCELLED', 'NEW_STATUS'])
+  );
+  const query = Order.findAll.mock.calls[3][0];
+  expect(query.where[Op.and][1].tag[Op.in]).toEqual(['授权TAG']);
+  expect(query.where[Op.and][0][Op.and]).toHaveLength(1);
+  expect(query.where[Op.and][0][Op.and][0].logic[Op.in]).toEqual(['processing']);
+});
+
+test('列表和导出都保留官网状态条件及授权范围', async () => {
+  const { Order } = require('../src/models');
+  const { listOrders, exportOrders } = require('../src/controllers/orderController');
+  const req = {
+    query: { officialOrderStatuses: '["PICKED_UP"]' },
+    user: {
+      id: 1,
+      role: 'operator',
+      orderAccess: { mode: 'tags', tags: ['授权TAG'] },
+      permissions: [],
+    },
+  };
+  Order.findAndCountAll = jest.fn().mockResolvedValue({ count: 0, rows: [] });
+  Order.findAll = jest.fn().mockResolvedValue([]);
+  await listOrders(req, { json: jest.fn() });
+  await exportOrders(req, { setHeader: jest.fn(), send: jest.fn() });
+  for (const query of [Order.findAndCountAll.mock.calls[0][0], Order.findAll.mock.calls[0][0]]) {
+    expect(query.where[Op.and][1].tag[Op.in]).toEqual(['授权TAG']);
+    expect(query.where[Op.and][0][Op.and][0].val).toContain("'PICKED_UP'");
+  }
+});
+
+test('付款人多选精确匹配、优先于旧模糊参数并叠加官网状态', () => {
+  const { where } = buildListFilters({
+    payerNames: '["明威","明威二"]',
+    payerName: '旧值',
+    officialOrderStatuses: '["PICKED_UP"]',
+  });
+  expect(where.payerName[Op.in]).toEqual(['明威', '明威二']);
+  expect(where[Op.and][0].val).toContain("'PICKED_UP'");
+  expect(buildListFilters({ payerName: '明威' }).where.payerName[Op.iLike]).toBe('%明威%');
+  expect(() => buildListFilters({ payerNames: '[1]' })).toThrow();
+  expect(() => buildListFilters({ payerNames: ['x'.repeat(101)] })).toThrow();
+});
+
+test('付款人候选排除自身条件、保留商品和 TAG 权限且不取全局人员目录', async () => {
+  const { Order } = require('../src/models');
+  const { getFilterOptions } = require('../src/controllers/orderController');
+  Order.findAll = jest
+    .fn()
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([])
+    .mockResolvedValueOnce([
+      { payerName: '明威' },
+      { payerName: '明威' },
+      { payerName: '付款人乙' },
+      { payerName: null },
+    ]);
+  const res = { json: jest.fn() };
+  await getFilterOptions(
+    {
+      query: { payerNames: '["明威"]', productKeys: JSON.stringify(['name:' + 'a'.repeat(64)]) },
+      user: { role: 'operator', orderAccess: { mode: 'tags', tags: ['授权TAG'] } },
+    },
+    res
+  );
+  expect(new Set(res.json.mock.calls[0][0].data.payers)).toEqual(new Set(['明威', '付款人乙']));
+  const query = Order.findAll.mock.calls[4][0];
+  expect(query.where[Op.and][0].payerName).toBeUndefined();
+  expect(query.where[Op.and][0][Op.and][0].val).toContain('product_filter_items');
+  expect(query.where[Op.and][1].tag[Op.in]).toEqual(['授权TAG']);
 });

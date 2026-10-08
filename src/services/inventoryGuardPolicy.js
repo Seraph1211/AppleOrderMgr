@@ -1,4 +1,5 @@
 const { LIMITS } = require('./inventoryValidationPolicy');
+const { REQUEST_CONCURRENCY } = require('./inventoryConcurrency');
 
 /** 正式采集的持久化请求许可，预占最大响应字节防并发超额。 @param {Object} original 状态 @param {number} now 时间 @param {string} id 尝试编号 @param {number} jitter 抖动 @param {string} egress 出口 @param {string} purpose 用途 @param {Object} config 配置 @returns {Object} 许可 */
 function reserveProduction(original, now, id, jitter, egress, purpose, config) {
@@ -10,7 +11,18 @@ function reserveProduction(original, now, id, jitter, egress, purpose, config) {
   if (state.cooldownUntil > now) return { blocked: 'TARGET_COOLDOWN', until: state.cooldownUntil };
   if (state.recovering && !['inventory', 'provider'].includes(purpose))
     return { blocked: 'RECOVERY_PROBE_REQUIRED' };
-  const wait = Math.max(state.nextAt || 0, state.leaseUntil || 0, state.probeAt || 0);
+  const leases = Object.fromEntries(
+    Object.entries(state.requestLeases || {}).filter(([, lease]) => lease.until > now)
+  );
+  const active = Object.values(leases);
+  const capacity = state.recovering ? 1 : REQUEST_CONCURRENCY;
+  const exclusive = purpose !== 'inventory' || active.some(lease => lease.purpose !== 'inventory');
+  const slotAt =
+    active.length && (active.length >= capacity || exclusive)
+      ? Math.min(...active.map(lease => lease.until))
+      : 0;
+  // 旧单请求租约仍需等待，滚动切换不提前放行旧请求。
+  const wait = Math.max(state.nextAt || 0, state.leaseUntil || 0, state.probeAt || 0, slotAt);
   if (wait > now) return { waitMs: wait - now };
   const hour = Math.floor(now / 3600000);
   const day = Math.floor(now / 86400000);
@@ -29,10 +41,17 @@ function reserveProduction(original, now, id, jitter, egress, purpose, config) {
     dayCount: (state.dayCount || 0) + 1,
     byteCount: (state.byteCount || 0) + reserveBytes,
     proxyCount: (state.proxyCount || 0) + (purpose === 'provider' ? 1 : 0),
-    leaseId: id,
-    leaseUntil: now + LIMITS.leaseMs,
-    leaseBytes: reserveBytes,
-    leaseDay: day,
+    requestLeases: {
+      ...leases,
+      [id]: {
+        until: now + LIMITS.leaseMs,
+        bytes: reserveBytes,
+        day,
+        purpose,
+        recovery: Boolean(state.recovering),
+        recoveryEpoch: Math.max(state.recoveryEpoch || 0, state.resumedAt || 0),
+      },
+    },
     nextAt: now + 1000 + Math.min(150, Math.max(0, jitter)),
   });
   return { state };
@@ -40,6 +59,20 @@ function reserveProduction(original, now, id, jitter, egress, purpose, config) {
 /** 正式保护状态机，供应商请求不清空 Apple 风险历史。 @param {Object} original 状态 @param {Object} result 结果 @param {number} now 时间 @returns {Object} 状态 */
 function settleProduction(original, result, now) {
   const state = { ...original };
+  const lease = state.requestLeases?.[result.id];
+  const recoveryAttempt = lease
+    ? lease.recovery &&
+      lease.recoveryEpoch === Math.max(original.recoveryEpoch || 0, original.resumedAt || 0)
+    : Boolean(result.id && state.leaseId === result.id && original.recovering);
+  if (lease) {
+    if (lease.day === Math.floor(now / 86400000) && state.day === lease.day)
+      state.byteCount = Math.max(
+        0,
+        (state.byteCount || 0) - lease.bytes + Math.max(0, result.bytes || 0)
+      );
+    state.requestLeases = { ...state.requestLeases };
+    delete state.requestLeases[result.id];
+  }
   if (state.leaseId === result.id) {
     if (state.leaseDay === Math.floor(now / 86400000))
       state.byteCount = Math.max(
@@ -68,6 +101,7 @@ function settleProduction(original, result, now) {
       state.cooldownUntil = Math.max(state.cooldownUntil || 0, now + 600000);
       state.recovering = true;
       state.recoverySuccesses = 0;
+      state.recoveryEpoch = now;
     }
   }
   const risk = ['TARGET_RATE_LIMITED', 'TARGET_REJECTED'].includes(result.outcome);
@@ -99,11 +133,12 @@ function settleProduction(original, result, now) {
     state.lastRiskAt = now;
     state.recovering = true;
     state.recoverySuccesses = 0;
+    state.recoveryEpoch = now;
     if (result.outcome === 'TARGET_REJECTED') state.requiredAlternateEgress = result.egress;
   } else if (result.retryMs)
     state.cooldownUntil = Math.max(state.cooldownUntil || 0, now + result.retryMs);
   // 只有实际库存结构可解除恢复；目录和代理成功均无此权限。
-  if (original.recovering && result.purpose === 'inventory') {
+  if (original.recovering && recoveryAttempt && result.purpose === 'inventory') {
     if (result.outcome === 'INVENTORY_VALID') {
       state.recoverySuccesses = (state.recoverySuccesses || 0) + 1;
       state.probeAt = now + 5000;

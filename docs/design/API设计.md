@@ -1,12 +1,68 @@
 # API 契约与接口导航
 
+## 订单付款人多选筛选（2026-10-08）
+
+订单列表、候选、导出及官网刷新筛选全选支持 `payerNames` JSON 数组（兼容数组／单值，最多 100 项，每项最长 100 字符），按 `orders.payer_name` 精确匹配，维度内 OR、跨维度 AND，并保持 TAG 权限。空数组表示不限；旧 `payerName` 模糊筛选在未提交非空 `payerNames` 时保留兼容。
+
+既有 `/api/orders/filter-options` 的 `payers` 改为从授权订单及其他条件派生、排除付款人自身条件的非空姓名去重列表，保留当前商品筛选；它仅供列表筛选，不创建付款人账号或主数据，不改变付款人登记规则。前端提供可搜索多选、全选／取消全选和清空。
+
+## 官网订单状态多选筛选（2026-10-08）
+
+订单列表、筛选候选、导出及官网刷新“筛选全选”共用 `officialOrderStatuses` JSON 数组（兼容数组／单值，每项最长 100 字符、最多 100 项）。空数组表示不限；维度内 OR，与邮件展示状态、商品、TAG、门店、日期及权限范围 AND。按 `official_raw_status` 的竖线分隔项精确匹配，任何一项命中即保留订单，不做子串匹配；`PICKUP_READY`／`READY_FOR_PICKUP`、`CANCELED`／`CANCELLED`、`PICK_UP_CANCELLED`／`PICKUP_CANCELLED` 分别按同义状态匹配。`__not_observed__` 表示 NULL／空白官网状态，显示“尚未更新”。不推导、不修改官网或邮件状态，旧 `status/statuses/payment_status` 参数仍退休。
+
+`GET /api/orders/filter-options` 新增 `officialOrderStatuses` 字符串数组，来自当前授权订单和其他筛选条件，排除自身官网状态条件；拆分、同义归一及去重后返回，未知状态保留原文。候选和列表均受订单 TAG 权限约束。
+
+订单页取消独立“取件人”输入框，顶部关键词继续搜索取机人。订单状态、官网订单状态、商品、TAG、门店均提供全选／取消全选：针对当前下拉搜索匹配项操作，保留其他已选值；无关键词时操作所有候选（含已选项），空候选禁用。全选提交实际选项集合，清空才表示不限，因此明确排除未列为选项的空值。
+
+
+## 官网实际取货日期（2026-10-07）
+
+列表、筛选选项、筛选全选和导出支持 actualPickupDateFrom / actualPickupDateTo（YYYY-MM-DD，可单边，双边均包含当天）。起止相同表示某一天；空日期不命中已设置的范围。非法日期、数组或起始晚于结束返回 400；与预约取货日期 pickupDate 独立、可组合。
+
+订单列表、详情和导出增加只读 `actual_pickup_date`，值为 YYYY-MM-DD 或 null，沿用订单 TAG 读取权限；导出字段键为 actualPickupDate。该值来自完整官网详情中的实际已取货日期，不接受普通订单编辑写入，不用预约时间、邮件推定或采集时间代替。手动官网刷新可在原两个官网字段外同步此日期；缺失／歧义保留原值。历史限定范围补录只写实际取货日期，不改变订单状态。
+
+
 > 状态：当前有效
 >
 > 最近核对：2026-09-07
 >
 > 基线：main@d000d03 与当前工作树
 >
-> 验证范围：本地工作树静态核对；未验证真实数据库、邮箱、官网和生产环境
+> 验证范围：通用字段／接口清单为本地静态核对；本轮自有库存的生产迁移和接口技术验证见[发布记录](../archive/2026-10/2026-10-04-自有库存简化版生产发布记录.md)，其余模块按各自证据核对
+
+## 手动官网状态更新（2026-10-03，已授权实施）
+
+- 2026-10-05 账号聚合改造已生产发布：以下全部接口额外要求当前角色 `admin`，普通用户即使有订单读写权限也返回 403。
+- `POST /api/orders/official-refresh/batches`：需管理员及 `orders.read` + `orders.edit`。请求 `{ requestKey: UUID, selection: "ids", orderIds: [1,2] }` 或 `{ requestKey: UUID, selection: "filtered", filters: { ...订单列表筛选参数 } }`。202 返回 `{ success, data: { batchId, queued, skipped, total, selectedCount, accountCount, queuedAccountCount } }`。先按选中订单的规范 Apple ID 去重，再展开系统内全部已有同账号订单；筛选条件仅确定触发账号。`total` 为展开订单数，`selectedCount` 为原选择数，`accountCount` 为有效账号数；`queuedAccountCount` 为本次新增账号组数。活动账号整组跳过（包括组开始后新增的订单，需本组结束后再次手动提交），`skipped` 表示本次未新增的订单数；无新任务返回 `batchId: null`。选择及展开后均最多 10000 单，超量整体拒绝 400；后台未就绪 503。相同请求键重放返回原批次及原计数，选择变化返回 409。
+- `GET /api/orders/official-refresh/batches`：返回本人最近 10 个批次标识，供页面重开恢复；管理员可查询批次详情，列表仍仅本人。
+- `GET /api/orders/official-refresh/batches/:batchId`：仅管理员；返回当前批次 `counts`、总数、`selectedCount`、`accountCount`、分页 `jobs`（每页 20，最多 100）。`jobs` 只返回订单 ID、订单号、队列状态、账号组 ID、脱敏错误码、官网状态及时间，不返回 Apple ID 或凭据。
+- `POST /api/orders/official-refresh/batches/:batchId/cancel`：取消排队任务，不中断已运行的官网请求。
+- 订单列表、详情新增 `official_order_status`（原始官网状态或 null）、`official_status_observed_at`（最近成功观测时间）；原邮件状态契约不变。
+
+以上均经认证与 TAG 范围校验。旧 `/refresh-all`、`/batch-refresh`、`/:id/refresh`、`/page-open-refresh` 和浏览器辅助接口保持退役，避免旧页面触发外部请求。
+
+2026-10-05 暂停与离线修复：批次列表和详情增加 `pausedAt`、`pauseReason`（均可空）；详情仍返回独立的 `workerOnline`。暂停不等于 Worker 离线，不自动恢复。提交新请求替代当前选中 Apple ID 在系统内展开的全部关联订单在可操作暂停批次中的 queued 项，旧项以 cancelled / `REQUEUED_MANUALLY` 留痕，新项继续受账号冷却、预算和单日次数限制。活动的未暂停任务仍去重；同一 requestKey 重放不重新执行。真正离线仍返回 503 / `OFFICIAL_WORKER_OFFLINE`，提示管理员检查后台服务，不再暗示等待即可自愈。
+
+2026-10-05 登录诊断：新增固定任务错误码及批次暂停原因 `AUTH_PRECONDITION_REQUIRED`，表示 Apple 登录完成接口返回 HTTP 412、额外登录条件尚未完成；不能据此断言密码错误或封号。前端显示“Apple 登录需要完成额外步骤（HTTP 412），请核对官网提示”。不增加响应中的凭据、原始页面或修复地址，既有历史 `AUTH_REJECTED` 不改写。
+
+## 手动官网状态更新（2026-10-03，已授权实施）
+
+- 2026-10-05 账号聚合改造已本地实现，尚未发布：以下全部接口额外要求当前角色 `admin`，普通用户即使有订单读写权限也返回 403。
+- `POST /api/orders/official-refresh/batches`：需管理员及 `orders.read` + `orders.edit`。请求 `{ requestKey: UUID, selection: "ids", orderIds: [1,2] }` 或 `{ requestKey: UUID, selection: "filtered", filters: { ...订单列表筛选参数 } }`。202 返回 `{ success, data: { batchId, queued, skipped, total, selectedCount, accountCount, queuedAccountCount } }`。2026-10-08 HTTP 范围修正：仅固化显式选中的订单，筛选全选仅固化提交时匹配筛选且可访问的订单；不按 Apple ID 扩大范围。`total` 与 `selectedCount` 为去重后的选中数，`accountCount` 为其中有效账号数；`queuedAccountCount` 为新增任务涉及账号数，仅兼容统计。活动任务按订单 ID 去重，已有活动任务的相同订单计入 `skipped`；同账号其他选中订单可以入队，由领取器互斥串行执行。无新任务返回 `batchId: null`。最多 10000 单，超量整体拒绝 400；后台未就绪 503。相同请求键重放返回原批次及原计数，选择变化返回 409。
+- `GET /api/orders/official-refresh/batches`：返回本人最近 10 个批次标识，供页面重开恢复；管理员可查询批次详情，列表仍仅本人。
+- `GET /api/orders/official-refresh/batches/:batchId`：仅管理员；返回当前批次 `counts`、总数、`selectedCount`、`accountCount`、分页 `jobs`（每页 20，最多 100）。`jobs` 只返回订单 ID、订单号、队列状态、账号组 ID、脱敏错误码、官网状态及时间，不返回 Apple ID 或凭据。
+- `POST /api/orders/official-refresh/batches/:batchId/cancel`：取消排队任务，不中断已运行的官网请求。
+- 订单列表、详情新增 `official_order_status`（原始官网状态或 null）、`official_status_observed_at`（最近成功观测时间）；原邮件状态契约不变。
+
+以上均经认证与 TAG 范围校验。旧 `/refresh-all`、`/batch-refresh`、`/:id/refresh`、`/page-open-refresh` 和浏览器辅助接口保持退役，避免旧页面触发外部请求。
+
+2026-10-05 暂停与离线修复：批次列表和详情增加 `pausedAt`、`pauseReason`（均可空）；详情仍返回独立的 `workerOnline`。暂停不等于 Worker 离线，不自动恢复。提交新请求只替代当前选中订单在本人或管理员可操作暂停批次中的 queued 项，旧项以 cancelled / `REQUEUED_MANUALLY` 留痕，新项继续受账号冷却、预算和单日次数限制。活动的未暂停任务仍去重；同一 requestKey 重放不重新执行。真正离线仍返回 503 / `OFFICIAL_WORKER_OFFLINE`，提示管理员检查后台服务，不再暗示等待即可自愈。
+
+2026-10-05 登录诊断：新增固定任务错误码及批次暂停原因 `AUTH_PRECONDITION_REQUIRED`，表示 Apple 登录完成接口返回 HTTP 412、额外登录条件尚未完成；不能据此断言密码错误或封号。前端显示“Apple 登录需要完成额外步骤（HTTP 412），请核对官网提示”。不增加响应中的凭据、原始页面或修复地址，既有历史 `AUTH_REJECTED` 不改写。
+
+### HTTP 执行器接入（2026-10-08）
+
+公共批次接口与管理员权限保持；后台新增私有 `claim-http` 命令逐单领取，最多 5 个不同账号并发，单笔租约 20 分钟，旧 `claim` 不作为新版执行入口。`finish` 沿用事务、最新权限、账号身份及结果时效检查；HTTP 完整结果允许额外补入 `actual_pickup_date` 的空值，有效原日期保持。每单最多 3 次实际采集，失败保留上次业务值；未知提交不重放。进度错误码增加 `AUTHENTICATION_REQUIRED`、`IPROYAL_CONFIG_INVALID`、`IPROYAL_API_FAILED`、`EGRESS_CHANGED_OR_UNVERIFIED`、`HTTP_CLEANUP_PENDING`。敏感代理配置不通过公共 API 返回。
 
 ## 通用约束
 
@@ -31,6 +87,8 @@
 字段目前混用 camelCase 和 snake_case，不能按惯例自动转换或增加别名。新契约修改需更新本页及对应专题文档，CON-01/CON-02 的完整统一尚未完成。
 
 ## 响应与错误
+
+手动官网更新批次的 `jobs[].errorCode` 增补：`ORDER_NOT_FOUND`、`ACCOUNT_ID_MISSING`、`ACCOUNT_REFERENCE_CONFLICT`、`ORDER_ACCOUNT_AMBIGUOUS`、`ACCOUNT_MARKED_INVALID`、`ORDER_CREDENTIALS_MISSING`、`CREDENTIAL_DECRYPT_FAILED`、`CREDENTIAL_SNAPSHOT_MISMATCH`、`ORDER_INPUT_READ_FAILED`、`INPUT_INVALID`、`LINK_IDENTITY_MISMATCH`、`DESTINATION_DENIED`。失败仍保留上次官网状态，仅返回固定分类，不返回输入、密码、完整链接或数据库错误。请求／响应结构、权限和两字段回写范围不变。
 
 常规成功为 success/data；公共分页结构如下，列表键由端点决定（例如 apple_ids、recipients、orders、items）：
 
@@ -207,8 +265,8 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - 刷新错误分类新增 PAGE_LOADING（加载／校验未完成）、REQUEST_TIMEOUT（请求超时）、RESPONSE_STREAM（响应中断）、REQUEST_CANCELLED（主动取消）、TASK_TIMEOUT（抓取总预算耗尽）；631 保留 HTTP_631，不假定返回方。lastErrorMessage 中“已尝试 N 次”表示实际顶层抓取次数，attemptCount 仍是队列领取次数。列表沿用 last_success_at／last_failure_at／活动 job 协调状态，后续成功应清除旧错误；本次不增加字段或改变权限。
 - `GET /api/order-refresh/batches/:id` 返回批次六类计数和完成时间；只能查询本人批次，admin 可查询全部。
 - 列表和详情新增 `refresh` 对象：`freshness_status`、`last_attempt_at`、`last_success_at`、`last_failure_at`、`last_error_code`、`last_error_message` 和当前活动 `job`。超过 90 秒没有成功结果的待付款/未知订单由服务端序列化为 `stale`。
-- PUT /api/orders/:id 只允许 paymentScreenshot，不再接受 payerName。付款人必须经 `PUT /api/orders/:id/payer` 或本人任务入口更新，body 为 `{ payerName: string | null, expectedVersion, reason? }`，幂等键通过请求头传入。`payerName` 去除首尾空白后最长 100 个字符，空字符串按 null 清空；付款人不是系统账号，也不存在候选目录。
-- 官网金额、支付与取货状态是独立字段。列表不返回 Apple 密码或原始订单链接；`GET /api/orders/:id` 仅在当前用户具有管理员保留权限 `orders.secrets.read` 时返回订单密码快照 `apple_password` 明文，否则为 `null`，并统一设置 `Cache-Control: no-store`。详情响应不直接携带原始订单链接，页面打开详情后另经 `GET /api/orders/:id/link` 按订单范围读取。身份证和地址保持脱敏；详情顶层 `recipient_email`、`recipient_phone` 表示订单入库时保存的下单联系方式，不使用之后变更的取机人档案覆盖，其中 `recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
+- PUT /api/orders/:id 允许独立更新 `paymentScreenshot` 或 `notes`，要求 `orders.edit` 并按订单 TAG 范围查询，范围外返回 404。`notes` 接受字符串或 null，去除首尾空白后最长 2000 个字符，空字符串保存为 null；省略则保留原备注，非法类型或超长返回 400。响应 data 包含 id、order_number、payment_screenshot、notes、updated_at。备注更新不改变订单状态、付款人或截图，不再接受 payerName。付款人必须经 `PUT /api/orders/:id/payer` 或本人任务入口更新，body 为 `{ payerName: string | null, expectedVersion, reason? }`，幂等键通过请求头传入。`payerName` 去除首尾空白后最长 100 个字符，空字符串按 null 清空；付款人不是系统账号，也不存在候选目录。
+- 官网金额、支付与取货状态是独立字段。列表不返回 Apple 密码或原始订单链接；`GET /api/orders/:id` 在当前用户具有 `orders.read` 且订单属于其授权 TAG 范围时返回订单密码快照 `apple_password` 明文（管理员、普通操作员及只读用户均适用），快照为空时为 `null`；无需 `orders.secrets.read` 或 `apple_ids.read`，并统一设置 `Cache-Control: no-store`。详情响应不直接携带原始订单链接，页面打开详情后另经 `GET /api/orders/:id/link` 按订单范围读取。身份证和地址保持脱敏；详情顶层 `recipient_email`、`recipient_phone` 表示订单入库时保存的下单联系方式，不使用之后变更的取机人档案覆盖，其中 `recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
 - 导出使用当前筛选条件，下载按 Blob 处理；订单金额改用已确认价格映射，无法完整映射时显示待确认，不回退官网金额。
 
 ## 邮件处理
@@ -686,7 +744,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 订单列表和详情响应新增：`email_order_status`、`email_payment_status`、`email_status_needs_review`、`email_status_review_reasons`、`email_status_version`、`email_status_evidence_at`、`email_pickup_info`、`email_pickup_date`、`email_lifecycle_updated_at`。这些字段只表达官方订单邮件结论，原 `status/payment_status/pickup_status/official_*` 继续表达官网观测。`email_pickup_info.pickupDateEvidence` 在存在日期线索时返回 `raw`、`basis`、`referenceDate` 和 `offsetDays`；“今天／明天／后天”的 `basis` 固定为 `order_date`，不得使用邮件或页面当前时间换算。列表和导出接受 JSON 数组参数 `emailOrderStatuses`（unknown/confirmed/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired）及 `emailPaymentStatuses`（unknown/paid）；`picked_up` 表示收到精确标题的 Apple 个人设置辅导邮件后的单向推定，不是人工取货记录或实际取货时间。付款状态导出字段作为兼容 API 保留，但订单管理页面的列表、筛选、详情和导出字段弹窗均不展示付款状态。无权访问的订单仍不会因邮件字段泄露。
 
-订单管理列表与详情另返回 `display_order_status`，只用于页面显示：邮件状态为 `confirmed`、邮件付款状态不是 `paid` 且完整来源下单时间 `order_date + 30 分钟` 已到时为 `payment_timeout`（显示“付款超时”）；其他情况沿用 `email_order_status`。缺少有效来源时间不推定付款超时；后续邮件确认付款或推进订单阶段后立即按新证据显示。该推算不证明 Apple 官网已取消订单，也不改写邮件生命周期、付款任务或人工取货记录。列表和导出新增 `displayOrderStatuses` 多选筛选（unknown/confirmed/payment_timeout/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired），在数据库分页前按相同规则计算；原 `emailOrderStatuses` 保持纯邮件状态筛选，两个参数同时提供时取交集。导出字段键 `emailOrderStatus` 为兼容保留，列标题改为“订单状态”，值按 `display_order_status` 输出。`picked_up` 的页面短名称为“已取货”，邮件推定的含义仍见订单状态说明，不代表人工实际取货。
+订单管理列表与详情另返回 `display_order_status`，只用于页面显示：邮件状态为 `confirmed`、邮件付款状态不是 `paid` 且完整来源下单时间 `order_date + 30 分钟` 已到时为 `payment_timeout`（显示“付款超时”）；其他情况沿用 `email_order_status`。缺少有效来源时间不推定付款超时；后续邮件确认付款或推进订单阶段后立即按新证据显示。该推算不证明 Apple 官网已取消订单，也不改写邮件生命周期、付款任务或人工取货记录。列表和导出新增 `displayOrderStatuses` 多选筛选（unknown/confirmed/payment_timeout/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired），在数据库分页前按相同规则计算；原 `emailOrderStatuses` 保持纯邮件状态筛选，两个参数同时提供时取交集。导出字段键 `emailOrderStatus` 为兼容保留，列标题改为“订单状态”，值按 `display_order_status` 映射为与页面一致的中文名称（待确认、订单已确认、付款超时、处理中、可取货、已取货、部分取消、已取消、已过期），缺失或未知值输出“待确认”，不再输出英文状态码；列表／详情 JSON 仍保留状态码。`picked_up` 的页面短名称为“已取货”，邮件推定的含义仍见订单状态说明，不代表人工实际取货。
 
 邮件终态 `expired` 显示“已过期”，由完整订单号匹配的“订单 W… 已过期。”及明确未按时取货正文确认。取消邮件“订单 W… 已取消。”及正文“你的取货安排已取消”按不同归档消息 ID 计数：取消邮件数小于订单商品总件数时为 `partially_cancelled`（“部分取消”），达到总件数时为 `cancelled`（“已取消”）。同一封邮件重放／解析修订不重复计数，单封无需列全商品。两件订单一封取消为部分取消、两封取消为已取消；有任一有效过期邮件时统一为已过期，即过期优先于全部／部分取消，不按邮件先后覆盖。旧确认／处理／取货邮件不能撤销以上状态。取消／过期不新增付款或退款结论，已有 `paid` 保留。商品总件数缺失或非法时保留部分取消并待核对；人工核定的明确订单状态继续优先该封解析候选。`expired` 查询值现在只指 Apple 过期邮件，不再代表 30 分钟付款超时。
 
@@ -721,6 +779,194 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 支持清单见 [AOS 支付方式扩展](AOS文件采集与入库.md#支付方式扩展2026-09-21已生产发布)。AOS 原文解析及人工草稿共用校验。订单列表／详情／导出、渠道订单、本人任务／调度 DTO 的支付方式优先读取 sourceSnapshot.paymentMethod，缺失时读取 paymentMethod；不向付款任务 DTO 暴露完整来源快照。普通官网合并仅保存 officialPaymentMethod，保留来源付款方式。
 
 两个付款码 GET 接口继续执行权限、当前归属及访问审计，全部非普通微信方式返回 unsupported，不返回图片或链接；两页按钮保留并显示服务端提示。复制时只有普通微信读取付款码，其他方式直接调用原链接接口，仍由服务端校验权限和归属；微信分付使用订单链接。复制字段顺序、批量失败处理、来源时间加 30 分钟规则保持。
+
+## 自有库存与销售接口目标契约
+
+### 自有库存简化台账（已生产发布）
+
+所有路径以下均在 `/api/stock` 下，写请求均带requestKey，批量最多100台；金额为两位小数字符串，日期为北京时间 YYYY-MM-DD；没有客户、收货人、销售单和挑货前置要求。
+
+| 方法与路径               | 契约                                                                                                                                                                                                                                                 |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET /ledger/catalog      | products、warehouses、people、enabled；管理员另有settingsVersion；可在当前表单新增规格和姓名                                                                                                                                                         |
+| GET /ledger              | view=in_stock/sold/all（默认在库）、q、productId、warehouseId、salespersonName、paymentStatus、soldFrom、soldTo、page、pageSize=20/50/100；返回items,total,page,pageSize,counts:{inStock,sold}                                                       |
+| GET /ledger/:id          | 单台DTO及审计摘要events，附件沿用units/:id与原附件接口                                                                                                                                                                                               |
+| POST /ledger/receive     | units:[{serialNumber,productId或product:{modelName,storageGb,colorName},warehouseId,receivedOn,orderNumber?,officialCostAmount?,acquiredOn?,extraExpenseAmount?,notes?}]                                                                             |
+| POST /ledger/sell        | units:[{id,expectedVersion,saleAmount,settlementAmount?,extraExpenseAmount?}],salespersonName,handlerName,soldOn,payment,notes?                                                                                                                      |
+| POST /ledger/history     | units:[{serialNumber,productId或product,orderNumber?,warehouseId?,receivedOn?,officialCostAmount?,acquiredOn?,extraExpenseAmount?,saleAmount,settlementAmount?,notes?}],salespersonName,handlerName,soldOn,payment；历史人物允许null，无切换时点前置 |
+| POST /ledger/payment     | units:[{id,expectedVersion}],payment,reason?；回退已知资金事实须原因与更正权限                                                                                                                                                                       |
+| PATCH /ledger/:id        | expectedVersion及需修改的serialNumber,productId或product,warehouseId,receivedOn,orderNumber,officialCostAmount,acquiredOn,extraExpenseAmount,notes,sale:{saleAmount?,settlementAmount?,salespersonName?,handlerName?,soldOn?,payment?},reason?       |
+| POST /ledger/:id/recover | expectedVersion,warehouseId,receivedOn?,confirmInWarehouse:true,reason；同步作废该次销售、费用、付款、到账和分配，保留审计                                                                                                                           |
+
+2026-10-05 增量：单台 `settlementAmount` 为人工结算金额，可空、非负且不大于售价；毛利为结算减官网售价快照，`profitAfterExpenses` 兼容返回相同值，不二次扣费。没有结算的旧记录不回填，毛利为 null；新登记收款／到账前须先有正结算金额。已有资金沿用原值，明确更正结算时校验更正与资金权限并作废旧资金事实、重建正确金额和审计；已收款结算不可直接清空。`people` 增加 roles、version、partyType、isActive，管理权限也可读取，用现有 `/parties` POST/PATCH 维护姓名和角色。
+
+payment={status,collectorName?,collectedOn?,receivedOn?}；status为unpaid/agent_pending/company_received，历史另可unknown；旧部分到账只读标legacy_partial。代收人默认销售人，代收转回保留原代收与客户付款日期。正常公司到账须receivedOn，历史未知可空。货款按人工结算金额核对；结算已经扣费，不再次抵扣。成功写返回{items:[单台DTO],ledgerUnitIds,idempotent}。
+
+单台DTO为id,deviceNumber,version,serialNumber,state,orderNumber,orderLinked,product,warehouse,receivedOn,officialCostAmount,costStatus,acquiredOn,extraExpenseAmount,notes,saleId,soldOn,salespersonName,handlerName,saleAmount,settlementAmount,sourceWarehouse,isHistorical,paymentStatus,collectorName,collectedOn,companyReceivedOn,grossProfit,profitAfterExpenses,compatibilityReason,allowedActions；未知值null；敏感金额、订单、销售与货款字段按原独立权限省略。allowedActions只含当前允许的sell/edit/payment/recover。库存仅warehouse，已售仅local。旧复杂多台、部分到账或共享到账分配保留，不自动变更事实。旧版没有客户付款登记的记录显示待核实，不能直接推断未付款；新台账明确选择未收款才记unpaid。
+
+新售需要stock.sales.edit和ship，未收款的新销售不额外要求货款编辑权限；历史另需stock.import；成本/费用/真实货款使用既有独立权限，公司到账需stock.receipts.edit。销售或资金更正需stock.correct及简短原因，普通资料也做版本检查。更正保留前后值与操作者。历史误售记录若原入库日期未知，恢复现货前须补receivedOn；原日期已知时沿用，不能自动填今天。
+
+订单号可先保存待关联文本；成功关联后只从受原TAG权限保护的绑定读取号码。原取货接口绑定、解绑时同事务清除冗余待关联文本，防止解绑后泄露原受限订单号。批内重复SN在归一化后提前拒绝，失败不得返回回滚后不存在的临时设备ID。
+
+2026-10-04，已合入推送main并发布API／前端，生产模块已启用，未造库存、销售或资金测试数据。生产制品与已认证API技术结果、浏览器／真实业务边界及依赖安全审计未通过见[发布记录](../archive/2026-10/2026-10-04-自有库存简化版生产发布记录.md)；[开发记录](../archive/2026-10/2026-10-04-自有库存简化版开发验证记录.md)与[独立报告](../archive/2026-10/2026-10-04-自有库存简化版独立验收报告.md)保留发布前事实。它管理自有实物，现有 `/api/inventory` 继续用于 Apple 门店库存监控。关联[简化版方案](../planning/自有库存简化版方案.md)及[数据契约](../database/自有库存与销售数据契约.md)。
+
+### 原完整版本兼容范围
+
+以下原完整版本契约保留用于读取旧事实、迁移审计和回归。旧销售、代卖销售、费用、转运、客户付款、公司到账、纠错和导入路径的POST/PATCH/PUT/DELETE返回HTTP 410 `STOCK_FLOW_RETIRED`，无业务副作用。旧 `/units` 的写命令也退役，统一使用 `/ledger`。唯一旧销售写例外 `POST /sales/:id/cancel` 只释放原草稿或预占，避免遗留占用锁死，继续按原权限及版本检查。仓库/规格、开关设置、附件及扫码仍为共用能力；旧两页面链接重定向台账。
+
+### 通用输入与响应
+
+- 全部接口通过现有 authenticate；所有新权限逐用户显式授予，管理员全权，旧账号不自动新增权限。禁用模块时仍可查询已授权历史并返回enabled=false，新的业务命令返回409 STOCK_NOT_ENABLED；旧取货身份桥接、管理员配置及已成功命令的授权幂等重放不受开关影响。
+- 写请求使用 JSON camelCase；必填 `requestKey` UUID，修改已有主记录另带 `expectedVersion` 非负整数。同用户同键同内容重放先复核原操作实际使用的动作/字段权限，再返回原操作引用和当前授权数据，`idempotent=true`；同键不同内容为 409 IDEMPOTENCY_CONFLICT。重新鉴权后才读幂等结果。
+- 成功保持 `{success:true,data:{...}}`，创建 201、其他 200；错误保持 `{success:false,error:{code,message,details?}}`。列表返回 `{items,total,page,pageSize}`，page>=1，pageSize 默认20、允许20/50/100。详情带 version 和 allowedActions；金额采用两位小数字符串，未知为 null，未授权字段完全不返回。
+- 日期用带时区 ISO 8601；纯拿货日期用 YYYY-MM-DD。日期区间按 `[from,to)` 查询，前端把北京时间日期边界换算后提交，不依赖浏览器所在时区。
+- 多值筛选沿用现有前端惯例，以 JSON 数组字符串传递；服务端解析后验证长度与值，禁止字符串拼 SQL。单次选机或接单最多100台、20个规格行；导入每次最多500行，超过要求分批。
+- 非本人范围的来源订单统一404；序列号冲突只给通用错误及用户已提供的 SN，不暴露其他订单、客户或账号。禁止将数据库唯一错误原样返回给用户。
+
+### 自有库存业务授权分组（2026-10-05）
+
+`GET /api/users/permission-catalog` 的 `data.version` 升为 2，保留 `permissions` 原始目录，新增 `stockGroups`，每组包含 `id`、`label`、`description`、`options`；选项包含 `id`、`label`、`codes`。分组是服务端提供的授权组合，不是新的权限码。完整替换权限的请求、版本冲突、幂等与审计契约保持。
+
+配置界面按库存查看、库存管理、销售管理、成本与利润、货款管理、高级管理六组展示。选择组合递归加入目录依赖，撤销权限递归移除依赖它的权限；保存前展示新增和撤销明细。关联订单所需的订单／取货权限在提示和变更明细中明确列出，TAG 范围不自动修改。默认隐藏权限码，高级管理内可展开细分配置。
+
+已有权限原样回显与保存；部分组合显示“部分授权”，不在加载或保存时自动补齐或迁移。不新增角色、不批量改写用户权限、不因查看成本自动获得毛利或收款权限；合并组合仅由管理员明确勾选触发。服务端继续对每个细分权限、敏感字段、导入导出和来源订单 TAG 检查；分组不能绕过鉴权。
+
+### 权限码和依赖
+
+所有权限加入后端 `business.js`、`permissionCatalog.js`，前端权限常量及配置目录；模块名 `stock`，不得合并到现有 inventory.read。权限依赖由目录统一校验，接口再次校验字段及动作。
+
+| 权限码                                              | 含义与依赖                                                                                                             |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| `stock.read`                                        | 查看自有库存及非敏感实物资料；首期获授权内部人员共享两个重庆仓及代卖位置，不另做按销售人私有库存                       |
+| `stock.receive`                                     | 登记实物入账，依赖 stock.read；不自动取得成本录入或订单详情权限                                                        |
+| `stock.transfer`                                    | 发出及接收转仓、送代卖，依赖 stock.read                                                                                |
+| `stock.source.link`                                 | 来源绑定更正，依赖 stock.read、pickups.read、pickups.edit；仍校验实际订单 TAG 范围                                     |
+| `stock.catalog.manage`                              | 维护规格、仓库、客户与合作人，依赖 stock.read；价格维护还需 stock.cost.edit                                            |
+| `stock.cost.read` / `stock.cost.edit`               | 查看／确认或更正成本，分别依赖 stock.read、stock.cost.read                                                             |
+| `stock.sales.read` / `stock.sales.edit`             | 销售读取／接单编辑取消；read 依赖 stock.read，edit 依赖 sales.read                                                     |
+| `stock.sales.ship`                                  | 选机及出货、代卖售出登记，依赖 stock.sales.read；售价属于销售操作字段，可见售价不等于可见成本或毛利                    |
+| `stock.expenses.read` / `stock.expenses.edit`       | 费用读取／登记，分别依赖 stock.sales.read、stock.expenses.read                                                         |
+| `stock.profit.read`                                 | 毛利与扣费利润，依赖 stock.sales.read、stock.cost.read、stock.expenses.read；授权提示毛利可推算成本                    |
+| `stock.collections.read` / `stock.collections.edit` | 客户付款事实读取／登记，分别依赖 stock.sales.read、stock.collections.read                                              |
+| `stock.receipts.read` / `stock.receipts.edit`       | 公司到账与代收余额读取／登记，分别依赖 stock.collections.read、stock.receipts.read                                     |
+| `stock.import`                                      | 导入预览及确认，依赖 stock.read，并按模板要求 receive／sales.ship／collections.edit／receipts.edit；带成本需 cost.edit |
+| `stock.export`                                      | 导出，依赖 stock.read，按目标对象再次检查相应 read；无授权列不可通过导出补齐                                           |
+| `stock.correct`                                     | 更正已生效事实，依赖 stock.read，并同时具备被修改领域的 edit／ship 权限；原始记录与修正均留痕                          |
+| `stock.settings.manage`                             | 模块开关、启用时点；管理员保留，不授予普通用户                                                                         |
+
+实物 DTO 的 sourceOrder 只有调用方具备 orders.read 且匹配 TAG 时才返回 id/number 和可打开标志；其他人只看到 linked=true/false。绑定操作本身使用 pickups 权限和 TAG 校验，不借 stock.read 扩大订单访问。成本、利润、收付款、证据、事件、导入预览和导出均使用同一 DTO 字段投影；未授权字段出现在写请求时返回403，不静默接受或抹掉。
+
+### 基础资料与实物
+
+以下路径均省略 `/api/stock` 前缀：
+
+| 方法与路径                     | 输入及结果                                                                                                                                                                             | 权限                                                 |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| GET/PATCH `/settings`          | enabled、cutoverAt、version；已发生实物业务后禁止普通修改 cutoverAt                                                                                                                    | settings.manage                                      |
+| GET `/catalog`                 | products、locations、parties；只返回所需类别的有效候选，停用历史引用仍在详情可读                                                                                                       | read                                                 |
+| POST/PATCH `/products[/:id]`   | modelKey/modelName/storageGb/colorKey/colorName/skuCode?/isActive；更新需版本                                                                                                          | catalog.manage                                       |
+| POST/PATCH `/locations[/:id]`  | name/kind/city/partyId?/isActive；禁止手工创建 historical 类型                                                                                                                         | catalog.manage                                       |
+| POST/PATCH `/parties[/:id]`    | name/partyType/roles/userId?/contact?/isActive；联系方式按加密规则保存                                                                                                                 | catalog.manage                                       |
+| GET/POST/PATCH `/prices[/:id]` | productId/validFrom/validTo?/amount/sourceLabel/sourceVersion；GET可按 acquiredOn 查询有效版本；编辑重叠区间409                                                                        | cost.read／cost.edit 与 catalog.manage               |
+| GET `/summary`                 | productIds/modelKeys/colors/locationIds；返回每规格的重庆 Q/R/A、每仓现货、代卖、在途与总未售，数值口径固定                                                                            | read；金额按额外权限                                 |
+| GET `/units`、GET `/units/:id` | q=完整或部分 SN，productIds/locationIds/states/sourceLinked；默认排除 registered，详情含授权事件、照片和销售关联                                                                       | read                                                 |
+| POST `/units/register`         | `requestKey`、`units[{serialBarcode,productId,acquiredOn?,cost?,sourceOrderId?}]`；仅创建或完善 registered 身份，不计现货，供全国取出直发代卖；已有明确规格/确认成本不得被普通登记覆盖 | receive；附成本或来源按附加权限                      |
+| POST `/units/receive`          | mode=current/opening；units[] 含 serialBarcode/productId/locationId/acquiredOn?/receivedAt/cost?/sourceOrderId?/attachmentIds?；全批原子入账，返回逐台 id/version                      | receive；opening 另需 import；附成本或绑定按附加权限 |
+| PUT `/units/:id/source-order`  | orderId 可空、bindingId 可空、expectedVersion；null表示明确解除而非缺省；旧新订单同时校验范围                                                                                          | source.link                                          |
+| PUT `/units/:id/cost`          | acquiredOn、status=pending/confirmed、amount?/priceId?/source?/basis?；首次确认和明确更正，后者还需 reason                                                                             | cost.edit；更正已确认值另需 correct                  |
+| GET `/units/:id/events`        | 分页事件，按当前权限裁剪 changes，不泄露历史金额或旧订单详情                                                                                                                           | read 及字段权限                                      |
+| POST `/serial/recognize`       | multipart 单张 image，JPG/PNG/WebP，<=10MiB，返回候选，不直接入库                                                                                                                      | receive 或 sales.ship；仍需 read                     |
+
+cost 对象为 `{status,amount?,priceId?,source?,basis?}`。pending 不接受 amount；confirmed 要求 acquiredOn、正金额和来源。sourceOrderId 省略表示不改变已有绑定；明确绑定走统一绑定事务服务。已 in_stock 的同 SN 不能普通重复入库，即使换了 requestKey 也409；registered 可补商品后首次入库。
+
+### 接单与出货
+
+| 方法与路径                     | 输入及结果                                                                                                                                                                                                                            | 权限                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| GET `/sales`、GET `/sales/:id` | q=销售单号片段、channel/status/customerId/salespersonId/dateField=createdAt或shippedAt/from/to；详情按权限返回逐台、费用完整性及资金关联；posted 客户付款显示去向/金额/日期，有 receipts.read 才返回 receivedAmount/outstandingAmount | sales.read                                                          |
+| POST `/sales`                  | channel/local、customerId、salespersonId、lines[{productId,quantity,quotedUnitAmount?}]、notes?；生成 draft                                                                                                                           | sales.edit                                                          |
+| PATCH `/sales/:id`             | 客户、负责人、未出货商品数量及约定价；draft不占，reserved修改数量按差额校验；已挑规格不可删且数量不可小于已挑数                                                                                                                       | sales.edit                                                          |
+| POST `/sales/:id/reserve`      | expectedVersion；原子验证所有行可售足够后转 reserved                                                                                                                                                                                  | sales.edit                                                          |
+| PUT `/sales/:id/picks`         | expectedVersion、完整 units[{lineId,unitId,saleAmount?}]；原子替换本单挑货清单，可分次暂存，释放移除项                                                                                                                                | sales.ship                                                          |
+| POST `/sales/:id/ship`         | expectedVersion、shippedAt、handlerId、unitPrices[{saleUnitId,amount}]、collection?；核对全部数量并一次出货，collection 可选同事务登记                                                                                                | sales.ship；含collection另需collections.edit，直收另需receipts.edit |
+| POST `/sales/:id/cancel`       | expectedVersion、reason；仅 draft/reserved，释放数量与 picks，不操作实物售后                                                                                                                                                          | sales.edit                                                          |
+| POST `/consignment-sales`      | locationId、salespersonId、handlerId、customerId?、shippedAt、units[{unitId,saleAmount}]；按 SN 从该代卖位置直接生成已售单                                                                                                            | sales.ship                                                          |
+| PUT `/sales/:id/fees-complete` | expectedVersion、complete BOOLEAN；明确费用完整性，不按是否有费用自动推断                                                                                                                                                             | expenses.edit                                                       |
+| GET `/sales/:id/events`        | 与主详情相同的数据和字段权限                                                                                                                                                                                                          | sales.read                                                          |
+
+ship 的 collection 为 `{destination,collectorId?,amount,receivedAt,notes?}`；只在出货成功后同事务生成，客户金额必须等于全单售价。未提供则客户付款状态为“未登记”，不能默认判定代收人持款。前端可另开付款登记表单，适配没有财务权限的出货人员。
+
+### 转仓与代卖送货
+
+| 方法与路径                             | 输入及结果                                                                                | 权限     |
+| -------------------------------------- | ----------------------------------------------------------------------------------------- | -------- |
+| GET `/transfers`、GET `/transfers/:id` | 状态、起终点、日期筛选及逐台明细                                                          | read     |
+| POST `/transfers`                      | fromLocationId?/originLabel?、toLocationId、handlerId、unitIds[]；保存 draft              | transfer |
+| POST `/transfers/:id/dispatch`         | expectedVersion、dispatchedAt；校验实际位置及剩余 Q−R，原子转在途                         | transfer |
+| POST `/transfers/:id/receive`          | expectedVersion、receivedAt、unitIds[]；只接收本单在途项，可多次，全部收到后头转 received | transfer |
+| POST `/transfers/:id/cancel`           | expectedVersion、reason；仅 draft，删除其未生效选择关系但保留明细与事件                   | transfer |
+
+全国直发时实物必须是 registered 且已经明确规格，fromLocationId 为空、originLabel 必填；dispatch 不虚构重庆现货。同一仓即时交接可连续调用 dispatch/receive，各自幂等，失败后保留真实在途状态。
+
+### 费用和资金
+
+| 方法与路径                                       | 输入及结果                                                                                                                                       | 权限                                                         |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------ |
+| GET `/sales/:id/expenses`                        | 明细及当前版本分摊，不返回无权限的成本／利润                                                                                                     | expenses.read                                                |
+| POST `/sales/:id/expenses`                       | category/scope/amount/occurredAt/paidByPartyId?/saleUnitIds?/notes?；selectedUnits 非空且全属于本单                                              | expenses.edit                                                |
+| PATCH `/expenses/:id`、POST `/expenses/:id/void` | 更正内容或reason，重算新版本分摊／作废，保留旧版                                                                                                 | expenses.edit 与 correct                                     |
+| GET `/collections/:id`                           | 付款详情及按全部目标权限裁剪的附件元信息                                                                                                         | collections.read                                             |
+| GET `/expenses/:id`                              | 费用详情、当前版本分摊及受控附件元信息                                                                                                           | expenses.read                                                |
+| GET `/collections`、POST `/collections`          | POST含 saleId/destination/collectorId?/amount/receivedAt/notes?；重复posted拒绝，company同事务生成直收到账                                       | collections.read／collections.edit；company另需receipts.edit |
+| GET `/receipts`、GET `/receipts/:id`             | 到账、分配、未分配余额与有效状态                                                                                                                 | receipts.read                                                |
+| GET `/receivable-summary`                        | 按代收人、销售及SN显示已代收／已转回／未转回，未登记客户付款单独计数                                                                             | receipts.read                                                |
+| POST `/receipts`                                 | source=agent_transfer、payerId、receivedAt、amount、allocations[{collectionId,saleUnitId,amount}]、notes?；允许未分配余额                        | receipts.edit                                                |
+| PUT `/receipts/:id/allocations`                  | expectedVersion、完整 allocations；同事务反转旧分配并登记新分配，重新校验金额和代收人                                                            | receipts.edit                                                |
+| GET `/reports/sales`                             | dateField固定shippedAt、from/to、channel/salespersonId/productIds；数量金额与已确认成本部分毛利、待核实计数、incompleteFeesCount费用未完善销售数 | sales.read；利润另需profit.read                              |
+| GET `/reports/receipts`                          | 按receivedAt范围统计实际有效到账及未分配余额，不增加销售额                                                                                       | receipts.read                                                |
+
+### 有权限的事实更正
+
+POST `/corrections`，必填 requestKey、reason（5..500字）、kind、targetId、expectedVersion、changes、previewToken。kind 固定为 unit_identity/unit_location/sale_fact/collection_fact/receipt_fact；不提供任意表名或任意字段更新。所有更正还需目标领域操作权限。金额纠错必须包含受影响已登记付款或到账分配的完整修正清单，客户端先调用同结构但无previewToken的 POST `/corrections/preview` 获取差异、影响版本及10分钟有效的认证加密previewToken，再原样回传token和相同业务内容。token由服务端现有fieldEncryption封装purpose/userId/requestHash/targetVersions/expiresAt，摘要只覆盖kind/targetId/expectedVersion/changes/reason，不把requestKey或token纳入业务摘要。
+
+- unitIdentity：更正误录 SN 或规格，保持稳定 unitId，校验唯一性并同步旧绑定组合外键；已挑机器改变规格时先在同一命令释放错误挑选并重核数量。已售规格更正同步同一销售的行归组与快照，不改变真实数量。
+- unitLocation：只更正录错的位置／时间，需说明实物依据；禁止将已售机器改成在库，实际流转仍走 transfer。已在途纠错必须同步对应转运项及头状态。
+- saleFact：允许更正售价、日期、人员、错绑 SN 或作废误录销售。错绑 SN 需提供真实正确 SN、两台现状及明确恢复位置，核对无后续销售／流转冲突；不是退货功能。作废误录销售需同时撤销关联收款／分配或已有凭据证明无真实收款，且恢复实物有据。存在实际售出后退回的请求拒绝为不支持业务。
+- collectionFact／receiptFact：明确更正或作废实收事实，保留旧版本事件和被反转分配。对于公司直收，两条关联记录一并修正；总金额不足以覆盖仍有效分配时拒绝，不能自动转给其他销售或其他代收人。
+- 更正预览只读，10分钟内有效且包含所有目标版本；提交重新加锁及核对，版本改变返回409。不另建审批流程。
+
+changes输入白名单固定如下，省略字段表示不改，null只用于明确允许清空的字段；响应预览列出全部派生影响，服务端不得接受任意JSON Patch：
+
+| kind            | changes结构                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| unit_identity   | `{serialNumber?,productId?}`；更正同一实物身份，不借修改SN替换另一台机器                                                                                                                                                                                                                                                                                     |
+| unit_location   | `{locationId?,state,occurredAt,transferResolution?}`；state仅registered/in_stock/in_transit，transferResolution为`{transferId,expectedVersion,itemStates:[{unitId,state,receivedAt?}]}`，前后位置与转运项必须一致                                                                                                                                            |
+| sale_fact       | `{shippedAt?,salespersonId?,handlerId?,unitPrices?:[{saleUnitId,amount}],replacements?:[{saleUnitId,newUnitId,newFromLocationId,oldUnitState,oldUnitLocationId?}],void?:true,unitRestorations?:[{unitId,state,locationId?}],collectionChange?,receiptChanges?}`；replace保持saleUnitId稳定，逐台核实真实实物去向并同步费用版本；void必须包含所有实物恢复安排 |
+| collection_fact | `{amount?,receivedAt?,destination?,collectorId?,void?:true,receiptChanges?}`；公司直收的配套receipt同事务处理，collection金额仍须等于有效销售金额                                                                                                                                                                                                            |
+| receipt_fact    | `{amount?,receivedAt?,payerId?,void?:true,allocations?:[{collectionId,saleUnitId,amount}]}`；公司直收不得单独改变金额，应通过关联collection或sale更正                                                                                                                                                                                                        |
+
+collectionChange为`{id,expectedVersion,amount?,destination?,collectorId?,receivedAt?,void?}`；receiptChanges为其数组版本`[{id,expectedVersion,amount?,payerId?,receivedAt?,void?,allocations?}]`。所有嵌套更正都复用同样权限和金额校验。历史误录销售作废只恢复registered，不能把启用前历史误录制造成当前现货；新销售误录的实物恢复位置须有据，恢复后重新检查可售与在途关系。正常真实退回仍不支持。
+
+### 附件与导入导出
+
+| 方法与路径                      | 输入及结果                                                                                                                              | 权限                                        |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| POST `/attachments/prepare`     | kind/originalName/contentType/sizeBytes、targets[{type,id}]；全部目标先鉴权，返回attachmentId及5分钟上传URL；prepared记录24小时内可确认 | 目标领域的写权限                            |
+| POST `/attachments/:id/confirm` | expectedVersion；服务端核验对象存在、大小和MIME后确认关联；不得由前端自报成功                                                           | 目标领域写权限                              |
+| GET `/attachments/:id/read`     | 每次校验全部关联目标，返回5分钟私有读取URL                                                                                              | 目标领域读权限，来源旧取货凭证另需其TAG权限 |
+| GET `/imports/template`         | kind=opening/historical_sales/collections/receipts；下载模板及字段说明                                                                  | import与模板所需权限                        |
+| POST `/imports/preview`         | multipart单文件xlsx/csv，kind/sourceLabel，<=10MiB且<=500数据行；返回previewId/hash、逐行错误与归组预览，24小时有效                     | import及具体模板权限                        |
+| POST `/imports/:id/commit`      | requestKey、expectedVersion、previewHash；全批再校验后原子提交，不做静默部分写入                                                        | 同预览，并再次鉴权                          |
+| GET `/imports/:id`              | 本人或管理员可见状态、错误与生成记录引用，金额仍按当前权限投影                                                                          | import及内容权限                            |
+| GET `/export`                   | entity=units/sales/receipts、白名单fields[]及与列表相同筛选；每次<=5000行，超出要求缩小范围                                             | export及目标读权限                          |
+
+Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用户文本按纯文本转义；金额列仍为校验后的数值。模板资金记录需稳定 externalRecordKey；预览不能从图片中自动推断销售价或来源订单。
+
+### 错误代码与旧接口兼容
+
+400：VALIDATION_ERROR、SN_INVALID、MONEY_INVALID、DATE_INVALID、IMPORT_ROW_LIMIT；403：FORBIDDEN、FIELD_FORBIDDEN；404：NOT_FOUND；409：VERSION_CONFLICT、IDEMPOTENCY_CONFLICT、SN_EXISTS、SOURCE_BINDING_CONFLICT、INSUFFICIENT_STOCK、UNIT_ALREADY_PICKED、UNIT_STATE_CONFLICT、SHIPMENT_INCOMPLETE、RECEIPT_OVERALLOCATED、COLLECTOR_MISMATCH、IMPORT_PREVIEW_STALE、COST_NOT_CONFIRMED、CORRECTION_CONFLICT。成本未确认允许真实出货，只在明确要求完整利润结果时使用 COST_NOT_CONFIRMED，不将其作为强制出货门槛。500 为通用错误及追踪ID，不含SQL与敏感明文。
+
+原 `/api/pickups/:orderId/devices` 的请求响应及 orderId 必填语义保持。内部 create 改为先取得模块事务锁，再保证 stockUnit 存在并写入绑定；删除只删除绑定，主档保留。原相同订单重扫幂等、跨订单冲突、TAG权限及旧UUID重试语义须回归。新无来源订单 OCR 走 `/api/stock/serial/recognize`，复用现有识别服务和同一每月额度，不要求伪造订单或绕过原OCR授权。OCR为外部计费识别，不是库存记账命令，不自动重试；沿用每用户每分钟10次限制，超限429。事务锁等待、语句超时及死锁返回503 STOCK_BUSY；数据库连接意外中断或暂时不可用返回503 STOCK_CONNECTION_LOST；两类业务命令均使用原requestKey安全重试。真正的输入格式与数据库字段约束错误返回400，不把断连误报成字段无效。
 
 ## 取货记录接口（2026-09-22，本地实现）
 
@@ -777,26 +1023,26 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 所有 `/api/proxy-orders` 接口需认证与 proxy_orders.read。独立动作权限为 edit/status/copy/accounts/link，均依赖 read。普通列表/详情不返回 Apple 密码，no-store；相关系统订单仅返回必要摘要，不要求 orders.read，不含支付链接和账号秘密。
 
-| 方法与路径 | 权限 | 契约 |
-| --- | --- | --- |
-| GET /api/proxy-orders | read | page/limit/keyword/status 分页，返回 rows/count；keyword 姓名/平台单号/委托编号；已知机型和颜色别名在响应中规范显示 |
-| GET /api/proxy-orders/stores | read | 已核实门店及省市区 |
-| POST /api/proxy-orders/parse | edit | text 单人文本；返回 draft/warnings；18PM → iPhone 18 Pro Max，iPhone 18 Pro/Pro Max 的红色、酒红色 → 勃艮第酒红色；缺数量默认 1、门店必须人工确认 |
-| POST /api/proxy-orders/address | edit | storeCode；生成账单地址，不写入订单 |
-| POST /api/proxy-orders | edit | 完整确认资料；pending，默认尝试分配一个账号；无账号仍保存 |
-| GET /api/proxy-orders/:id | read | 详情、分配历史、脱敏事件、官方订单摘要 |
-| PUT /api/proxy-orders/:id | edit | expectedVersion + 确认资料；成功/取消只允许改备注 |
-| POST /api/proxy-orders/:id/status | status | expectedVersion,status；手动禁止 succeeded |
-| POST /api/proxy-orders/:id/notes | edit | expectedVersion,notes；仅修改备注，保留加密原文及其他资料；所有状态可修改 |
-| POST /api/proxy-orders/:id/accounts | accounts | expectedVersion，accountIds 或 count；追加占用 |
-| POST /api/proxy-orders/:id/release | accounts | expectedVersion,assignmentIds,confirmedStopped=true；释放占用 |
-| POST /api/proxy-orders/:id/link | link | expectedVersion,orderNumber,reason；人工核对关联，不覆盖已有关系；orderNumber=null 为解除 |
-| POST /api/proxy-orders/copy | copy | ids 1–100；原子生成当前活跃账号模板，多行字符串；不更新状态 |
-| GET /api/proxy-orders/accounts | accounts | page/limit/keyword，scope=pool/candidates；返回 rows/count/availableCount，其中 availableCount 为整个专用池中状态“未使用”、未占用且未绑定普通取机人的数量；无密码 |
-| POST /api/proxy-orders/accounts/import | accounts | text，每行邮箱+密码；全量先验证，同账号密码差异拒绝不回显 |
-| POST /api/proxy-orders/accounts/adopt | accounts | ids，核对后纳入已有账号；有普通绑定拒绝 |
+| 方法与路径                             | 权限     | 契约                                                                                                                                                                                                                                   |
+| -------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GET /api/proxy-orders                  | read     | page/limit/keyword/status 分页，返回 rows/count；keyword 姓名/平台单号/委托编号；已知机型和颜色别名在响应中规范显示                                                                                                                    |
+| GET /api/proxy-orders/stores           | read     | 已核实门店及省市区                                                                                                                                                                                                                     |
+| POST /api/proxy-orders/parse           | edit     | text 单人文本；返回 draft/warnings；18PM → iPhone 18 Pro Max，iPhone 18 Pro/Pro Max 的红色、酒红色 → 勃艮第酒红色；缺数量默认 1、门店必须人工确认                                                                                      |
+| POST /api/proxy-orders/address         | edit     | storeCode；生成账单地址，不写入订单                                                                                                                                                                                                    |
+| POST /api/proxy-orders                 | edit     | 完整确认资料；pending，默认尝试分配一个账号；无账号仍保存                                                                                                                                                                              |
+| GET /api/proxy-orders/:id              | read     | 详情、分配历史、脱敏事件、官方订单摘要                                                                                                                                                                                                 |
+| PUT /api/proxy-orders/:id              | edit     | expectedVersion + 确认资料；成功/取消只允许改备注                                                                                                                                                                                      |
+| POST /api/proxy-orders/:id/status      | status   | expectedVersion,status；手动禁止 succeeded                                                                                                                                                                                             |
+| POST /api/proxy-orders/:id/notes       | edit     | expectedVersion,notes；仅修改备注，保留加密原文及其他资料；所有状态可修改                                                                                                                                                              |
+| POST /api/proxy-orders/:id/accounts    | accounts | expectedVersion，accountIds 或 count；追加占用                                                                                                                                                                                         |
+| POST /api/proxy-orders/:id/release     | accounts | expectedVersion,assignmentIds,confirmedStopped=true；释放占用                                                                                                                                                                          |
+| POST /api/proxy-orders/:id/link        | link     | expectedVersion,orderNumber,reason；人工核对关联，不覆盖已有关系；orderNumber=null 为解除                                                                                                                                              |
+| POST /api/proxy-orders/copy            | copy     | ids 1–100；原子生成当前活跃账号模板，多行字符串；不更新状态                                                                                                                                                                            |
+| GET /api/proxy-orders/accounts         | accounts | page/limit/keyword，scope=pool/candidates；返回 rows/count/availableCount，其中 availableCount 为整个专用池中状态“未使用”、未占用且未绑定普通取机人的数量；无密码                                                                      |
+| POST /api/proxy-orders/accounts/import | accounts | text，每行邮箱+密码；全量先验证，同账号密码差异拒绝不回显                                                                                                                                                                              |
+| POST /api/proxy-orders/accounts/adopt  | accounts | ids，核对后纳入已有账号；有普通绑定拒绝                                                                                                                                                                                                |
 | POST /api/proxy-orders/accounts/status | accounts | accounts=[{id,expectedUpdatedAt}] 1–100 个专用池账号、status=未使用/使用中/已下架/异常；改为未使用须 confirmedStopped=true。整批行锁、版本校验与事务，任一账号不存在、非专用池或仍被代抢占用时整批拒绝；仅更新状态，保留备注和占用历史 |
-| PUT /api/proxy-orders/accounts/:id | accounts | status,notes,expectedUpdatedAt；改为未使用须 confirmedStopped=true，仍被代抢占用的账号拒绝；原账号更新冲突拒绝 |
+| PUT /api/proxy-orders/accounts/:id     | accounts | status,notes,expectedUpdatedAt；改为未使用须 confirmedStopped=true，仍被代抢占用的账号拒绝；原账号更新冲突拒绝                                                                                                                         |
 
 业务校验返回 400；不存在 404；占用/重复/版本冲突 409；无权限 403。复制拒绝未确认门店/不完整资料/异常账号/终态订单，错误不回显密码。读接口无隐式自动变更；匹配由 API 内可恢复的 20 秒周期扫描触发，跨进程使用事务锁，最多每批 100 个委托，分页游标循环扫描防饥饿。
 
@@ -819,30 +1065,64 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 原始日志属于受限正文，接口错误及应用日志不记录正文。已有告警上报协议保持不变。
 
+2026-10-07 压缩存储改造保持上述响应字段、认证和分页协议。旧 `id+scope` 游标继续有效，稳定事件 ID 可跨存储切换定位；`contextAt`、内部块目录和载荷摘要不新增至网站响应。上传在同一事务提交数据与事件/位置双唯一回执，小批也立即可查。损坏或不支持版本的块返回明确 503 `FULL_LOG_CORRUPT`，不返回部分查询成功。30 天清理使过期游标失效。默认仍读取旧行表，按已对账的实例切换，无网页额外参数。
+
 ## 库存监控 API（已生产发布）
 
 统一前缀 `/api/inventory`，使用现有登录鉴权，响应 `{success:true,data}`；所有接口 `Cache-Control: no-store`。错误输入 400、并发设置版本冲突 409、未登录 401、未授权 403。设置密钥和代理凭据永不返回。
 
 `inventory.read` 为可分配的普通用户权限，允许 GET catalog/scope/latest/history/history/export/analysis；管理员自动拥有。其他接口均保留 admin 角色校验，包括设置、目录修改、轮次详情、手动采集、恢复、通知测试和投递记录。菜单与页面路由同步检查，旧 tab 链接归入用户或管理员菜单后再次鉴权。现有普通用户不隐式获得权限，由管理员在用户管理中分配。
 
-| 方法/路径 | 请求与结果 |
-| --- | --- |
-| GET /scope | 已启用且支持的商品及已启用门店白名单、组合数、采集开关、汇总状态和最后成功时间；不含代理、预算、Webhook 或内部运行配置 |
-| GET /catalog | 仅返回 iPhone 18 Pro／Pro Max 商品及全部门店目录、启用与待确认状态；范围外旧商品不返回 |
-| PUT /catalog | `{kind:products或stores,ids:[],enabled:boolean}`，批量启停；范围外商品 ID 拒绝且整批不修改 |
-| POST /catalog/refresh | 排队一次官网目录核对，不同步发起外部请求 |
-| GET /settings | 配置/version/hasWebhook/目标名称，不含密文 |
-| PUT /settings | `{version,config,webhook?}`，严格白名单、版本控制；首次开启通知须先成功测试 |
-| GET /latest | 通用筛选 cities/stores/models/capacities/colors/skus（逗号分隔），onlyInStock，page/pageSize；返回 items/total/summary/asOf |
-| POST /refresh | 同样筛选，当前启用范围内合并排队；返回轮次，不绕过保护 |
-| GET /rounds | 分页轮次及完成/失败/待采、耗时与固定范围 |
-| GET /rounds/:id | 固定轮次逐 SKU/门店覆盖矩阵与脱敏任务状态，支持通用筛选和分页；明细过期仅返回汇总 |
-| GET /history | 通用筛选 + from/to（明确时区 ISO）、metric（detections/arrivals/first/recovery/all）、source（auto/manual/all）；分页 |
-| GET /history/export | 同历史筛选 CSV，最多 50000 条；超过上限拒绝并要求缩小范围，防公式注入 |
-| GET /analysis | 同历史筛选 + bucketMinutes（10/20/30/60）；hours/configurations/heatmap/cities/stores，附 coverage 和 detailAvailable |
-| GET /health | 保护状态、预算、队列、最近成功/错误、下轮计划，脱敏 |
-| POST /resume | 人工确认核查后解除人工阻断，但保留预算和未到期冷却 |
-| POST /notifications/test | 当前机器人合成测试排队，与正式发送共用速率 |
-| GET /deliveries | 分页投递状态，accepted 不代表群内已读 |
+| 方法/路径                | 请求与结果                                                                                                                  |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| GET /scope               | 已启用且支持的商品及已启用门店白名单、组合数、采集开关、汇总状态和最后成功时间；不含代理、预算、Webhook 或内部运行配置      |
+| GET /catalog             | 仅返回 iPhone 18 Pro／Pro Max 商品及全部门店目录、启用与待确认状态；范围外旧商品不返回                                      |
+| PUT /catalog             | `{kind:products或stores,ids:[],enabled:boolean}`，批量启停；范围外商品 ID 拒绝且整批不修改                                  |
+| POST /catalog/refresh    | 排队一次官网目录核对，不同步发起外部请求                                                                                    |
+| GET /settings            | 配置/version/hasWebhook/目标名称，不含密文                                                                                  |
+| PUT /settings            | `{version,config,webhook?}`，严格白名单、版本控制；首次开启通知须先成功测试                                                 |
+| GET /latest              | 通用筛选 cities/stores/models/capacities/colors/skus（逗号分隔），onlyInStock，page/pageSize；返回 items/total/summary/asOf |
+| POST /refresh            | 同样筛选，当前启用范围内合并排队；返回轮次，不绕过保护                                                                      |
+| GET /rounds              | 分页轮次及完成/失败/待采、耗时与固定范围                                                                                    |
+| GET /rounds/:id          | 固定轮次逐 SKU/门店覆盖矩阵与脱敏任务状态，支持通用筛选和分页；明细过期仅返回汇总                                           |
+| GET /history             | 通用筛选 + from/to（明确时区 ISO）、metric（detections/arrivals/first/recovery/all）、source（auto/manual/all）；分页       |
+| GET /history/export      | 同历史筛选 CSV，最多 50000 条；超过上限拒绝并要求缩小范围，防公式注入                                                       |
+| GET /analysis            | 同历史筛选 + bucketMinutes（10/20/30/60）；hours/configurations/heatmap/cities/stores，附 coverage 和 detailAvailable       |
+| GET /health              | 保护状态、预算、队列、最近成功/错误、下轮计划，脱敏                                                                         |
+| POST /resume             | 人工确认核查后解除人工阻断，但保留预算和未到期冷却                                                                          |
+| POST /notifications/test | 当前机器人合成测试排队，与正式发送共用速率                                                                                  |
+| GET /deliveries          | 分页投递状态，accepted 不代表群内已读                                                                                       |
 
 库存展示与统计口径见[库存监控](库存监控.md)。个人筛选不修改全局采集清单；通知筛选仅影响提醒。不存在设置任意请求 URL 或任意 SQL 的接口。
+
+### 库存盒标结构化识别
+
+`POST /api/stock/box/recognize`：multipart `image`，最多 10MiB JPG/PNG/WebP。需 stock.read 及入库权限或完整历史补录权限；与旧 serial/recognize 共用每用户 10次/分钟和取货月额度，不自动重试。返回 `candidates` 数组：serialNumber、productId、skuCode、modelName、storageGb、colorName、matchBasis、reviewReasons、sources；成本仅 stock.cost.read 可见，不返回原始全文。冲突不自动确定规格。调用不写业务。
+
+`GET /api/stock/ledger/catalog` 增加 skuCode、entryEligible；cost.read 可见 fixedCostAmount 和 priceVersion。入库及历史补录每台独立 productId；未提供 officialCostAmount 时服务端默认匹配固定目录，显式人工金额或待补仍需 cost.edit。未知拿货日期保持空。
+
+`GET /api/stock/ledger/check-serials?serials=[...]`：最多100个 SN，返回 `existing:[{id,serialNumber}]`，只含已在库、已售、在途；registered 不拦截，正式保存仍在事务内检查规格与既有成本。人工成本的可选 `costBasis` 按成本权限校验并加密保存。单行失败错误附 `details.row`（1起始）；整批回滚。
+
+### 台账机型、容量与颜色筛选（2026-10-05）
+
+`GET /api/stock/ledger` 新增 `modelNames`、`storageGbs`、`colorNames`，均为 JSON 数组字符串；同维度多值 OR，三个维度及仓库、搜索、销售条件之间 AND。空数组不限制。机型与颜色按目录名称精确匹配，容量为正整数 GB；每组最多100项，名称分别最长100／64字符，非法 JSON、类型或值返回400。筛选在数据库分页前执行，total 与两个 Tab 计数使用同一条件；保留旧 productId 参数兼容。
+
+`GET /api/stock/ledger/catalog` 新增 `filterOptions: {modelNames: string[], storageGbs: number[], colorNames: string[]}`，来自完整规格目录，含停用的历史规格，不含成本等敏感字段；原 products 仍只返回可用入库规格。两处维持 stock.read 及原字段权限。前端三项常驻、支持搜索多选，切换库存／销售保留三维和仓库条件，修改筛选回到第一页、保留已选设备，统一“重置筛选”清空搜索、三维规格、仓库及销售条件并回到第一页，保留已选设备。
+
+### 台账设备身份与备注搜索（2026-10-07）
+
+单台 DTO 的 `id` 是 `stock_units.id`（UUID），入库、售出和恢复库存沿用同一设备身份，新增只读 `deviceNumber`（正整数）供页面 ID 展示，从1递增且售前售后不变；`id` 保留UUID用于请求路径及内部关联，不能用销售ID或分页序号代替。`GET /api/stock/ledger` 的 `q` 同时对 SN、授权可见订单号和设备备注进行不区分大小写的字面包含匹配，最多100字符；百分号、下划线及反斜杠不作为通配符。备注保持加密存储，服务端在其他条件限定的台账范围内分批解密匹配，然后统一执行计数与分页；不搜索销售审计或不可见订单字段，不建立明文备注副本。搜索成本随候选备注数量增长。
+
+
+### 订单详情手动维护序列号（2026-10-08）
+
+- GET `/api/orders/:orderId/devices` 需 orders.read，按订单 TAG 范围读取设备列表。
+- POST 同路径需 orders.read、orders.edit，复用设备登记及库存主档绑定事务，输入 `{serialBarcode}`，同订单同号幂等；用于尚无序列号或补录另一台设备。
+- PUT `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit，请求 `{serialBarcode,expectedSerialNumber,reason}`；reason 去首尾空白后 1–200 字符，expectedSerialNumber 必须与当前值一致，否则 409。号码规范沿用 10/12 位字母数字且含字母，可带明确长度前导 S；重复号码返回通用 409，不泄露其他订单。
+- 修改只更正同一实物的序列号，同时更新 pickup_devices 和关联 stock_units，保持设备 ID、库存数量、销售、成本和取货状态；使用库存事务锁，唯一约束兜底。无变更不重复生成业务事件。
+- device_serial_updated 追加历史记录操作人、时间、设备 ID、修改前后序列号及原条码、原因、requestId 和 IP；库存事件同步保留修改前后主档。历史写入失败时整个事务回滚，操作记录页面显示目标订单及修改前后序列号、原因，失败请求亦由通用操作日志记录。
+
+
+### 订单详情删除误录序列号（2026-10-08）
+
+DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit 与订单 TAG 范围，请求体 `{expectedSerialNumber,reason}`，原因必填 1–200 字。仅移除指定 UUID 的订单设备绑定，保留库存主档、库存数量、销售与历史；不能通过清空编辑框隐式删除。原值不一致 409，范围外订单 404，重复删除原 UUID 返回 removed=false，不影响新绑定。删除、取货版本递增、device_removed 事件（完整原设备绑定、原因、requestId、IP）及库存解绑审计在同一事务内完成；任一审计失败整体回滚。后台操作日志显示订单、被删除序列号和原因。前端提供明确删除入口、原因输入和确认删除步骤，失败保留输入。

@@ -4,6 +4,8 @@ const { scopeOrderWhere } = require('../services/orderAccessService');
 const { normalizeDeviceBarcodes } = require('../services/pickupDeviceRules');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
+const { lockStock, legacyContext, updateRow } = require('../services/stockCommandService');
+const { ensureUnit } = require('../services/stockUnitService');
 
 function parseOrderId(value) {
   const id = Number(value);
@@ -70,7 +72,10 @@ async function create(req, res) {
     const orderId = parseOrderId(req.params.orderId);
     const values = normalizeDeviceBarcodes(req.body);
     const result = await sequelize.transaction(async transaction => {
+      await lockStock(transaction);
       await accessibleOrder(req.user, orderId, transaction);
+      const ctx = await legacyContext(req.user, transaction, 'legacy.device_bind');
+      const unit = await ensureUnit(ctx, values.serialNumber);
       const existing = await PickupDevice.findAll({
         where: { serialNumber: values.serialNumber },
         transaction,
@@ -81,6 +86,10 @@ async function create(req, res) {
           existing[0].orderId === orderId &&
           existing[0].serialNumber === values.serialNumber;
         if (!same) throw bindingConflict();
+        if (!existing[0].stockUnitId)
+          await existing[0].update({ stockUnitId: unit.id }, { transaction });
+        if (unit.orderNumberText)
+          await updateRow(ctx, unit, { orderNumberText: null }, 'legacy.source_text_clear');
         return { device: serialize(existing[0]), alreadyBound: true };
       }
       let record = await PickupRecord.findOne({
@@ -90,7 +99,7 @@ async function create(req, res) {
       });
       if (!record) record = await PickupRecord.create({ orderId }, { transaction });
       const device = await PickupDevice.create(
-        { ...values, orderId, scannedBy: req.user.id },
+        { ...values, orderId, stockUnitId: unit.id, scannedBy: req.user.id },
         { transaction }
       );
       const beforeVersion = record.version;
@@ -113,6 +122,7 @@ async function create(req, res) {
         },
         { transaction }
       );
+      await updateRow(ctx, unit, { orderNumberText: null }, 'legacy.source_bind');
       return { device: serialize(device), alreadyBound: false };
     });
     res.setHeader('Cache-Control', 'no-store');
@@ -136,6 +146,7 @@ async function remove(req, res) {
       throw ApiError.badRequest('设备 ID 格式无效');
     }
     const removed = await sequelize.transaction(async transaction => {
+      await lockStock(transaction);
       await accessibleOrder(req.user, orderId, transaction);
       const device = await PickupDevice.findOne({
         where: { id: deviceId, orderId },
@@ -174,7 +185,10 @@ async function remove(req, res) {
         },
         { transaction }
       );
+      const ctx = await legacyContext(req.user, transaction, 'legacy.device_unbind');
+      const unit = await ensureUnit(ctx, device.serialNumber);
       await device.destroy({ transaction });
+      await updateRow(ctx, unit, { orderNumberText: null }, 'legacy.source_unbind');
       return true;
     });
     res.setHeader('Cache-Control', 'no-store');

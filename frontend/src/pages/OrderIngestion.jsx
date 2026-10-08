@@ -124,7 +124,7 @@ function Dialog({ title, onClose, children }) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-xl bg-white p-6 shadow-xl"
+        className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-white p-6 shadow-xl"
       >
         <div className="mb-5 flex items-center justify-between">
           <h2 className="text-xl font-semibold text-gray-900">{title}</h2>

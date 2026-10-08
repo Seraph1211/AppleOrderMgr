@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const permissionService = require('../services/permissionService');
+const { getStockPermissionGroups } = require('../constants/stockPermissionGroups');
 
 /**
  * 返回版本化权限目录。
@@ -10,7 +11,11 @@ const permissionService = require('../services/permissionService');
 function getCatalog(_req, res) {
   return res.json({
     success: true,
-    data: { version: 1, permissions: permissionService.getPermissionCatalog() },
+    data: {
+      version: 2,
+      permissions: permissionService.getPermissionCatalog(),
+      stockGroups: getStockPermissionGroups(),
+    },
   });
 }
 

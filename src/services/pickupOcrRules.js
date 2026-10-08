@@ -7,7 +7,9 @@ function normalizeOcrSerial(value) {
 /** 优先提取 Serial No. 后的号码；未识别字段名时只提供含数字的候选供人工核对。 */
 function extractSerialCandidates(text) {
   if (typeof text !== 'string') return [];
-  const normalized = text.toUpperCase();
+  const normalized = text
+    .toUpperCase()
+    .replace(/\b(?:CMIIT\s*ID|IMEI\s*2?|EID|UPC)\b[^\n]*?(?=SERIAL|S\/N|\n|$)/g, ' ');
   const labeled = [];
   const labels = /(?:SERIAL\s*(?:NO\.?|NUMBER)?|S\/N)\s*[:.：]?\s*([A-Z0-9 \t]+)/g;
   for (const match of normalized.matchAll(labels)) {

@@ -1,5 +1,6 @@
 import OrderAmount from '../components/OrderAmount';
 import OrderSources from '../components/OrderSources';
+import OrderPickupPhotos from '../components/orderPickupPhotos';
 import { getOrderDetailWithLink } from '../api';
 import { getDisplayOrderStatusBadge } from '../constants/orderStatus';
 import { useCallback, useEffect, useState } from 'react';
@@ -147,6 +148,7 @@ export default function OrderDetail() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
+          <OrderPickupPhotos orderId={order.id} orderNumber={order.order_number} />
           <div className="card overflow-hidden p-0">
             <div className="border-b border-gray-200 px-6 py-4">
               <h2 className="text-lg font-semibold text-gray-900">商品信息</h2>

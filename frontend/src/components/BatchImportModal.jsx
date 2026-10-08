@@ -88,6 +88,7 @@ export default function BatchImportModal({ type, onClose, onImport }) {
               </button>
             )}
             <input
+              className="min-w-0 max-w-full"
               aria-label="选择导入文件"
               type="file"
               accept=".xlsx"

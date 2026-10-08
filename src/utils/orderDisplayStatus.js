@@ -12,6 +12,31 @@ const DISPLAY_ORDER_STATUSES = Object.freeze([
   'expired',
 ]);
 
+/* eslint-disable camelcase -- 键名沿用 API 状态码 */
+const DISPLAY_ORDER_STATUS_LABELS = Object.freeze({
+  unknown: '待确认',
+  confirmed: '订单已确认',
+  payment_timeout: '付款超时',
+  processing: '处理中',
+  ready_for_pickup: '可取货',
+  picked_up: '已取货',
+  partially_cancelled: '部分取消',
+  cancelled: '已取消',
+  expired: '已过期',
+});
+/* eslint-enable camelcase */
+
+/**
+ * 将订单管理展示状态转换为与页面一致的中文名称。
+ * @param {string} status - 展示状态码
+ * @returns {string} 中文状态名称，未知值显示待确认
+ */
+function getDisplayOrderStatusLabel(status) {
+  return Object.hasOwn(DISPLAY_ORDER_STATUS_LABELS, status)
+    ? DISPLAY_ORDER_STATUS_LABELS[status]
+    : DISPLAY_ORDER_STATUS_LABELS.unknown;
+}
+
 // 列表筛选与展示使用同一来源时间和邮件付款证据；不改写邮件生命周期。
 const DISPLAY_ORDER_STATUS_SQL = `CASE WHEN "Order"."email_order_status" = 'confirmed'
   AND "Order"."email_payment_status" <> 'paid'
@@ -31,4 +56,5 @@ module.exports = {
   DISPLAY_ORDER_STATUSES,
   DISPLAY_ORDER_STATUS_SQL,
   getDisplayOrderStatus,
+  getDisplayOrderStatusLabel,
 };
