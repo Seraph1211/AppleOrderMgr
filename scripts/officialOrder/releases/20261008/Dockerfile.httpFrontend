@@ -1,0 +1,5 @@
+FROM apple-order-mgr-frontend-builder:20261008-order-filters-v1-amd64
+COPY src /app/src
+COPY public /app/public
+COPY index.html /app/index.html
+RUN npm run build

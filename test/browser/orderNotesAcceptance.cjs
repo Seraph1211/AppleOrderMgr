@@ -2,6 +2,7 @@
 /* eslint-disable camelcase -- 合成数据遵循 API 契约 */
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright-core');
+const BASE_URL = process.env.NOTES_BROWSER_URL || 'http://127.0.0.1:5173';
 
 /** 合成 API 验证订单备注编辑，不访问真实业务数据。 */
 async function main() {
@@ -23,7 +24,7 @@ async function main() {
       try {
         const url = new URL(route.request().url());
         if (!url.pathname.startsWith('/api/')) {
-          if (url.origin === 'http://127.0.0.1:5173') await route.continue();
+          if (url.origin === BASE_URL) await route.continue();
           else await route.abort();
           return;
         }
@@ -47,6 +48,10 @@ async function main() {
           }
           notes = body.notes.trim() || null;
           data = { id: 101, notes, updated_at: '2026-10-08T01:00:00Z' };
+        } else if (url.pathname === '/api/orders/101/devices') {
+          data = { items: [] };
+        } else if (url.pathname === '/api/orders/101' || url.pathname === '/api/orders/101/link') {
+          data = { id: 101, notes };
         } else {
           errors.push(`意外 API: ${url.pathname}`);
           await route.abort();
@@ -58,24 +63,31 @@ async function main() {
         await route.abort();
       }
     });
-    const edit = () => page.getByRole('button', { name: '修改备注 W1234567890', exact: true }).filter({ visible: true });
-    const input = () => page.getByLabel('订单备注', { exact: true });
+    const edit = async () => {
+      if (!(await page.getByRole('button', { name: '关闭订单详情', exact: true }).isVisible())) {
+        await page.getByRole('button', { name: '查看', exact: true }).filter({ visible: true }).click();
+      }
+      await page.getByRole('button', { name: '修改备注', exact: true }).click();
+    };
+    const input = () => page.getByRole('textbox', { name: '订单备注', exact: true });
     const save = () => page.getByRole('button', { name: '保存备注', exact: true });
     const waitClosed = () => page.getByRole('dialog').waitFor({ state: 'hidden' });
     for (const width of [375, 768, 1440]) {
       await page.setViewportSize({ width, height: 780 });
-      await page.goto('http://127.0.0.1:5173/orders');
-      await edit().click();
+      await page.goto(`${BASE_URL}/orders`);
+      await edit();
       assert.equal(await input().inputValue(), notes || '');
       assert(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
       await input().fill(`宽度 ${width}\n第二行`);
       await save().click();
       await waitClosed();
       await page.reload();
-      await edit().click();
+      await edit();
       assert.equal(await input().inputValue(), `宽度 ${width}\n第二行`);
       await page.getByRole('button', { name: '取消', exact: true }).click();
     }
+    await page.getByRole('button', { name: '关闭订单详情', exact: true }).click();
+    assert.equal(await page.getByRole('button', { name: '修改备注 W1234567890', exact: true }).count(), 0);
     await page.getByRole('button', { name: '列设置', exact: true }).click();
     await page.locator('[draggable]').filter({ has: page.getByText('备注', { exact: true }) }).getByRole('checkbox').check();
     await page.getByRole('button', { name: '保存', exact: true }).click();
@@ -85,7 +97,7 @@ async function main() {
     await input().fill('取消的草稿');
     await page.getByRole('button', { name: '取消', exact: true }).click();
     assert.equal(writes.length, beforeCancel);
-    await edit().click();
+    await edit();
     assert.equal(await input().inputValue(), notes);
     fail = true;
     await input().fill('失败后保留');
@@ -104,25 +116,26 @@ async function main() {
     releaseSave();
     await waitClosed();
     holdSave = false;
-    await edit().click();
+    await edit();
     await input().fill('');
     await save().click();
     await waitClosed();
     assert.equal(notes, null);
     await page.reload();
-    await edit().click();
+    await edit();
     assert.equal(await input().inputValue(), '');
     await page.getByRole('button', { name: '取消', exact: true }).click();
     // 字面连字符不能当作空值丢失。
     notes = '-';
     await page.reload();
-    await edit().click();
+    await edit();
     assert.equal(await input().inputValue(), '-');
     await page.getByRole('button', { name: '取消', exact: true }).click();
     editable = false;
     await page.reload();
     await page.getByRole('heading', { name: '订单管理' }).waitFor();
     await page.getByText('订单 ID：101', { exact: true }).filter({ visible: true }).waitFor();
+    await page.getByRole('button', { name: '查看', exact: true }).filter({ visible: true }).click();
     assert.equal(await page.getByRole('button', { name: /修改备注|编辑备注/ }).count(), 0);
     assert.deepEqual(errors, []);
     process.stdout.write('订单备注合成浏览器验收通过：3 种宽度、保存/清空/取消/失败/只读权限\n');

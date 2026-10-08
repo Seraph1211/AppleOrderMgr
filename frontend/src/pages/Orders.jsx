@@ -656,20 +656,6 @@ export default function Orders() {
             >
               查看
             </button>
-            {canEditOrders && (
-              <button
-                type="button"
-                className="btn btn-secondary inline-flex items-center gap-1 text-sm"
-                aria-label={`修改备注 ${order.orderNumber}`}
-                onClick={event => {
-                  event.stopPropagation();
-                  openNotesEditor(order);
-                }}
-              >
-                <Pencil className="h-4 w-4" />
-                备注
-              </button>
-            )}
             {canReadMail && (
               <button
                 onClick={event => {

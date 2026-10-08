@@ -1,0 +1,3 @@
+FROM apple-order-mgr-runtime:20261008-order-filters-v1-amd64
+COPY --chown=node:node src /app/src
+COPY --chown=node:node package.json /app/package.json

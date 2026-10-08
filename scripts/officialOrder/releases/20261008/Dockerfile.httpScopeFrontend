@@ -1,0 +1,4 @@
+FROM apple-order-mgr-frontend-builder:20261008-official-http-v1-amd64
+COPY src/pages/Orders.jsx /app/src/pages/Orders.jsx
+COPY src/components/OfficialOrderRefreshPanel.jsx /app/src/components/OfficialOrderRefreshPanel.jsx
+RUN npm run lint && npm run build

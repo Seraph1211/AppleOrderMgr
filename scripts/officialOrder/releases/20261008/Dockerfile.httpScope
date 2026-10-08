@@ -1,0 +1,2 @@
+FROM apple-order-mgr-runtime:20261008-official-http-v1-amd64
+COPY --chown=node:node src/services/officialOrderRefreshService.js /app/src/services/officialOrderRefreshService.js
