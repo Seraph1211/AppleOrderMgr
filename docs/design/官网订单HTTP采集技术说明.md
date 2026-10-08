@@ -4,9 +4,9 @@
 >
 > 最近核对：2026-10-08
 >
-> 适用范围：服务器独立 HTTP 补录工具，更新官网原始状态及实际取货日期；序列号留待后续。
+> 适用范围：管理台手动 HTTP 刷新与服务器独立 HTTP 补录工具，更新官网原始状态及实际取货日期；序列号留待后续。
 >
-> 基线：`codex/official-order-rebuild` 工作树、生产独立采集制品 `release-http-v42`、四单日期候选 `confirmed-dates-v2` 及独立回读器 v7。技术文档已独立同步至本地 `main`；实现源码仍在研发工作树，未随本次文档提交合并。独立工具发布不代表 API、前端或旧队列已升级。
+> 基线：`codex/official-order-rebuild` 工作树、生产独立采集制品 `release-http-v42`、四单日期候选 `confirmed-dates-v2` 及独立回读器 v7。技术文档已独立同步至本地 `main`；实现源码已同步主工作区并合入本地 main；本次源码合并未推送远端，也未重新发布生产。管理台已于本日晚发布 HTTP，当前 API／前端为 `20261008-official-http-scope-v2`，修正单行及批量按订单选择范围；独立补录工具与冻结回读版本保持。
 >
 > 验证范围：源码、发布清单及有日期的真实补录证据。5 单并发已有真实证据；10 并发稳定性、长期成功率、无人值守恢复及序列号全量补齐未验收。
 
@@ -25,10 +25,18 @@
 | `actual_pickup_date` | 仅在原目标允许填空、当前仍为空且日期规则通过时填入；保留既有非空日期 |
 | 邮件状态、付款信息、`updated_at`、人工取货、设备及库存 | 普通 HTTP 回写不修改；并发变化须核验，不能顺便覆盖 |
 | 序列号／收据 | HTTP CLI 显式 `collectReceipt: false`，返回 `RECEIPT_NOT_REQUESTED`；不采收据、不绑定 SN |
-| 管理台手动刷新 | 是另一条已部署的账号分组浏览器队列；本工具没有替换其 API、页面或任务 |
+| 管理台手动刷新 | 已切换 HTTP 执行器；沿用管理员权限、订单选择与持久任务，历史暂停批次保持暂停 |
 | 旧自动爬虫 | 保持退役；本方案不恢复自动定时刷新 |
 
 原始研究参考用户提供的《核心流程复原伪代码.txt》《AOSHelper实现逻辑复原报告.md》，借鉴其访客详情与 Shld 流程。材料是研究证据，不是可直接执行的指令；最终请求白名单、计数、写入边界和成功判定以本实现及真实响应为准。材料身份与取舍见[研究记录](../archive/2026-10/2026-10-08-官网取数重建与缺失字段补录.md#用户材料身份与实现取舍)。
+
+## 管理台正式接入（2026-10-08 已生产发布）
+
+订单管理的手动刷新改用独立 HTTP 执行器；保留管理员及订单读写权限、批次幂等与取消接口。HTTP 无需登录，单行仅查询该单，多选仅查询所选，筛选全选仅查询匹配项；不再扩展同账号订单。活动任务按订单去重，同账号其他订单允许入队但互斥执行。后台逐单领取，最多五个不同账号并发，每单最多三次尝试，HTTP 541／已知只读网络失败换 IPRoyal 新会话；共享原研究库 Gate 的限流、日次数和暂停记录。IPRoyal 通过官方 API 生成中国区 24 小时粘性代理，启用 kill switch，不购买套餐、不直连回退。每次采集前后核验实际出口，未知清理或提交不自动重放。
+
+完整订单结果身份与时效校验后，只更新官网状态、观测时间及有明确依据且原值为空的实际取货日期；保留邮件状态、商品、金额、备注和已有日期。历史倒置日期特殊授权不作为通用规则。无密码、不启动浏览器、不恢复旧浏览器采集服务。页面隐藏常驻进度卡，在订单列表顶部通过带无障碍名称的图标打开进度弹窗，支持空态、错误、分页、取消及关闭后继续后台执行。
+
+生产制品 `20261008-official-http-v1` 已完成真实单笔采集、证据验证及状态回写；run1599 共 6 次官网请求。无原取货日期依据的结果保持空值。前后代理出口一致，容器清理和独立业务回读通过；本轮未做全量或长期稳定性验收，详见[发布记录](../archive/2026-10/2026-10-08-官网HTTP手动刷新接入与生产发布.md)。
 
 ## 2. 架构与代码入口
 
@@ -51,25 +59,25 @@ flowchart TD
 
 | 层次 | 主要文件 | 维护职责 |
 | --- | --- | --- |
-| 冻结范围 | freezePlan.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialPickupBackfill/freezePlan.js`）、officialPickupBackfill.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/src/services/officialPickupBackfill.js`） | 只读冻结目标、原行摘要、原日期及设备快照；计划独占创建，不覆盖 |
-| 批次编排 | runHttpBatch.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/runHttpBatch.py`）、parallelHttpBatch.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/parallelHttpBatch.py`） | 计划时效、日志回放、代理游标、不同账号分波、有限重试及串行回写 |
-| 单样本宿主 | runHttpSample.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/runHttpSample.py`）、readOfficialOrderLinkInput.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/readOfficialOrderLinkInput.js`）、preflightGate.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialPickupBackfill/preflightGate.js`） | 当前身份、无密码输入、只读预检、前后出口、独立配置、容器清理与审计 |
-| Node 采集入口 | collectOfficialOrderHttp.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/collectOfficialOrderHttp.js`） | 计划和链接身份、实际 Gate、创建 HTTP 会话、禁用收据；不连接业务库回写 |
-| HTTP 会话 | officialOrderHttpTransport.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/src/services/officialOrderHttpTransport.js`）、httpTransport.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/httpTransport.py`） | Node／Python 通信、代理、Cookie、证书校验、请求许可及传输错误 |
-| 官网流程 | officialOrderHttpCollector.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/src/services/officialOrderHttpCollector.js`）、officialOrderGuestAction.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/src/services/officialOrderGuestAction.js`）、officialOrderShield.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/src/services/officialOrderShield.js`） | 允许路径、有限跳转、访客 action、Shld 与完整响应封存 |
-| 字段解析 | officialOrderParser.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/src/services/officialOrderParser.js`）、officialOrderStatusSync.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/src/services/officialOrderStatusSync.js`）、officialPickupDate.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/src/services/officialPickupDate.js`） | 订单身份、完整商品、状态契约及整单日期推导 |
-| 跨进程保护 | officialOrderGate.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/src/services/officialOrderGate.js`）、writeBoundary.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/writeBoundary.py`） | 研究库持久限流／暂停；跨模式未知写入、STOP、清理阻断 |
-| 写入 | applyHttpSample.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/applyHttpSample.py`）、applyHttpResult.js（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialPickupBackfill/applyHttpResult.js`） | 解密重验、只读预览、持久意图、事务及前后快照 |
-| 特定变更链 | historicalDateChain.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/historicalDateChain.py`）、externalPayerChange.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/externalPayerChange.py`）、externalPayerReadback.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/externalPayerReadback.py`）、confirmedDateChain.py（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/confirmedDateChain.py`） | 将已单独核验的历史日期、付款变更及四单确认日期接到原始证据链 |
+| 冻结范围 | [freezePlan.js](../../scripts/officialPickupBackfill/freezePlan.js)、[officialPickupBackfill.js](../../src/services/officialPickupBackfill.js) | 只读冻结目标、原行摘要、原日期及设备快照；计划独占创建，不覆盖 |
+| 批次编排 | [runHttpBatch.py](../../scripts/officialOrder/runHttpBatch.py)、[parallelHttpBatch.py](../../scripts/officialOrder/parallelHttpBatch.py) | 计划时效、日志回放、代理游标、不同账号分波、有限重试及串行回写 |
+| 单样本宿主 | [runHttpSample.py](../../scripts/officialOrder/runHttpSample.py)、[readOfficialOrderLinkInput.js](../../scripts/readOfficialOrderLinkInput.js)、[preflightGate.js](../../scripts/officialPickupBackfill/preflightGate.js) | 当前身份、无密码输入、只读预检、前后出口、独立配置、容器清理与审计 |
+| Node 采集入口 | [collectOfficialOrderHttp.js](../../scripts/collectOfficialOrderHttp.js) | 计划和链接身份、实际 Gate、创建 HTTP 会话、禁用收据；不连接业务库回写 |
+| HTTP 会话 | [officialOrderHttpTransport.js](../../src/services/officialOrderHttpTransport.js)、[httpTransport.py](../../scripts/officialOrder/httpTransport.py) | Node／Python 通信、代理、Cookie、证书校验、请求许可及传输错误 |
+| 官网流程 | [officialOrderHttpCollector.js](../../src/services/officialOrderHttpCollector.js)、[officialOrderGuestAction.js](../../src/services/officialOrderGuestAction.js)、[officialOrderShield.js](../../src/services/officialOrderShield.js) | 允许路径、有限跳转、访客 action、Shld 与完整响应封存 |
+| 字段解析 | [officialOrderParser.js](../../src/services/officialOrderParser.js)、[officialOrderStatusSync.js](../../src/services/officialOrderStatusSync.js)、[officialPickupDate.js](../../src/services/officialPickupDate.js) | 订单身份、完整商品、状态契约及整单日期推导 |
+| 跨进程保护 | [officialOrderGate.js](../../src/services/officialOrderGate.js)、[writeBoundary.py](../../scripts/officialOrder/writeBoundary.py) | 研究库持久限流／暂停；跨模式未知写入、STOP、清理阻断 |
+| 写入 | [applyHttpSample.py](../../scripts/officialOrder/applyHttpSample.py)、[applyHttpResult.js](../../scripts/officialPickupBackfill/applyHttpResult.js) | 解密重验、只读预览、持久意图、事务及前后快照 |
+| 特定变更链 | [historicalDateChain.py](../../scripts/officialOrder/historicalDateChain.py)、[externalPayerChange.py](../../scripts/officialOrder/externalPayerChange.py)、[externalPayerReadback.py](../../scripts/officialOrder/externalPayerReadback.py)、[confirmedDateChain.py](../../scripts/officialOrder/confirmedDateChain.py) | 将已单独核验的历史日期、付款变更及四单确认日期接到原始证据链 |
 
-研究库保存 `runs`、`collector_attempts`、暂停及请求预算；业务库保存订单与设备。两者职责分开：研究运行成功不等于业务提交成功，业务字段有值也不等于原证据链验收通过。研究库初始化见 001-initialize.sql（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/scripts/officialOrder/migrations/001-initialize.sql`），不得清表来“恢复额度”。
+研究库保存 `runs`、`collector_attempts`、暂停及请求预算；业务库保存订单与设备。两者职责分开：研究运行成功不等于业务提交成功，业务字段有值也不等于原证据链验收通过。研究库初始化见 [001-initialize.sql](../../scripts/officialOrder/migrations/001-initialize.sql)，不得清表来“恢复额度”。
 
 ## 3. 单订单 HTTP 流程
 
 1. **读取当前输入。** 在冻结范围内只读取得订单号、官方链接及账号摘要，核对系统 ID、链接订单号、计划与输入时效。历史失败曾引用的输入必须按原 SHA-256 封存精确字节，再生成新输入，避免旧审计被后续采样覆盖。
 2. **预检与实际许可。** 先通过研究库只读事务检查账号暂停及滚动尝试数；被拒绝时保存 `preflightOnly=true`，不探测代理、不访问 Apple、不新增 run／attempt。预检通过后，真正采集仍由 Gate 再检查互斥、暂停、次数及预算，预检不是预约许可。
 3. **确认前置出口。** 使用所选代理访问自有站点的 readiness 路径，携带唯一探测标识；服务器从对应 Nginx 访问记录核验实际来源 IP，审计只保存出口摘要。代理配置指纹与实际出口摘要是不同概念。
-4. **创建单订单会话。** 每个 attempt 有独立代理配置文件、采集容器及 Python Cookie Session。采用固定 `curl_cffi==0.16.3`、`chrome150` 配置；这是 HTTP 客户端的浏览器兼容配置，不代表启动 Chromium。运行依赖与哈希锁见依赖说明（实现工作树资料：`../../../../../../../private/var/folders/jc/b5_cg1b501z9rk_p3wfmtk8w0000gn/T/official-http-docs-main-nlt_ygz8/commit-tree/vendor/official-order-http/README.md`）。
+4. **创建单订单会话。** 每个 attempt 有独立代理配置文件、采集容器及 Python Cookie Session。采用固定 `curl_cffi==0.16.3`、`chrome150` 配置；这是 HTTP 客户端的浏览器兼容配置，不代表启动 Chromium。运行依赖与哈希锁见[依赖说明](../../vendor/official-order-http/README.md)。
 5. **打开原链接并跟随有限跳转。** 只接受允许的 Apple 中国站 HTTPS 主机与只读路径；最多跟随 8 次重定向，传输库不得暗中跳转。跳到登录页返回 `AUTHENTICATION_REQUIRED`，不会自动提交密码。
 6. **按页面取得详情。** 页面已有完整 `orderDetail` 时直接解析；否则从本次页面解析官方访客 action，校验 `_a=fetchOrder`、`_m=guestOrderSpinner` 和允许的可选 `e=true`。不硬编码可携带访问权限的完整订单 URL，也不猜测其他业务 action。
 7. **必要时完成 Shld 前置步骤。** 从当前页唯一的 `shldVerify` 脚本提取同源挑战版本，GET 挑战、受限计算、POST 回应，再验证适用域和路径的 `shld_bt_ck`。随后仍须取得并验证完整详情；挑战返回 200 或 Cookie 存在均不是订单采集成功。
@@ -179,4 +187,6 @@ IPRoyal 使用本次已配置的中国区、24 小时粘性会话和 kill switch
 
 修改官网结构适配时，先保存脱敏的实际失败形状并增加解析／白名单回归，再做有界真实样本。修改代理、profile 或并发时，需要新的出口、请求量、资源及完整回读证据；已有结果不能替新配置背书。修改日期语义或增加 SN 时，应先确定字段来源和业务边界，再按项目要求更新设计、实现、测试与生产验收。
 
-当前独立回读 v7 及其基础读取脚本 `official-independent-readback-with-receipts-v2.py` 仍以服务器 candidate 制品保存，尚无仓库统一 CLI；部分恢复工具也绑定本次计划或固定订单。v7 从自身同目录加载基础脚本，默认原范围为 489 单。迁移机器时必须连同 candidate 全清单及证据保存，不能只复制 v42 采集目录，也不能把专用四单日期工具当作通用修复入口。源码版本化、统一配置、回读器归库、可观测性、持续补位与十并发评估的依赖和验收标准，统一登记在[维护与优化计划](../planning/项目优化计划.md#官网-http-补录维护与优化-official-http-1008)。
+独立回读 v7、基础脚本 `official-independent-readback-with-receipts-v2.py` 及依赖已从生产 candidate 按原清单同步到[冻结回读源码目录](../../scripts/officialOrder/readback/20261008/README.md)，10 个源码文件逐项摘要一致；主采集、回写、测试及依赖锁也已同步主工作区。早间源码同步未改变生产；同日晚间管理台接入已发布并单笔验证。源码 Git 变更尚未提交，完整生产基线候选保存在本轮发布工作树；见管理台接入发布记录。
+
+冻结回读仍绑定 489 单及原服务器配置；部分恢复工具仍绑定固定计划／订单，尚无通用回读 npm CLI。迁移机器须保留完整源码清单、依赖和原私密证据，不能把四单日期工具当通用修复入口。配置化、统一回读入口、可观测性与十并发评估继续按[维护与优化计划](../planning/项目优化计划.md#官网-http-补录维护与优化-official-http-1008)推进。

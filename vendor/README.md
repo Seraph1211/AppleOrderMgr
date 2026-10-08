@@ -11,3 +11,5 @@
 - npm registry 停留在旧版本，固定官方制品避免安装时再次依赖 CDN 可用性。更新时必须重新核对来源、许可、校验值、审计和导入导出回归，不直接覆盖文件或篡改版本号规避审计。
 
 校验入口：`npm run security:verify-vendor`。生产、迁移和开发 Docker 安装阶段均复制该包并验证 SHA-256；运行阶段仅携带安装后的依赖。
+
+- [官网 HTTP 传输依赖](official-order-http/README.md)：固定 curl_cffi／Python wheel 哈希锁与版本来源，未包含二进制或运行凭据。
