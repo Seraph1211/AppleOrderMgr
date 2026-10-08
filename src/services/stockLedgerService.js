@@ -1,5 +1,5 @@
 const { Op } = require('sequelize');
-const { fixedCost } = require('./stockFixedCatalog');
+const { fixedCost, specification } = require('./stockFixedCatalog');
 const db = require('../models');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
@@ -411,7 +411,7 @@ async function saleFacts(ctx, unit, requireSimple = true) {
     const receipt = receipts[0] || null;
     let status =
       !sale.simpleLedger || sale.paymentVerification === 'unknown' ? 'unknown' : 'unpaid';
-    if (collection) status = 'agent_pending';
+    if (collection || sale.pendingCollectorId) status = 'agent_pending';
     if (allocated > 0n && allocated >= cents(saleUnit.settlementAmount ?? saleUnit.saleAmount))
       status = 'company_received';
     else if (allocated > 0n) status = 'legacy_partial';
@@ -434,7 +434,8 @@ async function saleFacts(ctx, unit, requireSimple = true) {
 }
 async function reverseMoney(ctx, facts) {
   try {
-    if (facts.collections.length) requirePermissions(ctx, 'stock.collections.edit');
+    if (facts.collections.length || facts.sale.pendingCollectorId)
+      requirePermissions(ctx, 'stock.collections.edit');
     if (facts.receipts.length || facts.allocations.length)
       requirePermissions(ctx, 'stock.receipts.edit');
     for (const row of facts.allocations)
@@ -457,13 +458,11 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
     if (status === 'unknown' && !facts.sale.isHistorical)
       throw ApiError.badRequest('待核实仅用于历史销售');
     if (status === 'company_received') requirePermissions(ctx, 'stock.receipts.edit');
-    if (
-      !['unpaid', 'unknown'].includes(status) &&
-      facts.saleUnit.settlementAmount == null &&
-      !facts.collection
-    )
-      throw ApiError.badRequest('请先填写结算金额，再登记代收或公司到账');
-    if (!['unpaid', 'unknown'].includes(status))
+    if (status === 'company_received' && facts.saleUnit.settlementAmount == null)
+      throw ApiError.badRequest('请先填写结算金额，再登记公司已到账');
+    const pendingAmount =
+      status === 'agent_pending' && facts.saleUnit.settlementAmount == null && !facts.collection;
+    if (!['unpaid', 'unknown'].includes(status) && !pendingAmount)
       cents(facts.saleUnit.settlementAmount ?? facts.saleUnit.saleAmount, { positive: true });
     const previous = facts.status;
     const forward = {
@@ -472,8 +471,10 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
       ['agent_pending']: ['company_received'],
       ['company_received']: [],
     };
-    const oldCollector = facts.collection?.collectorId
-      ? await getRow('StockParty', facts.collection.collectorId, ctx)
+    const previousCollectorId = facts.collection?.collectorId || facts.sale.pendingCollectorId;
+    const previousCollectedAt = facts.collection?.receivedAt || facts.sale.pendingCollectedAt;
+    const oldCollector = previousCollectorId
+      ? await getRow('StockParty', previousCollectorId, ctx)
       : null;
     const seller = facts.sale.salespersonId
       ? await getRow('StockParty', facts.sale.salespersonId, ctx)
@@ -483,9 +484,7 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
     const agent =
       status === 'agent_pending' || (status === 'company_received' && Boolean(collectorName));
     const collectedOn =
-      payment.collectedOn !== undefined
-        ? payment.collectedOn
-        : dateLabel(facts.collection?.receivedAt);
+      payment.collectedOn !== undefined ? payment.collectedOn : dateLabel(previousCollectedAt);
     const receivedOn =
       payment.receivedOn !== undefined ? payment.receivedOn : dateLabel(facts.receipt?.receivedAt);
     const effectiveCollector = agent
@@ -511,20 +510,21 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
       throw ApiError.badRequest('待转回不能填写公司到账日期');
     const same =
       status === previous &&
-      (effectiveCollector?.id || null) === (facts.collection?.collectorId || null) &&
-      dateLabel(collectionAt) === dateLabel(facts.collection?.receivedAt) &&
+      (effectiveCollector?.id || null) === (previousCollectorId || null) &&
+      dateLabel(collectionAt) === dateLabel(previousCollectedAt) &&
       dateLabel(receiptAt) === dateLabel(facts.receipt?.receivedAt) &&
+      Boolean(facts.sale.pendingCollectorId) === pendingAmount &&
       (!facts.collection ||
         facts.collection.amount === (facts.saleUnit.settlementAmount ?? facts.saleUnit.saleAmount));
     const changesCollection =
-      facts.collection &&
-      ((effectiveCollector?.id || null) !== (facts.collection.collectorId || null) ||
-        dateLabel(collectionAt) !== dateLabel(facts.collection.receivedAt));
+      previousCollectorId &&
+      ((effectiveCollector?.id || null) !== previousCollectorId ||
+        dateLabel(collectionAt) !== dateLabel(previousCollectedAt));
     if (!initial && !same && (changesCollection || !(forward[previous] || []).includes(status)))
       correction(ctx, reason);
     if (same && !initial) return;
     await reverseMoney(ctx, facts);
-    if (!['unpaid', 'unknown'].includes(status)) {
+    if (!['unpaid', 'unknown'].includes(status) && !pendingAmount) {
       const collection = await create(
         ctx,
         'StockCollection',
@@ -569,7 +569,12 @@ async function applyPayment(ctx, unit, facts, payment, reason, initial = false) 
     await updateRow(
       ctx,
       facts.sale,
-      { paymentVerification: status === 'unknown' ? 'unknown' : 'known', simpleLedger: true },
+      {
+        paymentVerification: status === 'unknown' ? 'unknown' : 'known',
+        simpleLedger: true,
+        pendingCollectorId: pendingAmount ? effectiveCollector.id : null,
+        pendingCollectedAt: pendingAmount ? collectionAt : null,
+      },
       'ledger_payment'
     );
   } catch (error) {
@@ -726,6 +731,82 @@ async function sellUnits(ctx, input) {
     throw error;
   }
 }
+/** 单台出库；在一个幂等事务中核验预览、补入库、核定成本并售出。 */
+async function dispatchUnit(ctx, input) {
+  try {
+    requirePermissions(ctx, 'stock.read', 'stock.sales.edit', 'stock.sales.ship');
+    const item = input.unit;
+    only(item, [
+      'serialNumber',
+      'id',
+      'expectedVersion',
+      'needsReceive',
+      'productId',
+      'warehouseId',
+      'receivedOn',
+      'officialCostAmount',
+      'extraExpenseAmount',
+      'saleAmount',
+      'settlementAmount',
+    ]);
+    if (typeof item.needsReceive !== 'boolean') throw ApiError.badRequest('请先查询并核对设备');
+    const serialNumber = normalizeDeviceBarcodes({ serialBarcode: item.serialNumber }).serialNumber;
+    let unit = await db.StockUnit.findOne({ where: { serialNumber }, ...options(ctx) });
+    if ((unit?.id || null) !== (item.id || null))
+      throw ApiError.conflict('设备身份已变化，请重新查询核对', undefined, 'VERSION_CONFLICT');
+    if (unit) assertVersion(unit, item.expectedVersion);
+    const needsReceive = !unit || unit.state === 'registered';
+    if (needsReceive !== item.needsReceive)
+      throw ApiError.conflict('设备入库状态已变化，请重新查询核对', undefined, 'VERSION_CONFLICT');
+    const product = await activeRow(ctx, 'StockProduct', item.productId);
+    if (!specification(product))
+      throw ApiError.badRequest('本期出库登记仅支持预置 iPhone 18 Pro Max 规格');
+    if (unit?.productId && unit.productId !== product.id)
+      throw ApiError.conflict('盒标规格与设备记录不一致，请核对后更正');
+    if (needsReceive) {
+      requirePermissions(ctx, 'stock.receive');
+      const received = await registeredUnit(
+        ctx,
+        {
+          serialNumber,
+          productId: product.id,
+          warehouseId: item.warehouseId,
+          receivedOn: item.receivedOn,
+          ...(item.officialCostAmount !== undefined && unit?.costStatus !== 'confirmed'
+            ? { officialCostAmount: item.officialCostAmount }
+            : {}),
+        },
+        false
+      );
+      unit = received.unit;
+    } else if (item.warehouseId !== undefined || item.receivedOn !== undefined) {
+      throw ApiError.badRequest('已有库存的仓库及入库日期请在资料编辑中更正');
+    }
+    await stockAvailable(ctx, unit);
+    const supplements = {};
+    if (item.officialCostAmount !== undefined) {
+      cents(item.officialCostAmount, { positive: true });
+      supplements.officialCostAmount = item.officialCostAmount;
+    }
+    if (item.extraExpenseAmount !== undefined)
+      supplements.extraExpenseAmount = item.extraExpenseAmount;
+    if (Object.keys(supplements).length)
+      await updateRow(ctx, unit, supplementary(ctx, supplements, unit), 'ledger_dispatch_inputs');
+    const id = await createSale(
+      ctx,
+      { unit, product, fromLocationId: unit.locationId },
+      input,
+      item,
+      false
+    );
+    await assertStockAvailable(ctx);
+    await assertFinanceConsistent(ctx);
+    return { ledgerUnitIds: [id] };
+  } catch (error) {
+    logger.debug('单台出库登记失败', { code: error.code || error.name });
+    throw error;
+  }
+}
 /** 手工补录历史销售，不创建现货，也不受盘点切换时间前置阻碍。 */
 async function importHistory(ctx, input) {
   try {
@@ -824,7 +905,7 @@ async function editSale(ctx, unit, facts, input, reason) {
     let payment = input.payment;
     if (
       !payment &&
-      facts.collection &&
+      (facts.collection || facts.sale.pendingCollectorId) &&
       (input.saleAmount !== undefined ||
         input.settlementAmount !== undefined ||
         input.soldOn !== undefined)
@@ -957,7 +1038,12 @@ async function recoverUnit(ctx, id, input) {
     for (const expense of expenses)
       await updateRow(ctx, expense, { status: 'voided' }, 'ledger_mistake_recover');
     await updateRow(ctx, facts.saleUnit, { status: 'voided' }, 'ledger_mistake_recover');
-    await updateRow(ctx, facts.sale, { status: 'voided' }, 'ledger_mistake_recover');
+    await updateRow(
+      ctx,
+      facts.sale,
+      { status: 'voided', pendingCollectorId: null, pendingCollectedAt: null },
+      'ledger_mistake_recover'
+    );
     await updateRow(
       ctx,
       unit,
@@ -979,6 +1065,7 @@ async function recoverUnit(ctx, id, input) {
 module.exports = {
   receiveUnits,
   sellUnits,
+  dispatchUnit,
   importHistory,
   setPayment,
   editUnit,

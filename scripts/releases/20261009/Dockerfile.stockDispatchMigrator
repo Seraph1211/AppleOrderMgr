@@ -1,0 +1,3 @@
+# 沿用已验证的迁移运行时；正式增量迁移集合来自本地 main。
+FROM apple-order-mgr-migrator:20261007T104841Z-db4ccc9355a7-amd64
+COPY --chown=node:node migrations /app/migrations

@@ -1,7 +1,7 @@
 import TagMultiSelect from '../components/TagMultiSelect';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, History, Package, Plus, RefreshCw, Settings } from 'lucide-react';
+import { Search, PackageCheck, Package, Plus, RefreshCw, Settings } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
   StockBadge,
@@ -15,6 +15,7 @@ import { moneyText, productLabel } from '../components/stock/stockHelpers';
 import { ledgerCan, LEDGER_PAYMENT_LABELS } from '../components/stock/ledgerHelpers';
 import LedgerEntryForm from '../components/stock/ledgerEntryForm';
 import LedgerSaleForm from '../components/stock/ledgerSaleForm';
+import LedgerDispatchForm from '../components/stock/ledgerDispatchForm';
 import LedgerPaymentForm from '../components/stock/ledgerPaymentForm';
 import LedgerDetail from '../components/stock/ledgerDetail';
 import LedgerWarehouses from '../components/stock/ledgerWarehouses';
@@ -372,14 +373,14 @@ export default function Stock() {
               入库登记
             </button>
           )}
-          {can('stock.import') && salePermission && (
+          {salePermission && (
             <button
               className="btn btn-secondary"
               disabled={writesDisabled}
-              onClick={() => setAction({ type: 'history' })}
+              onClick={() => setAction({ type: 'dispatch' })}
             >
-              <History className="h-4 w-4" />
-              补录历史销售
+              <PackageCheck className="h-4 w-4" />
+              出库登记
             </button>
           )}
           {(can('stock.catalog.manage') || can('stock.settings.manage')) && (
@@ -607,7 +608,7 @@ export default function Stock() {
               ? '没有符合条件的设备，请调整搜索或筛选'
               : tab === 'in_stock'
                 ? '还没有在库设备，可点击“入库登记”开始'
-                : '还没有销售记录，可从在库登记售出或补录历史销售'
+                : '还没有销售记录，可从在库登记售出或使用出库登记'
           }
         />
       )}
@@ -661,14 +662,8 @@ export default function Stock() {
           onSaved={done}
         />
       )}
-      {action?.type === 'history' && (
-        <LedgerEntryForm
-          catalog={catalog}
-          historical
-          onExisting={id => setDetail({ id })}
-          onClose={() => setAction(null)}
-          onSaved={done}
-        />
+      {action?.type === 'dispatch' && (
+        <LedgerDispatchForm catalog={catalog} onClose={() => setAction(null)} onSaved={done} />
       )}
       {action?.type === 'sell' && (
         <LedgerSaleForm

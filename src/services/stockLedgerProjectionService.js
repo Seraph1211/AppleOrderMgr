@@ -124,7 +124,7 @@ function financialFacts(sale, saleUnit, g, receiptAllocations) {
       .filter(row => allocations.some(a => a.saleUnitId === saleUnit.id && a.receiptId === row.id))
       .sort((a, b) => new Date(b.receivedAt || 0) - new Date(a.receivedAt || 0))[0] || null;
   let status = !sale.simpleLedger || sale.paymentVerification === 'unknown' ? 'unknown' : 'unpaid';
-  if (collection) status = 'agent_pending';
+  if (collection || sale.pendingCollectorId) status = 'agent_pending';
   if (amount > 0n && amount >= cents(saleUnit.settlementAmount ?? saleUnit.saleAmount))
     status = 'company_received';
   else if (amount > 0n) status = 'legacy_partial';
@@ -225,8 +225,9 @@ function project(ctx, unit, g, allAllocations) {
   if (has(ctx, 'stock.collections.read', 'stock.receipts.read')) {
     Object.assign(result, {
       paymentStatus: facts.status,
-      collectorName: get(g.StockParty, facts.collection?.collectorId)?.name || null,
-      collectedOn: dateLabel(facts.collection?.receivedAt),
+      collectorName:
+        get(g.StockParty, facts.collection?.collectorId || sale.pendingCollectorId)?.name || null,
+      collectedOn: dateLabel(facts.collection?.receivedAt || sale.pendingCollectedAt),
       companyReceivedOn: dateLabel(facts.receipt?.receivedAt),
     });
     if (facts.compatible && has(ctx, 'stock.collections.edit'))
@@ -292,6 +293,53 @@ async function byIds(ctx, ids) {
       .filter(Boolean);
   } catch (error) {
     logger.debug('简化台账读取失败', { code: error.code || error.name });
+    throw error;
+  }
+}
+/** 精确 SN 出库预览；未入库身份只返回核对需要的白名单字段。 */
+async function dispatchPreview(ctx, query) {
+  try {
+    requirePermissions(ctx, 'stock.read', 'stock.sales.edit', 'stock.sales.ship');
+    only(query, ['serialNumber']);
+    const serialNumber = require('./pickupDeviceRules').normalizeDeviceBarcodes({
+      serialBarcode: query.serialNumber,
+    }).serialNumber;
+    const unit = await db.StockUnit.findOne({
+      where: { serialNumber },
+      transaction: ctx.transaction,
+    });
+    if (!unit) return { needsReceive: true, unit: null };
+    if (!['registered', 'in_stock'].includes(unit.state))
+      throw ApiError.conflict(
+        '该设备已售出或不在可出库状态，请查看原记录',
+        undefined,
+        'UNIT_STATE_CONFLICT'
+      );
+    if (unit.state === 'in_stock') {
+      const row = (await byIds(ctx, [unit.id]))[0];
+      if (!row || !row.allowedActions.includes('sell'))
+        throw ApiError.conflict('该设备不是可售现货或已有销售占用，请处理原记录');
+      return { needsReceive: false, unit: row };
+    }
+    let product = null;
+    if (unit.productId) {
+      product = await db.StockProduct.findByPk(unit.productId, {
+        attributes: ['id', 'modelName', 'storageGb', 'colorName'],
+        transaction: ctx.transaction,
+      });
+    }
+    return {
+      needsReceive: true,
+      unit: {
+        id: unit.id,
+        version: unit.version,
+        serialNumber,
+        product,
+        ...(has(ctx, 'stock.cost.read') ? { officialCostAmount: unit.officialCostAmount } : {}),
+      },
+    };
+  } catch (error) {
+    logger.debug('出库预览失败', { code: error.code || error.name });
     throw error;
   }
 }
@@ -413,7 +461,7 @@ async function list(ctx, query = {}) {
       ]);
       // 正常全额状态按资金事实筛选；复杂旧记录在列表投影中显示兼容限制。
       filters.push(
-        "s.id IS NOT NULL AND CASE WHEN cash.received>0 AND cash.received<COALESCE(su.settlement_amount,su.sale_amount) THEN 'legacy_partial' WHEN cash.received>0 AND cash.received>=COALESCE(su.settlement_amount,su.sale_amount) THEN 'company_received' WHEN c.id IS NOT NULL THEN 'agent_pending' WHEN (NOT s.simple_ledger OR s.payment_verification='unknown') THEN 'unknown' ELSE 'unpaid' END=:paymentStatus"
+        "s.id IS NOT NULL AND CASE WHEN cash.received>0 AND cash.received<COALESCE(su.settlement_amount,su.sale_amount) THEN 'legacy_partial' WHEN cash.received>0 AND cash.received>=COALESCE(su.settlement_amount,su.sale_amount) THEN 'company_received' WHEN c.id IS NOT NULL OR s.pending_collector_id IS NOT NULL THEN 'agent_pending' WHEN (NOT s.simple_ledger OR s.payment_verification='unknown') THEN 'unknown' ELSE 'unpaid' END=:paymentStatus"
       );
     }
     let base = `FROM stock_units u LEFT JOIN stock_products p ON p.id=u.product_id LEFT JOIN stock_locations l ON l.id=u.location_id
@@ -474,4 +522,4 @@ async function list(ctx, query = {}) {
     throw error;
   }
 }
-module.exports = { catalog, list, detail, byIds };
+module.exports = { catalog, list, detail, byIds, dispatchPreview };

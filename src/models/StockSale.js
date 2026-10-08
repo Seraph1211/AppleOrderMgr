@@ -32,6 +32,8 @@ module.exports = sequelize =>
         defaultValue: 'draft',
         field: 'status',
       },
+      pendingCollectorId: { type: DataTypes.UUID, allowNull: true, field: 'pending_collector_id' },
+      pendingCollectedAt: { type: DataTypes.DATE, allowNull: true, field: 'pending_collected_at' },
       customerId: { type: DataTypes.UUID, allowNull: true, field: 'customer_id' },
       salespersonId: { type: DataTypes.UUID, allowNull: true, field: 'salesperson_id' },
       handlerId: { type: DataTypes.UUID, allowNull: true, field: 'handler_id' },

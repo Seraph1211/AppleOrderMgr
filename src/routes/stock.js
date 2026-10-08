@@ -162,6 +162,22 @@ router.get(
   })
 );
 router.get(
+  '/ledger/dispatch-preview',
+  read(['stock.read', 'stock.sales.edit', 'stock.sales.ship'], (ctx, req) =>
+    ledgerProjection.dispatchPreview(ctx, req.query)
+  )
+);
+router.post(
+  '/ledger/dispatch',
+  write(
+    'ledger.dispatch',
+    ['stock.read', 'stock.sales.edit', 'stock.sales.ship'],
+    (ctx, req) => ledger.dispatchUnit(ctx, req.body),
+    ['unit', 'salespersonName', 'handlerName', 'soldOn', 'payment', 'notes'],
+    { created: true }
+  )
+);
+router.get(
   '/ledger/:id',
   read(readStock, (ctx, req) => ledgerProjection.detail(ctx, req.params.id))
 );

@@ -783,7 +783,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 | PATCH /ledger/:id        | expectedVersion及需修改的serialNumber,productId或product,warehouseId,receivedOn,orderNumber,officialCostAmount,acquiredOn,extraExpenseAmount,notes,sale:{saleAmount?,settlementAmount?,salespersonName?,handlerName?,soldOn?,payment?},reason?       |
 | POST /ledger/:id/recover | expectedVersion,warehouseId,receivedOn?,confirmInWarehouse:true,reason；同步作废该次销售、费用、付款、到账和分配，保留审计                                                                                                                           |
 
-2026-10-05 增量：单台 `settlementAmount` 为人工结算金额，可空、非负且不大于售价；毛利为结算减官网售价快照，`profitAfterExpenses` 兼容返回相同值，不二次扣费。没有结算的旧记录不回填，毛利为 null；新登记收款／到账前须先有正结算金额。已有资金沿用原值，明确更正结算时校验更正与资金权限并作废旧资金事实、重建正确金额和审计；已收款结算不可直接清空。`people` 增加 roles、version、partyType、isActive，管理权限也可读取，用现有 `/parties` POST/PATCH 维护姓名和角色。
+2026-10-05 增量：单台 `settlementAmount` 为人工结算金额，可空、非负且不大于售价；毛利为结算减官网售价快照，`profitAfterExpenses` 兼容返回相同值，不二次扣费。没有结算的旧记录不回填，毛利为 null；2026-10-09 起：新登记公司到账前须先有正结算金额；代收允许结算待补，仅保存姓名与日期，不创建金额事实。已有资金沿用原值，明确更正结算时校验更正与资金权限并作废旧资金事实、重建正确金额和审计；已收款结算不可直接清空。`people` 增加 roles、version、partyType、isActive，管理权限也可读取，用现有 `/parties` POST/PATCH 维护姓名和角色。
 
 payment={status,collectorName?,collectedOn?,receivedOn?}；status为unpaid/agent_pending/company_received，历史另可unknown；旧部分到账只读标legacy_partial。代收人默认销售人，代收转回保留原代收与客户付款日期。正常公司到账须receivedOn，历史未知可空。货款按人工结算金额核对；结算已经扣费，不再次抵扣。成功写返回{items:[单台DTO],ledgerUnitIds,idempotent}。
 
@@ -1082,7 +1082,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 ### 库存盒标结构化识别
 
-`POST /api/stock/box/recognize`：multipart `image`，最多 10MiB JPG/PNG/WebP。需 stock.read 及入库权限或完整历史补录权限；与旧 serial/recognize 共用每用户 10次/分钟和取货月额度，不自动重试。返回 `candidates` 数组：serialNumber、productId、skuCode、modelName、storageGb、colorName、matchBasis、reviewReasons、sources；成本仅 stock.cost.read 可见，不返回原始全文。冲突不自动确定规格。调用不写业务。
+`POST /api/stock/box/recognize`：multipart `image`，最多 10MiB JPG/PNG/WebP。需 stock.read 及入库权限或 stock.sales.edit + stock.sales.ship；与旧 serial/recognize 共用每用户 10次/分钟和取货月额度，不自动重试。返回 `candidates` 数组：serialNumber、productId、skuCode、modelName、storageGb、colorName、matchBasis、reviewReasons、sources；成本仅 stock.cost.read 可见，不返回原始全文。冲突不自动确定规格。调用不写业务。
 
 `GET /api/stock/ledger/catalog` 增加 skuCode、entryEligible；cost.read 可见 fixedCostAmount 和 priceVersion。入库及历史补录每台独立 productId；未提供 officialCostAmount 时服务端默认匹配固定目录，显式人工金额或待补仍需 cost.edit。未知拿货日期保持空。
 
@@ -1116,3 +1116,10 @@ DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit �
 ## 官网电子收据批处理边界（2026-10-08）
 
 本次提供[服务器批处理 CLI](../deployment/官网电子收据批处理运维.md)，不增加公网 HTTP API。内部绑定契约含版本、操作者、批次／尝试 UUID、订单和设备快照、验证后的收据来源摘要与 SN 明细；生产应用入口实时检查管理员及 `orders.read/pickups.read/pickups.edit` 权限，整单事务、幂等和只读回查见[设计](官网电子收据批量采集.md)。管理台继续通过原设备接口读取已绑定结果。
+
+### 单台出库登记（2026-10-09）
+
+- `GET /api/stock/ledger/dispatch-preview?serialNumber=...`：stock.read + stock.sales.edit + stock.sales.ship；精确 SN 查询。返回 `{ needsReceive, unit }`，不存在时 unit=null，registered 时仅 id/version/SN/product 和有权限成本字段，在库返回台账 DTO；其他状态或占用返回 409。
+- `POST /api/stock/ledger/dispatch`：基础权限同上；请求 `{ requestKey, unit: { serialNumber, id?, expectedVersion?, needsReceive, productId, warehouseId?, receivedOn?, officialCostAmount?, extraExpenseAmount?, saleAmount, settlementAmount? }, salespersonName, handlerName, soldOn, payment, notes? }`。仅一台固定目录规格；未入库需要 stock.receive 及仓库/日期；已有成本默认保持，传入变更需要 stock.cost.edit。提交重新核验身份、版本、状态、规格；原子入库+售出，返回 ledgerUnitIds/items。幂等复用原请求键。
+- `/box/recognize` 允许 stock.receive 或 stock.sales.edit + stock.sales.ship 用户使用；仅识别、不写库，保留成本读取权限与服务端额度限制。
+- 简化台账付款 `agent_pending` 允许结算为空，仅记录代收人/日期，列表状态仍为 agent_pending；`company_received` 必须有明确结算金额。后续补齐结算时创建资金记录，沿用更正及货款权限。其他旧复杂资金接口保持原契约。

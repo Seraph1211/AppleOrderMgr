@@ -2185,4 +2185,354 @@ if (
     );
     expect((await detail(row.id)).settlementAmount).toBe('9000.00');
   });
+  const dispatchInput = async (overrides = {}) => {
+    try {
+      const fixed = await db.StockProduct.findOne({ where: { skuCode: 'MJY64CH/A' } });
+      return {
+        ...saleInput([]),
+        unit: {
+          serialNumber: serial(),
+          needsReceive: true,
+          productId: fixed.id,
+          warehouseId: warehouseA.id,
+          receivedOn: '2026-10-03',
+          saleAmount: '12000.00',
+          ...overrides,
+        },
+      };
+    } catch (error) {
+      logger.debug('出库合成输入失败', { code: error.code || error.name });
+      throw error;
+    }
+  };
+
+  test('待补代收迁移空字段 down/up 保留业务记录及约束', async () => {
+    const migration = require('../migrations/20261009000001-add-stock-pending-collection');
+    const qi = db.sequelize.getQueryInterface();
+    const before = await db.StockSale.count();
+    await migration.down(qi);
+    expect((await qi.describeTable('stock_sales')).pending_collector_id).toBeUndefined();
+    await migration.up(qi);
+    expect(await db.StockSale.count()).toBe(before);
+    expect((await qi.describeTable('stock_sales')).pending_collector_id.allowNull).toBe(true);
+  });
+
+  test('单台出库未入库时原子创建入库销售及默认成本，重复提交只产生一份', async () => {
+    const input = await dispatchInput();
+    input.requestKey = crypto.randomUUID();
+    const preview = await projection.dispatchPreview(await command.createReadContext(admin), {
+      serialNumber: input.unit.serialNumber,
+    });
+    expect(preview).toEqual({ needsReceive: true, unit: null });
+    const result = await execute('dispatchUnit', input);
+    const repeated = await execute('dispatchUnit', input);
+    expect(repeated.ledgerUnitIds).toEqual(result.ledgerUnitIds);
+    const current = await detail(result.ledgerUnitIds[0]);
+    expect(current).toMatchObject({
+      state: 'sold',
+      officialCostAmount: '10999.00',
+      settlementAmount: null,
+      receivedOn: '2026-10-03',
+      soldOn: '2026-10-04',
+      isHistorical: false,
+      sourceWarehouse: { id: warehouseA.id },
+    });
+    expect(current.events.map(event => event.action)).toEqual(
+      expect.arrayContaining(['ledger_receive', 'ledger_sold', 'ledger_sale'])
+    );
+    expect(
+      await db.StockSaleUnit.count({ where: { stockUnitId: current.id, status: 'shipped' } })
+    ).toBe(1);
+    await expect(
+      projection.dispatchPreview(await command.createReadContext(admin), {
+        serialNumber: current.serialNumber,
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    await expect(
+      execute('dispatchUnit', { ...input, requestKey: crypto.randomUUID() })
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('出库任一步失败不留下设备、销售、代收或入库事件', async () => {
+    for (const changes of [
+      { payment: { status: 'company_received', receivedOn: '2026-10-04' } },
+      { salespersonName: '' },
+      { handlerName: '' },
+      { soldOn: '2026-10-02' },
+    ]) {
+      const input = { ...(await dispatchInput()), ...changes };
+      const before = await db.StockEvent.count();
+      await expect(execute('dispatchUnit', input)).rejects.toMatchObject({ statusCode: 400 });
+      expect(await db.StockUnit.count({ where: { serialNumber: input.unit.serialNumber } })).toBe(
+        0
+      );
+      expect(await db.StockEvent.count()).toBe(before);
+    }
+  });
+
+  test('已有库存沿用成本，可手改且销售快照一致；旧版本和规格冲突拒绝', async () => {
+    const input = await dispatchInput();
+    const [unit] = await receive([
+      {
+        serialNumber: input.unit.serialNumber,
+        productId: input.unit.productId,
+        warehouseId: warehouseA.id,
+        receivedOn: '2026-10-03',
+        officialCostAmount: '10000.00',
+      },
+    ]);
+    const preview = await projection.dispatchPreview(await command.createReadContext(admin), {
+      serialNumber: unit.serialNumber,
+    });
+    expect(preview).toMatchObject({
+      needsReceive: false,
+      unit: { officialCostAmount: '10000.00' },
+    });
+    input.unit = {
+      serialNumber: unit.serialNumber,
+      productId: unit.productId,
+      id: unit.id,
+      expectedVersion: unit.version,
+      needsReceive: false,
+      saleAmount: '12000.00',
+    };
+    await expect(
+      execute('dispatchUnit', {
+        ...input,
+        unit: { ...input.unit, expectedVersion: unit.version + 1 },
+      })
+    ).rejects.toMatchObject({ code: 'VERSION_CONFLICT' });
+    const other = await db.StockProduct.findOne({ where: { skuCode: 'MJY74CH/A' } });
+    if (other)
+      await expect(
+        execute('dispatchUnit', { ...input, unit: { ...input.unit, productId: other.id } })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    await execute('dispatchUnit', {
+      ...input,
+      unit: { ...input.unit, officialCostAmount: '10100.00' },
+    });
+    expect((await detail(unit.id)).officialCostAmount).toBe('10100.00');
+    const saleUnit = await db.StockSaleUnit.findOne({
+      where: { stockUnitId: unit.id, status: 'shipped' },
+    });
+    expect(saleUnit.costAmountSnapshot).toBe('10100.00');
+  });
+
+  test('出库权限、未知型号、无效仓库和并发状态必须在提交时重验', async () => {
+    const input = await dispatchInput();
+    await expect(
+      execute(
+        'dispatchUnit',
+        { ...input, unit: { ...input.unit, officialCostAmount: '1.00' } },
+        limited
+      )
+    ).rejects.toMatchObject({ statusCode: 403 });
+    await expect(
+      execute('dispatchUnit', { ...input, unit: { ...input.unit, productId: product.id } })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      execute('dispatchUnit', { ...input, unit: { ...input.unit, warehouseId: null } })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    const races = await Promise.allSettled([
+      execute('dispatchUnit', input),
+      execute('dispatchUnit', input),
+    ]);
+    expect(races.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(races.filter(result => result.status === 'rejected')[0].reason.statusCode).toBe(409);
+  });
+
+  test('registered 身份原地补入库、手改成本并售出，保留唯一设备', async () => {
+    const input = await dispatchInput();
+    const unit = await db.StockUnit.create({
+      serialNumber: input.unit.serialNumber,
+      state: 'registered',
+      originMode: 'current',
+      productId: input.unit.productId,
+      officialCostAmount: '9999.00',
+      costStatus: 'confirmed',
+      costSource: 'manual',
+    });
+    const preview = await projection.dispatchPreview(await command.createReadContext(limited), {
+      serialNumber: unit.serialNumber,
+    });
+    expect(preview).toMatchObject({
+      needsReceive: true,
+      unit: { id: unit.id, version: unit.version },
+    });
+    expect(preview.unit).not.toHaveProperty('officialCostAmount');
+    input.unit = {
+      ...input.unit,
+      id: unit.id,
+      expectedVersion: unit.version,
+      officialCostAmount: '10200.00',
+    };
+    const result = await execute('dispatchUnit', input);
+    expect(result.ledgerUnitIds).toEqual([unit.id]);
+    expect((await detail(unit.id)).officialCostAmount).toBe('10200.00');
+  });
+
+  test('结算待补代收不产生金额，补齐后转明确收款并可到账；列表和权限一致', async () => {
+    const input = await dispatchInput();
+    input.payment = {
+      status: 'agent_pending',
+      collectorName: `代收${prefix}`,
+      collectedOn: '2026-10-04',
+    };
+    const result = await execute('dispatchUnit', input);
+    const id = result.ledgerUnitIds[0];
+    let current = await detail(id);
+    expect(current).toMatchObject({
+      paymentStatus: 'agent_pending',
+      collectorName: `代收${prefix}`,
+      collectedOn: '2026-10-04',
+      settlementAmount: null,
+      grossProfit: null,
+    });
+    expect(await db.StockCollection.count({ where: { saleId: current.saleId } })).toBe(0);
+    const rows = await projection.list(await command.createReadContext(admin), {
+      q: current.serialNumber,
+      view: 'sold',
+      paymentStatus: 'agent_pending',
+    });
+    expect(rows.items.map(row => row.id)).toContain(id);
+    const restricted = await detail(id, limited);
+    expect(restricted).not.toHaveProperty('collectorName');
+    expect(JSON.stringify(restricted.events)).not.toContain('pendingCollectorId');
+    const migration = require('../migrations/20261009000001-add-stock-pending-collection');
+    await expect(migration.down(db.sequelize.getQueryInterface())).rejects.toThrow(
+      '已有待补代收事实'
+    );
+    await expect(
+      execute('setPayment', {
+        units: [{ id, expectedVersion: current.version }],
+        payment: { status: 'company_received', receivedOn: '2026-10-04' },
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await execute(
+      'editUnit',
+      {
+        expectedVersion: current.version,
+        sale: { settlementAmount: '11500.00' },
+        reason: '核对实际结算',
+      },
+      admin,
+      id
+    );
+    current = await detail(id);
+    const sale = await db.StockSale.findByPk(current.saleId);
+    expect(sale.pendingCollectorId).toBeNull();
+    const collection = await db.StockCollection.findOne({
+      where: { saleId: sale.id, status: 'posted' },
+    });
+    expect(collection.amount).toBe('11500.00');
+    expect(current.collectorName).toBe(`代收${prefix}`);
+    await execute('setPayment', {
+      units: [{ id, expectedVersion: current.version }],
+      payment: { status: 'company_received', receivedOn: '2026-10-05' },
+    });
+    expect((await detail(id)).paymentStatus).toBe('company_received');
+  });
+
+  test('金额待补代收误售恢复保留审计，必须具有资金更正权限', async () => {
+    const input = await dispatchInput();
+    input.payment = { status: 'agent_pending', collectorName: `待补${prefix}` };
+    const result = await execute('dispatchUnit', input);
+    const id = result.ledgerUnitIds[0];
+    const current = await detail(id);
+    await execute(
+      'recoverUnit',
+      {
+        expectedVersion: current.version,
+        warehouseId: warehouseA.id,
+        confirmInWarehouse: true,
+        reason: '合成误售恢复',
+      },
+      admin,
+      id
+    );
+    const sale = await db.StockSale.findByPk(current.saleId);
+    expect(sale.pendingCollectorId).toBeNull();
+    expect((await detail(id)).state).toBe('in_stock');
+  });
+  test('出库 API 精确预览、字段拒绝、事务返回与幂等状态码', async () => {
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = admin;
+      next();
+    });
+    app.use('/api/stock', require('../src/routes/stock'));
+    const server = await new Promise(resolve => {
+      const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+    });
+    try {
+      const url = `http://127.0.0.1:${server.address().port}/api/stock/ledger`;
+      const input = await dispatchInput();
+      delete input.units;
+      input.requestKey = crypto.randomUUID();
+      const preview = await fetch(
+        `${url}/dispatch-preview?serialNumber=${input.unit.serialNumber}`
+      );
+      expect(preview.status).toBe(200);
+      expect(preview.headers.get('cache-control')).toBe('no-store');
+      expect((await preview.json()).data).toEqual({ needsReceive: true, unit: null });
+      const invalid = await fetch(`${url}/dispatch`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...input, units: [] }),
+      });
+      expect(invalid.status).toBe(400);
+      for (const expected of [201, 200]) {
+        const response = await fetch(`${url}/dispatch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        });
+        const body = await response.json();
+        expect({ status: response.status, error: body.error }).toEqual({ status: expected });
+        expect(body.data.items[0]).toMatchObject({
+          state: 'sold',
+          serialNumber: input.unit.serialNumber,
+        });
+      }
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
+  });
+
+  test('仅销售人员可售已有库存，缺少入库权限无法补入库；原成本保持', async () => {
+    const seller = await db.User.create({
+      username: `dispatch_${prefix}`,
+      password: crypto.randomBytes(20).toString('hex'),
+      role: 'operator',
+    });
+    await db.UserPermission.bulkCreate(
+      ['stock.read', 'stock.sales.read', 'stock.sales.edit', 'stock.sales.ship'].map(
+        permissionCode => ({ userId: seller.id, permissionCode })
+      )
+    );
+    const input = await dispatchInput();
+    await expect(execute('dispatchUnit', input, seller)).rejects.toMatchObject({ statusCode: 403 });
+    expect(await db.StockUnit.count({ where: { serialNumber: input.unit.serialNumber } })).toBe(0);
+    const [unit] = await receive([
+      {
+        serialNumber: input.unit.serialNumber,
+        productId: input.unit.productId,
+        warehouseId: warehouseA.id,
+        receivedOn: '2026-10-03',
+        officialCostAmount: '9999.00',
+      },
+    ]);
+    input.unit = {
+      serialNumber: unit.serialNumber,
+      productId: unit.productId,
+      id: unit.id,
+      expectedVersion: unit.version,
+      needsReceive: false,
+      saleAmount: '12000.00',
+    };
+    await execute('dispatchUnit', input, seller);
+    expect((await detail(unit.id)).officialCostAmount).toBe('9999.00');
+  });
 });

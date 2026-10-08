@@ -192,7 +192,7 @@ export default function LedgerSaleForm({ units, catalog, onClose, onSaved }) {
           disabled={command.busy}
         />
         <p className="text-xs text-gray-500">
-          以上货款状态应用到本次全部机器，按每台结算金额记录已核实的全款；结算已含扣费，不再重复扣减。
+          以上货款状态应用到本次全部机器。代收结算可待补，公司到账须先填写结算；结算已含扣费，不再重复扣减。
         </p>
         <StockFields
           value={value}

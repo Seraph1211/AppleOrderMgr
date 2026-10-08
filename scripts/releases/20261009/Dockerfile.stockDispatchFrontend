@@ -1,0 +1,5 @@
+# 与在用官网刷新前端保持一致，仅替换库存页面与表单。
+FROM apple-order-mgr-frontend-builder:20261008-official-http-scope-v2-amd64
+COPY src/pages/Stock.jsx /app/src/pages/Stock.jsx
+COPY src/components/stock/ledgerSaleForm.jsx src/components/stock/ledgerDispatchForm.jsx src/components/stock/stockDispatchScanner.jsx /app/src/components/stock/
+RUN npm run lint && npm run build

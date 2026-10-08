@@ -12,11 +12,9 @@ async function recognizeBox(user, file, rawBarcodes) {
     requirePermissions(ctx, 'stock.read');
     if (
       !ctx.permissions.has('stock.receive') &&
-      !['stock.import', 'stock.sales.edit', 'stock.sales.ship'].every(code =>
-        ctx.permissions.has(code)
-      )
+      !['stock.sales.edit', 'stock.sales.ship'].every(code => ctx.permissions.has(code))
     )
-      throw new ApiError(403, 'FORBIDDEN', '缺少入库或历史补录权限');
+      throw new ApiError(403, 'FORBIDDEN', '缺少入库或出库权限');
     let barcodes = [];
     if (rawBarcodes) {
       try {

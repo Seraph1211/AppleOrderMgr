@@ -43,12 +43,11 @@ test('无成本读取权限的候选无价格数据，清理buffer', async () =>
     throw error;
   }
 });
-test('合法历史补录权限及成本投影', async () => {
+test('出库权限无需历史导入即可识别并裁剪成本', async () => {
   try {
     command.createReadContext.mockResolvedValue({
       permissions: new Set([
         'stock.read',
-        'stock.import',
         'stock.sales.edit',
         'stock.sales.ship',
         'stock.cost.read',

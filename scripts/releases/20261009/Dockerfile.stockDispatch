@@ -1,0 +1,5 @@
+# 保留当前生产基线及依赖，仅替换单台出库相关模块。
+FROM apple-order-mgr-runtime:20261008-official-http-scope-v2-amd64
+COPY --chown=node:node src/models/StockSale.js /app/src/models/StockSale.js
+COPY --chown=node:node src/routes/stock.js /app/src/routes/stock.js
+COPY --chown=node:node src/services/stockBoxService.js src/services/stockLedgerProjectionService.js src/services/stockLedgerService.js src/services/stockProjectionService.js /app/src/services/

@@ -113,7 +113,12 @@ async function graph(ctx, scope = null) {
       result.StockLocation = await load('StockLocation', { id: [...locations] });
       const parties = new Set(
         [
-          ...result.StockSale.flatMap(r => [r.customerId, r.salespersonId, r.handlerId]),
+          ...result.StockSale.flatMap(r => [
+            r.customerId,
+            r.salespersonId,
+            r.handlerId,
+            r.pendingCollectorId,
+          ]),
           ...result.StockCollection.map(r => r.collectorId),
           ...result.StockReceipt.map(r => r.payerId),
           ...result.StockTransfer.map(r => r.handlerId),
@@ -272,6 +277,8 @@ function expensesFor(ctx, saleId, g) {
 function projectSale(ctx, sale, g) {
   const result = { ...base(sale), notes: decrypt(sale.notesCiphertext) };
   delete result.paymentVerification;
+  delete result.pendingCollectorId;
+  delete result.pendingCollectedAt;
   const lines = g.StockSaleLine.filter(line => line.saleId === sale.id);
   const entries = g.StockSaleUnit.filter(
     row =>
@@ -448,7 +455,7 @@ function projectEvent(ctx, event) {
       if (/profit/i.test(key) && !ctx.permissions.has('stock.profit.read')) continue;
       if (/expense/i.test(key) && !ctx.permissions.has('stock.expenses.read')) continue;
       if (
-        key === 'paymentVerification' &&
+        ['paymentVerification', 'pendingCollectorId', 'pendingCollectedAt'].includes(key) &&
         (!ctx.permissions.has('stock.collections.read') ||
           !ctx.permissions.has('stock.receipts.read'))
       )
