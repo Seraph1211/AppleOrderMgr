@@ -39,8 +39,6 @@ router.put(
 
 router.use('/official-refresh', require('./officialOrderRefresh'));
 
-router.use('/official-refresh', require('./officialOrderRefresh'));
-
 router.use('/:id/emails', require('./orderMail'));
 
 router.post(

@@ -19,7 +19,7 @@
 
 列表、筛选选项、筛选全选和导出支持 actualPickupDateFrom / actualPickupDateTo（YYYY-MM-DD，可单边，双边均包含当天）。起止相同表示某一天；空日期不命中已设置的范围。非法日期、数组或起始晚于结束返回 400；与预约取货日期 pickupDate 独立、可组合。
 
-订单列表、详情和导出增加只读 `actual_pickup_date`，值为 YYYY-MM-DD 或 null，沿用订单 TAG 读取权限；导出字段键为 actualPickupDate。该值来自完整官网详情中的实际已取货日期，不接受普通订单编辑写入，不用预约时间、邮件推定或采集时间代替。手动官网刷新可在原两个官网字段外同步此日期；缺失／歧义保留原值。历史限定范围补录只写实际取货日期，不改变订单状态。
+订单列表、详情和导出增加只读 `actual_pickup_date`，值为 YYYY-MM-DD 或 null，沿用订单 TAG 读取权限；导出字段键为 actualPickupDate。该值来自完整官网详情中的实际已取货日期，不接受普通订单编辑写入，不用预约时间、邮件推定或采集时间代替。HTTP 手动官网刷新可在原两个官网字段外补齐此日期，仅补空值，非空日期及缺失／歧义结果保留原值。历史限定范围补录只写实际取货日期，不改变订单状态。
 
 
 > 状态：当前有效
@@ -29,21 +29,6 @@
 > 基线：main@d000d03 与当前工作树
 >
 > 验证范围：通用字段／接口清单为本地静态核对；本轮自有库存的生产迁移和接口技术验证见[发布记录](../archive/2026-10/2026-10-04-自有库存简化版生产发布记录.md)，其余模块按各自证据核对
-
-## 手动官网状态更新（2026-10-03，已授权实施）
-
-- 2026-10-05 账号聚合改造已生产发布：以下全部接口额外要求当前角色 `admin`，普通用户即使有订单读写权限也返回 403。
-- `POST /api/orders/official-refresh/batches`：需管理员及 `orders.read` + `orders.edit`。请求 `{ requestKey: UUID, selection: "ids", orderIds: [1,2] }` 或 `{ requestKey: UUID, selection: "filtered", filters: { ...订单列表筛选参数 } }`。202 返回 `{ success, data: { batchId, queued, skipped, total, selectedCount, accountCount, queuedAccountCount } }`。先按选中订单的规范 Apple ID 去重，再展开系统内全部已有同账号订单；筛选条件仅确定触发账号。`total` 为展开订单数，`selectedCount` 为原选择数，`accountCount` 为有效账号数；`queuedAccountCount` 为本次新增账号组数。活动账号整组跳过（包括组开始后新增的订单，需本组结束后再次手动提交），`skipped` 表示本次未新增的订单数；无新任务返回 `batchId: null`。选择及展开后均最多 10000 单，超量整体拒绝 400；后台未就绪 503。相同请求键重放返回原批次及原计数，选择变化返回 409。
-- `GET /api/orders/official-refresh/batches`：返回本人最近 10 个批次标识，供页面重开恢复；管理员可查询批次详情，列表仍仅本人。
-- `GET /api/orders/official-refresh/batches/:batchId`：仅管理员；返回当前批次 `counts`、总数、`selectedCount`、`accountCount`、分页 `jobs`（每页 20，最多 100）。`jobs` 只返回订单 ID、订单号、队列状态、账号组 ID、脱敏错误码、官网状态及时间，不返回 Apple ID 或凭据。
-- `POST /api/orders/official-refresh/batches/:batchId/cancel`：取消排队任务，不中断已运行的官网请求。
-- 订单列表、详情新增 `official_order_status`（原始官网状态或 null）、`official_status_observed_at`（最近成功观测时间）；原邮件状态契约不变。
-
-以上均经认证与 TAG 范围校验。旧 `/refresh-all`、`/batch-refresh`、`/:id/refresh`、`/page-open-refresh` 和浏览器辅助接口保持退役，避免旧页面触发外部请求。
-
-2026-10-05 暂停与离线修复：批次列表和详情增加 `pausedAt`、`pauseReason`（均可空）；详情仍返回独立的 `workerOnline`。暂停不等于 Worker 离线，不自动恢复。提交新请求替代当前选中 Apple ID 在系统内展开的全部关联订单在可操作暂停批次中的 queued 项，旧项以 cancelled / `REQUEUED_MANUALLY` 留痕，新项继续受账号冷却、预算和单日次数限制。活动的未暂停任务仍去重；同一 requestKey 重放不重新执行。真正离线仍返回 503 / `OFFICIAL_WORKER_OFFLINE`，提示管理员检查后台服务，不再暗示等待即可自愈。
-
-2026-10-05 登录诊断：新增固定任务错误码及批次暂停原因 `AUTH_PRECONDITION_REQUIRED`，表示 Apple 登录完成接口返回 HTTP 412、额外登录条件尚未完成；不能据此断言密码错误或封号。前端显示“Apple 登录需要完成额外步骤（HTTP 412），请核对官网提示”。不增加响应中的凭据、原始页面或修复地址，既有历史 `AUTH_REJECTED` 不改写。
 
 ## 手动官网状态更新（2026-10-03，已授权实施）
 
