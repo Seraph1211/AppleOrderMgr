@@ -96,7 +96,8 @@ export default function Orders() {
     payerNames: [],
     recipientTags: [],
     pickupStores: [],
-    pickupDate: '',
+    pickupDateFrom: '',
+    pickupDateTo: '',
     actualPickupDateFrom: '',
     actualPickupDateTo: '',
     dateFrom: '',
@@ -145,7 +146,8 @@ export default function Orders() {
     filters.payerNames,
     filters.recipientTags,
     filters.pickupStores,
-    filters.pickupDate,
+    filters.pickupDateFrom,
+    filters.pickupDateTo,
     filters.actualPickupDateFrom,
     filters.actualPickupDateTo,
     filters.dateFrom,
@@ -421,7 +423,8 @@ export default function Orders() {
       payerNames: [],
       recipientTags: [],
       pickupStores: [],
-      pickupDate: '',
+      pickupDateFrom: '',
+      pickupDateTo: '',
       actualPickupDateFrom: '',
       actualPickupDateTo: '',
       dateFrom: '',
@@ -817,6 +820,29 @@ export default function Orders() {
                 setPagination(previous => ({ ...previous, currentPage: 1 }));
               }}
             />
+            <DateRangeFilter
+              label="取货日期"
+              hint="按邮件中的预约取货日期筛选，结束日期包含当天"
+              ariaPrefix="预约取货"
+              dateFrom={filters.pickupDateFrom}
+              dateTo={filters.pickupDateTo}
+              onChange={({ dateFrom, dateTo }) => {
+                setFilters(previous => ({
+                  ...previous,
+                  pickupDateFrom: dateFrom,
+                  pickupDateTo: dateTo,
+                }));
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+            />
+            <div className="flex items-center">
+              <TableHeaderHint label="日期筛选字段说明">
+                <p>下单日期：订单的下单日期，按北京时间筛选。</p>
+                <p>实际取货日期：官网记录的实际已取货日期，尚未获取时为空。</p>
+                <p>取货日期：邮件中的预约取货日期，不代表已完成取货。</p>
+                <p>三个条件可组合使用；日期范围包含开始和结束当天。</p>
+              </TableHeaderHint>
+            </div>
           </div>
           {/* 邮件订单状态 */}
           <div>
@@ -896,18 +922,6 @@ export default function Orders() {
               ariaLabel="付款人筛选"
               placeholder="全部付款人"
               itemLabel="付款人"
-            />
-          </div>
-
-          {/* 取货日期 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">取货日期</label>
-            <input
-              type="date"
-              aria-label="取货日期筛选"
-              value={filters.pickupDate}
-              onChange={event => handleFilterChange('pickupDate', event.target.value)}
-              className="input"
             />
           </div>
         </div>

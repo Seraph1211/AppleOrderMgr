@@ -1,0 +1,6 @@
+# 沿用当前生产前端，只更新订单日期筛选和导出标签。
+FROM apple-order-mgr-frontend-builder:20261009-order-phone-amd64
+COPY src/pages/Orders.jsx /app/src/pages/Orders.jsx
+COPY src/constants/orderExportFields.js /app/src/constants/orderExportFields.js
+COPY src/index.css /app/src/index.css
+RUN npm run lint && npm run build

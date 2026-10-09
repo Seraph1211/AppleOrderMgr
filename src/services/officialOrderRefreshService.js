@@ -94,6 +94,8 @@ function validateSelection(input) {
     'recipientTags',
     'pickupStores',
     'pickupDate',
+    'pickupDateFrom',
+    'pickupDateTo',
     'actualPickupDateFrom',
     'actualPickupDateTo',
     'dateFrom',

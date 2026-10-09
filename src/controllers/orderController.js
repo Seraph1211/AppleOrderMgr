@@ -38,6 +38,8 @@ const {
   getDisplayOrderStatusLabel,
 } = require('../utils/orderDisplayStatus');
 
+const { OFFICIAL_ORDER_STATUS_LABELS } = require('../constants/officialOrderStatus');
+
 const MAX_MULTI_SELECT_ITEMS = 100;
 const MAX_FILTER_VALUE_LENGTH = 255;
 const MAX_ORDER_EXPORT_IDS = 100;
@@ -68,6 +70,20 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
     label: '订单状态',
     value: item => getDisplayOrderStatusLabel(item.display_order_status),
   },
+  officialOrderStatus: {
+    label: '官网订单状态',
+    value: item => {
+      if (!item.official_order_status) return '尚未更新';
+      return item.official_order_status
+        .split(' | ')
+        .map(status =>
+          Object.prototype.hasOwnProperty.call(OFFICIAL_ORDER_STATUS_LABELS, status)
+            ? OFFICIAL_ORDER_STATUS_LABELS[status]
+            : status
+        )
+        .join(' | ');
+    },
+  },
   emailPaymentStatus: {
     label: '邮件付款状态',
     value: item => item.email_payment_status || 'unknown',
@@ -81,13 +97,13 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
   amountSource: { label: '金额来源', value: () => '按官方售价计算' },
   priceVersion: { label: '价格版本', value: item => item.order_amount_price_version || '' },
   emailPickupStore: {
-    label: '邮件取货门店',
+    label: '取货门店',
     value: item => item.email_pickup_info?.storeName || '',
   },
   actualPickupDate: { label: '实际取货日期', value: item => item.actual_pickup_date || '' },
-  emailPickupDate: { label: '邮件取货日期', value: item => item.email_pickup_date || '' },
+  emailPickupDate: { label: '取货日期', value: item => item.email_pickup_date || '' },
   emailPickupSchedule: {
-    label: '邮件取货安排',
+    label: '取货安排',
     value: item => {
       const pickup = item.email_pickup_info;
       if (!pickup) return '';
@@ -474,6 +490,25 @@ function buildListFilters(query) {
     const pickupDate = normalizePickupDate(query.pickupDate);
     if (!pickupDate) throw ApiError.badRequest('pickupDate 必须是有效的 YYYY-MM-DD 日期');
     where.emailPickupDate = pickupDate.replaceAll('/', '-');
+  }
+  const pickupRange = {};
+  for (const [key, operator] of [
+    ['pickupDateFrom', Op.gte],
+    ['pickupDateTo', Op.lte],
+  ]) {
+    if (query[key] === undefined || query[key] === '') continue;
+    const value = normalizePickupDate(query[key]);
+    if (!value) throw ApiError.badRequest(key + ' 必须是有效的 YYYY-MM-DD 日期');
+    pickupRange[operator] = value.replaceAll('/', '-');
+  }
+  if (pickupRange[Op.gte] && pickupRange[Op.lte] && pickupRange[Op.gte] > pickupRange[Op.lte]) {
+    throw ApiError.badRequest('取货开始日期不能晚于结束日期');
+  }
+  if (Reflect.ownKeys(pickupRange).length) {
+    where.emailPickupDate = {
+      ...pickupRange,
+      ...(where.emailPickupDate ? { [Op.eq]: where.emailPickupDate } : {}),
+    };
   }
   for (const [key, operator] of [
     ['actualPickupDateFrom', Op.gte],

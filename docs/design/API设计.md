@@ -17,7 +17,7 @@
 
 ## 官网实际取货日期（2026-10-07）
 
-列表、筛选选项、筛选全选和导出支持 actualPickupDateFrom / actualPickupDateTo（YYYY-MM-DD，可单边，双边均包含当天）。起止相同表示某一天；空日期不命中已设置的范围。非法日期、数组或起始晚于结束返回 400；与预约取货日期 pickupDate 独立、可组合。
+列表、筛选选项、筛选全选和导出支持 actualPickupDateFrom / actualPickupDateTo（YYYY-MM-DD，可单边，双边均包含当天）。起止相同表示某一天；空日期不命中已设置的范围。非法日期、数组或起始晚于结束返回 400；与预约取货日期 pickupDate / pickupDateFrom / pickupDateTo 独立、可组合。
 
 订单列表、详情和导出增加只读 `actual_pickup_date`，值为 YYYY-MM-DD 或 null，沿用订单 TAG 读取权限；导出字段键为 actualPickupDate。该值来自完整官网详情中的实际已取货日期，不接受普通订单编辑写入，不用预约时间、邮件推定或采集时间代替。HTTP 手动官网刷新可在原两个官网字段外补齐此日期，仅补空值，非空日期及缺失／歧义结果保留原值。历史限定范围补录只写实际取货日期，不改变订单状态。
 
@@ -319,7 +319,8 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 ### 订单列表组合筛选与取货时间（2026-09-17）
 
 - `GET /api/orders` 和 `GET /api/orders/export` 支持 `statuses`、`productNames`、`pickupStores`、`recipientTags` 四个 JSON 数组筛选参数，每项最多 100 个值。同一数组内按 OR 匹配，不同筛选维度之间按 AND 组合；订单状态必须属于现有状态枚举，商品名称和门店按完整值精确匹配。继续兼容既有单值 `status`、`productModel`、`pickupStore` 参数。
-- `pickupDate` 仅接受 `YYYY-MM-DD`。它匹配 `official_fulfillment_message` 中同一天的官网预约提示日期，不比较具体时分，也不使用下单时间、付款截止、实际取货日期或页面打开时间替代；“今天／明天”按该订单官网观测时的北京时间日期换算。列表和详情派生返回 `pickup_time`、`official_pickup_date`、`official_pickup_time_slot`，原始履约提示继续保留用于核对。
+- `pickupDateFrom` / `pickupDateTo` 按邮件预约日期 `email_pickup_date` 筛选，格式为 `YYYY-MM-DD`，允许单边范围，双边包含当天；同一天表示单日。非法日期、数组和反向范围返回 400。列表、候选、导出及官网刷新筛选全选共用条件；兼容单日 `pickupDate`，同时传入时与范围取交集。
+- `pickupDate` 仅接受 `YYYY-MM-DD`，匹配邮件预约日期 `email_pickup_date`；不使用下单日期或实际取货日期替代。列表和详情继续返回独立的官网派生 `pickup_time`、`official_pickup_date`、`official_pickup_time_slot`，供核对官网履约提示。
 - `recipientTags` 按列表实际展示的 `recipient_tag` 精确匹配，最多 100 项、每项最长 500 字符；数组值保留内部逗号及首尾空格。AOS 订单依次使用非空来源 TAG、取机人档案 TAG、订单 TAG；其他订单使用取机人档案 TAG、订单 TAG。多个 TAG 为 OR，与其他维度为 AND，分页与导出前过滤，始终叠加已有订单访问范围。
 - `GET /api/orders/filter-options` 新增 `recipientTags`，来自当前账号可见的全部订单展示 TAG，排除空值、去重排序，不受分页或前 5000 条订单限制。返回 `productNames` 和 `stores`，候选来自订单完整 `products[].name` 与邮件 `email_pickup_info.storeName`，不从当前分页临时拼接。兼容返回 `productModels`，但订单管理页面不再使用型号筛选。
 - 订单管理主表不展示 `validation_status` 和 `apple_id` 列；校验问题仍通过行首提示图标进入原异常说明，异常行不使用整行红色背景。上述字段仍保留在既有 DTO、搜索和详情能力中。
@@ -733,7 +734,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 邮件终态 `expired` 显示“已过期”，由完整订单号匹配的“订单 W… 已过期。”及明确未按时取货正文确认。取消邮件“订单 W… 已取消。”及正文“你的取货安排已取消”按不同归档消息 ID 计数：取消邮件数小于订单商品总件数时为 `partially_cancelled`（“部分取消”），达到总件数时为 `cancelled`（“已取消”）。同一封邮件重放／解析修订不重复计数，单封无需列全商品。两件订单一封取消为部分取消、两封取消为已取消；有任一有效过期邮件时统一为已过期，即过期优先于全部／部分取消，不按邮件先后覆盖。旧确认／处理／取货邮件不能撤销以上状态。取消／过期不新增付款或退款结论，已有 `paid` 保留。商品总件数缺失或非法时保留部分取消并待核对；人工核定的明确订单状态继续优先该封解析候选。`expired` 查询值现在只指 Apple 过期邮件，不再代表 30 分钟付款超时。
 
-订单导出字段白名单保留 `emailPickupStore`（“邮件取货门店”），并增加 `emailPickupSchedule`（“邮件取货安排”）；页面显示邮件取货安排列时，两项均作为默认导出字段。固定预约按 `YYYY-MM-DD HH:mm–HH:mm` 输出，例如 `2026-09-21 12:30–12:45`；营业时间预约按“日期 营业时间内到店”输出，日期缺失时只输出已确认的安排，不从下单时间或官网状态推断。
+订单导出字段白名单新增 `officialOrderStatus`（“官网订单状态”），按页面中文名称输出多项官网状态，未知状态保留原文，缺失显示“尚未更新”；弹窗默认选择跟随官网状态列可见性。`emailPickupDate` 表头为“取货日期”，弹窗和 Excel 的三项取货字段均去掉“邮件”前缀，字段键和邮件数据来源保持。订单导出字段白名单保留 `emailPickupStore`（“取货门店”），并增加 `emailPickupSchedule`（“取货安排”）；页面显示邮件取货安排列时，两项均作为默认导出字段。固定预约按 `YYYY-MM-DD HH:mm–HH:mm` 输出，例如 `2026-09-21 12:30–12:45`；营业时间预约按“日期 营业时间内到店”输出，日期缺失时只输出已确认的安排，不从下单时间或官网状态推断。
 
 付款任务与调度摘要保留 `emailPaymentStatus`、`emailPaymentConfirmed` 和必要的邮件订单状态／待核对标记，不开放邮件原文或完整订单详情。付款状态仅在付款调度和本人付款任务页面展示，订单管理列表与详情不展示。自动分配、人工分配预检及直接 SQL 候选统一排除 `email_payment_status='paid'`；邮件未知不额外禁止既有人工操作。
 

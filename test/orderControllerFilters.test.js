@@ -414,3 +414,35 @@ test('付款人候选排除自身条件、保留商品和 TAG 权限且不取全
   expect(query.where[Op.and][0][Op.and][0].val).toContain('product_filter_items');
   expect(query.where[Op.and][1].tag[Op.in]).toEqual(['授权TAG']);
 });
+
+test('预约取货范围包含双边且独立组合实际取货日和旧单日条件', () => {
+  const { where } = buildListFilters({
+    pickupDateFrom: '2026-09-19',
+    pickupDateTo: '2026-09-22',
+    pickupDate: '2026-09-20',
+    actualPickupDateFrom: '2026-09-23',
+  });
+  expect(where.emailPickupDate).toEqual({
+    [Op.gte]: '2026-09-19',
+    [Op.lte]: '2026-09-22',
+    [Op.eq]: '2026-09-20',
+  });
+  expect(where.actualPickupDate).toEqual({ [Op.gte]: '2026-09-23' });
+  expect(buildListFilters({ pickupDateFrom: '2026-09-19' }).where.emailPickupDate).toEqual({
+    [Op.gte]: '2026-09-19',
+  });
+  expect(buildListFilters({ pickupDateTo: '2026-09-22' }).where.emailPickupDate).toEqual({
+    [Op.lte]: '2026-09-22',
+  });
+  expect(
+    buildListFilters({ pickupDateFrom: '', pickupDateTo: '' }).where.emailPickupDate
+  ).toBeUndefined();
+});
+
+test.each([
+  { pickupDateFrom: '2026-02-30' },
+  { pickupDateTo: ['2026-09-20'] },
+  { pickupDateFrom: '2026-09-22', pickupDateTo: '2026-09-19' },
+])('预约取货范围拒绝非法参数 %j', query => {
+  expect(() => buildListFilters(query)).toThrow();
+});

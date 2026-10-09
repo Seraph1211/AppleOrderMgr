@@ -460,11 +460,57 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
         '系统订单 ID': 41,
         官网订单号: 'W1234567890',
         商品信息: '\'=HYPERLINK("bad") ×2',
-        邮件取货门店: 'Apple 长沙',
-        邮件取货安排: '2026-09-22 18:15–18:30',
+        取货门店: 'Apple 长沙',
+        取货安排: '2026-09-22 18:15–18:30',
       },
     ]);
     expect(JSON.stringify(data)).not.toMatch(/synthetic-secret|private|Apple ID/);
+  });
+
+  test.each([
+    ['READY_FOR_PICKUP | RETURN_STARTED', '可取货 | 已发起退货'],
+    ['PICKUP_READY | CANCELED | PICK_UP_CANCELLED', '可取货 | 已取消 | 取货已取消'],
+    ['UNKNOWN_STATUS', 'UNKNOWN_STATUS'],
+    ['=1+1', "'=1+1"],
+    [null, '尚未更新'],
+    ['toString', 'toString'],
+  ])('Excel 官网状态 %s 与预约字段表头正确输出', async (status, label) => {
+    Order.findAll.mockResolvedValue([
+      {
+        toJSON: () => ({
+          id: 41,
+          products: [],
+          officialRawStatus: status,
+          emailPickupDate: '2026-09-22',
+          emailPickupInfo: { storeName: 'Apple 长沙' },
+        }),
+      },
+    ]);
+    const res = response();
+    await exportOrders(
+      {
+        query: {
+          orderIds: '[41]',
+          fields: JSON.stringify([
+            'officialOrderStatus',
+            'emailPickupStore',
+            'emailPickupDate',
+            'emailPickupSchedule',
+          ]),
+        },
+        user: { id: 1, role: 'admin' },
+      },
+      res
+    );
+    const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
+    expect(XLSX.utils.sheet_to_json(book.Sheets['订单'])).toEqual([
+      {
+        官网订单状态: label,
+        取货门店: 'Apple 长沙',
+        取货日期: '2026-09-22',
+        取货安排: '2026-09-22',
+      },
+    ]);
   });
 
   test('选中订单导出拒绝空字段、未知字段和不可见 ID 集合', async () => {

@@ -1,0 +1,5 @@
+# 沿用最新生产版本，叠加预约日期范围与订单导出字段。
+FROM apple-order-mgr-runtime:20261009-official-concurrency-amd64
+COPY --chown=node:node src/controllers/orderController.js /app/src/controllers/orderController.js
+COPY --chown=node:node src/services/officialOrderRefreshService.js /app/src/services/officialOrderRefreshService.js
+COPY --chown=node:node src/constants/officialOrderStatus.js /app/src/constants/officialOrderStatus.js
