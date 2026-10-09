@@ -140,7 +140,7 @@ test.each([null, ''])('订单密码快照为空 %j 时不回退到关联账号�
 });
 
 test.each(['admin', 'operator', 'readOnly'])(
-  '%s 仅有订单查看权限也可读密码，电话保持脱敏并禁止缓存',
+  '%s 仅有订单查看权限可读密码及完整下单手机号并禁止缓存',
   async role => {
     const { Order } = require('../src/models');
     Order.findOne = jest.fn().mockResolvedValue({
@@ -170,7 +170,7 @@ test.each(['admin', 'operator', 'readOnly'])(
       expect.objectContaining({
         data: expect.objectContaining({
           apple_password: 'synthetic-password',
-          recipient_phone: '138****8000',
+          recipient_phone: '13800138000',
         }),
       })
     );
@@ -181,6 +181,22 @@ test.each(['admin', 'operator', 'readOnly'])(
     }
   }
 );
+
+test.each(['13800138000', null])('详情下单手机号使用订单快照 %s，不混入档案号码', phone => {
+  const order = {
+    toJSON: () => ({
+      id: 1,
+      recipientPhone: phone,
+      recipient: { id: 2, phone: '13900139000' },
+      products: [],
+    }),
+  };
+  expect(serializeOrderDetail(order)).toMatchObject({
+    recipient_phone: phone,
+    recipient: { phone: '139****9000' },
+  });
+  expect(serializeOrderListItem(order).recipient_phone).toBe(phone ? '138****8000' : null);
+});
 
 test('订单范围外查询不返回密码或详情', async () => {
   const { Order } = require('../src/models');
@@ -370,6 +386,40 @@ test('列表和导出都保留官网状态条件及授权范围', async () => {
     expect(query.where[Op.and][1].tag[Op.in]).toEqual(['授权TAG']);
     expect(query.where[Op.and][0][Op.and][0].val).toContain("'PICKED_UP'");
   }
+});
+
+test('列表按当前页批量读取运行任务，普通用户及无编辑权限管理员不读取队列', async () => {
+  const { Order, PickupDevice, sequelize } = require('../src/models');
+  const { listOrders } = require('../src/controllers/orderController');
+  const rows = [1, 2].map(id => ({
+    id,
+    setDataValue: jest.fn(),
+    toJSON: () => ({ id, orderNumber: `W000000000${id}`, products: [] }),
+  }));
+  Order.findAndCountAll = jest.fn().mockResolvedValue({ count: rows.length, rows });
+  PickupDevice.findAll = jest.fn().mockResolvedValue([]);
+  sequelize.query = jest.fn().mockResolvedValue([{ orderId: 2 }]);
+  const res = { json: jest.fn() };
+  await listOrders({ query: {}, user: { role: 'admin', permissions: ['orders.edit'] } }, res);
+  expect(sequelize.query).toHaveBeenCalledTimes(1);
+  expect(sequelize.query.mock.calls[0][1].replacements.orderIds).toEqual([1, 2]);
+  expect(sequelize.query.mock.calls[0][0]).toContain("state='running'");
+  expect(res.json.mock.calls[0][0].data.orders.map(order => order.official_refresh_state)).toEqual([
+    null,
+    'running',
+  ]);
+  sequelize.query.mockClear();
+  for (const user of [
+    { role: 'operator', permissions: ['orders.edit'], orderAccess: { mode: 'all', tags: [] } },
+    { role: 'admin', permissions: [] },
+  ]) {
+    res.json.mockClear();
+    await listOrders({ query: {}, user }, res);
+    expect(
+      res.json.mock.calls[0][0].data.orders.every(order => order.official_refresh_state === null)
+    ).toBe(true);
+  }
+  expect(sequelize.query).not.toHaveBeenCalled();
 });
 
 test('付款人多选精确匹配、优先于旧模糊参数并叠加官网状态', () => {

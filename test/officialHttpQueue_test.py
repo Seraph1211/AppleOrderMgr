@@ -3,6 +3,7 @@ import importlib.util
 import json
 import sys
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
@@ -15,6 +16,49 @@ spec.loader.exec_module(queue)
 
 
 class HttpQueueTest(unittest.TestCase):
+    def test_main_executes_ten_jobs_simultaneously(self):
+        started = []
+        finished = []
+        all_started = threading.Event()
+        release = threading.Event()
+        mutex = threading.Lock()
+        claimed = 0
+        overlapped = False
+
+        def collect(job):
+            with mutex:
+                started.append(job['id'])
+                if len(started) == 10:
+                    all_started.set()
+            release.wait(5)
+            return dict(job, outcome='NO_VALID_ORDER_DATA')
+
+        def command(action, payload=None):
+            nonlocal claimed, overlapped
+            if action == 'finish':
+                finished.append(payload['id'])
+                return {'finished': True}
+            if claimed < 10:
+                claimed += 1
+                return {'id': str(claimed), 'orderId': claimed}
+            overlapped = all_started.wait(3)
+            queue.STOPPING = True
+            release.set()
+            return None
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'private').mkdir()
+            with patch.object(queue, 'ROOT', root), patch.object(queue, 'STOPPING', False), \
+                    patch.object(queue, 'read_private', return_value={}), \
+                    patch.object(queue, 'writePrivate'), patch.object(queue, 'command', side_effect=command), \
+                    patch.object(queue, 'collect', side_effect=collect), \
+                    patch.object(queue.signal, 'signal'), patch.object(queue.os, 'umask'):
+                queue.main()
+        self.assertTrue(overlapped, '十单应在释放任何一个任务之前全部开始')
+        self.assertEqual(len(set(started)), 10)
+        self.assertCountEqual(started, finished)
+
     def test_api_generates_cn_sticky_without_purchase(self):
         response = MagicMock()
         response.__enter__.return_value.read.return_value = json.dumps([

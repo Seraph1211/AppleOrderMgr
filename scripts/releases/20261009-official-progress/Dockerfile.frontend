@@ -1,0 +1,7 @@
+# 沿用线上依赖与库存等前端，仅叠加官网状态和进度展示。
+FROM apple-order-mgr-frontend-builder:20261009-stock-dispatch-amd64
+COPY src/components/OfficialOrderRefreshPanel.jsx src/components/OfficialOrderStatus.jsx /app/src/components/
+COPY src/pages/Orders.jsx /app/src/pages/Orders.jsx
+COPY src/constants/officialOrderStatus.js /app/src/constants/officialOrderStatus.js
+COPY src/utils/officialRefreshDuration.js /app/src/utils/officialRefreshDuration.js
+RUN npm run lint && npm run build

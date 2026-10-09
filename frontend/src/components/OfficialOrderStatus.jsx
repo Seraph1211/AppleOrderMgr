@@ -1,4 +1,5 @@
 import { formatOrderTime } from '../utils/orderTime';
+import { Loader2 } from 'lucide-react';
 
 import { OFFICIAL_ORDER_STATUS_LABELS } from '../constants/officialOrderStatus';
 
@@ -11,6 +12,7 @@ const STATUS_COLORS = {
   READY_FOR_PICKUP: 'bg-teal-100 text-teal-800',
   PICKUP_READY: 'bg-teal-100 text-teal-800',
   PICKED_UP: 'bg-green-100 text-green-800',
+  RETURN_STARTED: 'bg-orange-100 text-orange-800',
   PREPARING_TO_SHIP: 'bg-violet-100 text-violet-800',
   SHIPPED: 'bg-cyan-100 text-cyan-800',
   DELIVERED: 'bg-emerald-100 text-emerald-800',
@@ -22,9 +24,15 @@ const STATUS_COLORS = {
 
 /** 逐项显示官网原始观测状态，同义状态保持一致颜色。 */
 
-export default function OfficialOrderStatus({ status, observedAt }) {
+export default function OfficialOrderStatus({ status, observedAt, loading = false }) {
   return (
     <div className="max-w-xs space-y-1 text-sm" title={status || '尚无官网观测'}>
+      {loading && (
+        <span className="flex items-center gap-1 text-primary" role="status">
+          <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" aria-hidden="true" />
+          查询中
+        </span>
+      )}
       {status ? (
         status.split(' | ').map(value => (
           <span
@@ -34,9 +42,9 @@ export default function OfficialOrderStatus({ status, observedAt }) {
             {OFFICIAL_ORDER_STATUS_LABELS[value] || value}
           </span>
         ))
-      ) : (
+      ) : !loading ? (
         <span className="text-gray-400">尚未更新</span>
-      )}
+      ) : null}
       {observedAt && <p className="text-xs text-gray-500">{formatOrderTime(observedAt)}</p>}
     </div>
   );

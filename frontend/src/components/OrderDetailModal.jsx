@@ -32,6 +32,8 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
   const [saving, setSaving] = useState(false);
   const [alertInfo, setAlertInfo] = useState(null);
   const [detailExtras, setDetailExtras] = useState({
+    orderId: null,
+    recipientPhone: null,
     applePassword: null,
     orderUrl: null,
     orderLinkError: null,
@@ -62,11 +64,19 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
     if (!isOpen || !order?.id) return undefined;
     let active = true;
     setDetailLoading(true);
-    setDetailExtras({ applePassword: null, orderUrl: null, orderLinkError: null });
+    setDetailExtras({
+      orderId: order.id,
+      recipientPhone: null,
+      applePassword: null,
+      orderUrl: null,
+      orderLinkError: null,
+    });
     getOrderDetailWithLink(order.id)
       .then(response => {
         if (!active) return;
         setDetailExtras({
+          orderId: order.id,
+          recipientPhone: response.data?.recipient_phone || null,
           applePassword: response.data?.apple_password || null,
           orderUrl: response.data?.order_url || null,
           orderLinkError: response.data?.order_link_error || null,
@@ -75,6 +85,8 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
       .catch(error => {
         if (!active) return;
         setDetailExtras({
+          orderId: order.id,
+          recipientPhone: null,
           applePassword: null,
           orderUrl: null,
           orderLinkError: error.message || '订单详情加载失败',
@@ -228,7 +240,11 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
               </div>
               <div>
                 <p className="text-sm text-gray-600">下单手机号</p>
-                <p className="mt-1 break-all font-mono text-sm">{order.recipientPhone || '-'}</p>
+                <p className="mt-1 break-all font-mono text-sm">
+                  {detailLoading || detailExtras.orderId !== order.id
+                    ? '加载中…'
+                    : detailExtras.recipientPhone || '-'}
+                </p>
               </div>
               <div className="min-w-0">
                 <p className="text-sm text-gray-600">下单邮箱号</p>

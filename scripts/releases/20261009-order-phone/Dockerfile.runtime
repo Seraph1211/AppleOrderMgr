@@ -1,0 +1,3 @@
+# 沿用最新生产版本，只调整订单详情手机号的返回规则。
+FROM apple-order-mgr-runtime:20261009-official-progress-amd64
+COPY --chown=node:node src/controllers/orderController.js /app/src/controllers/orderController.js

@@ -9,6 +9,7 @@ export const OFFICIAL_ORDER_STATUS_LABELS = {
   READY_FOR_PICKUP: '可取货',
   PICKUP_READY: '可取货',
   PICKED_UP: '已取货',
+  RETURN_STARTED: '已发起退货',
   PREPARING_TO_SHIP: '准备发货',
   SHIPPED: '已发货',
   DELIVERED: '已送达',

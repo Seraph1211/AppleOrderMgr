@@ -35,9 +35,10 @@
 - 2026-10-05 账号聚合改造已本地实现，尚未发布：以下全部接口额外要求当前角色 `admin`，普通用户即使有订单读写权限也返回 403。
 - `POST /api/orders/official-refresh/batches`：需管理员及 `orders.read` + `orders.edit`。请求 `{ requestKey: UUID, selection: "ids", orderIds: [1,2] }` 或 `{ requestKey: UUID, selection: "filtered", filters: { ...订单列表筛选参数 } }`。202 返回 `{ success, data: { batchId, queued, skipped, total, selectedCount, accountCount, queuedAccountCount } }`。2026-10-08 HTTP 范围修正：仅固化显式选中的订单，筛选全选仅固化提交时匹配筛选且可访问的订单；不按 Apple ID 扩大范围。`total` 与 `selectedCount` 为去重后的选中数，`accountCount` 为其中有效账号数；`queuedAccountCount` 为新增任务涉及账号数，仅兼容统计。活动任务按订单 ID 去重，已有活动任务的相同订单计入 `skipped`；同账号其他选中订单可以入队，由领取器互斥串行执行。无新任务返回 `batchId: null`。最多 10000 单，超量整体拒绝 400；后台未就绪 503。相同请求键重放返回原批次及原计数，选择变化返回 409。
 - `GET /api/orders/official-refresh/batches`：返回本人最近 10 个批次标识，供页面重开恢复；管理员可查询批次详情，列表仍仅本人。
-- `GET /api/orders/official-refresh/batches/:batchId`：仅管理员；返回当前批次 `counts`、总数、`selectedCount`、`accountCount`、分页 `jobs`（每页 20，最多 100）。`jobs` 只返回订单 ID、订单号、队列状态、账号组 ID、脱敏错误码、官网状态及时间，不返回 Apple ID 或凭据。
+- `GET /api/orders/official-refresh/batches/:batchId`：仅管理员；返回当前批次 `counts`、总数、`selectedCount`、`accountCount`、分页 `jobs`（每页 20，最多 100）。`jobs` 只返回订单 ID、订单号、队列状态、账号组 ID、脱敏错误码、官网状态及时间，不返回 Apple ID 或凭据。2026-10-09 增加 `jobs[].startedAt`、`jobs[].finishedAt`（ISO 时间或 null）及批次 `serverTime`，供逐单耗时展示；耗时从领取开始计算，不含排队，运行中递增，终态固定，未开始显示“—”。
 - `POST /api/orders/official-refresh/batches/:batchId/cancel`：取消排队任务，不中断已运行的官网请求。
 - 订单列表、详情新增 `official_order_status`（原始官网状态或 null）、`official_status_observed_at`（最近成功观测时间）；原邮件状态契约不变。
+- 2026-10-09 `GET /api/orders` 列表增加 `official_refresh_state`（`running` 或 null），仅当前管理员且有 `orders.edit` 时读取当前页订单的运行任务；其他用户始终返回 null。该值不依赖所选批次或进度弹窗是否打开，不进入导出；只读查询，不触发官网采集。
 
 以上均经认证与 TAG 范围校验。旧 `/refresh-all`、`/batch-refresh`、`/:id/refresh`、`/page-open-refresh` 和浏览器辅助接口保持退役，避免旧页面触发外部请求。
 
@@ -47,7 +48,7 @@
 
 ### HTTP 执行器接入（2026-10-08）
 
-公共批次接口与管理员权限保持；后台新增私有 `claim-http` 命令逐单领取，最多 5 个不同账号并发，单笔租约 20 分钟，旧 `claim` 不作为新版执行入口。`finish` 沿用事务、最新权限、账号身份及结果时效检查；HTTP 完整结果允许额外补入 `actual_pickup_date` 的空值，有效原日期保持。每单最多 3 次实际采集，失败保留上次业务值；未知提交不重放。进度错误码增加 `AUTHENTICATION_REQUIRED`、`IPROYAL_CONFIG_INVALID`、`IPROYAL_API_FAILED`、`EGRESS_CHANGED_OR_UNVERIFIED`、`HTTP_CLEANUP_PENDING`。敏感代理配置不通过公共 API 返回。
+公共批次接口与管理员权限保持；后台新增私有 `claim-http` 命令逐单领取，最多 10 个不同账号并发（2026-10-09 已生产发布），单笔租约 20 分钟，旧 `claim` 不作为新版执行入口。`finish` 沿用事务、最新权限、账号身份及结果时效检查；HTTP 完整结果允许额外补入 `actual_pickup_date` 的空值，有效原日期保持。每单最多 3 次实际采集，失败保留上次业务值；未知提交不重放。进度错误码增加 `AUTHENTICATION_REQUIRED`、`IPROYAL_CONFIG_INVALID`、`IPROYAL_API_FAILED`、`EGRESS_CHANGED_OR_UNVERIFIED`、`HTTP_CLEANUP_PENDING`。敏感代理配置不通过公共 API 返回。
 
 ## 通用约束
 
@@ -251,7 +252,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - `GET /api/order-refresh/batches/:id` 返回批次六类计数和完成时间；只能查询本人批次，admin 可查询全部。
 - 列表和详情新增 `refresh` 对象：`freshness_status`、`last_attempt_at`、`last_success_at`、`last_failure_at`、`last_error_code`、`last_error_message` 和当前活动 `job`。超过 90 秒没有成功结果的待付款/未知订单由服务端序列化为 `stale`。
 - PUT /api/orders/:id 允许独立更新 `paymentScreenshot` 或 `notes`，要求 `orders.edit` 并按订单 TAG 范围查询，范围外返回 404。`notes` 接受字符串或 null，去除首尾空白后最长 2000 个字符，空字符串保存为 null；省略则保留原备注，非法类型或超长返回 400。响应 data 包含 id、order_number、payment_screenshot、notes、updated_at。备注更新不改变订单状态、付款人或截图，不再接受 payerName。付款人必须经 `PUT /api/orders/:id/payer` 或本人任务入口更新，body 为 `{ payerName: string | null, expectedVersion, reason? }`，幂等键通过请求头传入。`payerName` 去除首尾空白后最长 100 个字符，空字符串按 null 清空；付款人不是系统账号，也不存在候选目录。
-- 官网金额、支付与取货状态是独立字段。列表不返回 Apple 密码或原始订单链接；`GET /api/orders/:id` 在当前用户具有 `orders.read` 且订单属于其授权 TAG 范围时返回订单密码快照 `apple_password` 明文（管理员、普通操作员及只读用户均适用），快照为空时为 `null`；无需 `orders.secrets.read` 或 `apple_ids.read`，并统一设置 `Cache-Control: no-store`。详情响应不直接携带原始订单链接，页面打开详情后另经 `GET /api/orders/:id/link` 按订单范围读取。身份证和地址保持脱敏；详情顶层 `recipient_email`、`recipient_phone` 表示订单入库时保存的下单联系方式，不使用之后变更的取机人档案覆盖，其中 `recipient_phone` 默认脱敏，仅在 `NODE_ENV=development`、`ALLOW_LOCAL_SENSITIVE_DISPLAY=true` 且当前用户为 admin 时返回完整值。
+- 官网金额、支付与取货状态是独立字段。列表不返回 Apple 密码或原始订单链接；`GET /api/orders/:id` 在当前用户具有 `orders.read` 且订单属于其授权 TAG 范围时返回订单密码快照 `apple_password` 明文（管理员、普通操作员及只读用户均适用），快照为空时为 `null`；无需 `orders.secrets.read` 或 `apple_ids.read`，并统一设置 `Cache-Control: no-store`。详情响应不直接携带原始订单链接，页面打开详情后另经 `GET /api/orders/:id/link` 按订单范围读取。身份证和地址保持脱敏；详情顶层 `recipient_email`、`recipient_phone` 表示订单入库时保存的下单联系方式，不使用之后变更的取机人档案覆盖，其中详情顶层 `recipient_phone` 向具有 `orders.read` 且订单在授权 TAG 范围内的用户直接返回完整号码，缺失为 `null`，无需额外敏感字段权限或本地显示开关。详情弹窗从详情接口读取该值；列表、导出及嵌套取机人档案电话继续沿用原脱敏规则。
 - 导出使用当前筛选条件，下载按 Blob 处理；订单金额改用已确认价格映射，无法完整映射时显示待确认，不回退官网金额。
 
 ## 邮件处理

@@ -24,6 +24,7 @@ async function main() {
       let sequence = 0;
       let role = 'admin';
       let officialReads = 0;
+      let runningOrderIds = [];
       page.on('pageerror', error => errors.push(error.message));
       await page.addInitScript(() => {
         localStorage.setItem('token', 'synthetic-official-token');
@@ -67,8 +68,10 @@ async function main() {
               orders: [101, 102].map((id, i) => ({
                 id,
                 order_number: `W123456789${i}`,
-                official_order_status: i ? null : 'PICKED_UP',
+                official_order_status: i ? null : 'PICKED_UP | RETURN_STARTED',
                 official_status_observed_at: i ? null : '2026-10-03T01:00:00Z',
+                official_refresh_state:
+                  role === 'admin' && runningOrderIds.includes(id) ? 'running' : null,
                 email_order_status: 'confirmed',
                 display_order_status: 'confirmed',
                 products: [{ name: '合成手机 512GB 蓝色', quantity: 1 }],
@@ -118,7 +121,8 @@ async function main() {
               job.state = 'cancelled';
             });
             data = { cancelled: batch.counts.cancelled };
-          } else if (url.pathname.startsWith('/api/orders/official-refresh/batches/')) data = batch;
+          } else if (url.pathname.startsWith('/api/orders/official-refresh/batches/'))
+            data = { ...batch, serverTime: new Date().toISOString() };
           else {
             errors.push(`未预期 API ${method} ${url.pathname}`);
             await route.abort();
@@ -264,6 +268,85 @@ async function main() {
         })
         .waitFor();
       assert.equal(writes.length, writeCount, '离线状态不得自动提交');
+
+      // 实际运行状态独立于弹窗；运行中计时、终态固定、排队不计时。
+      batch.workerOnline = true;
+      batch.pausedAt = null;
+      batch.pauseReason = null;
+      batch.counts = { queued: 1, running: 1, succeeded: 0, failed: 0, cancelled: 0 };
+      const startedAt = new Date(Date.now() - 44000).toISOString();
+      batch.jobs = batch.jobs.map((job, index) => ({
+        ...job,
+        state: index ? 'queued' : 'running',
+        errorCode: null,
+        startedAt: index ? null : startedAt,
+        finishedAt: null,
+      }));
+      runningOrderIds = [101];
+      await page.reload();
+      await list.getByRole('status').filter({ hasText: '查询中' }).waitFor();
+      assert.equal(
+        await list.getByText('已取货', { exact: true }).count(),
+        1,
+        '运行中保留上次成功状态'
+      );
+      assert.equal(await list.getByText('已发起退货', { exact: true }).count(), 1);
+      const spinner = list.getByRole('status').filter({ hasText: '查询中' }).locator('svg');
+      assert.equal(await spinner.evaluate(node => getComputedStyle(node).animationName), 'spin');
+      await page.getByRole('button', { name: '官网更新进度', exact: true }).click();
+      await page.getByText('查看逐单结果', { exact: true }).click();
+      const panel = page.getByRole('region', { name: '官网更新进度' });
+      await panel.getByRole('columnheader', { name: '耗时', exact: true }).waitFor();
+      assert.equal(await panel.getByText(/服务器通过 HTTP 查询/).count(), 0);
+      const jobRow = panel.getByRole('row').filter({ hasText: 'W1234567890' });
+      const duration = jobRow.locator('td').nth(2);
+      const initialDuration = await duration.innerText();
+      await page.waitForFunction(initial => {
+        const row = [...document.querySelectorAll('[aria-label="官网更新进度"] tbody tr')].find(
+          node => node.textContent.includes('W1234567890')
+        );
+        return row?.children[2].textContent !== initial;
+      }, initialDuration);
+      await jobRow.getByRole('status').filter({ hasText: '查询中' }).waitFor();
+      assert.equal(
+        await panel
+          .getByRole('row')
+          .filter({ hasText: 'W1234567891' })
+          .locator('td')
+          .nth(2)
+          .innerText(),
+        '—'
+      );
+      await page.screenshot({ path: `${OUTPUT}/官网查询耗时-${width}.png`, fullPage: true });
+      await page.getByRole('button', { name: '关闭官网更新进度', exact: true }).click();
+      await list.getByRole('status').filter({ hasText: '查询中' }).waitFor();
+      assert.equal(await page.getByRole('dialog').count(), 0);
+      assert.equal(writes.length, writeCount, '关闭弹窗和计时不产生官网请求');
+
+      batch.counts = { queued: 0, running: 0, succeeded: 1, failed: 1, cancelled: 0 };
+      batch.jobs[0] = {
+        ...batch.jobs[0],
+        state: 'succeeded',
+        officialStatus: 'PICKED_UP | RETURN_STARTED',
+        finishedAt: new Date(Date.parse(startedAt) + 44000).toISOString(),
+      };
+      batch.jobs[1] = {
+        ...batch.jobs[1],
+        state: 'failed',
+        errorCode: 'HTTP_TIMEOUT',
+        startedAt,
+        finishedAt: new Date(Date.parse(startedAt) + 65000).toISOString(),
+      };
+      runningOrderIds = [];
+      await page.reload();
+      await list.getByRole('button', { name: '更新官网状态 W1234567890', exact: true }).waitFor();
+      assert.equal(await list.getByRole('status').filter({ hasText: '查询中' }).count(), 0);
+      await page.getByRole('button', { name: '官网更新进度', exact: true }).click();
+      await page.getByText('查看逐单结果', { exact: true }).click();
+      await panel.getByText('44 秒', { exact: true }).waitFor();
+      await panel.getByText('已发起退货', { exact: true }).waitFor();
+      await panel.getByText('1 分 5 秒', { exact: true }).waitFor();
+      assert.equal(writes.length, writeCount, '完成后只读恢复固定耗时');
       role = 'operator';
       const readsBefore = officialReads;
       await page.reload();

@@ -57,6 +57,7 @@ export default function Orders() {
   const [allFilteredSelected, setAllFilteredSelected] = useState(false);
   const [mailOrder, setMailOrder] = useState(null);
   const [orders, setOrders] = useState([]);
+  const hasOfficialRunning = orders.some(order => order.officialRefreshState === 'running');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [notesOrder, setNotesOrder] = useState(null);
@@ -155,9 +156,12 @@ export default function Orders() {
   ]);
 
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === 'visible') loadOrdersRef.current?.(true);
-    }, 15000);
+    const timer = window.setInterval(
+      () => {
+        if (document.visibilityState === 'visible') loadOrdersRef.current?.(true);
+      },
+      hasOfficialRunning ? 5000 : 15000
+    );
     const refreshVisible = () => {
       if (document.visibilityState === 'visible') loadOrdersRef.current?.(true);
     };
@@ -166,7 +170,7 @@ export default function Orders() {
       window.clearInterval(timer);
       document.removeEventListener('visibilitychange', refreshVisible);
     };
-  }, []);
+  }, [hasOfficialRunning]);
 
   const handleOfficialRefresh = async (ids = null) => {
     if (officialSubmitting || !canRefreshOfficialStatus) return;
@@ -313,6 +317,7 @@ export default function Orders() {
           serialNumbers: order.serial_numbers || [],
           officialOrderStatus: order.official_order_status || null,
           officialStatusObservedAt: order.official_status_observed_at || null,
+          officialRefreshState: order.official_refresh_state || null,
           actualPickupDate: order.actual_pickup_date || null,
           ingestionSource: order.ingestion_source,
           sourceRecipientTag: order.source_recipient_tag,
@@ -494,6 +499,7 @@ export default function Orders() {
           <OfficialOrderStatus
             status={order.officialOrderStatus}
             observedAt={order.officialStatusObservedAt}
+            loading={order.officialRefreshState === 'running'}
           />
         );
       case 'serialNumbers':
@@ -1095,6 +1101,7 @@ export default function Orders() {
                       <OfficialOrderStatus
                         status={order.officialOrderStatus}
                         observedAt={order.officialStatusObservedAt}
+                        loading={order.officialRefreshState === 'running'}
                       />
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">

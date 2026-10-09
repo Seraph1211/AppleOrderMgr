@@ -1,0 +1,4 @@
+# 在用生产基线，仅替换查询展示相关的两个后端模块。
+FROM apple-order-mgr-runtime:20261009-stock-dispatch-amd64
+COPY --chown=node:node src/controllers/orderController.js /app/src/controllers/orderController.js
+COPY --chown=node:node src/services/officialOrderRefreshService.js /app/src/services/officialOrderRefreshService.js

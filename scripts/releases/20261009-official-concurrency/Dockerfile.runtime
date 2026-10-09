@@ -1,0 +1,4 @@
+# 沿用线上订单手机号版本，仅提高官网手动队列领取上限。
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chown=node:node src/services/officialOrderRefreshService.js /app/src/services/officialOrderRefreshService.js

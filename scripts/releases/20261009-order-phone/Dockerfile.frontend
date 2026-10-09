@@ -1,0 +1,4 @@
+# 沿用最新生产前端，只调整订单详情弹窗的手机号读取与展示。
+FROM apple-order-mgr-frontend-builder:20261009-official-progress-amd64
+COPY src/components/OrderDetailModal.jsx /app/src/components/OrderDetailModal.jsx
+RUN npm run lint && npm run build

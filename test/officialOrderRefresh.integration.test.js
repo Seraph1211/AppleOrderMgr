@@ -567,6 +567,37 @@ suite('手动官网状态：持久队列、权限、全选及窄范围回写', (
       await admin.update({ role: 'admin' });
     }
   });
+  test('HTTP 竞争领取最多十单，额外订单等待，完成一单后补位', async () => {
+    const samples = await models.Order.bulkCreate(
+      Array.from({ length: 12 }, (_, index) => ({
+        orderNumber: `W991122440${index}`,
+        tag: 'official-test-A',
+        ingestionSource: 'aos',
+        appleId: `concurrency-${index === 11 ? 0 : index}@example.test`,
+        products: [{ name: '合成并发测试手机', quantity: 1 }],
+        emailOrderStatus: 'confirmed',
+        emailPaymentStatus: 'unknown',
+        orderDate: new Date(),
+      }))
+    );
+    await service.enqueue(admin, input(samples.map(order => order.id)));
+    const claims = await Promise.all(Array.from({ length: 12 }, () => service.claimHttp()));
+    const running = claims.filter(Boolean);
+    expect(running).toHaveLength(10);
+    expect(new Set(running.map(job => job.accountKey)).size).toBe(10);
+    expect(new Set(running.map(job => job.orderId)).size).toBe(10);
+    expect(await service.claimHttp()).toBeNull();
+    const first = running.find(job => job.orderId === samples[0].id);
+    await service.finish({ ...first, outcome: 'NO_VALID_ORDER_DATA' });
+    expect((await service.claimHttp()).orderId).toBe(samples[10].id);
+    expect(await service.claimHttp()).toBeNull();
+    await service.finish({
+      ...running.find(job => job.orderId === samples[1].id),
+      outcome: 'NO_VALID_ORDER_DATA',
+    });
+    expect((await service.claimHttp()).orderId).toBe(samples[11].id);
+    expect(await service.claimHttp()).toBeNull();
+  });
   test('HTTP 同账号逐单互斥，不同账号可以并行，过期租约不自动重放', async () => {
     await orders[1].update({ appleId: orders[0].appleId });
     await service.enqueue(admin, input(orders.map(order => order.id)));

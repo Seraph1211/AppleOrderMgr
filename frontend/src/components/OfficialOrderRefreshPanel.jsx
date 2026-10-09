@@ -5,6 +5,7 @@ import {
   cancelOfficialOrderBatch,
 } from '../api/officialOrderRefreshApi';
 import OfficialOrderStatus from './OfficialOrderStatus';
+import { formatOfficialRefreshDuration } from '../utils/officialRefreshDuration';
 
 const STATES = {
   queued: '排队中',
@@ -74,6 +75,18 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
   const [error, setError] = useState('');
   const [cancelling, setCancelling] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [now, setNow] = useState(Date.now);
+
+  useEffect(() => {
+    if (!batch) return;
+    const serverTime = Date.parse(batch.serverTime);
+    const baseline = Number.isFinite(serverTime) ? serverTime : Date.now();
+    const receivedAt = Date.now();
+    setNow(baseline);
+    if (!batch.counts.running) return;
+    const timer = window.setInterval(() => setNow(baseline + Date.now() - receivedAt), 1000);
+    return () => window.clearInterval(timer);
+  }, [batch]);
 
   useEffect(() => {
     let active = true;
@@ -182,15 +195,14 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
               剩余任务不会自动重试；核查后可重新选择需要的订单更新，账号冷却仍然有效。
             </p>
           )}
-          {(batch.counts.queued + batch.counts.running > 0 || batch.pausedAt) && (
-            <p className="text-xs text-gray-500">
-              {batch.workerOnline === false
-                ? '官网更新后台服务离线，请联系管理员检查；已有任务和官网状态已保留。'
-                : batch.pausedAt
-                  ? '官网更新服务在线，此批次暂停不影响新的手动查询。'
-                  : '服务器通过 HTTP 查询，最多五个不同账号并发，逐单保存结果；关闭页面后继续执行。失败时保留上次官网状态。'}
-            </p>
-          )}
+          {(batch.counts.queued + batch.counts.running > 0 || batch.pausedAt) &&
+            (batch.workerOnline === false || batch.pausedAt) && (
+              <p className="text-xs text-gray-500">
+                {batch.workerOnline === false
+                  ? '官网更新后台服务离线，请联系管理员检查；已有任务和官网状态已保留。'
+                  : '官网更新服务在线，此批次暂停不影响新的手动查询。'}
+              </p>
+            )}
           {batch.counts.queued > 0 && (
             <button className="btn btn-secondary" disabled={cancelling} onClick={cancel}>
               {cancelling ? '正在取消' : '取消待处理任务'}
@@ -204,13 +216,14 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
                   <tr>
                     <th className="p-2">订单</th>
                     <th className="p-2">进度</th>
+                    <th className="p-2">耗时</th>
                     <th className="p-2">结果</th>
                   </tr>
                 </thead>
                 <tbody>
                   {batch.jobs.map(job => (
                     <tr key={job.id} className="border-t border-gray-100">
-                      <td className="p-2">
+                      <td className="whitespace-nowrap p-2">
                         {job.orderId}
                         <br />
                         <span className="font-mono text-xs">{job.orderNumber}</span>
@@ -218,15 +231,19 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
                       <td className="whitespace-nowrap p-2">
                         {batch.pausedAt && job.state === 'queued' ? '已暂停' : STATES[job.state]}
                       </td>
+                      <td className="whitespace-nowrap p-2 tabular-nums">
+                        {formatOfficialRefreshDuration(job, now)}
+                      </td>
                       <td className="min-w-32 p-2">
                         {job.errorCode ? (
                           <span className="text-amber-700">
                             {ERRORS[job.errorCode] || `查询未完成（${job.errorCode}）`}
                           </span>
-                        ) : job.state === 'succeeded' ? (
+                        ) : job.state === 'succeeded' || job.state === 'running' ? (
                           <OfficialOrderStatus
                             status={job.officialStatus}
                             observedAt={job.observedAt}
+                            loading={job.state === 'running'}
                           />
                         ) : (
                           '—'

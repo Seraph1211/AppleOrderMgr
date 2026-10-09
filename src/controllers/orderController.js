@@ -164,11 +164,10 @@ const LEGACY_ORDER_EXPORT_FIELDS = Object.freeze([
  * 序列化订单列表，关联档案缺失时保留邮件入库信息。
  * @param {Object} order - 订单模型
  * @param {boolean} includeRecipientPhone - 是否允许读取明文电话
- * @param {Object|null} refreshSchedule - 刷新计划
- * @param {Object|null} refreshJob - 最新刷新任务
+ * @param {string|null} officialRefreshState - 当前官网查询状态
  * @returns {Object} 订单列表 DTO
  */
-function serializeOrderListItem(order, includeRecipientPhone = false) {
+function serializeOrderListItem(order, includeRecipientPhone = false, officialRefreshState = null) {
   const plain = order.toJSON();
   return {
     id: plain.id,
@@ -176,6 +175,7 @@ function serializeOrderListItem(order, includeRecipientPhone = false) {
     actual_pickup_date: plain.actualPickupDate || null,
     official_order_status: plain.officialRawStatus || null,
     official_status_observed_at: plain.officialStatusObservedAt || null,
+    official_refresh_state: officialRefreshState,
     serial_numbers: plain.serialNumbers || [],
     ingestion_source: plain.ingestionSource || 'unknown',
     source_recipient_tag: plain.sourceRecipientTag || null,
@@ -277,7 +277,7 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
     apple_id: appleId,
     apple_password: includeOrderPassword ? plain.applePassword || null : null,
     recipient_email: plain.recipientEmail,
-    recipient_phone: includeRecipientPhone ? plain.recipientPhone : maskPhone(plain.recipientPhone),
+    recipient_phone: plain.recipientPhone || null,
     recipient,
     recipient_tag:
       plain.ingestionSource === 'aos'
@@ -654,9 +654,28 @@ async function listOrders(req, res) {
       req,
       PERMISSIONS.ORDERS_SECRETS_READ
     );
+    // 当前页一次查询，跨批次读取实际运行状态，关闭弹窗后仍可展示进度。
+    const runningOrderIds = new Set();
+    if (rows.length && req.user.role === 'admin' && req.user.permissions?.includes('orders.edit')) {
+      const runningJobs = await sequelize.query(
+        `SELECT order_id AS "orderId" FROM official_order_refresh_jobs
+         WHERE order_id IN (:orderIds) AND state='running'`,
+        {
+          replacements: { orderIds: rows.map(order => order.id) },
+          type: Sequelize.QueryTypes.SELECT,
+        }
+      );
+      for (const job of runningJobs) runningOrderIds.add(job.orderId);
+    }
     res.json(
       paginatedResponse(
-        rows.map(order => serializeOrderListItem(order, includeRecipientPhone)),
+        rows.map(order =>
+          serializeOrderListItem(
+            order,
+            includeRecipientPhone,
+            runningOrderIds.has(order.id) ? 'running' : null
+          )
+        ),
         count,
         page,
         limit,

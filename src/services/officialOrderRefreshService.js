@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const HTTP_MAX_CONCURRENCY = 10;
 const { Op, QueryTypes } = require('sequelize');
 const { sequelize, Order, AppleId, Recipient, User } = require('../models');
 const { scopeOrderWhere, assertOrderIdsAccess } = require('./orderAccessService');
@@ -348,7 +349,7 @@ async function getBatch(user, id, page = 1, limit = DEFAULT_PAGE_SIZE) {
     const jobs = await query(
       `SELECT id,order_id AS "orderId",order_number AS "orderNumber",state,
       error_code AS "errorCode",result_status AS "officialStatus",observed_at AS "observedAt",
-      account_group_id AS "accountGroupId"
+      account_group_id AS "accountGroupId",started_at AS "startedAt",finished_at AS "finishedAt"
       FROM official_order_refresh_jobs WHERE batch_id=:id ORDER BY created_at,id LIMIT :limit OFFSET :offset`,
       { id, limit, offset: (page - 1) * limit }
     );
@@ -358,6 +359,7 @@ async function getBatch(user, id, page = 1, limit = DEFAULT_PAGE_SIZE) {
     );
     return {
       ...batch,
+      serverTime: new Date().toISOString(),
       workerOnline: Boolean(runtime),
       accountCount: accounts.count,
       counts,
@@ -508,7 +510,7 @@ async function claim() {
   }
 }
 
-/** HTTP 执行器逐单领取；全局最多五单，同账号串行，租约涵盖三次有界采集。 */
+/** HTTP 执行器逐单领取；全局最多十单，同账号串行，租约涵盖三次有界采集。 */
 async function claimHttp() {
   try {
     return await mutate(async transaction => {
@@ -530,7 +532,7 @@ async function claimHttp() {
           {},
           transaction
         );
-        if (running.count >= 5) return null;
+        if (running.count >= HTTP_MAX_CONCURRENCY) return null;
         const [job] = await query(
           `SELECT j.id,j.order_id AS "orderId",j.order_number AS "orderNumber",
           j.account_key AS "accountKey",b.requested_by AS "requestedBy"

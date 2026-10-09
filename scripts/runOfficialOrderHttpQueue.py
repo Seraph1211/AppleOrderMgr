@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""管理台 HTTP 队列：五个不同账号并发，独立容器，IPRoyal API，逐单提交。"""
+"""管理台 HTTP 队列：十个不同账号并发，独立容器，IPRoyal API，逐单提交。"""
 import concurrent.futures
 import fcntl
 import json
@@ -20,6 +20,7 @@ ROOT = pathlib.Path(os.environ.get('OFFICIAL_ORDER_ROOT', '/var/www/apple-order-
 API_CONTAINER = os.environ.get('OFFICIAL_API_CONTAINER', 'apple-order-mgr-prod-api-1')
 RUNTIME = os.environ.get('OFFICIAL_HTTP_RUNTIME', '/var/tmp/official-http-runtime-20261008')
 STOPPING = False
+HTTP_MAX_CONCURRENCY = 10
 RETRYABLE = {'HTTP_541', 'PROXY_CONNECTION_FAILED', 'HTTP_TIMEOUT', 'HTTP_502', 'HTTP_503', 'HTTP_504'}
 
 
@@ -162,7 +163,7 @@ def main():
             raise RuntimeError('QUEUE_COMMIT_UNCONFIRMED')
     with open(str(ROOT / 'private/queue.lock'), 'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as pool:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=HTTP_MAX_CONCURRENCY) as pool:
             pending = {}
             while not STOPPING or pending:
                 for future in list(pending):
