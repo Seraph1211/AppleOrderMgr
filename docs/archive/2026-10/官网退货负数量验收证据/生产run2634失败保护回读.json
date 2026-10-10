@@ -1,0 +1,23 @@
+{
+  "run": 2634,
+  "readOnly": "on",
+  "officialStatus": "PICKED_UP",
+  "mailStatus": "return_requested",
+  "mailVersion": 15,
+  "snapshotDifferences": [
+    "otherOrders"
+  ],
+  "allSnapshotFieldsUnchanged": false,
+  "stocks": [
+    {
+      "state": "in_stock",
+      "issue": null,
+      "version": 4
+    },
+    {
+      "state": "in_stock",
+      "issue": null,
+      "version": 4
+    }
+  ]
+}

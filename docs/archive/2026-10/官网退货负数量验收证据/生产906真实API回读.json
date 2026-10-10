@@ -1,0 +1,19 @@
+{
+  "status": "PASS",
+  "mode": "现有会话短时内存签名、公网真实API，仅GET、不输出凭据或订单原文",
+  "filters": [],
+  "samples": [
+    {
+      "id": 906,
+      "officialStatus": "RETURN_STARTED",
+      "observedAt": "2026-10-10T12:09:51.211Z",
+      "mailVersion": 15,
+      "emailOrderStatus": "return_requested",
+      "displayOrderStatus": "return_requested",
+      "needsReview": true,
+      "reviewReasons": [
+        "UNKNOWN_LIFECYCLE_TEMPLATE"
+      ]
+    }
+  ]
+}

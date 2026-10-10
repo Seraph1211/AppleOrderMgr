@@ -1,0 +1,71 @@
+{
+  "status": "PASS",
+  "databaseSessionReadOnly": true,
+  "orderId": 906,
+  "officialStatus": "RETURN_STARTED",
+  "mailStatus": "return_requested",
+  "mailVersion": 15,
+  "mailReviewReasons": [
+    "UNKNOWN_LIFECYCLE_TEMPLATE"
+  ],
+  "orderProtectedFieldsUnchanged": true,
+  "originalMailRowsUnchanged": 8,
+  "allOriginalMailEventsUnchanged": 16,
+  "protectedBusinessTablesUnchanged": [
+    "payment_tasks",
+    "payment_task_events",
+    "pickup_records",
+    "pickup_devices",
+    "stock_sales",
+    "stock_sale_units",
+    "stock_sale_lines",
+    "stock_collections",
+    "stock_expenses",
+    "stock_expense_allocations",
+    "stock_receipts",
+    "stock_receipt_allocations"
+  ],
+  "allOtherOrdersUnchangedSinceImmediateFreeze": 1238,
+  "immediateFreezeAt": "2026-10-10T12:09:27.309Z",
+  "allOtherStockUnitsUnchanged": 837,
+  "boundUnits": [
+    {
+      "state": "in_stock",
+      "lifecycleIssue": "return_pending",
+      "versionBefore": 4,
+      "versionAfter": 5,
+      "fieldsOutsideFourAllowedMetadataUnchanged": true
+    },
+    {
+      "state": "in_stock",
+      "lifecycleIssue": "return_pending",
+      "versionBefore": 4,
+      "versionAfter": 5,
+      "fieldsOutsideFourAllowedMetadataUnchanged": true
+    }
+  ],
+  "stockCheckOtherFieldsUnchanged": true,
+  "manualSerialsRemainNull": true,
+  "checkItems": [
+    {
+      "quantity": 1,
+      "raw_quantity": -1,
+      "interpretation": "return_started_negative_one",
+      "status": "RETURN_STARTED",
+      "serial_count": 0
+    },
+    {
+      "quantity": 1,
+      "raw_quantity": -1,
+      "interpretation": "return_started_negative_one",
+      "status": "RETURN_STARTED",
+      "serial_count": 0
+    }
+  ],
+  "newSystemOperations": 1,
+  "newStockAuditEvents": 2,
+  "oldStockAuditEventsUnchanged": 12,
+  "targetStockSystemActorNullVerified": true,
+  "targetStockReturnedAtNullVerified": true,
+  "targetStockWarehouseRetainedVerified": true
+}

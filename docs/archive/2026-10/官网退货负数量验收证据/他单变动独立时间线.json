@@ -1,0 +1,77 @@
+{
+  "orders": [
+    {
+      "id": 1101,
+      "official_raw_status": "PICKED_UP",
+      "official_status_observed_at": "2026-10-10T10:26:57.171Z",
+      "email_order_status": "return_requested",
+      "email_status_version": 7,
+      "email_lifecycle_updated_at": "2026-10-10T11:58:17.908Z",
+      "updated_at": "2026-10-10T11:58:17.908Z"
+    },
+    {
+      "id": 1137,
+      "official_raw_status": "PICKED_UP",
+      "official_status_observed_at": "2026-10-08T06:11:45.115Z",
+      "email_order_status": "picked_up",
+      "email_status_version": 5,
+      "email_lifecycle_updated_at": "2026-09-30T06:33:43.419Z",
+      "updated_at": "2026-10-10T12:04:36.991Z"
+    },
+    {
+      "id": 1144,
+      "official_raw_status": "PICKED_UP",
+      "official_status_observed_at": "2026-10-10T08:10:14.678Z",
+      "email_order_status": "return_requested",
+      "email_status_version": 6,
+      "email_lifecycle_updated_at": "2026-10-10T11:59:00.007Z",
+      "updated_at": "2026-10-10T11:59:00.007Z"
+    }
+  ],
+  "mailEvents": [
+    {
+      "order_id": 1101,
+      "source": "parser",
+      "template_type": "return_requested",
+      "parsed_at": "2026-10-10T11:58:17.838Z",
+      "applied_at": "2026-10-10T11:58:17.950Z",
+      "created_at": "2026-10-10T11:58:17.841Z",
+      "updated_at": "2026-10-10T11:58:17.950Z"
+    },
+    {
+      "order_id": 1144,
+      "source": "parser",
+      "template_type": "return_requested",
+      "parsed_at": "2026-10-10T11:58:59.912Z",
+      "applied_at": "2026-10-10T11:59:00.023Z",
+      "created_at": "2026-10-10T11:58:59.914Z",
+      "updated_at": "2026-10-10T11:59:00.023Z"
+    }
+  ],
+  "jobs": [
+    {
+      "order_id": 1101,
+      "state": "succeeded",
+      "result_status": "PICKED_UP",
+      "result_run_id": 2414,
+      "started_at": "2026-10-10T10:26:26.744Z",
+      "finished_at": "2026-10-10T10:27:03.855Z"
+    },
+    {
+      "order_id": 1137,
+      "state": "queued",
+      "result_status": null,
+      "result_run_id": null,
+      "started_at": null,
+      "finished_at": null
+    },
+    {
+      "order_id": 1144,
+      "state": "succeeded",
+      "result_status": "PICKED_UP",
+      "result_run_id": 2306,
+      "started_at": "2026-10-10T08:09:58.839Z",
+      "finished_at": "2026-10-10T08:10:21.046Z"
+    }
+  ]
+}

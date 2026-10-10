@@ -1,0 +1,22 @@
+{
+  "run": 2634,
+  "state": {
+    "outcome": null,
+    "requests": null,
+    "runId": null,
+    "systemOrderId": null
+  },
+  "eventCount": 2,
+  "eventTypes": [
+    "http_response",
+    "http_response"
+  ],
+  "httpStatuses": [
+    303,
+    303
+  ],
+  "encryptedBodyCount": 2,
+  "sourceCommit": "5f71704608c315f1c4dc870c0bf9c60e21f8f7a1",
+  "releaseId": "20261010-official-return-quantity",
+  "queueParserExpectedSha256": "4b0d7371a813ee9e144d66027528dd6aec99f4ece039f5714633884763f10fa7"
+}

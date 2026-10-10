@@ -1,0 +1,15 @@
+{
+  "otherOrders": [],
+  "batch": [
+    {
+      "order_id": 906,
+      "state": "succeeded",
+      "error_code": null,
+      "result_run_id": 2635,
+      "result_status": "RETURN_STARTED",
+      "started_at": "2026-10-10T12:09:30.002Z",
+      "finished_at": "2026-10-10T12:09:54.623Z",
+      "observed_at": "2026-10-10T12:09:51.211Z"
+    }
+  ]
+}

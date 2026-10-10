@@ -1,0 +1,19 @@
+{
+  "status": "PASS_PROTECTION",
+  "run": 2634,
+  "batchTargetOrderIds": [
+    906
+  ],
+  "jobOutcome": "RUNTIME_COMMAND_FAILED",
+  "immediateFreezeAt": "2026-10-10T12:05:30.449Z",
+  "otherOrdersUnchangedSinceImmediateFreeze": true,
+  "otherOrdersCount": 1238,
+  "earlySnapshotChangesBeforeImmediateFreeze": {
+    "1101": "新退货邮件parser事件11:58:17Z",
+    "1144": "新退货邮件parser事件11:58:59Z",
+    "1137": "updated_at12:04:36.991Z，具体修改来源未解释；发生于即时冻结前"
+  },
+  "deployedParserHashesMatchCandidate": true,
+  "releaseId": "20261010-official-return-quantity",
+  "apiAndQueueHealthy": true
+}

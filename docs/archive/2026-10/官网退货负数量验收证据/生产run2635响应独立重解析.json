@@ -1,0 +1,37 @@
+{
+  "mode": "saved encrypted responses; in-memory decryption; no Apple request; no DB writes",
+  "results": [
+    {
+      "run": 2635,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        },
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        }
+      ],
+      "parsed": true,
+      "products": [
+        {
+          "quantity": 1,
+          "rawQuantity": -1,
+          "status": "RETURN_STARTED",
+          "hasSn": false
+        },
+        {
+          "quantity": 1,
+          "rawQuantity": -1,
+          "status": "RETURN_STARTED",
+          "hasSn": false
+        }
+      ]
+    }
+  ]
+}
