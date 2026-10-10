@@ -1,0 +1,25 @@
+{
+  "status": "PASS",
+  "orderId": 906,
+  "beforeStatus": "picked_up",
+  "afterStatus": "return_requested",
+  "beforeVersion": 14,
+  "afterVersion": 15,
+  "reviewReasons": [
+    "UNKNOWN_LIFECYCLE_TEMPLATE"
+  ],
+  "protectedOrderFieldsUnchanged": true,
+  "allOtherOrdersUnchanged": true,
+  "protectedTablesUnchanged": [
+    "payment_tasks",
+    "payment_task_events",
+    "pickup_records",
+    "pickup_devices",
+    "stock_units"
+  ],
+  "originalMailCount": 8,
+  "originalMailUnchanged": true,
+  "oldEventCount": 15,
+  "oldEventContentUnchanged": true,
+  "addedManualExcludedEvents": 1
+}

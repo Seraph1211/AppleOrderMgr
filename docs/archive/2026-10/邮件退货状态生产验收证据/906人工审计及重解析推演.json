@@ -1,0 +1,24 @@
+{
+  "status": "PASS",
+  "orderId": 906,
+  "manualEventCount": 1,
+  "manualTemplate": "excluded",
+  "manualRevision": 4,
+  "actorUserId": null,
+  "userInstructionRecorded": true,
+  "duplicatePointerRecorded": true,
+  "evidenceKeys": [
+    "action",
+    "operationId",
+    "authorization",
+    "supersedesEventId",
+    "duplicateOfEventId",
+    "duplicateOfMessageId"
+  ],
+  "currentAggregateStatus": "return_requested",
+  "reparseAggregateStatus": "return_requested",
+  "reviewReasons": [
+    "UNKNOWN_LIFECYCLE_TEMPLATE"
+  ],
+  "persistedReparse": false
+}
