@@ -1,0 +1,6 @@
+FROM apple-order-mgr-frontend-builder:20261010-order-filter-order-amd64
+COPY src/pages/Stock.jsx /app/src/pages/Stock.jsx
+COPY src/components/stock/ledgerReceiveForm.jsx src/components/stock/stockDispatchScanner.jsx /app/src/components/stock/
+COPY src/utils/stockBoxBarcode.js /app/src/utils/
+COPY src/api/stockApi.js /app/src/api/
+RUN npm run lint && npm run build

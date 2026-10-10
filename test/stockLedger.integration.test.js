@@ -24,7 +24,15 @@ if (
   const { decryptJson, encrypt } = require('../src/utils/fieldEncryption');
   const prefix = crypto.randomBytes(3).toString('hex').toUpperCase();
   let sequence = 0;
-  let admin, limited, product, warehouseA, warehouseB, consignee, outside, settingsBefore;
+  let admin,
+    limited,
+    receiveOnly,
+    product,
+    warehouseA,
+    warehouseB,
+    consignee,
+    outside,
+    settingsBefore;
 
   const serial = () => `L${prefix}${String(++sequence).padStart(3, '0')}`;
   const newInput = () => ({
@@ -132,6 +140,17 @@ if (
           'stock.sales.edit',
           'stock.sales.ship',
         ].map(permissionCode => ({ userId: limited.id, permissionCode }))
+      );
+      receiveOnly = await db.User.create({
+        username: `receive_only_${prefix}`,
+        password: crypto.randomBytes(20).toString('hex'),
+        role: 'operator',
+      });
+      await db.UserPermission.bulkCreate(
+        ['stock.read', 'stock.receive'].map(permissionCode => ({
+          userId: receiveOnly.id,
+          permissionCode,
+        }))
       );
       product = await db.StockProduct.create({
         modelKey: `ledger_${prefix}`,
@@ -2534,5 +2553,276 @@ if (
     };
     await execute('dispatchUnit', input, seller);
     expect((await detail(unit.id)).officialCostAmount).toBe('9999.00');
+  });
+  test('单台入库预览严格只读、权限裁剪、重复状态和生命周期异常拒绝', async () => {
+    const ctx = await command.createReadContext(admin);
+    const fresh = newInput();
+    const beforeEvents = await db.StockEvent.count();
+    expect(await projection.receivePreview(ctx, { serialNumber: fresh.serialNumber })).toEqual({
+      unit: null,
+      canReceive: true,
+    });
+    expect(await db.StockUnit.count({ where: { serialNumber: fresh.serialNumber } })).toBe(0);
+    expect(await db.StockEvent.count()).toBe(beforeEvents);
+    await expect(
+      projection.receivePreview(
+        { ...ctx, permissions: new Set(['stock.read']) },
+        { serialNumber: fresh.serialNumber }
+      )
+    ).rejects.toMatchObject({ statusCode: 403 });
+    await expect(
+      projection.receivePreview(ctx, { serialNumber: fresh.serialNumber, other: true })
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(projection.receivePreview(ctx, { serialNumber: 'bad' })).rejects.toMatchObject({
+      statusCode: 400,
+    });
+    const unit = await db.StockUnit.create({
+      serialNumber: serial(),
+      state: 'registered',
+      originMode: 'legacy_binding',
+      productId: product.id,
+      orderNumberText: 'W1822334455',
+    });
+    const preview = await projection.receivePreview(ctx, { serialNumber: unit.serialNumber });
+    expect(preview).toMatchObject({
+      canReceive: true,
+      unit: {
+        id: unit.id,
+        version: unit.version,
+        state: 'registered',
+        product: { id: product.id },
+        orderNumber: 'W1822334455',
+      },
+    });
+    const hidden = await projection.receivePreview(await command.createReadContext(receiveOnly), {
+      serialNumber: unit.serialNumber,
+    });
+    expect(hidden.unit.orderNumber).toBeNull();
+    expect(hidden.unit).not.toHaveProperty('officialCostAmount');
+    for (const state of ['in_stock', 'sold', 'returned']) {
+      await unit.update({
+        state,
+        locationId: state === 'in_stock' ? warehouseA.id : null,
+        returnedAt: state === 'returned' ? new Date() : null,
+        returnPreviousState: state === 'returned' ? 'registered' : null,
+      });
+      await expect(
+        projection.receivePreview(ctx, { serialNumber: unit.serialNumber })
+      ).rejects.toMatchObject({ statusCode: 409 });
+    }
+    await unit.update({ state: 'registered', lifecycleIssue: 'return_pending' });
+    await expect(
+      projection.receivePreview(ctx, { serialNumber: unit.serialNumber })
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  test('入库预览版本保护新SN竞态、旧版本及原子回滚，旧批量仍兼容', async () => {
+    const fresh = newInput();
+    const appeared = await db.StockUnit.create({
+      serialNumber: fresh.serialNumber,
+      state: 'registered',
+      originMode: 'legacy_binding',
+    });
+    const snapshot = appeared.toJSON();
+    const first = { ...newInput(), expectedVersion: null };
+    const requestKey = crypto.randomUUID();
+    await expect(
+      execute('receiveUnits', { requestKey, units: [first, { ...fresh, expectedVersion: null }] })
+    ).rejects.toMatchObject({ statusCode: 409, code: 'VERSION_CONFLICT' });
+    expect(await db.StockUnit.count({ where: { serialNumber: first.serialNumber } })).toBe(0);
+    expect((await appeared.reload()).toJSON()).toEqual(snapshot);
+    expect(await db.StockOperation.count({ where: { requestKey } })).toBe(0);
+    await expect(
+      execute('receiveUnits', { units: [{ ...fresh, expectedVersion: appeared.version + 1 }] })
+    ).rejects.toMatchObject({ statusCode: 409, code: 'VERSION_CONFLICT' });
+    const stable = {
+      requestKey: crypto.randomUUID(),
+      units: [{ ...fresh, expectedVersion: appeared.version }],
+    };
+    await execute('receiveUnits', stable);
+    expect((await execute('receiveUnits', stable)).idempotent).toBe(true);
+    expect((await appeared.reload()).state).toBe('in_stock');
+    const optional = { ...newInput(), expectedVersion: null, orderNumber: '' };
+    expect((await receive([optional]))[0].state).toBe('in_stock');
+    expect(await receive([newInput(), newInput()])).toHaveLength(2);
+  });
+
+  test('单台入库不覆盖已有订单或订单派生规格，空号保留且同号不重绑', async () => {
+    await product.update({ skuCode: `RECV${prefix}` });
+    const order = await db.Order.create({
+      orderNumber: `W${crypto.randomInt(7000000000, 7999999999)}`,
+      status: 'picked_up',
+      actualPickupDate: '2026-10-01',
+      products: [{ name: '合成入库规格', model: product.skuCode, quantity: 3 }],
+      tag: `forbidden_${prefix}`,
+    });
+    const other = await db.StockProduct.create({
+      modelKey: `receive_other_${prefix}`,
+      modelName: '其他合成型号',
+      storageGb: 512,
+      colorKey: `receive_black_${prefix}`,
+      colorName: '黑色',
+    });
+    const makeBound = async () => {
+      try {
+        const unit = await db.StockUnit.create({
+          serialNumber: serial(),
+          state: 'registered',
+          originMode: 'legacy_binding',
+        });
+        const binding = await db.PickupDevice.create({
+          stockUnitId: unit.id,
+          orderId: order.id,
+          serialNumber: unit.serialNumber,
+          serialBarcode: unit.serialNumber,
+          scannedBy: admin.id,
+        });
+        return { unit, binding };
+      } catch (error) {
+        logger.debug('合成绑定建立失败', { code: error.code });
+        throw error;
+      }
+    };
+    const { unit, binding } = await makeBound();
+    const input = { ...newInput(), serialNumber: unit.serialNumber, expectedVersion: unit.version };
+    const before = unit.toJSON();
+    const bindingBefore = binding.toJSON();
+    const eventsBefore = await db.StockEvent.count();
+    const tagLimited = await db.User.create({
+      username: `receive_tag_${prefix}`,
+      password: crypto.randomUUID(),
+      role: 'operator',
+      orderAccess: { mode: 'tags', tags: [`allowed_${prefix}`] },
+    });
+    await db.UserPermission.bulkCreate(
+      ['stock.read', 'stock.receive', 'stock.source.link', 'orders.read'].map(permissionCode => ({
+        userId: tagLimited.id,
+        permissionCode,
+      }))
+    );
+    for (const orderNumber of [order.orderNumber, 'W1999999999']) {
+      await expect(
+        execute('receiveUnits', { units: [{ ...input, orderNumber }] }, tagLimited)
+      ).rejects.toMatchObject({ statusCode: 404 });
+      expect((await unit.reload()).toJSON()).toEqual(before);
+      expect((await binding.reload()).toJSON()).toEqual(bindingBefore);
+      expect(await db.StockEvent.count()).toBe(eventsBefore);
+    }
+    const tagPreview = await projection.receivePreview(
+      await command.createReadContext(tagLimited),
+      { serialNumber: unit.serialNumber }
+    );
+    expect(tagPreview.unit.orderNumber).toBeNull();
+    const ctx = await command.createReadContext(admin);
+    expect(
+      (await projection.receivePreview(ctx, { serialNumber: unit.serialNumber })).unit.product.id
+    ).toBe(product.id);
+    for (const conflict of [{ orderNumber: 'W1999999999' }, { productId: other.id }]) {
+      const first = newInput();
+      await expect(
+        execute('receiveUnits', { units: [first, { ...input, ...conflict }] })
+      ).rejects.toMatchObject({ statusCode: 409 });
+      expect(await db.StockUnit.count({ where: { serialNumber: first.serialNumber } })).toBe(0);
+      expect((await unit.reload()).toJSON()).toEqual(before);
+      expect((await binding.reload()).toJSON()).toEqual(bindingBefore);
+      expect(await db.StockEvent.count()).toBe(eventsBefore);
+    }
+    const hidden = await projection.receivePreview(await command.createReadContext(receiveOnly), {
+      serialNumber: unit.serialNumber,
+    });
+    expect(hidden.unit.orderNumber).toBeNull();
+    await execute('receiveUnits', { units: [{ ...input, orderNumber: '' }] }, receiveOnly);
+    expect((await binding.reload()).toJSON()).toEqual(bindingBefore);
+    expect((await unit.reload()).state).toBe('in_stock');
+    const same = await makeBound();
+    const sameBefore = same.binding.toJSON();
+    await expect(
+      execute(
+        'receiveUnits',
+        {
+          units: [
+            {
+              ...newInput(),
+              serialNumber: same.unit.serialNumber,
+              expectedVersion: same.unit.version,
+              orderNumber: order.orderNumber,
+            },
+          ],
+        },
+        receiveOnly
+      )
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect((await same.binding.reload()).toJSON()).toEqual(sameBefore);
+    expect((await same.unit.reload()).state).toBe('registered');
+    await execute('receiveUnits', {
+      units: [
+        {
+          ...newInput(),
+          serialNumber: same.unit.serialNumber,
+          expectedVersion: same.unit.version,
+          orderNumber: order.orderNumber,
+        },
+      ],
+    });
+    expect((await same.binding.reload()).toJSON()).toEqual(sameBefore);
+    const textOnly = await db.StockUnit.create({
+      serialNumber: serial(),
+      state: 'registered',
+      originMode: 'legacy_binding',
+      orderNumberText: 'W1777777777',
+    });
+    await expect(
+      execute('receiveUnits', {
+        units: [
+          {
+            ...newInput(),
+            serialNumber: textOnly.serialNumber,
+            expectedVersion: textOnly.version,
+            orderNumber: 'W1888888888',
+          },
+        ],
+      })
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect((await textOnly.reload()).orderNumberText).toBe('W1777777777');
+  });
+
+  test('单台入库HTTP预览no-store、版本提交和重复幂等返回', async () => {
+    const express = require('express');
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+      req.user = admin;
+      next();
+    });
+    app.use('/api/stock', require('../src/routes/stock'));
+    const server = await new Promise(resolve => {
+      const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
+    });
+    try {
+      const url = `http://127.0.0.1:${server.address().port}/api/stock/ledger`;
+      const unit = { ...newInput(), expectedVersion: null };
+      const response = await fetch(`${url}/receive-preview?serialNumber=${unit.serialNumber}`);
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toBe('no-store');
+      expect((await response.json()).data).toEqual({ unit: null, canReceive: true });
+      const payload = { requestKey: crypto.randomUUID(), units: [unit] };
+      for (const status of [201, 200]) {
+        const result = await fetch(`${url}/receive`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        expect(result.status).toBe(status);
+        expect((await result.json()).data.items[0]).toMatchObject({
+          serialNumber: unit.serialNumber,
+          state: 'in_stock',
+        });
+      }
+      expect((await fetch(`${url}/receive-preview?serialNumber=${unit.serialNumber}`)).status).toBe(
+        409
+      );
+    } finally {
+      await new Promise(resolve => server.close(resolve));
+    }
   });
 });

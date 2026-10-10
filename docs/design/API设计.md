@@ -1084,6 +1084,14 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 库存展示与统计口径见[库存监控](库存监控.md)。个人筛选不修改全局采集清单；通知筛选仅影响提醒。不存在设置任意请求 URL 或任意 SQL 的接口。
 
+### 单台入库识别与核对（2026-10-10）
+
+`GET /api/stock/ledger/receive-preview?serialNumber=...` 要求 stock.read、stock.receive，严格验证 SN；仅只读预览，返回 `{canReceive:true,unit:null}` 或 unit 的 id/version/serialNumber/state/product/orderNumber/orderLinked。规格包含关联订单唯一可确定的目录规格；订单号仍受 orders.read 和 TAG 范围裁剪，已有文本订单也视为关联。已在库、已售、退货或生命周期异常返回409，不允许再次登记。
+
+`POST /api/stock/ledger/receive` 保留原 units 数组兼容，单台界面每次只提交一项。可选 expectedVersion：已有身份传预览版本，新身份显式传 null；当前身份与预览不一致返回409 VERSION_CONFLICT，旧调用省略时保留原行为。已有身份规格（含订单派生规格）不得在登记时覆盖；已有订单关联或文本订单的空输入保留、同号不重绑、不同号拒绝。新关联按原权限处理；所有检查、入库及关联处于同一事务，继续使用原 requestKey 幂等。
+
+识别接口可选 multipart `barcodes` 为同一图片解码的原始字符串 JSON 数组。唯一有效 SN 条码优先填入，文字不一致保留双方 serialCandidates 和 reviewReasons，必须人工核对；多条不同有效条码不选定 SN。无有效条码才使用 OCR 文字。只接受本期目录规格，识别不自动提交入库。
+
 ### 库存盒标结构化识别
 
 `POST /api/stock/box/recognize`：multipart `image`，最多 10MiB JPG/PNG/WebP。需 stock.read 及入库权限或 stock.sales.edit + stock.sales.ship；与旧 serial/recognize 共用每用户 10次/分钟和取货月额度，不自动重试。返回 `candidates` 数组：serialNumber、productId、skuCode、modelName、storageGb、colorName、matchBasis、reviewReasons、sources；成本仅 stock.cost.read 可见，不返回原始全文。冲突不自动确定规格。调用不写业务。

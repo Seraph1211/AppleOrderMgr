@@ -22,7 +22,7 @@ import {
 import { useStockData } from '../components/stock/stockHooks';
 import { moneyText, productLabel } from '../components/stock/stockHelpers';
 import { ledgerCan, LEDGER_PAYMENT_LABELS } from '../components/stock/ledgerHelpers';
-import LedgerEntryForm from '../components/stock/ledgerEntryForm';
+import LedgerReceiveForm from '../components/stock/ledgerReceiveForm';
 import LedgerSaleForm from '../components/stock/ledgerSaleForm';
 import LedgerDispatchForm from '../components/stock/ledgerDispatchForm';
 import LedgerPaymentForm from '../components/stock/ledgerPaymentForm';
@@ -740,11 +740,10 @@ export default function Stock() {
         <StockReturnForm unit={action.unit} onClose={() => setAction(null)} onSaved={done} />
       )}
       {action?.type === 'receive' && (
-        <LedgerEntryForm
+        <LedgerReceiveForm
           catalog={catalog}
           initialSerials={initialSerials}
           initialProductId={action.unit?.product?.id || ''}
-          onExisting={id => setDetail({ id })}
           onClose={() => setAction(null)}
           onSaved={done}
         />

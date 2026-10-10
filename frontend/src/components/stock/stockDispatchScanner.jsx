@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Camera, ImagePlus } from 'lucide-react';
 import { recognizeStockBox } from '../../api/stockApi';
 import { cameraErrorMessage } from '../../utils/pickupBarcode';
+import { readStockBoxBarcodes } from '../../utils/stockBoxBarcode';
 import { validateOcrFile } from '../../utils/pickupOcr';
 import { StockFeedback } from './StockCommon';
 
@@ -16,12 +17,19 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
   const [error, setError] = useState('');
   const video = useRef(null);
   const input = useRef(null);
-  const state = useRef({ generation: 0, stream: null, timer: null, controller: null, nextAt: 0 });
+  const state = useRef({
+    generation: 0,
+    stream: null,
+    timer: null,
+    controller: null,
+    nextAt: 0,
+    previewUrl: null,
+  });
   const callbacks = useRef({ onCandidate, onBusy });
   callbacks.current = { onCandidate, onBusy };
   const markBusy = value => {
     setBusy(value);
-    callbacks.current.onBusy(value);
+    callbacks.current.onBusy?.(value);
   };
   const stop = () => {
     const s = state.current;
@@ -36,6 +44,7 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
     markBusy(false);
   };
   useEffect(() => {
+    const session = state.current;
     const visibility = () => {
       if (document.hidden) stop();
     };
@@ -43,6 +52,7 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
     return () => {
       stop();
       document.removeEventListener('visibilitychange', visibility);
+      if (session.previewUrl) URL.revokeObjectURL(session.previewUrl);
     };
     // 相机生命周期只随组件挂载/卸载变化，回调用 ref 保持最新。
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -51,19 +61,37 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
     if (disabled) stop();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [disabled]);
-  const recognize = async (file, generation) => {
+  const recognize = async (file, generation, canvas) => {
     try {
       const s = state.current;
       s.controller = new AbortController();
+      const barcodes = await readStockBoxBarcodes(canvas, () => generation === s.generation);
+      if (generation !== s.generation) return null;
       s.nextAt = Date.now() + FRAME_INTERVAL;
-      const result = await recognizeStockBox(file, [], s.controller.signal);
+      const result = await recognizeStockBox(file, barcodes, s.controller.signal);
       if (generation !== s.generation) return null;
       const candidates = result.data.candidates || [];
-      if (candidates.length !== 1) throw new Error('请只对准或上传一台设备的完整盒标');
-      return candidates[0];
+      if (candidates.length > 1) throw new Error('请只对准或上传一台设备的完整盒标');
+      return (
+        candidates[0] || {
+          serialNumber: null,
+          productId: null,
+          reviewReasons: ['未识别出完整设备信息，请对照照片手工补全'],
+        }
+      );
     } catch (failure) {
       if (generation !== state.current.generation) return null;
       throw failure;
+    }
+  };
+  const deliver = async (candidate, file) => {
+    try {
+      if (state.current.previewUrl) URL.revokeObjectURL(state.current.previewUrl);
+      const previewUrl = URL.createObjectURL(file);
+      state.current.previewUrl = previewUrl;
+      await callbacks.current.onCandidate({ ...candidate, previewUrl });
+    } catch (failure) {
+      setError(failure.message || '识别结果未能应用，请重新核对');
     }
   };
   const capture = async (generation, attempt = 0) => {
@@ -92,10 +120,8 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
       if (generation !== s.generation) return;
       if (!blob) throw new Error('相机画面不可用，请重新开启或上传照片');
       setMessage(`正在自动识别完整盒标（${attempt + 1}/${MAX_FRAMES}），请保持清晰、稳定…`);
-      const candidate = await recognize(
-        new File([blob], '盒标.jpg', { type: 'image/jpeg' }),
-        generation
-      );
+      const file = new File([blob], '盒标.jpg', { type: 'image/jpeg' });
+      const candidate = await recognize(file, generation, canvas);
       if (generation !== s.generation || !candidate) return;
       const complete =
         candidate.serialNumber && candidate.productId && !candidate.reviewReasons?.length;
@@ -104,7 +130,7 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
         setMessage(
           complete ? '识别完成，请核对设备信息。' : '自动识别已停止，请核对或补全识别结果。'
         );
-        await callbacks.current.onCandidate(candidate);
+        await deliver(candidate, file);
       } else {
         setMessage('盒标尚不完整，请将型号、容量、颜色及 SN 一起放入画面，正在自动继续识别…');
         s.timer = setTimeout(
@@ -115,7 +141,9 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
     } catch (failure) {
       if (generation !== state.current.generation) return;
       stop();
-      setError(failure.message || '识别失败，请重新开启或上传照片');
+      setError(
+        `${failure.message || '识别失败，请重新开启或上传照片'}。本次识别未应用，原草稿未更新，请重新核对。`
+      );
     }
   };
   const start = async () => {
@@ -149,13 +177,14 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
     } catch (failure) {
       if (generation !== state.current.generation) return;
       stop();
-      setError(
-        failure.name && failure.name !== 'Error' ? cameraErrorMessage(failure) : failure.message
-      );
+      const detail =
+        failure.name && failure.name !== 'Error' ? cameraErrorMessage(failure) : failure.message;
+      setError(`${detail}；本次识别未应用，原草稿未更新，请重新核对。`);
     }
   };
   const upload = async event => {
-    const file = event.target.files?.[0];
+    const files = [...(event.target.files || [])];
+    const file = files[0];
     event.target.value = '';
     if (!file) return;
     stop();
@@ -164,6 +193,7 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
     markBusy(true);
     let url;
     try {
+      if (files.length !== 1) throw new Error('每次只能上传一张盒标照片');
       const problem = validateOcrFile(file);
       if (problem) throw new Error(problem);
       if (Date.now() < state.current.nextAt) throw new Error('识别间隔至少 6.5 秒，请稍后重试');
@@ -189,15 +219,16 @@ export default function StockDispatchScanner({ onCandidate, onBusy, disabled }) 
       if (generation !== state.current.generation) return;
       if (!blob) throw new Error('图片处理失败');
       setMessage('正在识别盒标…');
-      const candidate = await recognize(
-        new File([blob], '盒标.jpg', { type: 'image/jpeg' }),
-        generation
-      );
+      const processedFile = new File([blob], '盒标.jpg', { type: 'image/jpeg' });
+      const candidate = await recognize(processedFile, generation, canvas);
       if (generation !== state.current.generation || !candidate) return;
-      await callbacks.current.onCandidate(candidate);
-      setMessage('识别完成，请核对设备信息。');
+      await deliver(candidate, file);
+      if (generation === state.current.generation) setMessage('识别完成，请核对设备信息。');
     } catch (failure) {
-      if (generation === state.current.generation) setError(failure.message || '图片识别失败');
+      if (generation === state.current.generation)
+        setError(
+          `${failure.message || '图片识别失败'}。本次识别未应用，原草稿未更新，请重新核对。`
+        );
     } finally {
       if (url) URL.revokeObjectURL(url);
       if (generation === state.current.generation) markBusy(false);

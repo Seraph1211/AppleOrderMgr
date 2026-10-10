@@ -65,8 +65,22 @@ describe('盒标结构化解析（合成文本，非阿里云实测）', () => {
   test('条码前导S交叉核对与冲突', () => {
     expect(parse('MJY64CH/A\nSerial No. AB12CD34EF', ['SAB12CD34EF']).reviewReasons).toEqual([]);
     const conflict = parse('MJY64CH/A\nSerial No. AB12CD34EF', ['SXY12CD34EF']);
-    expect(conflict.serialNumber).toBe('');
+    expect(conflict.serialNumber).toBe('XY12CD34EF');
+    expect(conflict.sources.serial).toBe('barcode');
+    expect(conflict.serialCandidates).toEqual(expect.arrayContaining(['AB12CD34EF', 'XY12CD34EF']));
     expect(conflict.reviewReasons).toContain('SN 文字与条码不一致');
+  });
+  test('唯一条码优先、重复条码去重，多个不同条码仍不能自动确定', () => {
+    const repeated = parse('MJY64CH/A', ['SAB12CD34EF', 'AB12CD34EF']);
+    expect(repeated.serialNumber).toBe('AB12CD34EF');
+    expect(repeated.sources.serial).toBe('barcode');
+    expect(repeated.serialCandidates).toEqual(['AB12CD34EF']);
+    const multiple = parse('MJY64CH/A\nSerial No. AB12CD34EF', ['AB12CD34EF', 'XY12CD34EF']);
+    expect(multiple.serialNumber).toBe('');
+    expect(multiple.reviewReasons.length).toBeGreaterThan(0);
+    const printed = parse('MJY64CH/A\nSerial No. AB12CD34EF', ['123456789012345']);
+    expect(printed.serialNumber).toBe('AB12CD34EF');
+    expect(printed.sources.serial).toBe('serial_label');
   });
   test('多盒未知位置不按数量硬配', () => {
     const rows = parseBoxData({

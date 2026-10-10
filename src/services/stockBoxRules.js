@@ -79,7 +79,8 @@ function parseBlock(text, barcodes = []) {
   if (serials.length > 1) reasons.push('同一盒标出现多个 SN，需逐台人工对应');
   if (!serials.length) reasons.push('未识别可信 SN，请手工填写');
   return {
-    serialNumber: serials.length === 1 ? serials[0] : '',
+    serialNumber:
+      decoded.length === 1 ? decoded[0] : !decoded.length && printed.length === 1 ? printed[0] : '',
     serialCandidates: serials,
     skuCode: skus.length === 1 ? skus[0] : null,
     modelName: spec?.modelName || null,
@@ -88,7 +89,7 @@ function parseBlock(text, barcodes = []) {
     matchBasis: spec ? (bySku ? 'sku' : 'description') : null,
     reviewReasons: reasons,
     sources: {
-      serial: labeled.length ? 'serial_label' : decoded.length ? 'barcode' : 'unlabeled',
+      serial: decoded.length ? 'barcode' : labeled.length ? 'serial_label' : 'unlabeled',
       specification: spec ? (bySku ? 'catalog_sku' : 'description') : null,
       barcodeChecked: Boolean(decoded.length),
     },

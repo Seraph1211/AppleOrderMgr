@@ -1,3 +1,4 @@
+const { effectiveProducts } = require('./stockOrderProduct');
 const { assertLifecycleWritable } = require('./stockLifecycleRules');
 const { Op } = require('sequelize');
 const { fixedCost, specification } = require('./stockFixedCatalog');
@@ -16,6 +17,7 @@ const { assertFinanceConsistent } = require('./stockFinanceService');
 const { requirePermissions, getRow, assertVersion, updateRow, recordEvent } = command;
 const UNIT_FIELDS = [
   'serialNumber',
+  'expectedVersion',
   'productId',
   'product',
   'warehouseId',
@@ -248,6 +250,45 @@ async function stockAvailable(ctx, unit) {
     throw error;
   }
 }
+/** 入库复用身份时保持既有订单；更换来源须走显式更正流程。 */
+async function receiveOrderNeedsLink(ctx, current, value) {
+  try {
+    const number = text(value, '订单号', 100, true);
+    if (!number) return false;
+    requirePermissions(ctx, 'stock.source.link', 'orders.read');
+    if (!current) return true;
+    const binding = await db.PickupDevice.findOne({
+      where: { stockUnitId: current.id },
+      attributes: ['orderId'],
+      ...options(ctx),
+    });
+    if (!binding && !current.orderNumberText) return true;
+    const order = binding
+      ? await db.Order.findOne({
+        where: scopeOrderWhere(ctx.user, { id: binding.orderId }),
+        attributes: ['orderNumber'],
+        ...options(ctx),
+      })
+      : null;
+    if (binding && !order) throw ApiError.notFound('订单不存在或无权访问');
+    const existing = binding ? order.orderNumber : current.orderNumberText;
+    if (number !== existing)
+      throw ApiError.conflict('该设备已有订单关联，请核对原记录，不可在入库时覆盖');
+    return false;
+  } catch (error) {
+    logger.debug('入库订单核对失败', { code: error.code || error.name });
+    throw error;
+  }
+}
+function assertReceiveVersion(current, item) {
+  if (!Object.prototype.hasOwnProperty.call(item, 'expectedVersion')) return;
+  const version = item.expectedVersion;
+  if (version !== null && (!Number.isInteger(version) || version < 0))
+    throw ApiError.badRequest('设备版本无效');
+  if ((current && version === null) || (!current && version !== null))
+    throw ApiError.conflict('设备身份已变化，请重新核对', undefined, 'VERSION_CONFLICT');
+  if (current) assertVersion(current, version);
+}
 async function registeredUnit(ctx, item, history) {
   try {
     only(item, [...UNIT_FIELDS, ...(history ? ['saleAmount', 'settlementAmount'] : [])]);
@@ -259,6 +300,7 @@ async function registeredUnit(ctx, item, history) {
       requirePermissions(ctx, 'stock.cost.edit');
     const serialNumber = normalizeDeviceBarcodes({ serialBarcode: item.serialNumber }).serialNumber;
     const current = await db.StockUnit.findOne({ where: { serialNumber }, ...options(ctx) });
+    assertReceiveVersion(current, item);
     assertLifecycleWritable(current);
     if (current && current.state !== 'registered')
       throw ApiError.conflict(
@@ -267,8 +309,12 @@ async function registeredUnit(ctx, item, history) {
         'SN_EXISTS'
       );
     const product = await resolveProduct(ctx, item);
-    if (current?.productId && current.productId !== product.id)
+    const existingProductId =
+      current?.productId ||
+      (current ? (await effectiveProducts(ctx, [current.id])).get(current.id)?.id : null);
+    if (existingProductId && existingProductId !== product.id)
       throw ApiError.conflict('已有取货身份的规格不同，请先核对更正');
+    const needsOrderLink = await receiveOrderNeedsLink(ctx, current, item.orderNumber);
     if (
       current?.costStatus === 'confirmed' &&
       ((item.officialCostAmount && item.officialCostAmount !== current.officialCostAmount) ||
@@ -297,8 +343,7 @@ async function registeredUnit(ctx, item, history) {
       },
       history ? 'ledger_history_identity' : 'ledger_receive'
     );
-    if (item.orderNumber != null && String(item.orderNumber).trim())
-      await setOrderNumber(ctx, unit, item.orderNumber);
+    if (needsOrderLink) await setOrderNumber(ctx, unit, item.orderNumber);
     return { unit, product, fromLocationId: location?.id || null };
   } catch (error) {
     logger.debug('简化库存处理未完成', { code: error.code || error.name });

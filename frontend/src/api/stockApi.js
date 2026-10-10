@@ -60,7 +60,7 @@ export async function recognizeStockSerial(_orderId, image, signal) {
   }
 }
 
-/** 盒标候选只读识别，条码结果仅作文字交叉核对。 */
+/** 盒标候选只读识别：SN 条码优先，OCR 交叉核对；冲突需人工确认。 */
 export async function recognizeStockBox(image, barcodes, signal) {
   try {
     const form = new FormData();

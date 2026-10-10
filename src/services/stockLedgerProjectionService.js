@@ -350,6 +350,61 @@ async function byIds(ctx, ids) {
     throw error;
   }
 }
+/** 只读单台入库核对，订单信息沿用台账权限裁剪。 */
+async function receivePreview(ctx, query) {
+  try {
+    requirePermissions(ctx, 'stock.read', 'stock.receive');
+    only(query, ['serialNumber']);
+    const serialNumber = require('./pickupDeviceRules').normalizeDeviceBarcodes({
+      serialBarcode: query.serialNumber,
+    }).serialNumber;
+    const unit = await db.StockUnit.findOne({
+      where: { serialNumber },
+      transaction: ctx.transaction,
+    });
+    if (!unit) return { canReceive: true, unit: null };
+    assertLifecycleWritable(unit);
+    if (unit.state !== 'registered')
+      throw ApiError.conflict('该 SN 已有记录，请打开原记录操作', undefined, 'SN_EXISTS');
+    const product = unit.productId
+      ? await db.StockProduct.findByPk(unit.productId, {
+        attributes: ['id', 'modelName', 'storageGb', 'colorName'],
+        transaction: ctx.transaction,
+      })
+      : (await effectiveProducts(ctx, [unit.id])).get(unit.id) || null;
+    const binding = await db.PickupDevice.findOne({
+      where: { stockUnitId: unit.id },
+      attributes: ['orderId'],
+      transaction: ctx.transaction,
+    });
+    let orderNumber = null;
+    if (has(ctx, 'orders.read')) {
+      const order = binding
+        ? await db.Order.findOne({
+          where: scopeOrderWhere(ctx.user, { id: binding.orderId }),
+          attributes: ['orderNumber'],
+          transaction: ctx.transaction,
+        })
+        : null;
+      orderNumber = binding ? order?.orderNumber || null : unit.orderNumberText || null;
+    }
+    return {
+      canReceive: true,
+      unit: {
+        id: unit.id,
+        version: unit.version,
+        serialNumber,
+        state: unit.state,
+        product,
+        orderNumber,
+        orderLinked: Boolean(binding || unit.orderNumberText),
+      },
+    };
+  } catch (error) {
+    logger.debug('入库预览失败', { code: error.code || error.name });
+    throw error;
+  }
+}
 /** 精确 SN 出库预览；未入库身份只返回核对需要的白名单字段。 */
 async function dispatchPreview(ctx, query) {
   try {
@@ -660,4 +715,4 @@ async function list(ctx, query = {}, statistics = false) {
     throw error;
   }
 }
-module.exports = { catalog, list, detail, byIds, dispatchPreview };
+module.exports = { catalog, list, detail, byIds, dispatchPreview, receivePreview };

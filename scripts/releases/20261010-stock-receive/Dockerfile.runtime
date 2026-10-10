@@ -1,0 +1,4 @@
+# 继承实际生产镜像，只替换本次入库相关后端文件。
+FROM apple-order-mgr-runtime:20261010-stock-analysis-amd64
+COPY --chown=node:node src/services/stockLedgerService.js src/services/stockLedgerProjectionService.js src/services/stockBoxRules.js /app/src/services/
+COPY --chown=node:node src/routes/stock.js /app/src/routes/

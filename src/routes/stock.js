@@ -162,6 +162,12 @@ router.get(
   })
 );
 router.get(
+  '/ledger/receive-preview',
+  read(['stock.read', 'stock.receive'], (ctx, req) =>
+    ledgerProjection.receivePreview(ctx, req.query)
+  )
+);
+router.get(
   '/ledger/dispatch-preview',
   read(['stock.read', 'stock.sales.edit', 'stock.sales.ship'], (ctx, req) =>
     ledgerProjection.dispatchPreview(ctx, req.query)
