@@ -20,19 +20,12 @@ export function StockLifecycleInfo({ unit, disabled, onReview, onReceive }) {
       {unit.check && (
         <details className="text-gray-500">
           <summary className="cursor-pointer">
-            官网检查
-            {unit.check.errorCode
-              ? '失败'
-              : unit.check.pauseReason
-                ? '已暂停'
-                : unit.check.workerOnline === false
-                  ? '服务离线'
-                  : ''}
+            系统状态核对{unit.check.errorCode ? '待补充' : ''}
           </summary>
-          <p>上次成功：{dateText(unit.check.observedAt)}</p>
-          <p>最近检查：{dateText(unit.check.checkedAt)}</p>
-          {unit.check.errorCode && <p>检查未成功，保留原状态（{unit.check.errorCode}）</p>}
-          {unit.check.pauseReason && <p>任务已暂停，请管理员在官网更新任务中核对。</p>}
+          <p>来源状态时间：{dateText(unit.check.observedAt)}</p>
+          <p>最近核对：{dateText(unit.check.checkedAt)}</p>
+          <p>读取系统内“官网订单状态”，不主动查询官网。</p>
+          {unit.check.errorCode && <p>系统状态暂不可用，保留原库存状态。</p>}
         </details>
       )}
       {(ledgerCan(unit, 'confirm_return') || ledgerCan(unit, 'resolve_return')) && (

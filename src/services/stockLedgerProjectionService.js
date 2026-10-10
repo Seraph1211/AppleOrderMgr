@@ -297,13 +297,9 @@ async function byIds(ctx, ids) {
     graph.eligibleIds = new Set(eligible.map(row => row.id));
     const [checks] = await db.sequelize.query(
       `SELECT d.stock_unit_id AS id,
-      GREATEST(c.checked_at,j.finished_at) AS "checkedAt",c.observed_at AS "observedAt",
-      COALESCE(j.error_code,c.error_code) AS "errorCode",j.state AS "jobState",b.pause_reason AS "pauseReason",
-      COALESCE(r.heartbeat_at>now()-interval '5 minutes',false) AS "workerOnline"
+      c.checked_at AS "checkedAt",c.observed_at AS "observedAt",
+      c.error_code AS "errorCode",'system_order_status' AS source
       FROM pickup_devices d LEFT JOIN stock_order_checks c ON c.order_id=d.order_id
-      LEFT JOIN LATERAL (SELECT state,error_code,batch_id,finished_at FROM official_order_refresh_jobs WHERE order_id=d.order_id ORDER BY created_at DESC,id DESC LIMIT 1) j ON true
-      LEFT JOIN official_order_refresh_batches b ON b.id=j.batch_id
-      LEFT JOIN official_order_refresh_runtime r ON r.id=1
       WHERE d.stock_unit_id IN (:ids)`,
       { replacements: { ids }, transaction: ctx.transaction }
     );

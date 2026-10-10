@@ -1128,10 +1128,10 @@ DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit �
 
 ## 库存生命周期接口（2026-10-10 本地实现，未发布）
 
-- GET `/api/stock/ledger`：view 扩展 registered/in_stock/sold/returned/all；counts 含 pending/inStock/sold/returned；设备返回 lifecycleIssue、returnedAt、returnPreviousState、check（checkedAt/observedAt/errorCode/jobState/pauseReason/workerOnline）和允许操作，订单标识仍按订单读取及 TAG 裁剪。
+- GET `/api/stock/ledger`：view 扩展 registered/in_stock/sold/returned/all；counts 含 pending/inStock/sold/returned；设备返回 lifecycleIssue、returnedAt、returnPreviousState、check（checkedAt/observedAt/errorCode/source=system_order_status），检查时间仅来自本地核对，不混入 HTTP 队列状态和允许操作，订单标识仍按订单读取及 TAG 裁剪。
 - GET `/api/stock/ledger/statistics`：states、warehouseIds 为 JSON 多选数组，仓库 unassigned 表示未分配；返回 items（modelName/storageGb/colorName/count）、models 小计及 total，按整个筛选范围统计。
 - GET `/api/stock/ledger/returns/:orderId`：stock.read＋orders.read 且订单可访问；返回本订单绑定设备、核对快照 fingerprint（官网内容＋人工映射＋设备版本）、退货数量及已确认集合。
 - POST 同路径：stock.correct＋stock.receive＋orders.read，requestKey、fingerprint、serialNumbers（完整退货 SN 集合）、reason；再次检查绑定、官网观测及状态，事务审计，过期返回冲突。已售 SN 只产生冲突提示。
 - POST `/api/stock/ledger/:id/resolve-return`：stock.correct＋stock.receive＋orders.read，requestKey、expectedVersion、resolution（keep_sold/restore_previous）、reason。keep_sold 保留销售资金，restore_previous 只允许官网已经撤销退货，恢复先前状态及仓库。权限、幂等重放与版本保护沿用台账命令。
 
-官网更新批次查询新增 `purpose=manual/stock_returns`；管理员近期列表包含系统库存退货批次。系统批次 `requestedBy=null`，仅内部调度创建，现有公开提交接口不接受 purpose 或系统身份。
+官网更新批次查询新增 `purpose=manual/stock_returns`；管理员近期列表包含系统库存退货批次。系统批次 `requestedBy=null`，仅保留历史记录，不再由库存调度创建；现有公开提交接口不接受 purpose 或系统身份。

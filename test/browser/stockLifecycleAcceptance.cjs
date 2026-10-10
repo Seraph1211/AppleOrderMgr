@@ -37,8 +37,8 @@ const output = '.tmp/stock-lifecycle-ui';
         check: {
           checkedAt: '2026-10-10T01:00:00Z',
           observedAt: '2026-10-10T00:00:00Z',
-          errorCode: 'HTTP_541',
-          workerOnline: true,
+          errorCode: 'SYSTEM_STATUS_MISSING',
+          source: 'system_order_status',
         },
       };
       await page.route('**/api/**', async route => {
@@ -134,8 +134,9 @@ const output = '.tmp/stock-lifecycle-ui';
           throw error;
         });
       assert.equal(await page.getByRole('tab').count(), 5);
-      await page.getByText('官网检查失败', { exact: true }).click();
-      await page.getByText(/上次成功/).waitFor();
+      await page.getByText('系统状态核对待补充', { exact: true }).click();
+      await page.getByText(/来源状态时间/).waitFor();
+      await page.getByText('读取系统内“官网订单状态”，不主动查询官网。').waitFor();
       await page.getByRole('button', { name: '核实退货', exact: true }).click();
       await page.getByRole('checkbox', { name: '退货 A123456789' }).check();
       await page.getByLabel('核实依据（必填）').fill('核对订单照片和退货凭证，仅退第一台');

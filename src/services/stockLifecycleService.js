@@ -51,7 +51,7 @@ async function systemContext(transaction, orderId) {
       },
       { transaction }
     );
-    return { transaction, user: { id: null, username: '官网退货检查' }, operationId: op.id };
+    return { transaction, user: { id: null, username: '库存系统状态核对' }, operationId: op.id };
   } catch (error) {
     logger.warn('库存系统审计创建失败', { code: error.code || error.name });
     throw error;

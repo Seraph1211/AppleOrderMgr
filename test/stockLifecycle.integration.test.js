@@ -335,57 +335,70 @@ if (
     expect(scoped.total).toBe(scoped.items.reduce((n, row) => n + row.count, 0));
     await expect(projection.list(ctx, { states: '["invalid"]' }, true)).rejects.toThrow();
   });
-  test('全历史调度每订单一次，30分钟内不重排队，暂停任务保留且系统身份领取回写', async () => {
+  test('全历史本地核对每订单一次，30分钟内不重复且完全不创建HTTP任务', async () => {
     const { order, units } = await fixture();
-    // 本测试只处理合成库，先结束历史合成任务，固定领取目标。
-    await db.sequelize.query(
-      "UPDATE official_order_refresh_jobs SET state='cancelled' WHERE state IN ('queued','running')"
-    );
-    await db.sequelize.transaction(async transaction => {
-      await db.sequelize.query('SELECT pg_advisory_xact_lock(26100371)', { transaction });
-      await scheduleReturns(transaction);
+    await order.update({
+      officialRawStatus: 'RETURN_STARTED',
+      officialStatusObservedAt: new Date(),
     });
-    const [jobs] = await db.sequelize.query(
-      'SELECT j.*,b.purpose,b.requested_by FROM official_order_refresh_jobs j JOIN official_order_refresh_batches b ON b.id=j.batch_id WHERE j.order_id=:id',
-      { replacements: { id: order.id } }
-    );
-    expect(jobs).toHaveLength(1);
-    expect(jobs[0].purpose).toBe('stock_returns');
-    expect(jobs[0].requested_by).toBeNull();
-    await db.sequelize.query(
-      "UPDATE official_order_refresh_jobs SET state='cancelled' WHERE order_id<>:id AND state IN ('queued','running')",
-      { replacements: { id: order.id } }
-    );
-    const job = await queue.claimHttp();
-    expect(job.orderId).toBe(order.id);
-    const result = await queue.finish({
-      id: job.id,
-      leaseToken: job.leaseToken,
-      outcome: 'SUCCEEDED',
-      transport: 'http',
-      result: {
-        systemOrderId: order.id,
-        orderNumber: order.orderNumber,
-        identityMatched: true,
-        sourceModel: 'orderDetail',
-        completeItemCount: 1,
-        products: [item(1, [units[0].serialNumber])],
-        source: {
-          provider: 'Apple official website',
-          status: 200,
-          cached: false,
-          host: 'secure.www.apple.com.cn',
-          sha256: 'a'.repeat(64),
-          runId: 1,
-          observedAt: new Date().toISOString(),
-        },
+    const counts = async () => {
+      try {
+        const [rows] = await db.sequelize.query(
+          'SELECT (SELECT count(*) FROM official_order_refresh_jobs) jobs,(SELECT count(*) FROM official_order_refresh_batches) batches'
+        );
+        return rows[0];
+      } catch (error) {
+        error.component = 'stockSchedulerTest';
+        throw error;
+      }
+    };
+    const before = await counts();
+    await db.sequelize.transaction(transaction => scheduleReturns(transaction));
+    await units[0].reload();
+    await units[1].reload();
+    expect(units.map(u => u.state)).toEqual(['registered', 'registered']);
+    expect(units.map(u => u.lifecycleIssue)).toEqual(['return_pending', 'return_pending']);
+    const check = await service.returnReview(await cmd.createReadContext(admin), order.id);
+    await run(
+      'confirmReturns',
+      {
+        fingerprint: check.fingerprint,
+        serialNumbers: [units[0].serialNumber],
+        reason: '根据系统记录确认一台退货',
       },
-    });
-    expect(result.state).toBe('succeeded');
+      order.id
+    );
+    expect(await db.sequelize.transaction(transaction => scheduleReturns(transaction))).toBe(0);
+    await db.sequelize.query(
+      "UPDATE stock_order_checks SET checked_at=now()-interval '31 minutes' WHERE order_id=:id",
+      { replacements: { id: order.id } }
+    );
+    await db.sequelize.transaction(transaction => scheduleReturns(transaction));
+    await units[0].reload();
+    await units[1].reload();
+    expect(units.map(u => u.state)).toEqual(['returned', 'registered']);
+    expect(units[1].lifecycleIssue).toBeNull();
+    expect(await counts()).toEqual(before);
+    await queue.claimHttp();
+    expect(await counts()).toEqual(before);
+    await order.update({ officialRawStatus: 'UNKNOWN' });
+    await db.sequelize.query(
+      "UPDATE stock_order_checks SET checked_at=now()-interval '31 minutes' WHERE order_id=:id",
+      { replacements: { id: order.id } }
+    );
+    await db.sequelize.transaction(transaction => scheduleReturns(transaction));
     await units[0].reload();
     expect(units[0].state).toBe('returned');
-    const count = await db.sequelize.transaction(transaction => scheduleReturns(transaction));
-    expect(count).toBe(0);
+    expect((await service.checkForOrder(order.id)).error_code).toBe('SYSTEM_STATUS_MISSING');
+    await order.update({ officialRawStatus: 'PICKED_UP', officialStatusObservedAt: new Date() });
+    await db.sequelize.query(
+      "UPDATE stock_order_checks SET checked_at=now()-interval '31 minutes' WHERE order_id=:id",
+      { replacements: { id: order.id } }
+    );
+    await db.sequelize.transaction(transaction => scheduleReturns(transaction));
+    await units[0].reload();
+    expect(units[0].state).toBe('returned');
+    expect(units[0].lifecycleIssue).toBe('return_withdrawn');
   });
   test('实际销售及已代收资金在官网退货冲突后完整保留', async () => {
     const { order, units } = await fixture({ states: ['in_stock'] });
@@ -479,38 +492,15 @@ if (
     });
     expect(count).toBe(1);
   });
-  test('暂停自动批次不会被重排，模块关闭只保存观测不改变库存', async () => {
+  test('模块关闭不运行本地核对、不改变库存', async () => {
     const { order, units } = await fixture();
-    await db.sequelize.transaction(transaction => scheduleReturns(transaction));
-    const [jobs] = await db.sequelize.query(
-      'SELECT id,batch_id FROM official_order_refresh_jobs WHERE order_id=:id',
-      { replacements: { id: order.id } }
-    );
-    expect(jobs).toHaveLength(1);
-    await db.sequelize.query(
-      "UPDATE official_order_refresh_batches SET paused_at=now(),pause_reason='HTTP_541' WHERE id=:id",
-      { replacements: { id: jobs[0].batch_id } }
-    );
-    await db.sequelize.query(
-      "UPDATE stock_order_checks SET last_enqueued_at=now()-interval '1 hour' WHERE order_id=:id",
-      { replacements: { id: order.id } }
-    );
-    await db.sequelize.transaction(transaction => scheduleReturns(transaction));
-    const [again] = await db.sequelize.query(
-      'SELECT id FROM official_order_refresh_jobs WHERE order_id=:id',
-      { replacements: { id: order.id } }
-    );
-    expect(again).toHaveLength(1);
-    const recent = await queue.listBatches(admin);
-    expect(
-      recent.some(batch => batch.id === jobs[0].batch_id && batch.purpose === 'stock_returns')
-    ).toBe(true);
+    await order.update({ officialRawStatus: 'RETURN_STARTED' });
     await db.StockSetting.update({ enabled: false }, { where: { id: 1 } });
     try {
-      await observe(order, [item(1, [units[0].serialNumber])]);
+      expect(await db.sequelize.transaction(transaction => scheduleReturns(transaction))).toBe(0);
       await units[0].reload();
       expect(units[0].state).toBe('registered');
-      expect(await db.sequelize.transaction(transaction => scheduleReturns(transaction))).toBe(0);
+      expect(await service.checkForOrder(order.id)).toBeNull();
     } finally {
       await db.StockSetting.update({ enabled: true }, { where: { id: 1 } });
     }

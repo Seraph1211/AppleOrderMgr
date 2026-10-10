@@ -1,77 +1,95 @@
-const crypto = require('crypto');
 const { QueryTypes } = require('sequelize');
 const db = require('../models');
 const logger = require('../utils/logger');
-const { officialAccountKey } = require('./officialOrderAccount');
+const { lockStock } = require('./stockCommandService');
+const lifecycle = require('./stockLifecycleService');
 const { PICKED_SQL } = require('./stockLifecycleRules');
+const TICK_MS = 60_000;
+let timer = null;
+let active = null;
 
-/** 在官网队列锁内分批加入全部历史已取货绑定订单；30 分钟持久间隔，不恢复暂停批次。 */
+/** 只读取系统保存的官网订单状态；无状态时保留成功事实，不推断退货撤销。 */
+function localObservation(row) {
+  const statuses = [
+    ...new Set(
+      String(row.status || '')
+        .split('|')
+        .map(s => s.trim())
+        .filter(Boolean)
+    ),
+  ].sort();
+  if (!statuses.length || statuses.includes('UNKNOWN')) return null;
+  const savedStatuses = [...new Set((row.items || []).map(item => item.rawStatus))].sort();
+  const sameObservation =
+    row.observed &&
+    row.savedObserved &&
+    new Date(row.observed).getTime() === new Date(row.savedObserved).getTime();
+  const items =
+    sameObservation && JSON.stringify(statuses) === JSON.stringify(savedStatuses)
+      ? row.items
+      : statuses.map(rawStatus => ({
+        key: `system:${rawStatus}`,
+        name: '系统官网订单状态',
+        quantity: 0,
+        rawStatus,
+        serialNumbers: [],
+      }));
+  return { items, observedAt: row.observed || null };
+}
+
+/** 在库存事务锁内核对到期历史订单；不调用官网、不创建采集任务。 */
 async function scheduleReturns(transaction) {
   try {
+    await lockStock(transaction);
     const settings = await db.StockSetting.findByPk(1, { transaction });
     if (!settings?.enabled) return 0;
     const rows = await db.sequelize.query(
-      `SELECT o.id,o.order_number AS "orderNumber",o.apple_id AS "appleId"
+      `SELECT o.id,o.official_raw_status AS status,o.official_status_observed_at AS observed,
+      c.items,c.observed_at AS "savedObserved"
       FROM orders o LEFT JOIN pickup_records pr ON pr.order_id=o.id
       LEFT JOIN stock_order_checks c ON c.order_id=o.id
       WHERE (${PICKED_SQL} OR c.pickup_verified) AND EXISTS (SELECT 1 FROM pickup_devices d WHERE d.order_id=o.id AND d.stock_unit_id IS NOT NULL)
       AND (c.checked_at IS NULL OR c.checked_at<=now()-interval '30 minutes')
-      AND (c.last_enqueued_at IS NULL OR c.last_enqueued_at<=now()-interval '30 minutes')
-      AND NOT EXISTS (SELECT 1 FROM official_order_refresh_jobs j WHERE j.order_id=o.id AND j.state IN ('queued','running'))
-      ORDER BY c.last_enqueued_at NULLS FIRST,o.id LIMIT 500`,
+      ORDER BY c.checked_at NULLS FIRST,o.id LIMIT 100`,
       { transaction, type: QueryTypes.SELECT }
     );
-    if (!rows.length) return 0;
-    const batchId = crypto.randomUUID();
-    await db.sequelize.query(
-      `INSERT INTO official_order_refresh_batches
-      (id,requested_by,request_key,request_fingerprint,selection_mode,purpose,selected_count,submission_summary)
-      VALUES(:id,NULL,:key,:hash,'ids','stock_returns',:count,CAST(:summary AS jsonb))`,
-      {
+    for (const row of rows) {
+      await lifecycle.observe(
         transaction,
-        replacements: {
-          id: batchId,
-          key: crypto.randomUUID(),
-          hash: crypto
-            .createHash('sha256')
-            .update(JSON.stringify(rows.map(row => row.id)))
-            .digest('hex'),
-          count: rows.length,
-          summary: JSON.stringify({ source: 'stock_returns', total: rows.length }),
-        },
-      }
-    );
-    await db.sequelize.query(
-      `INSERT INTO official_order_refresh_jobs(id,batch_id,order_id,order_number,account_key)
-      SELECT x.id,:batch,x."orderId",x."orderNumber",x."accountKey" FROM jsonb_to_recordset(CAST(:jobs AS jsonb))
-      AS x(id uuid,"orderId" integer,"orderNumber" text,"accountKey" text)`,
-      {
-        transaction,
-        replacements: {
-          batch: batchId,
-          jobs: JSON.stringify(
-            rows.map(row => ({
-              id: crypto.randomUUID(),
-              orderId: row.id,
-              orderNumber: row.orderNumber,
-              accountKey: officialAccountKey(row.appleId),
-            }))
-          ),
-        },
-      }
-    );
-    await db.sequelize.query(
-      `INSERT INTO stock_order_checks(order_id,last_enqueued_at,pickup_verified)
-      SELECT unnest(ARRAY[:ids]::integer[]),now(),true ON CONFLICT(order_id) DO UPDATE SET last_enqueued_at=EXCLUDED.last_enqueued_at,pickup_verified=true`,
-      {
-        transaction,
-        replacements: { ids: rows.map(row => row.id) },
-      }
-    );
+        row.id,
+        localObservation(row),
+        'SYSTEM_STATUS_MISSING',
+        'PICKED_UP'
+      );
+    }
     return rows.length;
   } catch (error) {
-    logger.warn('历史订单退货调度失败', { code: error.code || error.name });
+    logger.warn('库存系统状态核对失败', { code: error.code || error.name });
     throw error;
   }
 }
-module.exports = { scheduleReturns };
+
+/** 每分钟扫描到期订单；数据库保存每单30分钟间隔，多实例共用库存锁。 */
+function start() {
+  if (timer || process.env.STOCK_RETURN_CHECK_ENABLED === 'false') return;
+  const tick = () => {
+    if (active) return;
+    active = db.sequelize
+      .transaction(transaction => scheduleReturns(transaction))
+      .catch(error => logger.warn('库存定时核对未完成', { code: error.code || error.name }))
+      .finally(() => {
+        active = null;
+      });
+  };
+  timer = setInterval(tick, TICK_MS);
+  timer.unref();
+  tick();
+}
+
+/** 停止领取并等待当前本地事务结束。 */
+function stop() {
+  clearInterval(timer);
+  timer = null;
+  return active || Promise.resolve();
+}
+module.exports = { localObservation, scheduleReturns, start, stop };

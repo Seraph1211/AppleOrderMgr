@@ -487,7 +487,7 @@ export default function Stock() {
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-xs text-gray-500">
-          全历史已取货关联订单每 30 分钟检查退货；异常须人工核实。
+          每 30 分钟核对系统内的官网订单状态；退货 SN 不明确时须人工核实。
         </p>
         <button className="btn btn-secondary" onClick={() => setShowStatistics(true)}>
           数量统计

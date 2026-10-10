@@ -1,0 +1,6 @@
+# 保留生产基线；库存只核对系统状态，不新增官网采集。
+FROM apple-order-mgr-runtime:20261010-stock-name-amd64
+COPY --chown=node:node src/app.js /app/src/app.js
+COPY --chown=node:node src/services/stockReturnScheduler.js src/services/stockLifecycleService.js src/services/stockLedgerProjectionService.js src/services/officialOrderRefreshService.js /app/src/services/
+COPY --chown=node:node scripts/releases/20261010-stock-lifecycle/preserveProductionPickup.cjs /tmp/preserveProductionPickup.cjs
+RUN node /tmp/preserveProductionPickup.cjs && rm /tmp/preserveProductionPickup.cjs

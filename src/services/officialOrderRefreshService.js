@@ -1,7 +1,6 @@
 const crypto = require('crypto');
 const { lockStock } = require('./stockCommandService');
 const lifecycle = require('./stockLifecycleService');
-const { scheduleReturns } = require('./stockReturnScheduler');
 const HTTP_MAX_CONCURRENCY = 10;
 const { Op, QueryTypes } = require('sequelize');
 const { sequelize, Order, AppleId, Recipient, User } = require('../models');
@@ -529,7 +528,6 @@ async function claimHttp() {
           {},
           transaction
         );
-        await scheduleReturns(transaction);
         await query(
           `UPDATE official_order_refresh_jobs SET state='failed',error_code='WORKER_INTERRUPTED',finished_at=now()
           WHERE state='running' AND started_at<now()-interval '20 minutes' RETURNING id`,
@@ -635,13 +633,14 @@ async function finish(input) {
             result = null;
           }
         }
-        await lifecycle.observe(
-          transaction,
-          job.orderId,
-          result,
-          errorCode,
-          order?.officialRawStatus
-        );
+        if (result)
+          await lifecycle.observe(
+            transaction,
+            job.orderId,
+            result,
+            errorCode,
+            order?.officialRawStatus
+          );
         await query(
           `UPDATE official_order_refresh_jobs SET state=:state,error_code=:error,
           finished_at=now(),result_run_id=:runId,result_sha256=:sha,previous_status=:previous,
@@ -770,13 +769,14 @@ async function finishGroup(input) {
           }
         }
         for (const row of results) {
-          await lifecycle.observe(
-            transaction,
-            row.orderId,
-            row.error ? null : { items: row.items, observedAt: row.observed },
-            row.error,
-            row.previous
-          );
+          if (!row.error)
+            await lifecycle.observe(
+              transaction,
+              row.orderId,
+              row.error ? null : { items: row.items, observedAt: row.observed },
+              row.error,
+              row.previous
+            );
         }
         await query(
           `UPDATE official_order_refresh_jobs j SET

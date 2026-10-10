@@ -167,6 +167,7 @@ const server = app.listen(DEFAULT_PORT, () => {
     apiHealth: `http://localhost:${DEFAULT_PORT}/api/health`,
   });
 
+  require('./services/stockReturnScheduler').start();
   paymentDispatchScheduler.start();
   identityVerificationRunner.start();
   ingestionScheduler.start();
@@ -189,6 +190,7 @@ function shutdown(signal) {
   logger.info(`收到 ${signal} 信号，准备关闭服务`);
 
   // 停止领取新的后台任务；邮件在途处理在关闭数据库前等待完成。
+  const stockStopped = require('./services/stockReturnScheduler').stop();
   paymentDispatchScheduler.stop();
   const identityStopped = identityVerificationRunner.stop();
   const ingestionStopped = ingestionScheduler.stop();
@@ -202,6 +204,7 @@ function shutdown(signal) {
     }
 
     try {
+      await stockStopped;
       await identityStopped;
       await ingestionStopped;
       await proxyStopped;
