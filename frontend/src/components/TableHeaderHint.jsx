@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { AlertCircle } from 'lucide-react';
 
 /** 表头说明：立即显示，保持箭头鼠标，浮层不受表格滚动容器裁切。 */
-export default function TableHeaderHint({ label, children }) {
+export default function TableHeaderHint({ label, children, trigger, triggerClassName = '' }) {
   const [position, setPosition] = useState(null);
   const triggerRef = useRef(null);
   const tooltipRef = useRef(null);
@@ -19,10 +19,12 @@ export default function TableHeaderHint({ label, children }) {
     keepOpen();
     const box = triggerRef.current.getBoundingClientRect();
     const width = Math.min(280, window.innerWidth - 16);
+    const openAbove = window.innerHeight - box.bottom < 140 && box.top > 140;
     setPosition({
       width,
+      maxHeight: Math.max(80, (openAbove ? box.top : window.innerHeight - box.bottom) - 14),
       left: Math.max(8, Math.min(box.left, window.innerWidth - width - 8)),
-      ...(window.innerHeight - box.bottom < 140 && box.top > 140
+      ...(openAbove
         ? { bottom: window.innerHeight - box.top + 6 }
         : { top: box.bottom + 6 }),
     });
@@ -32,6 +34,9 @@ export default function TableHeaderHint({ label, children }) {
   useEffect(() => {
     if (!isOpen) return undefined;
     const close = () => setPosition(null);
+    const closeOnScroll = event => {
+      if (!tooltipRef.current?.contains(event.target)) close();
+    };
     const closeOutside = event => {
       if (
         !triggerRef.current?.contains(event.target) &&
@@ -43,12 +48,12 @@ export default function TableHeaderHint({ label, children }) {
     const closeOnEscape = event => {
       if (event.key === 'Escape') close();
     };
-    window.addEventListener('scroll', close, true);
+    window.addEventListener('scroll', closeOnScroll, true);
     window.addEventListener('resize', close);
     document.addEventListener('pointerdown', closeOutside);
     document.addEventListener('keydown', closeOnEscape);
     return () => {
-      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('scroll', closeOnScroll, true);
       window.removeEventListener('resize', close);
       document.removeEventListener('pointerdown', closeOutside);
       document.removeEventListener('keydown', closeOnEscape);
@@ -62,14 +67,14 @@ export default function TableHeaderHint({ label, children }) {
         type="button"
         aria-label={label}
         aria-describedby={isOpen ? tooltipId : undefined}
-        className="inline-flex cursor-default rounded text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary"
+        className={`inline-flex cursor-default rounded text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary ${triggerClassName}`}
         onMouseEnter={show}
         onMouseLeave={closeSoon}
         onFocus={show}
         onBlur={() => setPosition(null)}
         onClick={show}
       >
-        <AlertCircle className="w-4 h-4" aria-hidden="true" />
+        {trigger || <AlertCircle className="w-4 h-4" aria-hidden="true" />}
       </button>
       {isOpen &&
         createPortal(
@@ -78,7 +83,7 @@ export default function TableHeaderHint({ label, children }) {
             id={tooltipId}
             role="tooltip"
             style={position}
-            className="fixed z-[100] cursor-default whitespace-normal rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm font-normal leading-6 text-gray-700 shadow-lg"
+            className="fixed z-[100] cursor-default overflow-y-auto whitespace-normal break-words rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-sm font-normal leading-6 text-gray-700 shadow-lg"
             onMouseEnter={keepOpen}
             onMouseLeave={closeSoon}
           >

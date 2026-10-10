@@ -1,0 +1,6 @@
+# 沿用生产前端基线，仅更新官网提交反馈及自有库存备注展示。
+FROM apple-order-mgr-frontend-builder:20261009-order-date-export-amd64
+COPY src/pages/Orders.jsx /app/src/pages/Orders.jsx
+COPY src/pages/Stock.jsx /app/src/pages/Stock.jsx
+COPY src/components/TableHeaderHint.jsx /app/src/components/TableHeaderHint.jsx
+RUN npm run lint && npm run build

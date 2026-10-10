@@ -187,7 +187,6 @@ export default function Orders() {
       if (!response.success) throw new Error('官网更新提交失败');
       if (response.data.batchId) {
         setOfficialBatchId(response.data.batchId);
-        setShowOfficialProgress(true);
       }
       showToast(
         response.data.queued ? 'success' : 'warning',

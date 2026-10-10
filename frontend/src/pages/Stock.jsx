@@ -1,4 +1,5 @@
 import TagMultiSelect from '../components/TagMultiSelect';
+import TableHeaderHint from '../components/TableHeaderHint';
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, PackageCheck, Package, Plus, RefreshCw, Settings } from 'lucide-react';
@@ -32,6 +33,20 @@ const INITIAL_FILTERS = {
   soldFrom: '',
   soldTo: '',
 };
+
+/** 台账备注单行省略，悬停、聚焦或点击可读取完整内容。 */
+function StockNote({ notes }) {
+  if (!notes) return '—';
+  return (
+    <TableHeaderHint
+      label={`备注：${notes}`}
+      trigger={<span className="block truncate">{notes}</span>}
+      triggerClassName="max-w-full w-[240px] text-left align-top !text-inherit"
+    >
+      <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{notes}</span>
+    </TableHeaderHint>
+  );
+}
 
 /** 一个台账完成自有设备入库、售出、货款及历史补录。 */
 export default function Stock() {
@@ -210,8 +225,8 @@ export default function Stock() {
             </div>
           )}
           {unit.notes && (
-            <div className="mt-1 line-clamp-2 break-words text-xs text-gray-500 sm:hidden">
-              备注：{unit.notes}
+            <div className="mt-1 min-w-0 text-xs text-gray-500 sm:hidden">
+              <StockNote notes={unit.notes} />
             </div>
           )}
           <div className="mt-2 space-y-2 sm:hidden">
@@ -306,7 +321,7 @@ export default function Stock() {
       title: '备注',
       mobileHidden: true,
       render: unit => (
-        <div className="max-w-[240px] whitespace-pre-wrap break-words">{unit.notes || '—'}</div>
+        <StockNote notes={unit.notes} />
       ),
     },
     {
