@@ -110,7 +110,7 @@ const PERMISSION_DEPENDENCIES = Object.freeze({
 
 /* eslint-disable camelcase -- 权限模块名与对外权限码完全一致 */
 const PERMISSION_MODULE_NAMES = Object.freeze({
-  stock: '自有库存与销售',
+  stock: '库存管理',
   proxy_orders: '代抢管理',
   wecom: '企微订单通知',
   inventory: '库存监控',
@@ -135,7 +135,7 @@ const PERMISSION_MODULE_NAMES = Object.freeze({
 /* eslint-enable camelcase */
 
 const PERMISSION_LABELS = Object.freeze({
-  [PERMISSIONS.STOCK_READ]: '查看自有库存',
+  [PERMISSIONS.STOCK_READ]: '查看库存管理',
   [PERMISSIONS.STOCK_RECEIVE]: '入库及编辑实物',
   [PERMISSIONS.STOCK_TRANSFER]: '调整实物仓库',
   [PERMISSIONS.STOCK_SOURCE_LINK]: '关联来源订单',

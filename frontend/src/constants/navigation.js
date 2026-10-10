@@ -26,7 +26,7 @@ export const NAVIGATION_GROUPS = [
         icon: 'ClipboardCheck',
         permission: PERMISSIONS.PICKUPS_READ,
       },
-      { name: '自有库存', href: '/stock', icon: 'Warehouse', permission: PERMISSIONS.STOCK_READ },
+      { name: '库存管理', href: '/stock', icon: 'Warehouse', permission: PERMISSIONS.STOCK_READ },
     ],
   },
   {

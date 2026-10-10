@@ -404,7 +404,7 @@ async function detail(ctx, id) {
   try {
     uuid(id);
     const row = (await byIds(ctx, [id]))[0];
-    if (!row) throw ApiError.notFound('该设备不在自有库存台账');
+    if (!row) throw ApiError.notFound('该设备不在库存管理台账');
     const events = await db.StockEvent.findAll({
       where: {
         [Op.or]: [

@@ -51,7 +51,7 @@ export default function LedgerWarehouses({ catalog, onClose, onSaved }) {
         {can('stock.settings.manage') && (
           <section className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-gray-50 p-3">
             <div>
-              <p className="font-medium">自有库存：{catalog.enabled ? '已启用' : '未启用'}</p>
+              <p className="font-medium">库存管理：{catalog.enabled ? '已启用' : '未启用'}</p>
               <p className="mt-1 text-xs text-gray-500">关闭后保留查询，暂停业务录入。</p>
             </div>
             <button
@@ -60,7 +60,7 @@ export default function LedgerWarehouses({ catalog, onClose, onSaved }) {
               disabled={command.busy || catalog.settingsVersion === undefined}
               onClick={changeEnabled}
             >
-              {catalog.enabled ? '暂停录入' : '启用自有库存'}
+              {catalog.enabled ? '暂停录入' : '启用库存管理'}
             </button>
           </section>
         )}

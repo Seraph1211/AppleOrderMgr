@@ -35,7 +35,7 @@ router.use((req, _res, next) => {
   const legacyCancel = req.method === 'POST' && /^\/sales\/[^/]+\/cancel$/.test(req.path);
   if ((legacyFlow && !legacyCancel) || legacyUnit)
     return next(
-      new ApiError(410, 'STOCK_FLOW_RETIRED', '原复杂库存流程已退役，请使用自有库存台账操作')
+      new ApiError(410, 'STOCK_FLOW_RETIRED', '原复杂库存流程已退役，请使用库存管理台账操作')
     );
   return next();
 });

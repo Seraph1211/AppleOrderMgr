@@ -28,10 +28,10 @@ export default function StockPermissionGroups({ groups, catalog, selected, disab
   return (
     <section
       className="border border-gray-200 rounded-lg overflow-hidden"
-      aria-label="自有库存业务权限"
+      aria-label="库存管理业务权限"
     >
       <div className="p-4 bg-primary-50">
-        <h3 className="font-semibold text-gray-900">自有库存与销售</h3>
+        <h3 className="font-semibold text-gray-900">库存管理</h3>
         <p className="text-sm text-gray-600 mt-1">
           按业务授权，必要查看权限自动勾选。原有部分授权保持不变。
         </p>

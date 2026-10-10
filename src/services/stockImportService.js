@@ -1197,7 +1197,7 @@ async function readTemplate(user, kind) {
     help['!cols'] = [{ wch: 22 }, { wch: 110 }];
     XLSX.utils.book_append_sheet(book, help, '填写说明');
     return {
-      filename: `自有库存-${kind}-导入模板.xlsx`,
+      filename: `库存管理-${kind}-导入模板.xlsx`,
       contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       buffer: XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }),
     };
@@ -1409,7 +1409,7 @@ async function exportStock(user, query = {}) {
     sheet['!cols'] = fields.map(() => ({ wch: 24 }));
     XLSX.utils.book_append_sheet(book, sheet, '导出数据');
     return {
-      filename: `自有库存-${entity}-${new Date().toISOString().slice(0, 10)}.xlsx`,
+      filename: `库存管理-${entity}-${new Date().toISOString().slice(0, 10)}.xlsx`,
       contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       buffer: XLSX.write(book, { type: 'buffer', bookType: 'xlsx' }),
     };

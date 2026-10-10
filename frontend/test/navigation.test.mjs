@@ -30,7 +30,7 @@ test('管理员专属菜单不因普通人员具有其他业务权限而可见',
   );
   assert.deepEqual(
     admin[0].children.map(item => item.name),
-    ['订单管理', '代抢管理', '取货记录', '自有库存']
+    ['订单管理', '代抢管理', '取货记录', '库存管理']
   );
   assert.deepEqual(
     admin[5].children.map(item => item.name),

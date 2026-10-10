@@ -1,0 +1,7 @@
+# 保留现行前端，统一库存页面与操作入口名称。
+FROM apple-order-mgr-frontend-builder:20261010-stock-lifecycle-amd64
+COPY src/pages/Stock.jsx /app/src/pages/Stock.jsx
+COPY src/constants/navigation.js /app/src/constants/navigation.js
+COPY src/components/StockPermissionGroups.jsx /app/src/components/StockPermissionGroups.jsx
+COPY src/components/stock/ledgerWarehouses.jsx /app/src/components/stock/ledgerWarehouses.jsx
+RUN npm run lint && npm run build

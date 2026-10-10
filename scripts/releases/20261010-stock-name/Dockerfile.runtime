@@ -1,0 +1,5 @@
+# 保留生命周期生产基线，只更新用户可见模块名称。
+FROM apple-order-mgr-runtime:20261010-stock-lifecycle-amd64
+COPY --chown=node:node src/constants/permissionCatalog.js /app/src/constants/permissionCatalog.js
+COPY --chown=node:node src/services/stockLedgerService.js src/services/stockLedgerProjectionService.js src/services/stockImportService.js /app/src/services/
+COPY --chown=node:node src/routes/stock.js /app/src/routes/stock.js

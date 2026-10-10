@@ -405,7 +405,7 @@ export default function Stock() {
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-900">
             <Package className="h-6 w-6" />
-            自有库存
+            库存管理
           </h1>
           <p className="mt-1 text-sm text-gray-500">一台一条记录，管理在库、销售与货款。</p>
         </div>
@@ -456,7 +456,7 @@ export default function Stock() {
       )}
       {catalog.enabled === false && (
         <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-          自有库存尚未启用，现有记录仍可查询。请由管理员在基础设置中启用后录入。
+          库存管理尚未启用，现有记录仍可查询。请由管理员在基础设置中启用后录入。
         </p>
       )}
       <div className="flex flex-wrap items-center justify-between gap-2">

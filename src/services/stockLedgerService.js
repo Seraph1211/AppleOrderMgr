@@ -354,7 +354,7 @@ async function saleFacts(ctx, unit, requireSimple = true) {
     const line = await getRow('StockSaleLine', saleUnit.saleLineId, ctx);
     const sale = await getRow('StockSale', line.saleId, ctx);
     if (sale.channel !== 'local' || sale.status !== 'shipped')
-      throw ApiError.conflict('该设备不属于自有库存销售');
+      throw ApiError.conflict('该设备不属于库存管理销售');
     const lines = await db.StockSaleLine.findAll({ where: { saleId: sale.id }, ...options(ctx) });
     const units = await db.StockSaleUnit.findAll({
       where: { saleLineId: lines.map(row => row.id), status: 'shipped' },
