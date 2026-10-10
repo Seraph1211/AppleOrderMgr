@@ -1,0 +1,14 @@
+{
+  "status": "PASS",
+  "currentRelease": "20261010-official-return-expired",
+  "sourceCommit": "8e23237014b926c04d2a142e37cfbcd3e0a37c14",
+  "apiHashes": {
+    "src/services/officialOrderParser.js": "02e1a8743f99d6486d120007a25396fcd793625f40e64a5bd68f3840c7359472",
+    "src/services/officialOrderStatusSync.js": "f237de6bee4405d72ba998c7127024584f5f98cd74764406a2776ac8753a41cc"
+  },
+  "queueHash": "aa124931b725eef13a571399a870e86a7061b3bd399afe98b53c1df280fac95b",
+  "frontendFilesUnchangedFromIos": 102,
+  "preservedProductionFiles": 5,
+  "apiHealth": "healthy",
+  "queueActive": true
+}

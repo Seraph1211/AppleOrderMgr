@@ -1,0 +1,27 @@
+{
+  "status": "PASS",
+  "run": 2662,
+  "frozenAt": "2026-10-10T13:09:31.465Z",
+  "batch": [
+    {
+      "order_id": 1176,
+      "state": "succeeded",
+      "error_code": null,
+      "result_run_id": 2662,
+      "result_status": "PICKED_UP | RETURN_EXPIRED",
+      "started_at": "2026-10-10T13:09:38.735Z",
+      "finished_at": "2026-10-10T13:10:21.433Z",
+      "observed_at": "2026-10-10T13:10:14.680Z"
+    }
+  ],
+  "protectedComparisons": 20,
+  "allProtectedEqual": true,
+  "otherOrdersProtected": 1238,
+  "stockUnitsProtected": 839,
+  "protectedBusinessTables": 15,
+  "mailCount": 7,
+  "eventCount": 9,
+  "boundStocks": 0,
+  "checkCount": 0,
+  "stockSideEffects": 0
+}

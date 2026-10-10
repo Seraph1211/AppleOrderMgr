@@ -1,0 +1,31 @@
+{
+  "status": "PASS",
+  "orderIdentityMatchesDb": true,
+  "sourceModel": "orderDetail",
+  "completeItemCount": 2,
+  "source": {
+    "status": 200,
+    "cached": false,
+    "runId": 2662,
+    "observedAt": "2026-10-10T13:10:14.680Z"
+  },
+  "products": [
+    {
+      "quantity": 1,
+      "rawQuantity": -1,
+      "interpretation": "return_expired_negative_one",
+      "status": "RETURN_EXPIRED",
+      "hasSerials": false,
+      "pickupDateText": null
+    },
+    {
+      "quantity": 1,
+      "status": "PICKED_UP",
+      "hasSerials": false,
+      "pickupDateText": "\u5df2\u53d6\u8d27 9\u6708 29"
+    }
+  ],
+  "cleanupVerified": true,
+  "outcome": "SUCCEEDED",
+  "finishState": "FINISHED"
+}

@@ -1,0 +1,26 @@
+{
+  "status": "PASS_PROTECTION_ONLY",
+  "run": 2660,
+  "batchOrderIds": [
+    1176
+  ],
+  "result": "RUNTIME_COMMAND_FAILED",
+  "startedAt": "2026-10-10T13:00:49.046Z",
+  "finishedAt": "2026-10-10T13:01:42.106Z",
+  "frozenAt": "2026-10-10T13:00:34.330Z",
+  "protectedComparisons": 20,
+  "allProtectedEqual": true,
+  "mailVersion": 8,
+  "mailCount": 7,
+  "eventCount": 9,
+  "boundStock": 0,
+  "targetCheckCount": 0,
+  "httpStatuses": [
+    303,
+    303
+  ],
+  "freshDetailReceived": false,
+  "officialStatus": "PICKED_UP",
+  "earlyGlobalChecksHashChanged": true,
+  "globalCheckChangeInterpretation": "其他订单后台周期核对时间更新；本单始终无check，不将全表自然变化归因本批。"
+}
