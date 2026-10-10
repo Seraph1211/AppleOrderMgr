@@ -1,0 +1,23 @@
+{
+  "status": "PASS",
+  "source": "独立公网逐文件哈希比对",
+  "publicFilesMatched": 11,
+  "statusLabels": [
+    "邮件订单状态",
+    "部分发起退货",
+    "已发起退货"
+  ],
+  "files": [
+    "index.html",
+    "debug.html",
+    "templates/apple_ids_import_template.xlsx",
+    "templates/recipients_import_template.xlsx",
+    "assets/index-vsVM15Hp.css",
+    "assets/index-Dn4dGvEv.js",
+    "assets/index-84469jgD.js",
+    "assets/jsQR-BkSPWjZ7.js",
+    "assets/index-CzFnS5vd.js",
+    "assets/Stock-D6365Qtz.css",
+    "assets/Stock-CypkLZRE.js"
+  ]
+}
