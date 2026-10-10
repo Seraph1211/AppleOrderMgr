@@ -75,7 +75,7 @@ function Dialog({ title, children, close, busy }) {
         ).filter((node) => node.getClientRects().length);
         const first = controls[0],
           last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
           event.preventDefault();
           last?.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -85,7 +85,7 @@ function Dialog({ title, children, close, busy }) {
       }
     };
     document.addEventListener("keydown", key);
-    dialogRef.current?.querySelector("button")?.focus();
+    dialogRef.current?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener("keydown", key);
       previous?.focus?.();
@@ -100,6 +100,7 @@ function Dialog({ title, children, close, busy }) {
     >
       <section
         ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}

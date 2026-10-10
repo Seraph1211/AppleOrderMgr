@@ -1,0 +1,17 @@
+FROM apple-order-mgr-frontend-builder:20261010-mobile-select-amd64
+COPY src/components/MonitorLogs.jsx /app/src/components/MonitorLogs.jsx
+COPY src/components/PaymentAssignmentModal.jsx /app/src/components/PaymentAssignmentModal.jsx
+COPY src/components/TableHeaderHint.jsx /app/src/components/TableHeaderHint.jsx
+COPY src/components/dateRangeFilter.jsx /app/src/components/dateRangeFilter.jsx
+COPY src/components/inventory/InventoryCommon.jsx /app/src/components/inventory/InventoryCommon.jsx
+COPY src/components/mobilePickerDialog.jsx /app/src/components/mobilePickerDialog.jsx
+COPY src/components/orderPickupPhotos.jsx /app/src/components/orderPickupPhotos.jsx
+COPY src/components/responsiveSelect.jsx /app/src/components/responsiveSelect.jsx
+COPY src/components/stock/StockCommon.jsx /app/src/components/stock/StockCommon.jsx
+COPY src/components/useModalScrollLock.js /app/src/components/useModalScrollLock.js
+COPY src/index.css /app/src/index.css
+COPY src/pages/Iphone18QuotePricing.jsx /app/src/pages/Iphone18QuotePricing.jsx
+COPY src/pages/OrderIngestion.jsx /app/src/pages/OrderIngestion.jsx
+COPY src/pages/ProxyOrders.jsx /app/src/pages/ProxyOrders.jsx
+COPY src/pages/WecomNotifications.jsx /app/src/pages/WecomNotifications.jsx
+RUN npm run lint && npm run build

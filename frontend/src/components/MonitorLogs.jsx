@@ -201,7 +201,7 @@ export default function MonitorLogs({ standalone = false }) {
     if (!readingExpanded) return undefined;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    readerPanelRef.current?.querySelector('button')?.focus({ preventScroll: true });
+    readerPanelRef.current?.focus({ preventScroll: true });
     function handleKey(event) {
       // 详情侧栏拥有自己的焦点与 Esc 处理，先关闭最上层。
       if (dialogRef.current) return;
@@ -212,7 +212,7 @@ export default function MonitorLogs({ standalone = false }) {
       ].filter(element => !element.disabled && element.getClientRects().length);
       const first = controls[0];
       const last = controls.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === readerPanelRef.current)) {
         event.preventDefault();
         last?.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -312,7 +312,7 @@ export default function MonitorLogs({ standalone = false }) {
     if (!drawerOpen) return undefined;
     const overflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    dialogRef.current?.querySelector('button')?.focus({ preventScroll: true });
+    dialogRef.current?.focus({ preventScroll: true });
     function handleKey(event) {
       if (event.key === 'Escape') setDrawerOpen(false);
       if (event.key !== 'Tab') return;
@@ -321,7 +321,7 @@ export default function MonitorLogs({ standalone = false }) {
       ].filter(element => !element.disabled && element.getClientRects().length);
       const first = controls[0];
       const last = controls.at(-1);
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
         event.preventDefault();
         last?.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -695,6 +695,7 @@ export default function MonitorLogs({ standalone = false }) {
       {readingExpanded && <div style={{ height: readerHeight }} aria-hidden="true" />}
       <div
         ref={readerPanelRef}
+        tabIndex={-1}
         role={readingExpanded ? 'dialog' : undefined}
         aria-modal={readingExpanded ? true : undefined}
         aria-label={readingExpanded ? '专注日志阅读' : undefined}
@@ -849,6 +850,7 @@ export default function MonitorLogs({ standalone = false }) {
         >
           <section
             ref={dialogRef}
+            tabIndex={-1}
             role="dialog"
             aria-modal="true"
             aria-labelledby="log-detail-title"

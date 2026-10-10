@@ -93,8 +93,8 @@ function Dialog({ title, onClose, children }) {
       ...(dialog.current?.querySelectorAll(
         'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]'
       ) || []),
-    ];
-    focusable()[0]?.focus();
+    ].filter(node => node.getClientRects().length);
+    dialog.current?.focus({ preventScroll: true });
     const handler = e => {
       if (e.key === 'Escape') closeRef.current();
       if (e.key === 'Tab') {
@@ -103,7 +103,7 @@ function Dialog({ title, onClose, children }) {
           e.preventDefault();
           return;
         }
-        if (e.shiftKey && document.activeElement === items[0]) {
+        if (e.shiftKey && (document.activeElement === items[0] || document.activeElement === dialog.current)) {
           e.preventDefault();
           items.at(-1).focus();
         } else if (!e.shiftKey && document.activeElement === items.at(-1)) {
@@ -122,6 +122,7 @@ function Dialog({ title, onClose, children }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/30 p-4">
       <section
         ref={dialog}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={title}

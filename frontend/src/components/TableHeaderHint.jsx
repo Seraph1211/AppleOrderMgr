@@ -67,7 +67,7 @@ export default function TableHeaderHint({ label, children, trigger, triggerClass
         type="button"
         aria-label={label}
         aria-describedby={isOpen ? tooltipId : undefined}
-        className={`inline-flex cursor-default rounded text-gray-500 focus:outline-none focus:ring-2 focus:ring-primary ${triggerClassName}`}
+        className={`inline-flex cursor-default rounded text-gray-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary ${triggerClassName}`}
         onMouseEnter={show}
         onMouseLeave={closeSoon}
         onFocus={show}

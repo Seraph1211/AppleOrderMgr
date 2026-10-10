@@ -1,3 +1,4 @@
+const { chooseSelect } = require('./responsiveSelectSupport.cjs');
 /* eslint-env node, browser */
 /* eslint-disable camelcase -- 合成订单使用既有 API 字段 */
 const assert = require('node:assert/strict');
@@ -104,7 +105,7 @@ async function main() {
       await apply();
       await checkQuery({ dateFrom: '2026-09-29', dateTo: '2026-10-03' });
       await pickupButton.click();
-      await page.getByLabel('实际取货日期条件').selectOption('on');
+      await chooseSelect(page.getByLabel('实际取货日期条件'), 'on');
       await page.getByLabel('实际取货开始日期', { exact: true }).fill('2026-10-02');
       await apply();
       await checkQuery({
@@ -142,7 +143,7 @@ async function main() {
         ['onOrAfter', '2026-03-01', ''],
       ]) {
         await orderButton.click();
-        await page.getByLabel('下单日期条件').selectOption(mode);
+        await chooseSelect(page.getByLabel('下单日期条件'), mode);
         await page.getByLabel('下单开始日期', { exact: true }).fill('2026-03-01');
         await apply();
         await checkQuery({ dateFrom: from, dateTo: to, actualPickupDateFrom: '2026-10-02' });
@@ -157,7 +158,7 @@ async function main() {
       });
       // 单边范围、浮层边界、短屏滚动及范围截图。
       await orderButton.click();
-      await page.getByLabel('下单日期条件').selectOption('between');
+      await chooseSelect(page.getByLabel('下单日期条件'), 'between');
       await page.getByLabel('下单开始日期', { exact: true }).fill('2026-10-01');
       await page.getByLabel('下单结束日期', { exact: true }).fill('');
       await apply();

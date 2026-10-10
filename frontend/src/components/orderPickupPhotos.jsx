@@ -33,7 +33,7 @@ function PhotoPreview({ orderId, photo, onClose }) {
     const previousFocus = document.activeElement;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    closeRef.current?.focus();
+    dialogRef.current?.focus({ preventScroll: true });
     const handleKey = event => {
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -43,7 +43,7 @@ function PhotoPreview({ orderId, photo, onClose }) {
         const controls = [...dialogRef.current.querySelectorAll('button, a[href]')];
         const first = controls[0];
         const last = controls.at(-1);
-        if (event.shiftKey && document.activeElement === first) {
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
           event.preventDefault();
           last?.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -64,6 +64,7 @@ function PhotoPreview({ orderId, photo, onClose }) {
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-0 sm:p-4">
       <div
         ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="order-pickup-photo-title"

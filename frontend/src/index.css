@@ -19,7 +19,7 @@
 @layer components {
   .btn {
     @apply min-h-[34px] px-3 py-1.5 text-sm rounded-lg font-medium transition-all duration-200 cursor-pointer;
-    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2;
   }
 
   .btn.tag-select-all {
@@ -55,7 +55,7 @@
   .input {
     @apply w-full min-w-0 max-w-full min-h-[34px] px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg;
     @apply text-gray-900 placeholder-gray-400;
-    @apply focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent;
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-transparent;
     @apply transition-all duration-200;
   }
 
@@ -682,17 +682,21 @@
 
 
 /* 手机下拉选择统一使用可滚动面板，保留原 select 的值与表单语义。 */
-.responsive-select-mobile {
-  appearance: none;
-  -webkit-appearance: none;
-  padding-right: 2.5rem;
+.responsive-select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   min-height: 44px;
   font-size: 16px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
-  background-position: right 12px center;
-  background-size: 16px;
-  background-repeat: no-repeat;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  touch-action: manipulation;
 }
+.responsive-select-trigger:disabled { opacity: 0.5; cursor: not-allowed; }
+.responsive-select-trigger[aria-invalid='true'] { border-color: #dc2626; }
+select[data-responsive-select][hidden] { display: none !important; }
 .mobile-picker-dialog {
   position: fixed;
   inset: auto 0 0;
@@ -709,6 +713,7 @@
   box-shadow: 0 -8px 32px #0000001a;
   overflow: hidden;
 }
+.mobile-picker-dialog:focus { outline: none; }
 .mobile-picker-dialog[open] {
   display: flex;
   flex-direction: column;
@@ -719,10 +724,21 @@
   flex-shrink: 0;
   align-items: center;
   gap: 12px;
-  padding: 16px;
+  padding: 14px 16px;
   border-bottom: 1px solid #e5e7eb;
 }
-.mobile-picker-heading > .btn { min-height: 44px; min-width: 44px; padding: 10px; }
+.mobile-picker-heading > .btn {
+  min-height: 44px;
+  min-width: 44px;
+  padding: 10px;
+  border: 0;
+  border-radius: 50%;
+  background: #f3f4f6;
+  box-shadow: none;
+}
+.mobile-picker-heading > .btn:focus-visible { outline: 2px solid #1e3a8a; outline-offset: 2px; }
+[role='dialog'][tabindex='-1']:focus,
+dialog[tabindex='-1']:focus { outline: none; }
 .mobile-picker-content { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: env(safe-area-inset-bottom); }
 .mobile-picker-search { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #e5e7eb; }
 .mobile-picker-search .input { font-size: 16px; min-height: 44px; width: 100%; }

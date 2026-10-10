@@ -99,7 +99,7 @@ export default function DateRangeFilter({
 
   useEffect(() => {
     if (!open) return undefined;
-    modeRef.current?.focus();
+    panelRef.current?.focus({ preventScroll: true });
     function dismiss(event) {
       if (
         !panelRef.current?.contains(event.target) &&
@@ -174,7 +174,7 @@ export default function DateRangeFilter({
       ].filter(element => element.tabIndex >= 0);
       const first = controls[0];
       const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -210,6 +210,7 @@ export default function DateRangeFilter({
         createPortal(
           <div
             ref={panelRef}
+            tabIndex={-1}
             id={id}
             role="dialog"
             aria-label={`${label}选择`}

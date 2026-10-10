@@ -1,3 +1,4 @@
+import useModalScrollLock from '../useModalScrollLock';
 import MobilePickerDialog from '../mobilePickerDialog';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, X, Search, SlidersHorizontal, Inbox, Check } from 'lucide-react';
@@ -17,23 +18,23 @@ export function Status({ value }) {
 
 /** 原生模态约束焦点并锁定背景，支持短屏与安全区。 */
 export function InventoryDialog({ title, onClose, children, className = '', returnFocusRef }) {
+  useModalScrollLock();
   const ref = useRef(null);
   const titleId = useId();
   useEffect(() => {
     const previous = document.activeElement;
-    const overflow = document.body.style.overflow;
     const dialog = ref.current;
     dialog.showModal();
-    document.body.style.overflow = 'hidden';
+    dialog.focus({ preventScroll: true });
     return () => {
-      document.body.style.overflow = overflow;
       dialog.close();
-      (returnFocusRef?.current || previous)?.focus();
+      (returnFocusRef?.current || previous)?.focus({ preventScroll: true });
     };
   }, [returnFocusRef]);
   return (
     <dialog
       ref={ref}
+      tabIndex={-1}
       aria-labelledby={titleId}
       className={`inventory-dialog ${className}`}
       onCancel={onClose}

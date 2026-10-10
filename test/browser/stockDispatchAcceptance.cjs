@@ -1,3 +1,4 @@
+const { chooseSelect, selectValue } = require('./responsiveSelectSupport.cjs');
 /* eslint-env node, browser */
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
 const assert = require('node:assert/strict');
@@ -159,8 +160,8 @@ const base = process.env.STOCK_UI_BASE_URL || 'http://127.0.0.1:5329';
     await open();
     await lookup('XY12CD34EF');
     await dialog.getByText('此设备尚未入库，本次将一并创建入库记录。').waitFor();
-    await dialog.getByLabel('机器型号 / 容量 / 颜色').selectOption('p1');
-    await dialog.getByLabel('入库仓库').selectOption('w1');
+    await chooseSelect(dialog.getByLabel('机器型号 / 容量 / 颜色'), 'p1');
+    await chooseSelect(dialog.getByLabel('入库仓库'), 'w1');
     await people();
     assert.equal(await dialog.getByLabel('成本价（元）').inputValue(), '10999.00');
     await dialog.getByLabel('出售日期').fill('2026-10-08');
@@ -169,9 +170,9 @@ const base = process.env.STOCK_UI_BASE_URL || 'http://127.0.0.1:5329';
     await dialog.getByLabel('出售日期').fill('2026-10-09');
     assert.equal(await dialog.getByLabel('入库日期').inputValue(), '2026-10-06');
     await dialog.getByRole('checkbox').check();
-    await dialog.getByLabel('货款状况').selectOption('company_received');
+    await chooseSelect(dialog.getByLabel('货款状况'), 'company_received');
     assert.equal(await dialog.getByRole('button', { name: '确认出库' }).isDisabled(), true);
-    await dialog.getByLabel('货款状况').selectOption('agent_pending');
+    await chooseSelect(dialog.getByLabel('货款状况'), 'agent_pending');
     await page.screenshot({ path: `${output}/出库登记-PC.png`, fullPage: true });
     await dialog.getByRole('button', { name: '确认出库' }).click();
     await dialog.waitFor({ state: 'hidden' });
@@ -186,7 +187,7 @@ const base = process.env.STOCK_UI_BASE_URL || 'http://127.0.0.1:5329';
     await dialog.getByRole('button', { name: '开启实时识别' }).click();
     await dialog.getByText('已匹配库存设备 · 测试仓库').waitFor();
     assert.equal(ocrCount, 1);
-    assert.equal(await dialog.getByLabel('机器型号 / 容量 / 颜色').inputValue(), 'p1');
+    assert.equal(await selectValue(dialog.getByLabel('机器型号 / 容量 / 颜色')), 'p1');
     assert.equal(await dialog.getByLabel('成本价（元）').inputValue(), '10000.00');
     assert.equal(
       await page.evaluate(() => window.cameraTracks.every(track => track.readyState === 'ended')),
@@ -194,7 +195,7 @@ const base = process.env.STOCK_UI_BASE_URL || 'http://127.0.0.1:5329';
     );
     assert.equal(await dialog.evaluate(el => el.scrollWidth <= el.clientWidth), true);
     await people();
-    await dialog.getByLabel('货款状况').selectOption('unpaid');
+    await chooseSelect(dialog.getByLabel('货款状况'), 'unpaid');
     await dialog.getByLabel('成本价（元）').fill('10100');
     await dialog.getByRole('checkbox').check();
     await dialog.locator('.stock-dialog-scroll').evaluate(el => {

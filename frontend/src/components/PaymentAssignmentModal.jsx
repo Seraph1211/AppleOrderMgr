@@ -54,17 +54,17 @@ export default function PaymentAssignmentModal({ tasks, staff, onClose, onAssign
   useEffect(() => {
     const previous = document.activeElement;
     const dialog = dialogRef.current;
-    dialog?.querySelector('select')?.focus();
+    dialog?.focus({ preventScroll: true });
     const trap = event => {
       if (event.key !== 'Tab') return;
       const nodes = [
         ...dialog.querySelectorAll(
           'button:not(:disabled), select:not(:disabled), input:not(:disabled), textarea:not(:disabled)'
         ),
-      ];
+      ].filter(node => node.getClientRects().length);
       const first = nodes[0];
       const last = nodes[nodes.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
+      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
         event.preventDefault();
         last?.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -147,6 +147,7 @@ export default function PaymentAssignmentModal({ tasks, staff, onClose, onAssign
     <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
       <div
         ref={dialogRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-labelledby="assignment-title"

@@ -110,8 +110,10 @@ export default function WecomNotifications() {
     };
   }, [load]);
   useEffect(() => {
-    if (retryRow) dialog.current?.showModal();
-    else dialog.current?.close();
+    if (retryRow) {
+      dialog.current?.showModal();
+      dialog.current?.focus({ preventScroll: true });
+    } else dialog.current?.close();
   }, [retryRow]);
 
   async function save(event) {
@@ -474,6 +476,7 @@ export default function WecomNotifications() {
       </section>
       <dialog
         ref={dialog}
+        tabIndex={-1}
         onCancel={event => {
           if (busy) event.preventDefault();
           else setRetryRow(null);

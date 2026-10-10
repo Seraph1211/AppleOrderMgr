@@ -1,28 +1,22 @@
+import useModalScrollLock from '../useModalScrollLock';
 import ResponsiveSelect from '../responsiveSelect';
 import { useEffect, useId, useRef } from 'react';
 import { X, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { STOCK_LABELS } from './stockHelpers';
 import './stock.css';
 
-let openModalCount = 0;
-let previousBodyOverflow = '';
-
 /** 可访问、可滚动的表单容器，支持小屏与短视口。 */
 export function StockModal({ title, children, onClose, busy = false, wide = false }) {
+  useModalScrollLock();
   const titleId = useId();
   const root = useRef(null);
   const closeRef = useRef(onClose);
   closeRef.current = onClose;
   useEffect(() => {
     const previous = document.activeElement;
-    if (openModalCount === 0) previousBodyOverflow = document.body.style.overflow;
-    openModalCount += 1;
-    document.body.style.overflow = 'hidden';
-    root.current?.focus();
+    root.current?.focus({ preventScroll: true });
     return () => {
-      openModalCount -= 1;
-      if (openModalCount === 0) document.body.style.overflow = previousBodyOverflow;
-      if (previous?.isConnected) previous.focus?.();
+      if (previous?.isConnected) previous.focus?.({ preventScroll: true });
     };
   }, []);
   const keyDown = event => {

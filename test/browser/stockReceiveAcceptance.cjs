@@ -1,3 +1,4 @@
+const { chooseSelect, selectValue } = require('./responsiveSelectSupport.cjs');
 /* eslint-env node, browser */
 const { chromium } = require('playwright-core');
 const assert = require('node:assert/strict');
@@ -185,7 +186,7 @@ async function waitState(page, predicate) {
         await dialog.getByRole('button', { name: '查询设备', exact: true }).click();
       };
       const fillWarehouse = async () => {
-        await dialog.getByLabel('入库仓库').selectOption('w1');
+        await chooseSelect(dialog.getByLabel('入库仓库'), 'w1');
         await dialog.getByLabel('入库日期', { exact: true }).fill('2026-10-09');
       };
       const save = dialog.getByRole('button', { name: '确认入库 1 台', exact: true });
@@ -213,8 +214,8 @@ async function waitState(page, predicate) {
         true
       );
       assert.equal(await dialog.getByLabel('序列号（SN）', { exact: true }).inputValue(), freshSn);
-      assert.equal(await dialog.getByLabel('机器型号 / 容量 / 颜色').inputValue(), 'p1');
-      assert.equal(await dialog.getByLabel('入库仓库').inputValue(), 'w1');
+      assert.equal(await selectValue(dialog.getByLabel('机器型号 / 容量 / 颜色')), 'p1');
+      assert.equal(await selectValue(dialog.getByLabel('入库仓库')), 'w1');
       assert.equal(await dialog.getByLabel('入库日期', { exact: true }).inputValue(), '2026-10-09');
       assert.equal(await dialog.getByLabel('订单号（可选）').inputValue(), 'W1888888888');
       assert.match(state.ocr[0], /SXY12CD34EF/);
@@ -225,10 +226,10 @@ async function waitState(page, predicate) {
       assert.equal(state.writes.length, 0);
       assert.equal(await save.isDisabled(), true);
       await checkbox.check();
-      await dialog.getByLabel('机器型号 / 容量 / 颜色').selectOption('p2');
+      await chooseSelect(dialog.getByLabel('机器型号 / 容量 / 颜色'), 'p2');
       assert.equal(await checkbox.isChecked(), false);
       await dialog.getByText(/当前规格与识别结果不同/).waitFor();
-      await dialog.getByLabel('机器型号 / 容量 / 颜色').selectOption('p1');
+      await chooseSelect(dialog.getByLabel('机器型号 / 容量 / 颜色'), 'p1');
       await checkbox.check();
       await dialog.locator('.stock-dialog-scroll').evaluate(node => {
         node.scrollTop = 0;
@@ -250,7 +251,7 @@ async function waitState(page, predicate) {
       state.failWrite = true;
       await save.click();
       await dialog.getByText('合成提交未确认，请重试', { exact: true }).waitFor();
-      assert.equal(await dialog.getByLabel('入库仓库').inputValue(), 'w1');
+      assert.equal(await selectValue(dialog.getByLabel('入库仓库')), 'w1');
       const failed = state.writes.at(-1);
       state.failWrite = false;
       await save.click();
@@ -278,11 +279,11 @@ async function waitState(page, predicate) {
       await dialog.getByText(/已关联订单：W1234567890/).waitFor();
       assert.equal(await dialog.getByLabel('订单号（可选）').count(), 0);
       await fillWarehouse();
-      await dialog.getByLabel('机器型号 / 容量 / 颜色').selectOption('p2');
+      await chooseSelect(dialog.getByLabel('机器型号 / 容量 / 颜色'), 'p2');
       await dialog.getByText(/设备规格与已有记录不一致/).waitFor();
       assert.equal(await checkbox.isDisabled(), true);
       assert.equal(await save.isDisabled(), true);
-      await dialog.getByLabel('机器型号 / 容量 / 颜色').selectOption('p1');
+      await chooseSelect(dialog.getByLabel('机器型号 / 容量 / 颜色'), 'p1');
       await checkbox.check();
       await save.click();
       await dialog.waitFor({ state: 'hidden' });
@@ -292,7 +293,7 @@ async function waitState(page, predicate) {
       await open();
       await lookup(freshSn);
       await fillWarehouse();
-      await dialog.getByLabel('机器型号 / 容量 / 颜色').selectOption('p1');
+      await chooseSelect(dialog.getByLabel('机器型号 / 容量 / 颜色'), 'p1');
       await checkbox.check();
       await dialog.getByLabel('序列号（SN）', { exact: true }).fill('CD12EF34GH');
       assert.equal(await save.isDisabled(), true);
@@ -362,7 +363,7 @@ async function waitState(page, predicate) {
       await open();
       await lookup(freshSn);
       await fillWarehouse();
-      await dialog.getByLabel('机器型号 / 容量 / 颜色').selectOption('p1');
+      await chooseSelect(dialog.getByLabel('机器型号 / 容量 / 颜色'), 'p1');
       await checkbox.check();
       state.mode = 'quota';
       await dialog

@@ -552,7 +552,7 @@ export default function Iphone18QuotePricing() {
                           onDragStart={event => startDragging(event, item.productKey)}
                           onDragEnd={() => setDraggingKey('')}
                           onKeyDown={event => moveWithKeyboard(event, item.productKey)}
-                          className="inline-flex h-8 w-8 cursor-grab items-center justify-center rounded-md text-gray-400 hover:bg-blue-50 hover:text-primary focus:outline-none focus:ring-2 focus:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-40 active:cursor-grabbing"
+                          className="inline-flex h-8 w-8 cursor-grab items-center justify-center rounded-md text-gray-400 hover:bg-blue-50 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-40 active:cursor-grabbing"
                           disabled={hasActiveFilters || Boolean(busy)}
                         >
                           <GripVertical className="h-5 w-5" />
