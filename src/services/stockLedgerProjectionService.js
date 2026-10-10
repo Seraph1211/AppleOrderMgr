@@ -590,17 +590,40 @@ async function list(ctx, query = {}, statistics = false) {
       base += ` AND (${searchFilter}${noteIds.length ? ' OR u.id IN (:noteIds)' : ''})`;
     }
     if (statistics) {
-      const [items] = await db.sequelize.query(
-        `SELECT COALESCE(p.model_name,'机型待补') AS "modelName",p.storage_gb AS "storageGb",p.color_name AS "colorName",COUNT(DISTINCT u.id)::integer AS count
-        ${base} GROUP BY p.model_name,p.storage_gb,p.color_name ORDER BY p.model_name NULLS LAST,p.storage_gb,p.color_name`,
+      // 一次全量分组读取同时服务图表和表格，避免多次查询期间库存变化造成口径差异。
+      const [groups] = await db.sequelize.query(
+        `SELECT COALESCE(p.model_name,'机型待补') AS "modelName",p.storage_gb AS "storageGb",p.color_name AS "colorName",
+          u.state,wl.id AS "warehouseId",COALESCE(wl.name,'未分配仓库') AS "warehouseName",COUNT(DISTINCT u.id)::integer AS count
+        ${base} GROUP BY p.model_name,p.storage_gb,p.color_name,u.state,wl.id,wl.name
+        ORDER BY p.model_name NULLS LAST,p.storage_gb,p.color_name,u.state,wl.name NULLS LAST,wl.id`,
         { replacements, transaction: ctx.transaction }
       );
+      const specifications = new Map();
       const models = new Map();
-      for (const item of items)
-        models.set(item.modelName, (models.get(item.modelName) || 0) + item.count);
+      const states = new Map();
+      const warehouses = new Map();
+      for (const group of groups) {
+        const { modelName, storageGb, colorName, state, warehouseId, warehouseName, count } = group;
+        const key = JSON.stringify([modelName, storageGb, colorName]);
+        const item = specifications.get(key) || { modelName, storageGb, colorName, count: 0 };
+        item.count += count;
+        specifications.set(key, item);
+        models.set(modelName, (models.get(modelName) || 0) + count);
+        states.set(state, (states.get(state) || 0) + count);
+        const warehouse = warehouses.get(warehouseId) || {
+          warehouseId,
+          warehouseName,
+          count: 0,
+        };
+        warehouse.count += count;
+        warehouses.set(warehouseId, warehouse);
+      }
+      const items = [...specifications.values()];
       return {
         items,
         models: [...models].map(([modelName, count]) => ({ modelName, count })),
+        states: [...states].map(([state, count]) => ({ state, count })),
+        warehouses: [...warehouses.values()],
         total: items.reduce((n, item) => n + item.count, 0),
       };
     }

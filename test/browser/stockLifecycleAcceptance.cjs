@@ -2,7 +2,8 @@
 const { chromium } = require('playwright-core');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const output = '.tmp/stock-lifecycle-ui';
+const output = process.env.OUTPUT_DIR || '.tmp/stock-lifecycle-ui';
+const baseUrl = process.env.STOCK_BASE_URL || 'http://127.0.0.1:5330';
 (async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
@@ -76,6 +77,8 @@ const output = '.tmp/stock-lifecycle-ui';
             total: 41,
             models: [{ modelName: product.modelName, count: 41 }],
             items: [{ ...product, count: 41 }],
+            states: [{ state: 'registered', count: 41 }],
+            warehouses: [{ warehouseId: null, warehouseName: '未分配仓库', count: 41 }],
           };
         } else if (url.pathname.endsWith('/ledger/returns/1')) {
           if (req.method() === 'POST') {
@@ -92,24 +95,26 @@ const output = '.tmp/stock-lifecycle-ui';
               units: [unit, { ...unit, id: 'u2', serialNumber: 'B123456789' }],
             };
         } else if (url.pathname.endsWith('/ledger/u1')) {
-          if (req.method() === 'PATCH') { writes.push(req.postDataJSON()); data = { items: [unit] }; }
-          else data = { ...unit, events: [] };
+          if (req.method() === 'PATCH') {
+            writes.push(req.postDataJSON());
+            data = { items: [unit] };
+          } else data = { ...unit, events: [] };
         } else if (url.pathname.endsWith('/ledger')) {
           const view = url.searchParams.get('view');
           const row =
             view === 'sold'
               ? {
-                  ...unit,
-                  state: 'sold',
-                  allowedActions: [],
-                  lifecycleIssue: null,
-                  lifecycleMessage: null,
-                  receivedOn: '2026-10-01',
-                  soldOn: '2026-10-02',
-                  paymentStatus: 'unpaid',
-                  saleAmount: '10000.00',
-                  settlementAmount: '9900.00',
-                }
+                ...unit,
+                state: 'sold',
+                allowedActions: [],
+                lifecycleIssue: null,
+                lifecycleMessage: null,
+                receivedOn: '2026-10-01',
+                soldOn: '2026-10-02',
+                paymentStatus: 'unpaid',
+                saleAmount: '10000.00',
+                settlementAmount: '9900.00',
+              }
               : view === 'returned'
                 ? { ...unit, state: 'returned' }
                 : unit;
@@ -126,7 +131,7 @@ const output = '.tmp/stock-lifecycle-ui';
           body: JSON.stringify({ success: true, data }),
         });
       });
-      await page.goto('http://127.0.0.1:5330/stock?view=registered');
+      await page.goto(`${baseUrl}/stock?view=registered`);
       await page
         .getByRole('tab', { name: /^未入库/ })
         .waitFor()
@@ -162,12 +167,12 @@ const output = '.tmp/stock-lifecycle-ui';
       await page.getByRole('tab', { name: /^已售/ }).click();
       if (width === 1440) {
         await page
-          .getByRole('columnheader', { name: '入库日期 / 销售日期', exact: true })
+          .getByRole('columnheader', { name: '销售日期 / 入库日期', exact: true })
           .waitFor();
         await page.getByRole('columnheader', { name: '货款状态', exact: true }).waitFor();
       }
       await page.screenshot({ path: `${output}/sold-${width}.png`, fullPage: true });
-      await page.getByRole('button', { name: '数量统计', exact: true }).click();
+      await page.getByRole('button', { name: '统计分析', exact: true }).click();
       await page.getByText('总计 41 台', { exact: true }).waitFor();
       await page.getByRole('button', { name: '统计设备状态', exact: true }).click();
       await page.getByRole('option', { name: '未入库', exact: true }).click();

@@ -335,6 +335,90 @@ if (
     expect(scoped.total).toBe(scoped.items.reduce((n, row) => n + row.count, 0));
     await expect(projection.list(ctx, { states: '["invalid"]' }, true)).rejects.toThrow();
   });
+  test('统计分析四维全量同口径、混合仓库和空结果、读取权限与单次聚合', async () => {
+    const { order, units } = await fixture({
+      states: [...Array(23).fill('registered'), 'in_stock', 'in_stock'],
+    });
+    const otherWarehouse = await db.StockLocation.create({
+      name: `统计第二仓${prefix}`,
+      kind: 'warehouse',
+      city: '测试',
+    });
+    await units[0].update({ productId: null });
+    await units[24].update({ locationId: otherWarehouse.id });
+    await observe(order, [item(1, [units[24].serialNumber])]);
+    const ctx = await cmd.createReadContext(admin);
+    const query = { q: order.orderNumber, page: 2, pageSize: 20 };
+    const sql = jest.spyOn(db.sequelize, 'query');
+    let result;
+    try {
+      result = await projection.list(ctx, query, true);
+      expect(
+        sql.mock.calls.filter(([statement]) => statement.includes('GROUP BY p.model_name'))
+      ).toHaveLength(1);
+    } finally {
+      sql.mockRestore();
+    }
+    expect(result.total).toBe(25);
+    for (const key of ['items', 'models', 'states', 'warehouses']) {
+      expect(result[key].reduce((sum, row) => sum + row.count, 0)).toBe(25);
+    }
+    expect(result.states).toEqual(
+      expect.arrayContaining([
+        { state: 'registered', count: 23 },
+        { state: 'in_stock', count: 1 },
+        { state: 'returned', count: 1 },
+      ])
+    );
+    expect(result.warehouses).toEqual(
+      expect.arrayContaining([
+        { warehouseId: null, warehouseName: '未分配仓库', count: 23 },
+        { warehouseId: warehouse.id, warehouseName: warehouse.name, count: 1 },
+        { warehouseId: otherWarehouse.id, warehouseName: otherWarehouse.name, count: 1 },
+      ])
+    );
+    expect(result.models).toContainEqual({ modelName: '机型待补', count: 1 });
+    const filtered = await projection.list(
+      ctx,
+      {
+        ...query,
+        states: '["registered","returned"]',
+        warehouseIds: JSON.stringify(['unassigned', otherWarehouse.id]),
+      },
+      true
+    );
+    expect(filtered.total).toBe(24);
+    expect(filtered.states.some(row => row.state === 'in_stock')).toBe(false);
+    expect(filtered.warehouses.some(row => row.warehouseId === warehouse.id)).toBe(false);
+    const empty = await projection.list(
+      ctx,
+      {
+        ...query,
+        states: '["registered"]',
+        warehouseIds: JSON.stringify([warehouse.id]),
+      },
+      true
+    );
+    expect(empty).toEqual({ items: [], models: [], states: [], warehouses: [], total: 0 });
+    const limitedCtx = await cmd.createReadContext(limited);
+    const visible = await projection.list(limitedCtx, { q: units[0].serialNumber }, true);
+    expect(visible.total).toBe(1);
+    expect(Object.keys(visible).sort()).toEqual([
+      'items',
+      'models',
+      'states',
+      'total',
+      'warehouses',
+    ]);
+    await expect(projection.list({ ...ctx, permissions: new Set() }, {}, true)).rejects.toThrow();
+    for (const restricted of [
+      { paymentStatus: 'unpaid' },
+      { salespersonName: '测试' },
+      { soldFrom: '2026-10-01' },
+    ]) {
+      await expect(projection.list(limitedCtx, restricted, true)).rejects.toThrow();
+    }
+  });
   test('全历史本地核对每订单一次，30分钟内不重复且完全不创建HTTP任务', async () => {
     const { order, units } = await fixture();
     await order.update({
@@ -442,6 +526,20 @@ if (
       expect(after[key]).toEqual(before[key]);
     expect(after.state).toBe('sold');
     expect(after.lifecycleIssue).toBe('sold_return_conflict');
+    const soldStatistics = await projection.list(
+      ctx,
+      {
+        q: units[0].serialNumber,
+        states: '["sold"]',
+        warehouseIds: JSON.stringify([warehouse.id]),
+      },
+      true
+    );
+    expect(soldStatistics.total).toBe(1);
+    expect(soldStatistics.states).toEqual([{ state: 'sold', count: 1 }]);
+    expect(soldStatistics.warehouses).toEqual([
+      { warehouseId: warehouse.id, warehouseName: warehouse.name, count: 1 },
+    ]);
   });
   test('官网单一取货依据转退货后仍保留历史监控资格，部分退货待确认不漏设备', async () => {
     const { order, units } = await fixture({ picked: false });
@@ -518,7 +616,12 @@ if (
     expect(rows.every(row => row.product.id === product.id && row.productSource === 'order')).toBe(
       true
     );
-    const query = { q: order.orderNumber, productId: product.id, states: '["registered"]', view: 'registered' };
+    const query = {
+      q: order.orderNumber,
+      productId: product.id,
+      states: '["registered"]',
+      view: 'registered',
+    };
     expect((await projection.list(ctx, query)).total).toBe(2);
     expect((await projection.list(ctx, query, true)).total).toBe(2);
     expect(rows[0].allowedActions).toContain('edit');

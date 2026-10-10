@@ -1,3 +1,4 @@
+import StockStatisticsCharts from './stockStatisticsCharts';
 import { useState } from 'react';
 import TableHeaderHint from '../TableHeaderHint';
 import TagMultiSelect from '../TagMultiSelect';
@@ -169,7 +170,7 @@ export function StockStatistics({ catalog, onClose }) {
   const [warehouseIds, setWarehouseIds] = useState([]);
   const resource = useStockData('/ledger/statistics', { states, warehouseIds });
   return (
-    <StockModal title="设备数量统计" onClose={onClose} wide>
+    <StockModal title="统计分析" onClose={onClose} wide>
       <div className="space-y-4">
         <div className="flex flex-wrap gap-3">
           <TagMultiSelect
@@ -212,6 +213,7 @@ export function StockStatistics({ catalog, onClose }) {
         {resource.data && (
           <>
             <p className="font-semibold text-primary">总计 {resource.data.total} 台</p>
+            <StockStatisticsCharts data={resource.data} />
             <StockTable
               items={resource.data.models.map(row => ({ ...row, id: row.modelName }))}
               columns={[

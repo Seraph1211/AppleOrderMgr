@@ -228,3 +228,60 @@
     flex: 1;
   }
 }
+
+/* 销售筛选在桌面为一行，窄屏保留足够的触控和输入空间。 */
+.ledger-filters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: end;
+  gap: 12px;
+}
+.ledger-filters > * {
+  min-width: 0;
+}
+.ledger-filters .input {
+  width: 100%;
+  min-width: 0;
+  min-height: 40px;
+}
+.ledger-filters button.input > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ledger-sale-date .date-range-trigger {
+  width: 100%;
+  justify-content: flex-start;
+  padding-inline: 10px;
+}
+.ledger-sale-date .date-range-trigger-label {
+  display: none;
+}
+.ledger-sale-date .date-range-summary {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ledger-sale-date .date-range-trigger > svg:last-child {
+  margin-left: auto;
+}
+.stock-distribution-list {
+  max-height: 320px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+@media (min-width: 768px) {
+  .ledger-filters {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1280px) {
+  .ledger-sales-filters {
+    grid-template-columns: 1.1fr 1.1fr 0.7fr 0.8fr 0.85fr 1.1fr 1.8fr;
+    gap: 8px;
+  }
+  .ledger-sales-filters .input {
+    padding-inline: 8px;
+  }
+}
