@@ -152,7 +152,7 @@
 @media (min-width: 1280px) {
   .order-filter-fields {
     grid-template-columns:
-      minmax(0, 128px) minmax(0, 224px) minmax(0, 136px)
+      minmax(0, 136px) minmax(0, 128px) minmax(0, 224px)
       minmax(0, 128px) minmax(0, 144px) minmax(0, 128px);
   }
 }

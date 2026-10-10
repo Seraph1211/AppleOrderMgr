@@ -1,0 +1,4 @@
+FROM apple-order-mgr-frontend-builder:20261010-stock-filter-width-amd64
+COPY src/pages/Orders.jsx /app/src/pages/Orders.jsx
+COPY src/index.css /app/src/index.css
+RUN npm run lint && npm run build

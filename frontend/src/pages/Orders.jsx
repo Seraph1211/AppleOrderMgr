@@ -811,21 +811,6 @@ export default function Orders() {
               }}
             />
             <DateRangeFilter
-              label="实际取货日期"
-              hint="按实际取货日筛选，结束日期包含当天"
-              ariaPrefix="实际取货"
-              dateFrom={filters.actualPickupDateFrom}
-              dateTo={filters.actualPickupDateTo}
-              onChange={({ dateFrom, dateTo }) => {
-                setFilters(previous => ({
-                  ...previous,
-                  actualPickupDateFrom: dateFrom,
-                  actualPickupDateTo: dateTo,
-                }));
-                setPagination(previous => ({ ...previous, currentPage: 1 }));
-              }}
-            />
-            <DateRangeFilter
               label="取货日期"
               hint="按邮件中的预约取货日期筛选，结束日期包含当天"
               ariaPrefix="预约取货"
@@ -840,15 +825,44 @@ export default function Orders() {
                 setPagination(previous => ({ ...previous, currentPage: 1 }));
               }}
             />
+            <DateRangeFilter
+              label="实际取货日期"
+              hint="按实际取货日筛选，结束日期包含当天"
+              ariaPrefix="实际取货"
+              dateFrom={filters.actualPickupDateFrom}
+              dateTo={filters.actualPickupDateTo}
+              onChange={({ dateFrom, dateTo }) => {
+                setFilters(previous => ({
+                  ...previous,
+                  actualPickupDateFrom: dateFrom,
+                  actualPickupDateTo: dateTo,
+                }));
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+            />
             <div className="flex items-center">
               <TableHeaderHint label="日期筛选字段说明">
                 <p>下单日期：订单的下单日期，按北京时间筛选。</p>
-                <p>实际取货日期：官网记录的实际已取货日期，尚未获取时为空。</p>
                 <p>取货日期：邮件中的预约取货日期，不代表已完成取货。</p>
+                <p>实际取货日期：官网记录的实际已取货日期，尚未获取时为空。</p>
                 <p>三个条件可组合使用；日期范围包含开始和结束当天。</p>
               </TableHeaderHint>
             </div>
           </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">官网订单状态</label>
+            <TagMultiSelect
+              enableSelectAll
+              options={filterOptions.officialOrderStatuses || []}
+              optionLabels={OFFICIAL_ORDER_STATUS_LABELS}
+              value={filters.officialOrderStatuses}
+              onChange={value => handleFilterChange('officialOrderStatuses', value)}
+              ariaLabel="官网订单状态筛选"
+              placeholder="全部官网状态"
+              itemLabel="官网状态"
+            />
+          </div>
+
           {/* 邮件订单状态 */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">订单状态</label>
@@ -873,20 +887,6 @@ export default function Orders() {
               options={filterOptions.productOptions || []}
               value={filters.productKeys}
               onChange={value => handleFilterChange('productKeys', value)}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">官网订单状态</label>
-            <TagMultiSelect
-              enableSelectAll
-              options={filterOptions.officialOrderStatuses || []}
-              optionLabels={OFFICIAL_ORDER_STATUS_LABELS}
-              value={filters.officialOrderStatuses}
-              onChange={value => handleFilterChange('officialOrderStatuses', value)}
-              ariaLabel="官网订单状态筛选"
-              placeholder="全部官网状态"
-              itemLabel="官网状态"
             />
           </div>
 
