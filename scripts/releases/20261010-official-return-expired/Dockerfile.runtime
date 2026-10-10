@@ -1,0 +1,3 @@
+# 继承当前生产 API，保留邮件退货、负数量兼容与全部既存生产差异。
+FROM apple-order-mgr-runtime:20261010-official-return-quantity-amd64
+COPY --chown=node:node src/services/officialOrderParser.js src/services/officialOrderStatusSync.js /app/src/services/

@@ -1,0 +1,81 @@
+{
+  "mode": "saved encrypted responses; in-memory decryption; no Apple request; no DB writes",
+  "results": [
+    {
+      "run": 2655,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_EXPIRED"
+        },
+        {
+          "quantity": 1,
+          "type": "number",
+          "status": "PICKED_UP"
+        }
+      ],
+      "parsed": false,
+      "code": "INVALID_QUANTITY"
+    },
+    {
+      "run": 2657,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_EXPIRED"
+        },
+        {
+          "quantity": 1,
+          "type": "number",
+          "status": "PICKED_UP"
+        }
+      ],
+      "parsed": false,
+      "code": "INVALID_QUANTITY"
+    },
+    {
+      "run": 2658,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_EXPIRED"
+        },
+        {
+          "quantity": 1,
+          "type": "number",
+          "status": "PICKED_UP"
+        }
+      ],
+      "parsed": false,
+      "code": "INVALID_QUANTITY"
+    },
+    {
+      "run": 2659,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_EXPIRED"
+        },
+        {
+          "quantity": 1,
+          "type": "number",
+          "status": "PICKED_UP"
+        }
+      ],
+      "parsed": false,
+      "code": "INVALID_QUANTITY"
+    }
+  ]
+}

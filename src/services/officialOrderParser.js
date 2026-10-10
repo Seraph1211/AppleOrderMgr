@@ -158,16 +158,19 @@ function parseOfficialOrderDetail(body, expectedOrderNumber) {
       throw fault('INCOMPLETE_CORE_FIELDS');
     }
     // 已验证退货详情模板的受限计数解释；不泛化其他负数或字符串。
-    const returnQuantity = rawStatus === 'RETURN_STARTED' && data.quantity === -1;
+    const returnQuantity =
+      ['RETURN_STARTED', 'RETURN_EXPIRED'].includes(rawStatus) && data.quantity === -1;
+    const quantityInterpretation =
+      rawStatus === 'RETURN_STARTED'
+        ? 'return_started_negative_one'
+        : 'return_expired_negative_one';
     const quantity = returnQuantity ? 1 : quantityValue(data.quantity);
     const serialNumbers = returnQuantity ? [] : explicitSerials(data, quantity);
     return {
       key,
       name,
       quantity,
-      ...(returnQuantity
-        ? { rawQuantity: -1, quantityInterpretation: 'return_started_negative_one' }
-        : {}),
+      ...(returnQuantity ? { rawQuantity: -1, quantityInterpretation } : {}),
       rawStatus,
       ...(serialNumbers.length ? { serialNumbers } : {}),
       pickupDateText:

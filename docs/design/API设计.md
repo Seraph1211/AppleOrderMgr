@@ -34,7 +34,7 @@
 
 ## 手动官网状态更新（2026-10-03，已授权实施）
 
-2026-10-10内部官网结果的商品项增加受限解释字段：仅详情 `RETURN_STARTED` 且数值-1返回 `quantity:1, rawQuantity:-1, quantityInterpretation:'return_started_negative_one'`，完成服务核验三字段/状态一致并保留到观测审计。兼容项不提供自动库存SN依据；外部刷新请求/返回字段不变。其他数量非法规则和收据验证保持，细则见[HTTP技术说明](官网订单HTTP采集技术说明.md#退货详情负数量兼容2026-10-10)。
+2026-10-10内部官网结果的商品项增加受限解释字段：仅详情 `RETURN_STARTED` 或 `RETURN_EXPIRED` 且数值-1返回 `quantity:1, rawQuantity:-1`；解释分别为 `return_started_negative_one`、`return_expired_negative_one`，完成服务严格核验数量/原值/状态/解释的配对并保留到观测审计。过期退货不当作活动退货，混合已取货项不产生整单取货日期。兼容项不提供自动库存SN依据；外部刷新请求/返回字段不变。其他数量非法规则和收据验证保持，细则见[HTTP技术说明](官网订单HTTP采集技术说明.md#退货详情负数量兼容2026-10-10)。
 
 - 2026-10-05 账号聚合改造已本地实现，尚未发布：以下全部接口额外要求当前角色 `admin`，普通用户即使有订单读写权限也返回 403。
 - `POST /api/orders/official-refresh/batches`：需管理员及 `orders.read` + `orders.edit`。请求 `{ requestKey: UUID, selection: "ids", orderIds: [1,2] }` 或 `{ requestKey: UUID, selection: "filtered", filters: { ...订单列表筛选参数 } }`。202 返回 `{ success, data: { batchId, queued, skipped, total, selectedCount, accountCount, queuedAccountCount } }`。2026-10-08 HTTP 范围修正：仅固化显式选中的订单，筛选全选仅固化提交时匹配筛选且可访问的订单；不按 Apple ID 扩大范围。`total` 与 `selectedCount` 为去重后的选中数，`accountCount` 为其中有效账号数；`queuedAccountCount` 为新增任务涉及账号数，仅兼容统计。活动任务按订单 ID 去重，已有活动任务的相同订单计入 `skipped`；同账号其他选中订单可以入队，由领取器互斥串行执行。无新任务返回 `batchId: null`。最多 10000 单，超量整体拒绝 400；后台未就绪 503。相同请求键重放返回原批次及原计数，选择变化返回 409。

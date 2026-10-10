@@ -1,0 +1,45 @@
+{
+  "orderDetail": {
+    "orderHeader": {
+      "d": {
+        "orderNumber": "W1234567890",
+        "orderPlacedDate": "2026年9月20日"
+      }
+    },
+    "orderItems": {
+      "c": ["orderItem-0000101", "orderItem-0000201"],
+      "orderItem-0000101": {
+        "orderItemDetails": {
+          "d": {
+            "quantity": -1,
+            "productName": "合成测试设备 512GB 蓝色",
+            "itemShortName": "合成测试设备",
+            "isReturnInstructionEnabledForDetailView": false,
+            "deliveryDate": "已取货 9月 29"
+          }
+        },
+        "orderItemStatusTracker": {
+          "d": {
+            "currentStatus": "RETURN_EXPIRED"
+          }
+        }
+      },
+      "orderItem-0000201": {
+        "orderItemDetails": {
+          "d": {
+            "quantity": 1,
+            "productName": "合成测试设备 512GB 蓝色",
+            "itemShortName": "合成测试设备",
+            "isReturnInstructionEnabledForDetailView": false,
+            "deliveryDate": "已取货 9月 29"
+          }
+        },
+        "orderItemStatusTracker": {
+          "d": {
+            "currentStatus": "PICKED_UP"
+          }
+        }
+      }
+    }
+  }
+}

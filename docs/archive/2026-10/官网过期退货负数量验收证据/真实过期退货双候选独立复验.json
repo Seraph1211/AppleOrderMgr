@@ -1,0 +1,225 @@
+{
+  "mode": "saved encrypted responses; in-memory decryption; no Apple request; no DB writes",
+  "results": [
+    {
+      "run": 2655,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_EXPIRED"
+        },
+        {
+          "quantity": 1,
+          "type": "number",
+          "status": "PICKED_UP"
+        }
+      ],
+      "candidateResults": [
+        {
+          "name": "api",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_expired_negative_one",
+              "status": "RETURN_EXPIRED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "status": "PICKED_UP",
+              "hasSn": false
+            }
+          ]
+        },
+        {
+          "name": "queue",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_expired_negative_one",
+              "status": "RETURN_EXPIRED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "status": "PICKED_UP",
+              "hasSn": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": 2657,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_EXPIRED"
+        },
+        {
+          "quantity": 1,
+          "type": "number",
+          "status": "PICKED_UP"
+        }
+      ],
+      "candidateResults": [
+        {
+          "name": "api",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_expired_negative_one",
+              "status": "RETURN_EXPIRED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "status": "PICKED_UP",
+              "hasSn": false
+            }
+          ]
+        },
+        {
+          "name": "queue",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_expired_negative_one",
+              "status": "RETURN_EXPIRED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "status": "PICKED_UP",
+              "hasSn": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": 2658,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_EXPIRED"
+        },
+        {
+          "quantity": 1,
+          "type": "number",
+          "status": "PICKED_UP"
+        }
+      ],
+      "candidateResults": [
+        {
+          "name": "api",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_expired_negative_one",
+              "status": "RETURN_EXPIRED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "status": "PICKED_UP",
+              "hasSn": false
+            }
+          ]
+        },
+        {
+          "name": "queue",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_expired_negative_one",
+              "status": "RETURN_EXPIRED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "status": "PICKED_UP",
+              "hasSn": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": 2659,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_EXPIRED"
+        },
+        {
+          "quantity": 1,
+          "type": "number",
+          "status": "PICKED_UP"
+        }
+      ],
+      "candidateResults": [
+        {
+          "name": "api",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_expired_negative_one",
+              "status": "RETURN_EXPIRED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "status": "PICKED_UP",
+              "hasSn": false
+            }
+          ]
+        },
+        {
+          "name": "queue",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_expired_negative_one",
+              "status": "RETURN_EXPIRED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "status": "PICKED_UP",
+              "hasSn": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

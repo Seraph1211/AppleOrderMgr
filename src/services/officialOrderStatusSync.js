@@ -16,10 +16,12 @@ function hasQuantityInterpretation(item) {
 function validQuantityInterpretation(item) {
   return (
     !hasQuantityInterpretation(item) ||
-    (item.rawStatus === 'RETURN_STARTED' &&
-      item.quantity === 1 &&
+    (item.quantity === 1 &&
       item.rawQuantity === -1 &&
-      item.quantityInterpretation === 'return_started_negative_one')
+      ((item.rawStatus === 'RETURN_STARTED' &&
+        item.quantityInterpretation === 'return_started_negative_one') ||
+        (item.rawStatus === 'RETURN_EXPIRED' &&
+          item.quantityInterpretation === 'return_expired_negative_one')))
   );
 }
 
