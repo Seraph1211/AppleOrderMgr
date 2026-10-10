@@ -165,6 +165,9 @@ async function main() {
         );
       }
       await list.getByRole('button', { name: '更新官网状态 W1234567890', exact: true }).click();
+      await page.getByText('已选择 1 单；新增 1 单，0 单已在队列中，跳过重复提交').waitFor();
+      assert.equal(await page.getByRole('dialog').count(), 0);
+      await page.getByRole('button', { name: '官网更新进度', exact: true }).click();
       await page
         .getByRole('region', { name: '官网更新进度' })
         .getByRole('button', { name: '取消待处理任务' })
@@ -180,7 +183,7 @@ async function main() {
       await page.getByRole('button', { name: '更新选中官网状态', exact: true }).click();
       await page.getByText('已选择 2 单；新增 2 单，0 单已在队列中，跳过重复提交').waitFor();
       assert.deepEqual(writes.at(-1).body.orderIds, [101, 102]);
-      await page.getByRole('button', { name: '关闭官网更新进度', exact: true }).click();
+      assert.equal(await page.getByRole('dialog').count(), 0);
       await page.getByRole('button', { name: '全选本页', exact: true }).click();
       assert.equal(
         await list.getByRole('checkbox', { name: '选择订单 W1234567890', exact: true }).isChecked(),
@@ -197,6 +200,8 @@ async function main() {
       await page.getByText('已选择 42 单；新增 42 单，0 单已在队列中，跳过重复提交').waitFor();
       assert.equal(writes.at(-1).body.selection, 'filtered');
       assert.equal(writes.at(-1).body.filters.keyword, '合成');
+      assert.equal(await page.getByRole('dialog').count(), 0);
+      await page.getByRole('button', { name: '官网更新进度', exact: true }).click();
       await page
         .getByRole('region', { name: '官网更新进度' })
         .getByRole('button', { name: '取消待处理任务' })
