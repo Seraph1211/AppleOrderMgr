@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import MailForwardForm from './MailForwardForm';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
@@ -472,7 +473,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                 <label className="text-gray-700">
                                   订单状态
-                                  <select
+                                  <ResponsiveSelect
                                     className="input mt-1 w-full"
                                     value={reviewOrderStatus}
                                     disabled={reviewing}
@@ -488,11 +489,11 @@ export default function OrderMailDrawer({ order, onClose }) {
                                     <option value="return_requested">已发起退货</option>
                                     <option value="expired">已过期</option>
                                     <option value="cancelled">已取消</option>
-                                  </select>
+                                  </ResponsiveSelect>
                                 </label>
                                 <label className="text-gray-700">
                                   付款状态
-                                  <select
+                                  <ResponsiveSelect
                                     className="input mt-1 w-full"
                                     value={reviewPaymentStatus}
                                     disabled={reviewing}
@@ -500,7 +501,7 @@ export default function OrderMailDrawer({ order, onClose }) {
                                   >
                                     <option value="unknown">待确认</option>
                                     <option value="paid">已付款</option>
-                                  </select>
+                                  </ResponsiveSelect>
                                 </label>
                               </div>
                               <label className="block text-gray-700">

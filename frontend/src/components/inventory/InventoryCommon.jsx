@@ -1,3 +1,4 @@
+import MobilePickerDialog from '../mobilePickerDialog';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown, X, Search, SlidersHorizontal, Inbox, Check } from 'lucide-react';
 import { STATUS } from './inventoryPresentation';
@@ -177,9 +178,9 @@ export function MultiSelect({ label, options, values = [], onChange }) {
       </button>
       {open &&
         (mobile ? (
-          <InventoryDialog title={label} returnFocusRef={trigger} onClose={() => setOpen(false)}>
+          <MobilePickerDialog title={label} returnFocusRef={trigger} onClose={() => setOpen(false)}>
             {content}
-          </InventoryDialog>
+          </MobilePickerDialog>
         ) : (
           <div className="inventory-picker-popover">{content}</div>
         ))}

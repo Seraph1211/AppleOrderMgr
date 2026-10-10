@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   BadgeDollarSign,
@@ -365,7 +366,7 @@ export default function Iphone18QuotePricing() {
 
           <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="grid gap-3 md:grid-cols-3">
-              <select
+              <ResponsiveSelect
                 className="input"
                 value={filters.productModel}
                 aria-label="型号筛选"
@@ -379,8 +380,8 @@ export default function Iphone18QuotePricing() {
                     iPhone {value}
                   </option>
                 ))}
-              </select>
-              <select
+              </ResponsiveSelect>
+              <ResponsiveSelect
                 className="input"
                 value={filters.storageGb}
                 aria-label="容量筛选"
@@ -394,8 +395,8 @@ export default function Iphone18QuotePricing() {
                     {storageLabel(value)}
                   </option>
                 ))}
-              </select>
-              <select
+              </ResponsiveSelect>
+              <ResponsiveSelect
                 className="input"
                 value={filters.color}
                 aria-label="颜色筛选"
@@ -409,7 +410,7 @@ export default function Iphone18QuotePricing() {
                     {value}
                   </option>
                 ))}
-              </select>
+              </ResponsiveSelect>
             </div>
 
             <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-4">

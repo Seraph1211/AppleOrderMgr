@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import {
   StockLifecycleInfo,
   StockCheckHint,
@@ -536,7 +537,7 @@ export default function Stock() {
       >
         <label className="min-w-0 text-sm">
           仓库
-          <select
+          <ResponsiveSelect
             aria-label="按仓库筛选"
             className="input mt-1 w-full"
             value={filters.warehouseId}
@@ -548,7 +549,7 @@ export default function Stock() {
                 {warehouse.name}
               </option>
             ))}
-          </select>
+          </ResponsiveSelect>
         </label>
         {[
           ['modelNames', '机型', '全部机型'],
@@ -599,7 +600,7 @@ export default function Stock() {
             {can('stock.collections.read') && can('stock.receipts.read') && (
               <label className="min-w-0 text-sm">
                 货款状况
-                <select
+                <ResponsiveSelect
                   aria-label="按货款状况筛选"
                   className="input mt-1 w-full"
                   value={filters.paymentStatus}
@@ -611,7 +612,7 @@ export default function Stock() {
                       {label}
                     </option>
                   ))}
-                </select>
+                </ResponsiveSelect>
               </label>
             )}
             {can('stock.sales.read') && (

@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { useAuth } from '../contexts/AuthContext';
 import CollectorUpdates from '../components/CollectorUpdates';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -508,7 +509,7 @@ export default function OrderIngestion() {
               value={filters.orderNumber}
               onChange={e => changeFilter('orderNumber', e.target.value)}
             />
-            <select
+            <ResponsiveSelect
               aria-label="处理状态"
               className="input w-40"
               value={filters.status}
@@ -520,8 +521,8 @@ export default function OrderIngestion() {
                   {l}
                 </option>
               ))}
-            </select>
-            <select
+            </ResponsiveSelect>
+            <ResponsiveSelect
               aria-label="入库资格"
               className="input w-40"
               value={filters.eligibility}
@@ -533,8 +534,8 @@ export default function OrderIngestion() {
                   {l}
                 </option>
               ))}
-            </select>
-            <select
+            </ResponsiveSelect>
+            <ResponsiveSelect
               aria-label="设备筛选"
               className="input w-40"
               value={filters.deviceId}
@@ -546,7 +547,7 @@ export default function OrderIngestion() {
                   {d.name}
                 </option>
               ))}
-            </select>
+            </ResponsiveSelect>
             <input
               aria-label="下单起始日期"
               className="input w-40"

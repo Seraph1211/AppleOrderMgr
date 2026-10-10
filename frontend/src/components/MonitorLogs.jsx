@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Copy, Maximize2, Minimize2, RefreshCw, Search, ScrollText, X } from 'lucide-react';
 import client from '../api/client';
@@ -497,7 +498,7 @@ export default function MonitorLogs({ standalone = false }) {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <label className="text-sm text-gray-600">
             服务器
-            <select
+            <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
               aria-label="服务器"
               value={filters.deviceId}
@@ -510,11 +511,11 @@ export default function MonitorLogs({ standalone = false }) {
                   {device.enabled ? '' : '（已停用）'}
                 </option>
               ))}
-            </select>
+            </ResponsiveSelect>
           </label>
           <label className="text-sm text-gray-600">
             软件实例
-            <select
+            <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
               aria-label="软件实例"
               value={filters.localId}
@@ -530,7 +531,7 @@ export default function MonitorLogs({ standalone = false }) {
                     {item.active === false ? '（已移除）' : ''}
                   </option>
                 ))}
-            </select>
+            </ResponsiveSelect>
           </label>
           <label className="text-sm text-gray-600">
             日志日期

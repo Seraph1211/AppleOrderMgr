@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { useEffect, useRef, useState } from "react";
 import {
   Plus,
@@ -474,7 +475,7 @@ export default function ProxyOrders() {
           <div className="grid sm:grid-cols-2 gap-3">
             <label className="text-sm">
               选择方式
-              <select
+              <ResponsiveSelect
                 aria-label="选择方式"
                 className="input w-full mt-1"
                 value={draft.storeMode}
@@ -487,11 +488,11 @@ export default function ProxyOrders() {
               >
                 <option value="selected">指定一家或多家任选</option>
                 <option value="city_any">城市内任意一家</option>
-              </select>
+              </ResponsiveSelect>
             </label>
             <label className="text-sm">
               城市
-              <select
+              <ResponsiveSelect
                 aria-label="城市"
                 className="input w-full mt-1"
                 value={draft.storeCity}
@@ -503,7 +504,7 @@ export default function ProxyOrders() {
                 {cities.map((city) => (
                   <option key={city}>{city}</option>
                 ))}
-              </select>
+              </ResponsiveSelect>
             </label>
           </div>
           {draft.storeMode === "selected" && (
@@ -540,7 +541,7 @@ export default function ProxyOrders() {
         <div className="space-y-3">
           <label className="block text-sm">
             账单参考门店
-            <select
+            <ResponsiveSelect
               aria-label="账单参考门店"
               className="input w-full mt-1"
               value={draft.billing?.referenceStoreCode || ""}
@@ -554,7 +555,7 @@ export default function ProxyOrders() {
                   {storeNames([code])}
                 </option>
               ))}
-            </select>
+            </ResponsiveSelect>
           </label>
           <div className="grid sm:grid-cols-3 gap-3">
             {[
@@ -701,7 +702,7 @@ export default function ProxyOrders() {
         </div>
         {tab === "orders" ? (
           <>
-            <select
+            <ResponsiveSelect
               aria-label="状态筛选"
               className="input w-auto"
               value={status}
@@ -717,7 +718,7 @@ export default function ProxyOrders() {
                   {label}
                 </option>
               ))}
-            </select>
+            </ResponsiveSelect>
             {can(PERMISSIONS.PROXY_COPY) && (
               <button
                 className="btn btn-secondary flex gap-2 items-center"
@@ -731,7 +732,7 @@ export default function ProxyOrders() {
           </>
         ) : (
           <>
-            <select
+            <ResponsiveSelect
               aria-label="账号范围"
               className="input w-auto"
               value={scope}
@@ -743,7 +744,7 @@ export default function ProxyOrders() {
             >
               <option value="pool">专用池</option>
               <option value="candidates">历史代抢候选</option>
-            </select>
+            </ResponsiveSelect>
             <button
               className="btn btn-primary"
               onClick={() => {
@@ -885,7 +886,7 @@ export default function ProxyOrders() {
                         </td>
                         <td className="p-3 align-top">
                           {can(PERMISSIONS.PROXY_STATUS) && ["pending", "rushing"].includes(row.status) ? (
-                            <select
+                            <ResponsiveSelect
                               aria-label={`代抢 #${row.id} 状态`}
                               className={`input min-w-28 font-medium ${row.status === "pending" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-blue-200 bg-blue-50 text-blue-900"}`}
                               value={row.status}
@@ -903,7 +904,7 @@ export default function ProxyOrders() {
                               <option value="pending">待处理</option>
                               <option value="rushing">抢购中</option>
                               <option value="cancelled">已取消</option>
-                            </select>
+                            </ResponsiveSelect>
                           ) : <Badge status={row.status} />}
                           {row.anomaly && (
                             <p className="text-xs text-red-600 whitespace-normal max-w-48 mt-2">
@@ -1353,7 +1354,7 @@ export default function ProxyOrders() {
             </div>
             <label className="block text-sm">
               账号选择
-              <select
+              <ResponsiveSelect
                 className="input w-full mt-1"
                 value={manualAccount}
                 onChange={(event) => setManualAccount(event.target.value)}
@@ -1364,7 +1365,7 @@ export default function ProxyOrders() {
                     {a.appleId}
                   </option>
                 ))}
-              </select>
+              </ResponsiveSelect>
             </label>
             {!manualAccount && (
               <Field
@@ -1472,7 +1473,7 @@ export default function ProxyOrders() {
             <p className="font-mono break-all">{draft.appleId}</p>
             <label className="block text-sm">
               状态
-              <select
+              <ResponsiveSelect
                 className="input w-full"
                 value={draft.status}
                 onChange={(event) => setField("status", event.target.value)}
@@ -1480,7 +1481,7 @@ export default function ProxyOrders() {
                 {["未使用", "使用中", "已下架", "异常"].map((value) => (
                   <option key={value}>{value}</option>
                 ))}
-              </select>
+              </ResponsiveSelect>
             </label>
             <Field
               label="备注"
@@ -1539,7 +1540,7 @@ export default function ProxyOrders() {
             </div>
             <label className="block text-sm text-gray-700">
               目标状态
-              <select
+              <ResponsiveSelect
                 aria-label="批量目标状态"
                 className="input w-full mt-1"
                 value={batchAccountStatus}
@@ -1549,7 +1550,7 @@ export default function ProxyOrders() {
                 {["未使用", "使用中", "已下架", "异常"].map((value) => (
                   <option key={value} value={value}>{value}</option>
                 ))}
-              </select>
+              </ResponsiveSelect>
             </label>
             {batchAccountStatus === "未使用" && (
               <>

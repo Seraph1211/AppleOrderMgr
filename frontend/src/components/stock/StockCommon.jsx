@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../responsiveSelect';
 import { useEffect, useId, useRef } from 'react';
 import { X, RefreshCw, Plus, Trash2 } from 'lucide-react';
 import { STOCK_LABELS } from './stockHelpers';
@@ -243,7 +244,7 @@ export function StockFields({ fields, value, onChange, disabled = false, prefix 
           return (
             <StockField key={field.key} label={label} hint={field.hint}>
               {field.type === 'select' ? (
-                <select
+                <ResponsiveSelect
                   className="input"
                   required={field.required}
                   value={current}
@@ -256,7 +257,7 @@ export function StockFields({ fields, value, onChange, disabled = false, prefix 
                       {option.label}
                     </option>
                   ))}
-                </select>
+                </ResponsiveSelect>
               ) : field.type === 'textarea' ? (
                 <textarea
                   className="input"
@@ -298,7 +299,7 @@ export function StockPager({ page, pageSize, total, onPage, onSize }) {
       </span>
       <div className="flex items-center gap-2">
         {onSize && (
-          <select
+          <ResponsiveSelect
             aria-label="每页条数"
             className="input"
             value={pageSize}
@@ -309,7 +310,7 @@ export function StockPager({ page, pageSize, total, onPage, onSize }) {
                 {size} 条
               </option>
             ))}
-          </select>
+          </ResponsiveSelect>
         )}
         <button
           type="button"

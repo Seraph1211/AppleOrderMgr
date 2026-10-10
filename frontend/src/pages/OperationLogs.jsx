@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import client from '../api/client';
@@ -81,7 +82,7 @@ export default function OperationLogs() {
           </label>
           <label className="text-sm text-gray-700">
             结果
-            <select
+            <ResponsiveSelect
               className="input mt-1"
               value={draft.result}
               onChange={event => field('result', event.target.value)}
@@ -90,7 +91,7 @@ export default function OperationLogs() {
               <option value="success">成功</option>
               <option value="failed">失败／被拒绝</option>
               <option value="cancelled">等待确认登录</option>
-            </select>
+            </ResponsiveSelect>
           </label>
           <label className="text-sm text-gray-700">
             开始时间

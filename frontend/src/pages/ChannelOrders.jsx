@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { getOrderPickupDisplay } from '../utils/orderPickupDisplay';
 import OrderDateFilter from '../components/OrderDateFilter';
 import { formatOrderTime } from '../utils/orderTime';
@@ -139,7 +140,7 @@ export default function ChannelOrders() {
           </div>
           <div className="flex items-center gap-2">
             <Filter className="w-5 h-5 text-gray-500" />
-            <select
+            <ResponsiveSelect
               value={statusFilter}
               onChange={e => handleStatusFilterChange(e.target.value)}
               className="input"
@@ -150,7 +151,7 @@ export default function ChannelOrders() {
                   {label}
                 </option>
               ))}
-            </select>
+            </ResponsiveSelect>
           </div>
           <button onClick={handleSearch} className="btn btn-primary">
             搜索

@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { useState } from 'react';
 import { X } from 'lucide-react';
 import client from '../api/client';
@@ -109,7 +110,7 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
               <label htmlFor="role" className="block text-sm font-medium text-gray-700 mb-2">
                 角色
               </label>
-              <select
+              <ResponsiveSelect
                 id="role"
                 name="role"
                 value={formData.role}
@@ -121,7 +122,7 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
                 <option value="pickupStaff">内部工作人员</option>
                 <option value="readOnly">只读用户</option>
                 <option value="admin">管理员</option>
-              </select>
+              </ResponsiveSelect>
             </div>
 
             {/* 状态 */}
@@ -129,7 +130,7 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
               <label htmlFor="status" className="block text-sm font-medium text-gray-700 mb-2">
                 状态
               </label>
-              <select
+              <ResponsiveSelect
                 id="status"
                 name="status"
                 value={formData.status}
@@ -139,7 +140,7 @@ export default function EditUserModal({ user, onClose, onSuccess }) {
               >
                 <option value="active">正常</option>
                 <option value="locked">锁定</option>
-              </select>
+              </ResponsiveSelect>
             </div>
 
             {/* 按钮 */}

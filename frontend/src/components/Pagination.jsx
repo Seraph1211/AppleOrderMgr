@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
 /**
@@ -72,7 +73,7 @@ export default function Pagination({
 
         <div className="flex items-center gap-2">
           <label className="text-sm text-gray-700 whitespace-nowrap">每页显示</label>
-          <select
+          <ResponsiveSelect
             value={pageSize}
             onChange={e => onPageSizeChange(Number(e.target.value))}
             className="input py-1 pr-8"
@@ -82,7 +83,7 @@ export default function Pagination({
                 {size} 条
               </option>
             ))}
-          </select>
+          </ResponsiveSelect>
         </div>
       </div>
 

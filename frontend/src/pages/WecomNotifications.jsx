@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bell, RefreshCw, Save, Send, Loader2 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -342,7 +343,7 @@ export default function WecomNotifications() {
             <h2 className="font-semibold text-gray-900">投递记录</h2>
             <label className="text-sm text-gray-600">
               状态筛选{' '}
-              <select
+              <ResponsiveSelect
                 className="input"
                 value={status}
                 onChange={e => {
@@ -356,7 +357,7 @@ export default function WecomNotifications() {
                     {label}
                   </option>
                 ))}
-              </select>
+              </ResponsiveSelect>
             </label>
           </div>
           {summary && (

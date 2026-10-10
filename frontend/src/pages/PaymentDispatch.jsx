@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import OrderAmount from '../components/OrderAmount';
 import PaymentAssignmentModal from '../components/PaymentAssignmentModal';
 import PaymentCodeButton from '../components/PaymentCodeButton';
@@ -486,7 +487,7 @@ export default function PaymentDispatch() {
                 }))
               }
             />
-            <select
+            <ResponsiveSelect
               className="input w-32"
               disabled={!can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE)}
               value={overview?.settings.mode || 'manual'}
@@ -499,7 +500,7 @@ export default function PaymentDispatch() {
             >
               <option value="manual">手动</option>
               <option value="auto">自动</option>
-            </select>
+            </ResponsiveSelect>
             {can(PERMISSIONS.PAYMENT_DISPATCH_CONFIGURE) && (
               <button
                 className={`btn btn-primary ${BUTTON_LAYOUT_CLASS}`}
@@ -608,7 +609,7 @@ export default function PaymentDispatch() {
                 setFilterDrafts(previous => ({ ...previous, recipientTags }))
               }
             />
-            <select
+            <ResponsiveSelect
               className="input"
               value={filterDrafts.assignee}
               onChange={event =>
@@ -625,7 +626,7 @@ export default function PaymentDispatch() {
                   {person.nickname || person.username}（{person.username}）
                 </option>
               ))}
-            </select>
+            </ResponsiveSelect>
 
             <EmailStatusFilter
               value={filterDrafts.emailOrderStatuses}

@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { useState } from 'react'
 import { X, MapPin } from 'lucide-react'
 import { regions } from '../constants/regions'
@@ -104,7 +105,7 @@ export default function GenerateAddressModal({ isOpen, onClose, onConfirm, selec
             <label className="block text-sm font-medium text-gray-700 mb-2">
               选择省份 <span className="text-red-500">*</span>
             </label>
-            <select
+            <ResponsiveSelect
               value={selectedProvince}
               onChange={handleProvinceChange}
               className={`input w-full ${error && !selectedProvince ? 'border-red-500' : ''}`}
@@ -115,7 +116,7 @@ export default function GenerateAddressModal({ isOpen, onClose, onConfirm, selec
                   {region.province}
                 </option>
               ))}
-            </select>
+            </ResponsiveSelect>
           </div>
 
           {/* 城市选择 */}
@@ -123,7 +124,7 @@ export default function GenerateAddressModal({ isOpen, onClose, onConfirm, selec
             <label className="block text-sm font-medium text-gray-700 mb-2">
               选择城市 <span className="text-red-500">*</span>
             </label>
-            <select
+            <ResponsiveSelect
               value={selectedCity}
               onChange={handleCityChange}
               disabled={!selectedProvince}
@@ -135,7 +136,7 @@ export default function GenerateAddressModal({ isOpen, onClose, onConfirm, selec
                   {city.name}
                 </option>
               ))}
-            </select>
+            </ResponsiveSelect>
           </div>
 
           {/* 区县选择 */}
@@ -143,7 +144,7 @@ export default function GenerateAddressModal({ isOpen, onClose, onConfirm, selec
             <label className="block text-sm font-medium text-gray-700 mb-2">
               选择区县 <span className="text-red-500">*</span>
             </label>
-            <select
+            <ResponsiveSelect
               value={selectedDistrict}
               onChange={handleDistrictChange}
               disabled={!selectedCity}
@@ -155,7 +156,7 @@ export default function GenerateAddressModal({ isOpen, onClose, onConfirm, selec
                   {district}
                 </option>
               ))}
-            </select>
+            </ResponsiveSelect>
           </div>
 
           {/* 错误提示 */}

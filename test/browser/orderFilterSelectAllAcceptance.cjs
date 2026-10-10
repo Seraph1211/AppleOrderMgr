@@ -1,6 +1,7 @@
 /* eslint-env node, browser */
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const baseUrl = process.env.FILTER_BASE_URL || 'http://127.0.0.1:5173';
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
 
 /** 合成浏览器验证六组全选、搜索后全选和官网状态组合，不触发生产业务。 */
@@ -18,7 +19,7 @@ async function main() {
         try {
           const url = new URL(route.request().url());
           if (!url.pathname.startsWith('/api/')) {
-            if (url.origin === 'http://127.0.0.1:5173') await route.continue();
+            if (url.origin === baseUrl) await route.continue();
             else await route.abort();
             return;
           }
@@ -67,7 +68,7 @@ async function main() {
       const page = await context.newPage();
       page.setDefaultTimeout(10000);
       page.on('pageerror', error => errors.push(error.message));
-      await page.goto('http://127.0.0.1:5173/orders');
+      await page.goto(`${baseUrl}/orders`);
       if (width < 768) await page.getByRole('button', { name: /筛选条件.*展开/ }).click();
       const waitQuery = async predicate => {
         for (let attempt = 0; attempt < 150; attempt += 1) {
@@ -78,7 +79,7 @@ async function main() {
       };
       assert.equal(await page.getByPlaceholder('输入姓名').count(), 0);
       for (const [label, key] of [
-        ['订单状态筛选', 'displayOrderStatuses'],
+        ['邮件订单状态筛选', 'displayOrderStatuses'],
         ['商品信息筛选', 'productKeys'],
         ['官网订单状态筛选', 'officialOrderStatuses'],
         ['取机人 TAG 筛选', 'recipientTags'],
@@ -120,7 +121,7 @@ async function main() {
         await waitQuery(query => !query[key]);
         await search.press('Escape');
       }
-      await page.getByRole('button', { name: '订单状态筛选', exact: true }).click();
+      await page.getByRole('button', { name: '邮件订单状态筛选', exact: true }).click();
       await page.getByRole('option', { name: '处理中', exact: true }).click();
       await page.locator('input[placeholder^="搜索 "]').press('Escape');
       await page.getByRole('button', { name: '官网订单状态筛选', exact: true }).click();

@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { useState } from 'react';
 import { X, Upload, Download } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -185,7 +186,7 @@ export default function BatchImportModal({ type, onClose, onImport }) {
                             .map(conflict => (
                               <label key={conflict.id} className="block">
                                 {conflict.field}
-                                <select
+                                <ResponsiveSelect
                                   className="input w-full mt-1"
                                   aria-label={`${record.label} ${conflict.field} 来源`}
                                   value={decisions[conflict.id] || ''}
@@ -198,7 +199,7 @@ export default function BatchImportModal({ type, onClose, onImport }) {
                                       {String(option.value)} — {option.source}
                                     </option>
                                   ))}
-                                </select>
+                                </ResponsiveSelect>
                               </label>
                             ))}
                         </td>

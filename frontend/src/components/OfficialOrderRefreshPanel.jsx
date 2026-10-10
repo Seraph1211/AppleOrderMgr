@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { useEffect, useState } from 'react';
 import {
   getOfficialOrderBatch,
@@ -161,7 +162,7 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
       <div className="flex flex-wrap items-center justify-between gap-2">
         <span className="text-sm text-gray-500">关闭弹窗后任务继续执行</span>
         {recent.length > 1 && (
-          <select
+          <ResponsiveSelect
             className="input w-auto max-w-full"
             aria-label="官网更新批次"
             value={batchId || ''}
@@ -174,7 +175,7 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
                 {item.pausedAt ? ' · 已暂停' : ''}
               </option>
             ))}
-          </select>
+          </ResponsiveSelect>
         )}
       </div>
       {error && (

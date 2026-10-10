@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -189,7 +190,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
             )}
             <label className="block text-sm text-gray-700">
               使用状态
-              <select
+              <ResponsiveSelect
                 aria-label="使用状态"
                 className="input w-full mt-1"
                 value={form.status}
@@ -200,7 +201,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
                     {option.label}
                   </option>
                 ))}
-              </select>
+              </ResponsiveSelect>
             </label>
           </div>
           <label className="block text-sm text-gray-700">

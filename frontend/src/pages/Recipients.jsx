@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import ProfileAssociationModal from '../components/ProfileAssociationModal';
 import ProfileDetailsModal from '../components/ProfileDetailsModal';
 import { useState, useEffect } from 'react';
@@ -690,7 +691,7 @@ export default function Recipients() {
               itemLabel="渠道"
             />
           </div>
-          <select
+          <ResponsiveSelect
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
             className="input flex-shrink-0"
@@ -702,7 +703,7 @@ export default function Recipients() {
                 {option.label}
               </option>
             ))}
-          </select>
+          </ResponsiveSelect>
           {can(PERMISSIONS.RECIPIENTS_GENERATE_CONTACT) && (
             <button
               onClick={handleBatchGenerate}

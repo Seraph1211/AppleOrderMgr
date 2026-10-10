@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -304,7 +305,7 @@ export default function Pickups() {
             ariaLabel="订单 TAG 筛选"
           />
         </div>
-        <select
+        <ResponsiveSelect
           className="input lg:w-40"
           value={filters.status}
           onChange={event => {
@@ -316,7 +317,7 @@ export default function Pickups() {
           <option value="pending">待取货</option>
           <option value="picked_up">已取货</option>
           <option value="exception">异常</option>
-        </select>
+        </ResponsiveSelect>
       </div>
       {(error || tagError) && (
         <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
@@ -494,7 +495,7 @@ export default function Pickups() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="text-sm">
                   取货状态
-                  <select
+                  <ResponsiveSelect
                     className="input mt-1 w-full"
                     value={editing.status}
                     onChange={event =>
@@ -507,7 +508,7 @@ export default function Pickups() {
                     <option value="pending">待取货</option>
                     <option value="picked_up">已取货</option>
                     <option value="exception">异常</option>
-                  </select>
+                  </ResponsiveSelect>
                 </label>
                 <label className="min-w-0 text-sm">
                   实际取货时间

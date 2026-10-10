@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { STATUS, timeText, failureText } from '../components/inventory/inventoryPresentation';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Navigate, useLocation, useNavigate } from 'react-router-dom';
@@ -457,7 +458,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
             </label>
             <label className="text-sm text-gray-600">
               统计口径
-              <select
+              <ResponsiveSelect
                 className="input w-full mt-1"
                 value={metric}
                 onChange={e => {
@@ -476,11 +477,11 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                     {label}
                   </option>
                 ))}
-              </select>
+              </ResponsiveSelect>
             </label>
             <label className="text-sm text-gray-600">
               采集来源
-              <select
+              <ResponsiveSelect
                 className="input w-full mt-1"
                 value={source}
                 onChange={e => {
@@ -491,7 +492,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                 <option value="all">全部</option>
                 <option value="auto">自动</option>
                 <option value="manual">手动</option>
-              </select>
+              </ResponsiveSelect>
             </label>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -518,7 +519,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
             {tab === 'analysis' && (
               <label className="flex items-center gap-2 text-sm">
                 热力图间隔
-                <select
+                <ResponsiveSelect
                   aria-label="热力图间隔"
                   className="input"
                   value={bucketMinutes}
@@ -529,7 +530,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                       {v} 分钟
                     </option>
                   ))}
-                </select>
+                </ResponsiveSelect>
               </label>
             )}
             {hour !== '' && (

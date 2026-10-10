@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../responsiveSelect';
 import { useEffect, useRef, useState } from 'react';
 import { stockGet } from '../../api/stockApi';
 import StockBoxQueue from './StockBoxQueue';
@@ -162,7 +163,7 @@ export default function LedgerEntryForm({
   const productSelect = (selected, onChange, label, required = false) => (
     <label className="block text-sm">
       {label}
-      <select
+      <ResponsiveSelect
         className="input mt-1 min-w-[180px]"
         aria-label={label}
         value={selected}
@@ -177,7 +178,7 @@ export default function LedgerEntryForm({
             {product.colorName}
           </option>
         ))}
-      </select>
+      </ResponsiveSelect>
     </label>
   );
   const submit = async event => {
@@ -472,7 +473,7 @@ export default function LedgerEntryForm({
                           <p className="text-xs text-gray-500">固定目录价；拿货日期未知</p>
                           {can('stock.cost.edit') && (
                             <>
-                              <select
+                              <ResponsiveSelect
                                 aria-label={`${unit.serialNumber} 成本来源`}
                                 className="input"
                                 value={unit.costMode}
@@ -484,7 +485,7 @@ export default function LedgerEntryForm({
                                 <option value="fixed">固定目录</option>
                                 <option value="pending">待补</option>
                                 <option value="manual">人工核定</option>
-                              </select>
+                              </ResponsiveSelect>
                               {unit.costMode !== 'fixed' && (
                                 <input
                                   className="input"

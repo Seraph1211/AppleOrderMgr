@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import ProfileDetailsModal from '../components/ProfileDetailsModal';
 import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect } from 'react';
@@ -301,7 +302,7 @@ export default function AppleIds() {
               className="input pl-10 w-full"
             />
           </div>
-          <select
+          <ResponsiveSelect
             aria-label="状态筛选"
             value={filterStatus}
             onChange={e => {
@@ -317,8 +318,8 @@ export default function AppleIds() {
                 {option.label}
               </option>
             ))}
-          </select>
-          <select
+          </ResponsiveSelect>
+          <ResponsiveSelect
             aria-label="当前绑定筛选"
             className="input"
             style={{ width: 'auto' }}
@@ -331,7 +332,7 @@ export default function AppleIds() {
             <option value="">全部绑定状态</option>
             <option value="true">已绑定</option>
             <option value="false">未绑定</option>
-          </select>
+          </ResponsiveSelect>
           <button
             onClick={() => setShowColumnConfig(true)}
             className="btn btn-secondary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"

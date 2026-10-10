@@ -20,12 +20,14 @@ test('官网状态文案与非法值兜底一致，不影响人工四态', () =>
   assert.equal(getOrderStatusBadge('payment_expired').class, 'badge-error');
 });
 
-test('邮件阶段保留既有颜色，新增部分取消与两种终态', () => {
+test('邮件阶段保留既有颜色，支持取消、退货与两种终态', () => {
   const classes = Object.values(EMAIL_ORDER_STATUS_BADGES).map(item => item.class);
   assert.equal(new Set(classes).size, 7);
-  assert.equal(Object.keys(EMAIL_ORDER_STATUS_BADGES).length, 8);
+  assert.equal(Object.keys(EMAIL_ORDER_STATUS_BADGES).length, 10);
   assert.equal(getEmailOrderStatusBadge('ready_for_pickup').class, 'badge-success');
   assert.equal(getEmailOrderStatusBadge('picked_up').text, '已取货');
+  assert.equal(getEmailOrderStatusBadge('partially_return_requested').text, '部分发起退货');
+  assert.equal(getEmailOrderStatusBadge('return_requested').text, '已发起退货');
   assert.equal(getEmailOrderStatusBadge('bad').text, '待确认');
 });
 

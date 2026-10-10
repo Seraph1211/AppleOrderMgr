@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import OrderAmount from '../components/OrderAmount';
 import PaymentCodeButton from '../components/PaymentCodeButton';
 import AlipayPaymentLinkButton from '../components/AlipayPaymentLinkButton';
@@ -635,7 +636,7 @@ export default function PaymentTasks() {
             </h3>
             <label className="block text-sm">
               目标处理状态
-              <select
+              <ResponsiveSelect
                 aria-label="批量目标处理状态"
                 className="input mt-1"
                 value={batchStatus}
@@ -646,7 +647,7 @@ export default function PaymentTasks() {
                     {label}
                   </option>
                 ))}
-              </select>
+              </ResponsiveSelect>
             </label>
             <label className="block text-sm">
               统一处理备注（选填）
@@ -850,7 +851,7 @@ export default function PaymentTasks() {
                         {formatPaymentCountdown(task, now, '时间未知').text}
                       </td>
                       <td data-label="人工处理状态" className="px-4 py-4">
-                        <select
+                        <ResponsiveSelect
                           aria-label={`订单 ${task.orderId} 人工处理状态`}
                           className={`input min-w-0 font-medium ${STATUS_STYLES[drafts[task.id]?.status || task.processingStatus]}`}
                           disabled={
@@ -866,7 +867,7 @@ export default function PaymentTasks() {
                               {label}
                             </option>
                           ))}
-                        </select>
+                        </ResponsiveSelect>
                       </td>
                       <td data-label="处理备注" data-secondary="true" className="px-4 py-4">
                         {renderNotes(task)}

@@ -1,3 +1,4 @@
+import MobilePickerDialog from './mobilePickerDialog';
 import { Check, ChevronDown, Minus, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
@@ -22,9 +23,11 @@ export default function TagMultiSelect({
   compareOptions,
   enableSelectAll = false,
 }) {
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
   const [open, setOpen] = useState(false);
   const [keyword, setKeyword] = useState('');
   const containerRef = useRef(null);
+  const triggerRef = useRef(null);
 
   const closeDropdown = () => {
     setOpen(false);
@@ -32,6 +35,18 @@ export default function TagMultiSelect({
   };
 
   useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const change = () => {
+      setMobile(query.matches);
+      setOpen(false);
+      setKeyword('');
+    };
+    query.addEventListener('change', change);
+    return () => query.removeEventListener('change', change);
+  }, []);
+
+  useEffect(() => {
+    if (mobile) return undefined;
     const closeOnOutsideClick = event => {
       if (!containerRef.current?.contains(event.target)) {
         setOpen(false);
@@ -40,7 +55,7 @@ export default function TagMultiSelect({
     };
     document.addEventListener('mousedown', closeOnOutsideClick);
     return () => document.removeEventListener('mousedown', closeOnOutsideClick);
-  }, []);
+  }, [mobile]);
 
   const normalizedOptions = useMemo(
     () =>
@@ -81,6 +96,126 @@ export default function TagMultiSelect({
     );
   };
 
+  const panel = (
+    <div
+      className={
+        mobile
+          ? 'mobile-picker-multi-panel'
+          : 'absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg'
+      }
+    >
+      <div className="border-b border-gray-100 p-2">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
+          <input
+            className="input w-full py-2 pl-9 pr-3"
+            autoFocus={!mobile}
+            placeholder={`搜索 ${itemLabel}`}
+            value={keyword}
+            onChange={event => setKeyword(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Escape') {
+                event.stopPropagation();
+                closeDropdown();
+                containerRef.current?.querySelector('button')?.focus();
+              }
+              if (event.key === 'Enter') event.preventDefault();
+            }}
+          />
+        </div>
+      </div>
+      {enableSelectAll && (
+        <div className="border-b border-gray-100 p-1">
+          <button
+            type="button"
+            className="btn tag-select-all"
+            disabled={!visibleOptions.length}
+            onClick={toggleAllVisible}
+            aria-pressed={allVisibleSelected ? true : someVisibleSelected ? 'mixed' : false}
+            aria-label={`${ariaLabel}${allVisibleSelected ? '取消全选' : '全选'}${keyword.trim() ? '搜索结果' : ''}`}
+          >
+            <span
+              aria-hidden="true"
+              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                someVisibleSelected
+                  ? 'border-primary bg-primary text-white'
+                  : 'border-gray-300 bg-white'
+              }`}
+            >
+              {allVisibleSelected ? (
+                <Check className="h-3 w-3" />
+              ) : someVisibleSelected ? (
+                <Minus className="h-3 w-3" />
+              ) : null}
+            </span>
+            <span className="flex-1">
+              {allVisibleSelected ? '取消全选' : '全选'}
+              {keyword.trim() ? '搜索结果' : ''}
+            </span>
+            <span className="text-xs font-normal text-gray-500">{visibleOptions.length} 项</span>
+          </button>
+        </div>
+      )}
+      <div
+        className={mobile ? 'mobile-picker-options p-1' : 'max-h-64 overflow-y-auto p-1'}
+        role="listbox"
+        aria-multiselectable="true"
+      >
+        {visibleOptions.length === 0 ? (
+          <p className="px-3 py-6 text-center text-sm text-gray-400">
+            暂无匹配{itemLabel === 'TAG' ? ' TAG' : itemLabel}
+          </p>
+        ) : (
+          visibleOptions.map(option => {
+            const selected = value.includes(option);
+            return (
+              <button
+                type="button"
+                role="option"
+                aria-selected={selected}
+                key={option}
+                className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
+                  enableSelectAll
+                    ? `tag-select-option bg-white text-gray-700 hover:bg-gray-50`
+                    : selected
+                      ? 'bg-primary-light text-primary'
+                      : 'text-gray-700 hover:bg-gray-50'
+                }`}
+                onClick={() => toggleOption(option)}
+              >
+                <span
+                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                    selected ? 'border-primary bg-primary text-white' : 'border-gray-300 bg-white'
+                  }`}
+                >
+                  {selected && <Check className="h-3 w-3" />}
+                </span>
+                <span
+                  className={mobile ? 'min-w-0 flex-1 whitespace-normal break-words' : 'truncate'}
+                  title={getOptionLabel(option, optionLabels)}
+                >
+                  {getOptionLabel(option, optionLabels)}
+                </span>
+              </button>
+            );
+          })
+        )}
+      </div>
+      {value.length > 0 && (
+        <div className="flex justify-end border-t border-gray-100 p-2">
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700"
+            onClick={() => onChange([])}
+          >
+            <X className="h-4 w-4" />
+            清空选择
+          </button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div
       className="relative"
@@ -94,10 +229,11 @@ export default function TagMultiSelect({
       }}
     >
       <button
+        ref={triggerRef}
         type="button"
         className="input flex w-full items-center justify-between gap-2 text-left"
         aria-label={ariaLabel}
-        aria-haspopup="listbox"
+        aria-haspopup={mobile ? 'dialog' : 'listbox'}
         aria-expanded={open}
         onClick={() => {
           if (open) closeDropdown();
@@ -118,114 +254,23 @@ export default function TagMultiSelect({
         />
       </button>
 
-      {open && (
-        <div className="absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg">
-          <div className="border-b border-gray-100 p-2">
-            <div className="relative">
-              <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-              <input
-                className="input w-full py-2 pl-9 pr-3"
-                autoFocus
-                placeholder={`搜索 ${itemLabel}`}
-                value={keyword}
-                onChange={event => setKeyword(event.target.value)}
-                onKeyDown={event => {
-                  if (event.key === 'Escape') {
-                    event.stopPropagation();
-                    closeDropdown();
-                    containerRef.current?.querySelector('button')?.focus();
-                  }
-                  if (event.key === 'Enter') event.preventDefault();
-                }}
-              />
-            </div>
-          </div>
-          {enableSelectAll && (
-            <div className="border-b border-gray-100 p-1">
-              <button
-                type="button"
-                className="btn tag-select-all"
-                disabled={!visibleOptions.length}
-                onClick={toggleAllVisible}
-                aria-pressed={allVisibleSelected ? true : someVisibleSelected ? 'mixed' : false}
-                aria-label={`${ariaLabel}${allVisibleSelected ? '取消全选' : '全选'}${keyword.trim() ? '搜索结果' : ''}`}
-              >
-                <span
-                  aria-hidden="true"
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                    someVisibleSelected
-                      ? 'border-primary bg-primary text-white'
-                      : 'border-gray-300 bg-white'
-                  }`}
-                >
-                  {allVisibleSelected ? (
-                    <Check className="h-3 w-3" />
-                  ) : someVisibleSelected ? (
-                    <Minus className="h-3 w-3" />
-                  ) : null}
-                </span>
-                <span className="flex-1">
-                  {allVisibleSelected ? '取消全选' : '全选'}
-                  {keyword.trim() ? '搜索结果' : ''}
-                </span>
-                <span className="text-xs font-normal text-gray-500">{visibleOptions.length} 项</span>
+      {open &&
+        (mobile ? (
+          <MobilePickerDialog
+            title={ariaLabel}
+            onClose={closeDropdown}
+            returnFocusRef={triggerRef}
+            footer={
+              <button type="button" className="btn btn-primary w-full" onClick={closeDropdown}>
+                完成{value.length ? `（已选 ${value.length} 项）` : ''}
               </button>
-            </div>
-          )}
-          <div className="max-h-64 overflow-y-auto p-1" role="listbox" aria-multiselectable="true">
-            {visibleOptions.length === 0 ? (
-              <p className="px-3 py-6 text-center text-sm text-gray-400">
-                暂无匹配{itemLabel === 'TAG' ? ' TAG' : itemLabel}
-              </p>
-            ) : (
-              visibleOptions.map(option => {
-                const selected = value.includes(option);
-                return (
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={selected}
-                    key={option}
-                    className={`flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${
-                      enableSelectAll
-                        ? `tag-select-option bg-white text-gray-700 hover:bg-gray-50`
-                        : selected
-                          ? 'bg-primary-light text-primary'
-                          : 'text-gray-700 hover:bg-gray-50'
-                    }`}
-                    onClick={() => toggleOption(option)}
-                  >
-                    <span
-                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
-                        selected
-                          ? 'border-primary bg-primary text-white'
-                          : 'border-gray-300 bg-white'
-                      }`}
-                    >
-                      {selected && <Check className="h-3 w-3" />}
-                    </span>
-                    <span className="truncate" title={getOptionLabel(option, optionLabels)}>
-                      {getOptionLabel(option, optionLabels)}
-                    </span>
-                  </button>
-                );
-              })
-            )}
-          </div>
-          {value.length > 0 && (
-            <div className="flex justify-end border-t border-gray-100 p-2">
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700"
-                onClick={() => onChange([])}
-              >
-                <X className="h-4 w-4" />
-                清空选择
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+            }
+          >
+            {panel}
+          </MobilePickerDialog>
+        ) : (
+          panel
+        ))}
     </div>
   );
 }

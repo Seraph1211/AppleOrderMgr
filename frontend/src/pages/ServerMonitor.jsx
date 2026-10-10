@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
@@ -569,7 +570,7 @@ export default function ServerMonitor() {
               </div>
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">汇总粒度</label>
-                <select
+                <ResponsiveSelect
                   aria-label="汇总粒度"
                   className="input"
                   value={granularity}
@@ -577,7 +578,7 @@ export default function ServerMonitor() {
                 >
                   <option value="day">每日</option>
                   <option value="hour">每小时</option>
-                </select>
+                </ResponsiveSelect>
               </div>
             </div>
           </section>
@@ -774,7 +775,7 @@ export default function ServerMonitor() {
                   }}
                 >
                   <Field label="处理操作">
-                    <select
+                    <ResponsiveSelect
                       className="input"
                       value={action}
                       onChange={e => setAction(e.target.value)}
@@ -784,10 +785,10 @@ export default function ServerMonitor() {
                           {value}
                         </option>
                       ))}
-                    </select>
+                    </ResponsiveSelect>
                   </Field>
                   <Field label="静默时长">
-                    <select
+                    <ResponsiveSelect
                       className="input"
                       disabled={!['start', 'ignore', 'extend'].includes(action)}
                       value={minutes}
@@ -798,7 +799,7 @@ export default function ServerMonitor() {
                           {n} 分钟
                         </option>
                       ))}
-                    </select>
+                    </ResponsiveSelect>
                   </Field>
                   <Field label="备注">
                     <input
@@ -958,27 +959,27 @@ export default function ServerMonitor() {
                     />
                   </Field>
                   <Field label="状态">
-                    <select
+                    <ResponsiveSelect
                       className="input"
                       value={String(editor.config.enabled)}
                       onChange={e => edit('enabled', e.target.value === 'true')}
                     >
                       <option value="true">启用</option>
                       <option value="false">停用</option>
-                    </select>
+                    </ResponsiveSelect>
                   </Field>
                   <Field label="匹配方式">
-                    <select
+                    <ResponsiveSelect
                       className="input"
                       value={editor.config.mode}
                       onChange={e => edit('mode', e.target.value)}
                     >
                       <option value="any">包含任一关键词</option>
                       <option value="all">同时包含全部关键词</option>
-                    </select>
+                    </ResponsiveSelect>
                   </Field>
                   <Field label="级别">
-                    <select
+                    <ResponsiveSelect
                       className="input"
                       value={editor.config.severity}
                       onChange={e => edit('severity', e.target.value)}
@@ -988,7 +989,7 @@ export default function ServerMonitor() {
                           {v}
                         </option>
                       ))}
-                    </select>
+                    </ResponsiveSelect>
                   </Field>
                 </div>
                 <div className="flex flex-wrap gap-4">
@@ -1038,7 +1039,7 @@ export default function ServerMonitor() {
                     />
                   </Field>
                   <Field label="适用服务器（未选为全部）">
-                    <select
+                    <ResponsiveSelect
                       aria-label="规则适用服务器"
                       className="input h-24 min-w-48"
                       multiple
@@ -1050,10 +1051,10 @@ export default function ServerMonitor() {
                           {d.name}
                         </option>
                       ))}
-                    </select>
+                    </ResponsiveSelect>
                   </Field>
                   <Field label="适用实例（未选为全部）">
-                    <select
+                    <ResponsiveSelect
                       aria-label="规则适用实例"
                       className="input h-24 min-w-48"
                       multiple
@@ -1068,7 +1069,7 @@ export default function ServerMonitor() {
                             {!i.active ? '（已移除，原范围保留）' : ''}
                           </option>
                         ))}
-                    </select>
+                    </ResponsiveSelect>
                   </Field>
                 </div>
                 <button

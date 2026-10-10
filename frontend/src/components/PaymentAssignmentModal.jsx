@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { useEffect, useRef, useState } from 'react';
 import { X, RefreshCw } from 'lucide-react';
 import { assignPaymentTasks, previewPaymentAssignment } from '../api/paymentDispatchApi';
@@ -178,7 +179,7 @@ export default function PaymentAssignmentModal({ tasks, staff, onClose, onAssign
             <>
               <label className="block text-sm font-medium text-gray-700">
                 负责人
-                <select
+                <ResponsiveSelect
                   aria-label="负责人"
                   className="input w-full mt-2"
                   value={userId}
@@ -201,7 +202,7 @@ export default function PaymentAssignmentModal({ tasks, staff, onClose, onAssign
                       {unavailable(person) ? ` · ${unavailable(person)}` : ''}
                     </option>
                   ))}
-                </select>
+                </ResponsiveSelect>
               </label>
               <p className="text-xs text-gray-500">
                 手动分配不受自动接单开关和 TAG 专属规则限制。待处理、处理中、异常任务占用容量。

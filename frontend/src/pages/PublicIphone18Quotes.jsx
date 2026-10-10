@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Apple, Check, Copy, RefreshCw, Search } from 'lucide-react';
 import { getPublicAppleQuotes } from '../api/quotePricingApi';
@@ -138,7 +139,7 @@ export default function PublicIphone18Quotes() {
                 筛选商品
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
-                <select
+                <ResponsiveSelect
                   className="input"
                   aria-label="型号"
                   value={filters.productModel}
@@ -152,8 +153,8 @@ export default function PublicIphone18Quotes() {
                       iPhone {value}
                     </option>
                   ))}
-                </select>
-                <select
+                </ResponsiveSelect>
+                <ResponsiveSelect
                   className="input"
                   aria-label="容量"
                   value={filters.storageGb}
@@ -167,8 +168,8 @@ export default function PublicIphone18Quotes() {
                       {storageLabel(value)}
                     </option>
                   ))}
-                </select>
-                <select
+                </ResponsiveSelect>
+                <ResponsiveSelect
                   className="input"
                   aria-label="颜色"
                   value={filters.color}
@@ -182,7 +183,7 @@ export default function PublicIphone18Quotes() {
                       {value}
                     </option>
                   ))}
-                </select>
+                </ResponsiveSelect>
               </div>
             </section>
 

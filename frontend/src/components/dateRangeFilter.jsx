@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { addDays, addMonths, format, parseISO, startOfMonth, startOfWeek } from 'date-fns';
@@ -217,7 +218,7 @@ export default function DateRangeFilter({
             onKeyDown={panelKeyDown}
           >
             <div className="date-range-toolbar">
-              <select
+              <ResponsiveSelect
                 ref={modeRef}
                 aria-label={`${ariaPrefix}日期条件`}
                 className="input"
@@ -232,7 +233,7 @@ export default function DateRangeFilter({
                     {title}
                   </option>
                 ))}
-              </select>
+              </ResponsiveSelect>
               <button
                 type="button"
                 className="btn text-red-600 hover:bg-red-50"

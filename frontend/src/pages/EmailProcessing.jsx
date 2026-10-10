@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { formatOrderTime } from '../utils/orderTime';
 import { ORDER_STATUS_LABELS } from '../constants/orderStatus';
 import { useCallback, useEffect, useState } from 'react';
@@ -385,7 +386,7 @@ export default function EmailProcessing() {
       )}
 
       <div className="flex flex-col gap-3 rounded-xl border border-gray-200 bg-white p-4 md:flex-row">
-        <select
+        <ResponsiveSelect
           className="input"
           value={filters.status}
           onChange={event => {
@@ -401,7 +402,7 @@ export default function EmailProcessing() {
               {label}
             </option>
           ))}
-        </select>
+        </ResponsiveSelect>
         <input
           className="input"
           placeholder="错误码"
@@ -658,7 +659,7 @@ export default function EmailProcessing() {
                     <span className="mb-2 block text-sm font-medium text-gray-700">
                       系统内部状态
                     </span>
-                    <select
+                    <ResponsiveSelect
                       disabled={!canProcess}
                       className="input w-full"
                       value={draft.orderStatus}
@@ -667,7 +668,7 @@ export default function EmailProcessing() {
                       {ORDER_STATUS_OPTIONS.map(status => (
                         <option key={status}>{status}</option>
                       ))}
-                    </select>
+                    </ResponsiveSelect>
                   </label>
                 </div>
               </section>

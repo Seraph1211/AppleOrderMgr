@@ -1,3 +1,4 @@
+import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import {
@@ -526,7 +527,7 @@ export default function IdentityVerifications() {
             )}
             <label className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
               <span className="whitespace-nowrap">筛选结果</span>
-              <select
+              <ResponsiveSelect
                 className="input w-auto min-w-[140px]"
                 aria-label="筛选结果"
                 value={resultFilter}
@@ -547,7 +548,7 @@ export default function IdentityVerifications() {
                     {states[status][0]}
                   </option>
                 ))}
-              </select>
+              </ResponsiveSelect>
               <span className="whitespace-nowrap">{rows.length} 行</span>
             </label>
           </div>

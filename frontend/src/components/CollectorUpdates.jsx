@@ -1,3 +1,4 @@
+import ResponsiveSelect from './responsiveSelect';
 import { useCallback, useEffect, useState } from 'react';
 import { readIngestion, writeIngestion } from '../api/orderIngestionApi';
 const STATUS = {
@@ -63,7 +64,7 @@ export default function CollectorUpdates({ devices }) {
         首次需在 Windows 安装引导版本及更新组件；建议先选择一台验证，再升级其余设备。
       </p>
       <div className="flex flex-wrap gap-2">
-        <select
+        <ResponsiveSelect
           aria-label="目标采集器版本"
           className="input"
           value={version}
@@ -75,7 +76,7 @@ export default function CollectorUpdates({ devices }) {
               {r.version}
             </option>
           ))}
-        </select>
+        </ResponsiveSelect>
         <button
           className="btn btn-primary"
           disabled={busy || !version || selected.length === 0}
