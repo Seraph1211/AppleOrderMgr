@@ -1,0 +1,3 @@
+FROM apple-order-mgr-frontend-builder:20261010-stock-analysis-amd64
+COPY src/components/stock/stock.css src/components/stock/stockLifecycle.jsx /app/src/components/stock/
+RUN npm run lint && npm run build

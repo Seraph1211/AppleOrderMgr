@@ -285,3 +285,19 @@
     padding-inline: 8px;
   }
 }
+
+/* 统计弹框的搜索下拉独立定宽，不影响台账的七项紧凑筛选。 */
+.stock-statistics-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 12px;
+}
+.stock-statistics-filters > * {
+  width: 100%;
+  min-width: 0;
+}
+@media (min-width: 640px) {
+  .stock-statistics-filters {
+    grid-template-columns: repeat(2, minmax(0, 280px));
+  }
+}

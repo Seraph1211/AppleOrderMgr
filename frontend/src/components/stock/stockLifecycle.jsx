@@ -172,7 +172,7 @@ export function StockStatistics({ catalog, onClose }) {
   return (
     <StockModal title="统计分析" onClose={onClose} wide>
       <div className="space-y-4">
-        <div className="flex flex-wrap gap-3">
+        <div className="stock-statistics-filters">
           <TagMultiSelect
             ariaLabel="统计设备状态"
             placeholder="全部状态"

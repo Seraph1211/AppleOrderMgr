@@ -126,6 +126,55 @@ async function waitQuery(page, state, predicate) {
   }
   assert.fail('筛选请求未达到预期');
 }
+async function verifyStatisticsSearch(page, state, width) {
+  const status = page.getByRole('button', { name: '统计设备状态', exact: true });
+  const warehouse = page.getByRole('button', { name: '统计仓库', exact: true });
+  const boxes = await Promise.all([status.boundingBox(), warehouse.boundingBox()]);
+  const availableWidth = await page.locator('.stock-dialog-scroll').evaluate(node => {
+    const style = getComputedStyle(node);
+    return node.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  });
+  for (const box of boxes) {
+    assert.ok(box.width >= (width >= 640 ? 279 : availableWidth - 1), JSON.stringify(boxes));
+    assert.ok(box.x >= 0 && box.x + box.width <= width);
+  }
+  if (width >= 640) assert.ok(Math.abs(boxes[0].y - boxes[1].y) < 2);
+  else assert.ok(boxes[1].y > boxes[0].y + boxes[0].height);
+  for (const [trigger, itemLabel, keyword, optionName, queryKey, selected] of [
+    [status, '状态', '未入库', '未入库', 'states', 'registered'],
+    [warehouse, '仓库', '长沙', '长沙 明威', 'warehouseIds', 'w1'],
+  ]) {
+    await trigger.click();
+    const search = page.getByPlaceholder(`搜索 ${itemLabel}`, { exact: true });
+    const searchBox = await search.boundingBox();
+    assert.ok(searchBox.width >= (width >= 640 ? 260 : availableWidth - 20), JSON.stringify(searchBox));
+    assert.ok(searchBox.x >= 0 && searchBox.x + searchBox.width <= width);
+    await search.fill(keyword);
+    const option = page.getByRole('listbox').getByRole('option', { name: optionName, exact: true });
+    await option.waitFor();
+    assert.equal(await page.getByRole('listbox').getByRole('option').count(), 1);
+    assert.ok(await option.locator('span[title]').evaluate(n => n.scrollWidth <= n.clientWidth));
+    await option.click();
+    await waitQuery(page, state, current => current.statistics.at(-1)[queryKey] === JSON.stringify([selected]));
+    assert.equal(await option.getAttribute('aria-selected'), 'true');
+    await page.getByRole('button', { name: new RegExp('^统计.*取消全选搜索结果$') }).click();
+    assert.equal(await option.getAttribute('aria-selected'), 'false');
+    await page.getByRole('button', { name: new RegExp('^统计.*全选搜索结果$') }).click();
+    assert.equal(await option.getAttribute('aria-selected'), 'true');
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+    await page.screenshot({ path: `${output}/statistics-search-${itemLabel}-${width}.png` });
+    await search.fill('没有此项');
+    assert.equal(await page.getByRole('button', { name: new RegExp('^统计.*全选搜索结果$') }).isDisabled(), true);
+    await search.fill('');
+    await page.getByRole('button', { name: new RegExp('^统计.*全选$') }).click();
+    await waitQuery(page, state, current => JSON.parse(current.statistics.at(-1)[queryKey]).length === (itemLabel === '状态' ? 4 : 2));
+    await page.getByRole('button', { name: '清空选择', exact: true }).click();
+    await trigger.click();
+    await waitQuery(page, state, current => current.statistics.at(-1)[queryKey] === '[]');
+  }
+  assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
+  await page.getByText('总计 29 台', { exact: true }).waitFor();
+}
 (async () => {
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -248,6 +297,7 @@ async function waitQuery(page, state, predicate) {
         /未分配仓库/
       );
       assert.equal(state.statistics.length, 1);
+      await verifyStatisticsSearch(page, state, width);
       await page.screenshot({ path: `${output}/statistics-${width}.png` });
       if (width === 375) {
         const modal = page.getByRole('dialog', { name: '统计分析', exact: true });
@@ -306,6 +356,13 @@ async function waitQuery(page, state, predicate) {
       assert.deepEqual(state.writes, []);
       await page.close();
     }
+    const narrow = await setup(browser, 320);
+    await narrow.page.getByRole('button', { name: '统计分析', exact: true }).click();
+    await narrow.page.getByText('总计 29 台', { exact: true }).waitFor();
+    await verifyStatisticsSearch(narrow.page, narrow.state, 320);
+    assert.deepEqual(narrow.state.errors, []);
+    assert.deepEqual(narrow.state.writes, []);
+    await narrow.page.close();
     const { page, state } = await setup(browser, 1280, true);
     assert.equal(await page.getByRole('button', { name: '基础设置', exact: true }).count(), 0);
     assert.equal(await page.getByLabel('按货款状况筛选').count(), 0);
