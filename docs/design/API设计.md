@@ -1135,3 +1135,7 @@ DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit �
 - POST `/api/stock/ledger/:id/resolve-return`：stock.correct＋stock.receive＋orders.read，requestKey、expectedVersion、resolution（keep_sold/restore_previous）、reason。keep_sold 保留销售资金，restore_previous 只允许官网已经撤销退货，恢复先前状态及仓库。权限、幂等重放与版本保护沿用台账命令。
 
 官网更新批次查询新增 `purpose=manual/stock_returns`；管理员近期列表包含系统库存退货批次。系统批次 `requestedBy=null`，仅保留历史记录，不再由库存调度创建；现有公开提交接口不接受 purpose 或系统身份。
+
+### 2026-10-10 未入库资料与提示优化
+
+库存台账补充：registered 设备允许 PATCH 基础资料，权限及版本沿用原编辑命令，禁止附 warehouseId、receivedOn、sale 伪造入库。productId 为空时按关联订单全部商品的唯一可识别料号提供规格；返回 productSource=order/manual/null。列表、详情、规格筛选、统计均采用同一关联规则，不产生读取写入。混合规格、未知料号不自动映射；入库时仍验证明确规格。

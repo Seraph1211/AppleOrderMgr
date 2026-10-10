@@ -505,6 +505,70 @@ if (
       await db.StockSetting.update({ enabled: true }, { where: { id: 1 } });
     }
   });
+  test('未入库从订单唯一料号同步规格，列表筛选统计一致，混合规格不猜测', async () => {
+    const { order, units } = await fixture();
+    await product.update({ skuCode: `SKU${prefix}` });
+    await db.StockUnit.update({ productId: null }, { where: { id: units.map(u => u.id) } });
+    await order.update({ products: [{ name: '测试规格', model: product.skuCode, quantity: 2 }] });
+    const ctx = await cmd.createReadContext(admin);
+    const rows = await projection.byIds(
+      ctx,
+      units.map(u => u.id)
+    );
+    expect(rows.every(row => row.product.id === product.id && row.productSource === 'order')).toBe(
+      true
+    );
+    const query = { q: order.orderNumber, productId: product.id, states: '["registered"]', view: 'registered' };
+    expect((await projection.list(ctx, query)).total).toBe(2);
+    expect((await projection.list(ctx, query, true)).total).toBe(2);
+    expect(rows[0].allowedActions).toContain('edit');
+    await order.update({
+      products: [
+        { name: '已知规格', model: product.skuCode, quantity: 1 },
+        { name: '未知规格', model: 'UNKNOWN', quantity: 1 },
+      ],
+    });
+    expect((await projection.byIds(ctx, [units[0].id]))[0].product).toBeNull();
+    await units[0].reload();
+    await units[0].update({ productId: product.id });
+    expect((await projection.byIds(ctx, [units[0].id]))[0].productSource).toBe('manual');
+  });
+  test('未入库编辑资料保留状态、日期与仓库；不能绕过入库，版本仍校验', async () => {
+    const { order, units } = await fixture();
+    const unit = units[0];
+    const edit = async input => {
+      try {
+        return await cmd.runCommand(
+          admin,
+          { requestKey: crypto.randomUUID(), ...input },
+          'test.pending.edit',
+          [],
+          ctx => ledger.editUnit(ctx, unit.id, input)
+        );
+      } catch (error) {
+        error.component = 'pending-edit-test';
+        throw error;
+      }
+    };
+    await edit({ expectedVersion: unit.version, notes: '未入库资料补充' });
+    await unit.reload();
+    expect(unit.state).toBe('registered');
+    expect(unit.firstReceivedAt).toBeNull();
+    expect(unit.locationId).toBeNull();
+    for (const payload of [
+      { warehouseId: warehouse.id },
+      { receivedOn: '2026-10-10' },
+      { sale: {} },
+    ])
+      await expect(edit({ expectedVersion: unit.version, ...payload })).rejects.toThrow('登记入库');
+    await expect(edit({ expectedVersion: unit.version - 1, notes: '过期' })).rejects.toThrow();
+    await observe(order, [item()]);
+    await unit.reload();
+    await edit({ expectedVersion: unit.version, notes: '保留退货核实提示' });
+    await unit.reload();
+    expect(unit.lifecycleIssue).toBe('return_pending');
+    await expect(edit({ expectedVersion: unit.version, serialNumber: serial() })).rejects.toThrow();
+  });
   test('有退货与观测事实后迁移down拒绝删除', async () => {
     const migration = require('../migrations/20261010000001-stock-lifecycle');
     await expect(migration.down(db.sequelize.getQueryInterface())).rejects.toThrow('回退被拒绝');

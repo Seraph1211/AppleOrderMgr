@@ -926,12 +926,17 @@ async function editUnit(ctx, id, input) {
     requirePermissions(ctx, 'stock.receive');
     const unit = await getRow('StockUnit', id, ctx);
     assertVersion(unit, input.expectedVersion);
-    if (!['in_stock', 'sold'].includes(unit.state))
+    if (!['registered', 'in_stock', 'sold'].includes(unit.state))
       throw ApiError.conflict('该设备不适用简化台账编辑');
     if (input.serialNumber !== undefined || input.orderNumber !== undefined)
       assertLifecycleWritable(unit);
     const facts = unit.state === 'sold' ? await saleFacts(ctx, unit, false) : null;
-    if (!facts) await stockAvailable(ctx, unit);
+    if (!facts && unit.state !== 'registered') await stockAvailable(ctx, unit);
+    if (
+      unit.state === 'registered' &&
+      ['warehouseId', 'receivedOn', 'sale'].some(key => input[key] !== undefined)
+    )
+      throw ApiError.badRequest('未入库资料编辑不能设置仓库、入库日期或销售，请使用登记入库');
     if (
       facts &&
       !facts.compatible &&

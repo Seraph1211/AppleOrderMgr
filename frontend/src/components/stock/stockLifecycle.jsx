@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import TableHeaderHint from '../TableHeaderHint';
 import TagMultiSelect from '../TagMultiSelect';
 import { StockBadge, StockFeedback, StockModal, StockTable } from './StockCommon';
 import { useStockCommand, useStockData } from './stockHooks';
@@ -12,22 +13,25 @@ export const LIFECYCLE_STATES = [
   { value: 'returned', label: '已退货' },
 ];
 
+/** 核对信息隐藏在订单号旁图标内，支持悬停、聚焦和触屏点击。 */
+export function StockCheckHint({ unit }) {
+  if (!unit.check) return null;
+  return (
+    <TableHeaderHint label={`系统状态核对：${unit.orderNumber || unit.serialNumber}`} triggerClassName="ml-1 align-middle">
+      <p>系统订单状态核对</p>
+      <p>来源状态时间：{dateText(unit.check.observedAt)}</p>
+      <p>最近核对：{dateText(unit.check.checkedAt)}</p>
+      <p>每 30 分钟读取系统内“官网订单状态”，不主动查询官网。</p>
+      {unit.check.errorCode && <p>系统状态暂不可用，保留原库存状态。</p>}
+    </TableHeaderHint>
+  );
+}
+
 /** 单台异常为附加提示；不会形成第二个库存状态。 */
 export function StockLifecycleInfo({ unit, disabled, onReview, onReceive }) {
   return (
     <div className="mt-1 space-y-1 text-xs [overflow-wrap:anywhere]">
       {unit.lifecycleMessage && <p className="text-amber-700">{unit.lifecycleMessage}</p>}
-      {unit.check && (
-        <details className="text-gray-500">
-          <summary className="cursor-pointer">
-            系统状态核对{unit.check.errorCode ? '待补充' : ''}
-          </summary>
-          <p>来源状态时间：{dateText(unit.check.observedAt)}</p>
-          <p>最近核对：{dateText(unit.check.checkedAt)}</p>
-          <p>读取系统内“官网订单状态”，不主动查询官网。</p>
-          {unit.check.errorCode && <p>系统状态暂不可用，保留原库存状态。</p>}
-        </details>
-      )}
       {(ledgerCan(unit, 'confirm_return') || ledgerCan(unit, 'resolve_return')) && (
         <button className="btn btn-secondary" disabled={disabled} onClick={() => onReview(unit)}>
           核实退货

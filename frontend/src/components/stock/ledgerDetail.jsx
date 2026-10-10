@@ -132,6 +132,7 @@ function LedgerEditForm({ unit, catalog, onClose, onSaved }) {
               key: 'receivedOn',
               label: '入库日期',
               type: 'date',
+              hidden: unit.state === 'registered',
               required: unit.state === 'in_stock',
             },
             {

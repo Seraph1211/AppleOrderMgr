@@ -17,6 +17,7 @@ export default function LedgerEntryForm({
   historical = false,
   initialSerials = [],
   initialOrderNumber = '',
+  initialProductId = '',
   onClose,
   onSaved,
   onExisting,
@@ -30,7 +31,7 @@ export default function LedgerEntryForm({
     [...new Set(initialSerials)].map(serialNumber => ({
       id: crypto.randomUUID(),
       serialNumber,
-      productId: '',
+      productId: initialProductId,
       costMode: 'fixed',
       officialCostAmount: '',
       reviewReasons: [],
@@ -41,7 +42,7 @@ export default function LedgerEntryForm({
     }))
   );
   const [value, setValue] = useState({
-    productId: '',
+    productId: initialProductId,
     modelName: '',
     storageGb: '',
     colorName: '',

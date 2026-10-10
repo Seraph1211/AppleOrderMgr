@@ -31,7 +31,7 @@ const output = '.tmp/stock-lifecycle-ui';
         orderId: 1,
         orderNumber: 'W1234567890',
         orderLinked: true,
-        allowedActions: ['confirm_return'],
+        allowedActions: ['confirm_return', 'edit'],
         lifecycleIssue: 'return_pending',
         lifecycleMessage: '官网已发起退货，具体退货设备待确认',
         check: {
@@ -91,6 +91,9 @@ const output = '.tmp/stock-lifecycle-ui';
               serialNumbers: [],
               units: [unit, { ...unit, id: 'u2', serialNumber: 'B123456789' }],
             };
+        } else if (url.pathname.endsWith('/ledger/u1')) {
+          if (req.method() === 'PATCH') { writes.push(req.postDataJSON()); data = { items: [unit] }; }
+          else data = { ...unit, events: [] };
         } else if (url.pathname.endsWith('/ledger')) {
           const view = url.searchParams.get('view');
           const row =
@@ -134,9 +137,21 @@ const output = '.tmp/stock-lifecycle-ui';
           throw error;
         });
       assert.equal(await page.getByRole('tab').count(), 5);
-      await page.getByText('系统状态核对待补充', { exact: true }).click();
+      assert.equal(await page.getByText(/来源状态时间/).count(), 0);
+      const hint = page.getByRole('button', { name: '系统状态核对：W1234567890', exact: true });
+      if (width === 1440) await hint.hover();
+      else await hint.click();
       await page.getByText(/来源状态时间/).waitFor();
-      await page.getByText('读取系统内“官网订单状态”，不主动查询官网。').waitFor();
+      await page.getByText('每 30 分钟读取系统内“官网订单状态”，不主动查询官网。').waitFor();
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'A123456789', exact: true }).click();
+      await page.getByRole('button', { name: '编辑资料', exact: true }).click();
+      const edit = page.getByRole('dialog').last();
+      assert.equal(await edit.getByLabel('入库日期', { exact: true }).count(), 0);
+      await edit.getByLabel('备注', { exact: true }).fill('未入库编辑验证');
+      await edit.getByRole('button', { name: /保存/ }).click();
+      assert.equal(writes.pop().notes, '未入库编辑验证');
+      await page.getByRole('button', { name: '关闭设备详情', exact: true }).click();
       await page.getByRole('button', { name: '核实退货', exact: true }).click();
       await page.getByRole('checkbox', { name: '退货 A123456789' }).check();
       await page.getByLabel('核实依据（必填）').fill('核对订单照片和退货凭证，仅退第一台');

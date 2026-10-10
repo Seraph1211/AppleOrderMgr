@@ -1,5 +1,6 @@
 import {
   StockLifecycleInfo,
+  StockCheckHint,
   StockReturnForm,
   StockStatistics,
 } from '../components/stock/stockLifecycle';
@@ -224,8 +225,9 @@ export default function Stock() {
             {productLabel(unit.product)}
             <div className="font-mono">ID：{unit.deviceNumber}</div>
           </div>
-          <div className="hidden text-xs text-gray-500 sm:block">
+          <div className="text-xs text-gray-500">
             订单：{unit.orderNumber || (unit.orderLinked ? '已关联' : '待补')}
+            <StockCheckHint unit={unit} />
           </div>
           <StockLifecycleInfo
             unit={unit}
@@ -233,7 +235,7 @@ export default function Stock() {
             onReview={value => setAction({ type: 'return', unit: value })}
             onReceive={value => {
               setInitialSerials([value.serialNumber]);
-              setAction({ type: 'receive' });
+              setAction({ type: 'receive', unit: value });
             }}
           />
           {tab === 'all' && (
@@ -486,9 +488,6 @@ export default function Stock() {
         </button>
       </div>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-gray-500">
-          每 30 分钟核对系统内的官网订单状态；退货 SN 不明确时须人工核实。
-        </p>
         <button className="btn btn-secondary" onClick={() => setShowStatistics(true)}>
           数量统计
         </button>
@@ -729,6 +728,7 @@ export default function Stock() {
         <LedgerEntryForm
           catalog={catalog}
           initialSerials={initialSerials}
+          initialProductId={action.unit?.product?.id || ''}
           onExisting={id => setDetail({ id })}
           onClose={() => setAction(null)}
           onSaved={done}

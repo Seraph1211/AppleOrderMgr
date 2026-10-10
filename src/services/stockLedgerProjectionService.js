@@ -1,3 +1,4 @@
+const { PRODUCT_JOIN_SQL, effectiveProducts } = require('./stockOrderProduct');
 const {
   LEDGER_SQL,
   ELIGIBLE_SQL,
@@ -156,7 +157,7 @@ function project(ctx, unit, g, allAllocations) {
     unit.state !== 'returned'
   )
     return null;
-  const product = get(g.StockProduct, unit.productId);
+  const product = g.effectiveProducts?.get(unit.id) || get(g.StockProduct, unit.productId);
   const binding = g.PickupDevice.find(
     row => row.stockUnitId === unit.id || row.serialNumber === unit.serialNumber
   );
@@ -168,6 +169,7 @@ function project(ctx, unit, g, allAllocations) {
     serialNumber: unit.serialNumber,
     state: unit.state,
     product: null,
+    productSource: product?.source || (product ? 'manual' : null),
     warehouse: locationDto(
       unit.state === 'returned' ? get(g.StockLocation, unit.returnLocationId) : location
     ),
@@ -202,7 +204,7 @@ function project(ctx, unit, g, allAllocations) {
       priceId: unit.priceId,
     });
   if (has(ctx, 'stock.expenses.read')) result.extraExpenseAmount = unit.extraExpenseAmount;
-  if (['in_stock', 'sold'].includes(unit.state) && has(ctx, 'stock.receive'))
+  if (['registered', 'in_stock', 'sold'].includes(unit.state) && has(ctx, 'stock.receive'))
     result.allowedActions.push('edit');
   if (order && has(ctx, 'stock.correct', 'stock.receive', 'orders.read')) {
     if (unit.lifecycleIssue === 'return_pending') result.allowedActions.push('confirm_return');
@@ -295,6 +297,7 @@ async function byIds(ctx, ids) {
       { replacements: { ids }, transaction: ctx.transaction }
     );
     graph.eligibleIds = new Set(eligible.map(row => row.id));
+    graph.effectiveProducts = await effectiveProducts(ctx, ids);
     const [checks] = await db.sequelize.query(
       `SELECT d.stock_unit_id AS id,
       c.checked_at AS "checkedAt",c.observed_at AS "observedAt",
@@ -373,7 +376,7 @@ async function dispatchPreview(ctx, query) {
         throw ApiError.conflict('该设备不是可售现货或已有销售占用，请处理原记录');
       return { needsReceive: false, unit: row };
     }
-    let product = null;
+    let product = (await effectiveProducts(ctx, [unit.id])).get(unit.id) || null;
     if (unit.productId) {
       product = await db.StockProduct.findByPk(unit.productId, {
         attributes: ['id', 'modelName', 'storageGb', 'colorName'],
@@ -469,7 +472,7 @@ async function list(ctx, query = {}, statistics = false) {
     }
     if (query.productId) {
       replacements.productId = uuid(query.productId);
-      filters.push('u.product_id=:productId');
+      filters.push('p.id=:productId');
     }
     if (query.warehouseId) {
       replacements.warehouseId = uuid(query.warehouseId);
@@ -556,7 +559,7 @@ async function list(ctx, query = {}, statistics = false) {
         "s.id IS NOT NULL AND CASE WHEN cash.received>0 AND cash.received<COALESCE(su.settlement_amount,su.sale_amount) THEN 'legacy_partial' WHEN cash.received>0 AND cash.received>=COALESCE(su.settlement_amount,su.sale_amount) THEN 'company_received' WHEN c.id IS NOT NULL OR s.pending_collector_id IS NOT NULL THEN 'agent_pending' WHEN (NOT s.simple_ledger OR s.payment_verification='unknown') THEN 'unknown' ELSE 'unpaid' END=:paymentStatus"
       );
     }
-    let base = `FROM stock_units u LEFT JOIN stock_products p ON p.id=u.product_id LEFT JOIN stock_locations l ON l.id=u.location_id
+    let base = `FROM stock_units u ${PRODUCT_JOIN_SQL} LEFT JOIN stock_locations l ON l.id=u.location_id
       LEFT JOIN stock_sale_units su ON su.stock_unit_id=u.id AND su.status='shipped'
       LEFT JOIN stock_locations wl ON wl.id=COALESCE(u.location_id,u.return_location_id,su.from_location_id) AND wl.kind='warehouse'
       LEFT JOIN stock_sale_lines sl ON sl.id=su.sale_line_id LEFT JOIN stock_sales s ON s.id=sl.sale_id AND s.status='shipped'
