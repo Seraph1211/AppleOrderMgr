@@ -6,6 +6,28 @@ const MAX_ITEMS = 100;
 const CLOCK_TOLERANCE_MS = 5000;
 const MAX_OBSERVATION_AGE_MS = 300000;
 
+function hasQuantityInterpretation(item) {
+  return (
+    Object.prototype.hasOwnProperty.call(item, 'rawQuantity') ||
+    Object.prototype.hasOwnProperty.call(item, 'quantityInterpretation')
+  );
+}
+
+function validQuantityInterpretation(item) {
+  return (
+    !hasQuantityInterpretation(item) ||
+    (item.rawStatus === 'RETURN_STARTED' &&
+      item.quantity === 1 &&
+      item.rawQuantity === -1 &&
+      item.quantityInterpretation === 'return_started_negative_one')
+  );
+}
+
+function quantityEvidence(item) {
+  if (!hasQuantityInterpretation(item)) return {};
+  return { rawQuantity: item.rawQuantity, quantityInterpretation: item.quantityInterpretation };
+}
+
 /** 校验完整且新鲜的官网结果，仅产生允许回写的状态与观测时间。 */
 function validateOfficialStatusResult(result, job, now = Date.now()) {
   const source = result?.source;
@@ -26,6 +48,7 @@ function validateOfficialStatusResult(result, job, now = Date.now()) {
         !item.name.trim() ||
         !Number.isSafeInteger(item.quantity) ||
         item.quantity < 0 ||
+        !validQuantityInterpretation(item) ||
         typeof item.rawStatus !== 'string' ||
         !/^[A-Z][A-Z0-9_]{0,99}$/.test(item.rawStatus)
     ) ||
@@ -53,8 +76,9 @@ function validateOfficialStatusResult(result, job, now = Date.now()) {
       key: typeof item.key === 'string' ? item.key.slice(0, 100) : null,
       name: item.name.slice(0, 1000),
       quantity: item.quantity,
+      ...quantityEvidence(item),
       rawStatus: item.rawStatus,
-      serialNumbers: explicitSerials(item, item.quantity),
+      serialNumbers: hasQuantityInterpretation(item) ? [] : explicitSerials(item, item.quantity),
     })),
     observedAt: new Date(observed).toISOString(),
     runId: source.runId,

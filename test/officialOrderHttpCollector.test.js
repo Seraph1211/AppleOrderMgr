@@ -707,3 +707,36 @@ test.each([
 ])('登录引导仍拒绝账户首页查询及其他host/path：%s', value => {
   expect(() => validateReadUrl(value, 'GET', true)).toThrow('READ_DESTINATION_DENIED');
 });
+
+describe('负数量退货详情与收据总数的边界', () => {
+  const returnedDetail = () => {
+    const model = structuredClone(require('./fixtures/officialReturnQuantity.json'));
+    model.orderDetail.orderHeader.d.invoiceUrl = RECEIPT;
+    return JSON.stringify(model);
+  };
+  test('状态采集保留解释与加密原文，不请求收据或生成SN', async () => {
+    collector.collectReceipt = false;
+    const body = returnedDetail();
+    queue(response(body));
+    const summary = await collector.collect();
+    expect(summary.receiptOutcome).toBe('RECEIPT_NOT_REQUESTED');
+    expect(transport.request).toHaveBeenCalledTimes(1);
+    const result = readPrivate(summary.resultFile);
+    expect(result.products.map(item => item.quantity)).toEqual([1, 1]);
+    expect(result.products.map(item => item.rawQuantity)).toEqual([-1, -1]);
+    expect(result.products.every(item => item.serialNumbers === undefined)).toBe(true);
+    expect(result.source.sha256).toBe(hash(Buffer.from(body)));
+  });
+  test('显式收据流程仍按完整SN及自身正数量验证总数', async () => {
+    queue(response(returnedDetail()), response(receipt()));
+    const summary = await collector.collect();
+    expect(summary.receiptOutcome).toBe('RECEIPT_VERIFIED');
+    expect(receiptParser.parseOfficialReceipt).toHaveBeenCalledWith(expect.any(String), ORDER, 2);
+  });
+  test('收据总数与退货详情兼容计数不符时仍不采纳收据', async () => {
+    queue(response(returnedDetail()), response(receipt({ serials: ['A123456789'] })));
+    const summary = await collector.collect();
+    expect(summary.receiptOutcome).not.toBe('RECEIPT_VERIFIED');
+    expect(fs.existsSync(`${root}/private/http-receipt-11-run-21.json`)).toBe(false);
+  });
+});

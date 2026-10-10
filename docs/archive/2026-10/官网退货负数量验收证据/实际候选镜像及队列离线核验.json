@@ -1,0 +1,36 @@
+{
+  "status": "PASS",
+  "node": "v20.20.2",
+  "network": "none",
+  "results": [
+    {
+      "name": "actualApiImage",
+      "status": "PASS",
+      "compatibility": {
+        "rawQuantity": -1,
+        "quantity": 1,
+        "interpretation": "return_started_negative_one"
+      },
+      "unsupportedNegativeRejected": 5,
+      "otherStatusesRejected": 4,
+      "noSerials": true,
+      "noPickupDate": true
+    },
+    {
+      "name": "actualQueueCandidate",
+      "status": "PASS",
+      "compatibility": {
+        "rawQuantity": -1,
+        "quantity": 1,
+        "interpretation": "return_started_negative_one"
+      },
+      "unsupportedNegativeRejected": 5,
+      "otherStatusesRejected": 4,
+      "noSerials": true,
+      "noPickupDate": true
+    }
+  ],
+  "apiParserSha256": "ecc2afc104c1c1390c158c974f33ae3e7951181dce262ed1ebfb0732c1f5fbd3",
+  "validatorSha256": "4667db10abf6741514f46d13cd69ada17ed7721470ee01a863801f93307a3c85",
+  "queueParserSha256": "4b0d7371a813ee9e144d66027528dd6aec99f4ece039f5714633884763f10fa7"
+}

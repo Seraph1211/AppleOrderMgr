@@ -100,3 +100,37 @@ test.each([
   change(data);
   expect(() => validateOfficialStatusResult(data, job, now)).toThrow('官网结果不完整');
 });
+
+test('兼容退货数量的原值/依据进入结果，不能从该解释自动推断库存SN', () => {
+  const data = valid();
+  Object.assign(data.products[0], {
+    quantity: 1,
+    rawQuantity: -1,
+    quantityInterpretation: 'return_started_negative_one',
+    rawStatus: 'RETURN_STARTED',
+    serialNumbers: ['A123456789'],
+  });
+  expect(validateOfficialStatusResult(data, job, now).items[0]).toMatchObject({
+    quantity: 1,
+    rawQuantity: -1,
+    quantityInterpretation: 'return_started_negative_one',
+    serialNumbers: [],
+  });
+});
+test.each([
+  { rawQuantity: -1 },
+  { quantityInterpretation: 'return_started_negative_one' },
+  { rawQuantity: '-1', quantityInterpretation: 'return_started_negative_one' },
+  { rawQuantity: -2, quantityInterpretation: 'return_started_negative_one' },
+  { rawQuantity: -1, quantityInterpretation: 'abs' },
+  { rawQuantity: -1, quantityInterpretation: 'return_started_negative_one', quantity: 2 },
+  {
+    rawQuantity: -1,
+    quantityInterpretation: 'return_started_negative_one',
+    rawStatus: 'PICKED_UP',
+  },
+])('拒绝不一致的退货数量解释 %j', metadata => {
+  const data = valid();
+  Object.assign(data.products[0], { rawStatus: 'RETURN_STARTED', quantity: 1 }, metadata);
+  expect(() => validateOfficialStatusResult(data, job, now)).toThrow();
+});

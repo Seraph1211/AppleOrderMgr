@@ -1,0 +1,32 @@
+{
+  "orderDetail": {
+    "orderHeader": { "d": { "orderNumber": "W1234567890" } },
+    "orderItems": {
+      "c": ["orderItem-0000101", "orderItem-0000201"],
+      "orderItem-0000101": {
+        "orderItemDetails": {
+          "d": {
+            "quantity": -1,
+            "productName": "合成测试设备 512GB 蓝色",
+            "itemShortName": "合成测试设备",
+            "isReturnInstructionEnabledForDetailView": true,
+            "returnNumber": "SYNTHETIC-RETURN-1"
+          }
+        },
+        "orderItemStatusTracker": { "d": { "currentStatus": "RETURN_STARTED" } }
+      },
+      "orderItem-0000201": {
+        "orderItemDetails": {
+          "d": {
+            "quantity": -1,
+            "productName": "合成测试设备 512GB 蓝色",
+            "itemShortName": "合成测试设备",
+            "isReturnInstructionEnabledForDetailView": true,
+            "returnNumber": "SYNTHETIC-RETURN-1"
+          }
+        },
+        "orderItemStatusTracker": { "d": { "currentStatus": "RETURN_STARTED" } }
+      }
+    }
+  }
+}

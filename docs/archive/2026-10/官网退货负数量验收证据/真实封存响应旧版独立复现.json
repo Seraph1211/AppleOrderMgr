@@ -1,0 +1,81 @@
+{
+  "mode": "saved encrypted responses; in-memory decryption; no Apple request; no DB writes",
+  "results": [
+    {
+      "run": 2526,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        },
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        }
+      ],
+      "parsed": false,
+      "code": "INVALID_QUANTITY"
+    },
+    {
+      "run": 2631,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        },
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        }
+      ],
+      "parsed": false,
+      "code": "INVALID_QUANTITY"
+    },
+    {
+      "run": 2632,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        },
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        }
+      ],
+      "parsed": false,
+      "code": "INVALID_QUANTITY"
+    },
+    {
+      "run": 2633,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        },
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        }
+      ],
+      "parsed": false,
+      "code": "INVALID_QUANTITY"
+    }
+  ]
+}

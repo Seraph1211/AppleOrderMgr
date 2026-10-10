@@ -1,0 +1,37 @@
+{
+  "targeted-final": {
+    "numPassedTestSuites": 10,
+    "numPassedTests": 330,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "official-integration": {
+    "numPassedTestSuites": 1,
+    "numPassedTests": 39,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "independent-integration": {
+    "numPassedTestSuites": 1,
+    "numPassedTests": 2,
+    "numFailedTests": 0,
+    "numPendingTests": 0
+  },
+  "pythonQueue": {
+    "passed": 7,
+    "runtime": "host Python; dev Node image has no Python",
+    "network": "synthetic mocks only"
+  },
+  "coverage": {
+    "officialOrderParser.js": {
+      "statements": 96.19,
+      "branches": 93.91,
+      "functions": 100.0
+    },
+    "officialOrderStatusSync.js": {
+      "statements": 100.0,
+      "branches": 93.62,
+      "functions": 100.0
+    }
+  }
+}

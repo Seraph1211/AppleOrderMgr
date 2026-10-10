@@ -187,3 +187,10 @@ test('嵌套收据模型仍逐项校验完整性', () => {
     parseOfficialReceipt(JSON.stringify({ body: { data: fixture() } }), order, 2).items
   ).toHaveLength(2);
 });
+
+test('退货兼容不放宽收据自身的负数量', () => {
+  const model = fixture();
+  line(model).quantityOrdered = '-1';
+  line(model).quantityShipped = '-1';
+  expect(() => parse(model)).toThrow();
+});

@@ -201,3 +201,46 @@ describe('官网订单解析与来源边界', () => {
     expect(() => parseOfficialOrderDetail(html(other), ORDER)).toThrow('INCOMPLETE_CORE_FIELDS');
   });
 });
+
+describe('真实退货负数量模板的受限兼容', () => {
+  const fixture = () => structuredClone(require('./fixtures/officialReturnQuantity.json'));
+  test('保留两条原负数量及解释来源，合计仅用于官网结果计数', () => {
+    const result = parseOfficialOrderDetail(JSON.stringify(fixture()), ORDER);
+    expect(result.products).toHaveLength(2);
+    for (const item of result.products)
+      expect(item).toMatchObject({
+        quantity: 1,
+        rawQuantity: -1,
+        quantityInterpretation: 'return_started_negative_one',
+        rawStatus: 'RETURN_STARTED',
+        pickupDateText: null,
+      });
+    expect(result.products.reduce((sum, item) => sum + item.quantity, 0)).toBe(2);
+  });
+  test.each([-2, -3, '-1', -1.5, null, undefined, '', Number.MIN_SAFE_INTEGER - 1])(
+    '明确退货也不泛化未经确认的数量 %s',
+    quantity => {
+      const model = fixture();
+      model.orderDetail.orderItems['orderItem-0000101'].orderItemDetails.d.quantity = quantity;
+      expect(() => parseOfficialOrderDetail(JSON.stringify(model), ORDER)).toThrow(
+        'INVALID_QUANTITY'
+      );
+    }
+  );
+  test('计数解释不能生成明确SN；正常正数量SN不受影响', () => {
+    const model = fixture();
+    const items = model.orderDetail.orderItems;
+    items['orderItem-0000101'].orderItemDetails.d.serialNumber = 'A123456789';
+    items['orderItem-0000201'].orderItemDetails.d.quantity = 1;
+    items['orderItem-0000201'].orderItemDetails.d.serialNumber = 'B123456789';
+    const result = parseOfficialOrderDetail(JSON.stringify(model), ORDER);
+    expect(result.products[0].serialNumbers).toBeUndefined();
+    expect(result.products[1].serialNumbers).toEqual(['B123456789']);
+    expect(result.products[1].rawQuantity).toBeUndefined();
+  });
+  test('列表无原始状态枚举，负数量仍拒绝', () => {
+    const model = listModel();
+    model.orderList[`order-${ORDER}`]['10000001'].d.quantity = -1;
+    expect(() => parseOfficialOrderList(JSON.stringify(model), ORDER)).toThrow('INVALID_QUANTITY');
+  });
+});

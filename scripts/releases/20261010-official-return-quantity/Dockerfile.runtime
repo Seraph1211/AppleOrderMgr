@@ -1,0 +1,3 @@
+# 继承实际生产 API，保留邮件退货及此前全部上线功能和生产差异。
+FROM apple-order-mgr-runtime:20261010-mail-return-amd64
+COPY --chown=node:node src/services/officialOrderParser.js src/services/officialOrderStatusSync.js /app/src/services/

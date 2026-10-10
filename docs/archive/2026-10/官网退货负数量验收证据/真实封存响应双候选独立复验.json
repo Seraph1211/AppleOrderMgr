@@ -1,0 +1,241 @@
+{
+  "mode": "saved encrypted responses; in-memory decryption; no Apple request; no DB writes",
+  "results": [
+    {
+      "run": 2526,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        },
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        }
+      ],
+      "candidateResults": [
+        {
+          "name": "api",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            }
+          ]
+        },
+        {
+          "name": "queue",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": 2631,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        },
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        }
+      ],
+      "candidateResults": [
+        {
+          "name": "api",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            }
+          ]
+        },
+        {
+          "name": "queue",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": 2632,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        },
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        }
+      ],
+      "candidateResults": [
+        {
+          "name": "api",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            }
+          ]
+        },
+        {
+          "name": "queue",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "run": 2633,
+      "bodySha256Verified": true,
+      "httpStatus": 200,
+      "items": [
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        },
+        {
+          "quantity": -1,
+          "type": "number",
+          "status": "RETURN_STARTED"
+        }
+      ],
+      "candidateResults": [
+        {
+          "name": "api",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            }
+          ]
+        },
+        {
+          "name": "queue",
+          "parsed": true,
+          "items": [
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            },
+            {
+              "quantity": 1,
+              "rawQuantity": -1,
+              "quantityInterpretation": "return_started_negative_one",
+              "status": "RETURN_STARTED",
+              "hasSn": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
