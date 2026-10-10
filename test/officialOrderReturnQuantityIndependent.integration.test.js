@@ -185,12 +185,30 @@ const enabled = process.env.RUN_OFFICIAL_RETURN_INTEGRATION === 'true';
       });
       const before = await orderHash();
       const tables = await business();
+      const stockBefore = (
+        await query(
+          `SELECT md5((to_jsonb(u)-ARRAY[
+          'lifecycle_issue','version','updated_by','updated_at'])::text) AS hash
+         FROM stock_units u WHERE id=:id`,
+          { id: unit.id }
+        )
+      )[0].hash;
       expect(await finish()).toMatchObject({ state: 'succeeded' });
       await unit.reload();
       expect(unit.state).toBe('in_stock');
       expect(unit.locationId).toBe(warehouse.id);
       expect(unit.returnedAt).toBeNull();
       expect(unit.lifecycleIssue).toBe('return_pending');
+      expect(
+        (
+          await query(
+            `SELECT md5((to_jsonb(u)-ARRAY[
+          'lifecycle_issue','version','updated_by','updated_at'])::text) AS hash
+         FROM stock_units u WHERE id=:id`,
+            { id: unit.id }
+          )
+        )[0].hash
+      ).toBe(stockBefore);
       expect(await orderHash()).toBe(before);
       expect(await business()).toEqual(tables);
       const checks = await query('SELECT items FROM stock_order_checks WHERE order_id=:id', {
