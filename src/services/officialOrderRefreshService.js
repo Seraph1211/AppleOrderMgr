@@ -1,4 +1,7 @@
 const crypto = require('crypto');
+const { lockStock } = require('./stockCommandService');
+const lifecycle = require('./stockLifecycleService');
+const { scheduleReturns } = require('./stockReturnScheduler');
 const HTTP_MAX_CONCURRENCY = 10;
 const { Op, QueryTypes } = require('sequelize');
 const { sequelize, Order, AppleId, Recipient, User } = require('../models');
@@ -282,7 +285,7 @@ async function assertBatch(user, id, transaction) {
     if (!UUID.test(id || '')) throw ApiError.badRequest('批次编号不合法');
     const [batch] = await query(
       `SELECT id, requested_by AS "requestedBy", created_at AS "createdAt",
-      paused_at AS "pausedAt", pause_reason AS "pauseReason", selected_count AS "selectedCount"
+      paused_at AS "pausedAt", pause_reason AS "pauseReason", selected_count AS "selectedCount", purpose
       FROM official_order_refresh_batches WHERE id=:id`,
       { id },
       transaction
@@ -311,10 +314,10 @@ async function listBatches(user) {
   try {
     assertAdmin(user);
     return await query(
-      `SELECT b.id, b.created_at AS "createdAt", b.paused_at AS "pausedAt", b.pause_reason AS "pauseReason",
+      `SELECT b.id, b.purpose, b.created_at AS "createdAt", b.paused_at AS "pausedAt", b.pause_reason AS "pauseReason",
       count(j.id)::int AS total, count(j.id) FILTER (WHERE j.state IN ('queued','running'))::int AS active
       FROM official_order_refresh_batches b JOIN official_order_refresh_jobs j ON j.batch_id=b.id
-      WHERE b.requested_by=:userId GROUP BY b.id ORDER BY b.created_at DESC LIMIT 10`,
+      WHERE (b.requested_by=:userId OR b.purpose='stock_returns') GROUP BY b.id ORDER BY b.created_at DESC LIMIT 10`,
       { userId: user.id }
     );
   } catch (error) {
@@ -418,10 +421,15 @@ async function authorizedAdmin(userId, transaction) {
 /** 单笔兼容回写独立检查最新管理员与订单身份。 */
 async function authorizedOrder(job, transaction) {
   try {
-    const user = await authorizedAdmin(job.requestedBy, transaction);
-    if (!user) return null;
+    const system = job.purpose === 'stock_returns' && job.requestedBy == null;
+    const user = system ? null : await authorizedAdmin(job.requestedBy, transaction);
+    if (!system && !user) return null;
+    if (system && !(await require('../models').StockSetting.findByPk(1, { transaction }))?.enabled)
+      return null;
     const order = await Order.findOne({
-      where: scopeOrderWhere(user, { id: job.orderId, orderNumber: job.orderNumber }),
+      where: system
+        ? { id: job.orderId, orderNumber: job.orderNumber }
+        : scopeOrderWhere(user, { id: job.orderId, orderNumber: job.orderNumber }),
       attributes: ['id', 'officialRawStatus', 'appleId'],
       transaction,
       lock: transaction.LOCK.UPDATE,
@@ -460,7 +468,7 @@ async function claim() {
         const [job] = await query(
           `SELECT j.id,j.order_id AS "orderId",j.order_number AS "orderNumber",
           j.account_group_id AS "accountGroupId",j.account_key AS "accountKey",
-          b.requested_by AS "requestedBy" FROM official_order_refresh_jobs j
+          b.requested_by AS "requestedBy",b.purpose FROM official_order_refresh_jobs j
           JOIN official_order_refresh_batches b ON b.id=j.batch_id
           WHERE j.state='queued' AND b.paused_at IS NULL AND j.account_group_id IS NOT NULL
           ORDER BY j.created_at,j.id LIMIT 1 FOR UPDATE OF j`,
@@ -521,6 +529,7 @@ async function claimHttp() {
           {},
           transaction
         );
+        await scheduleReturns(transaction);
         await query(
           `UPDATE official_order_refresh_jobs SET state='failed',error_code='WORKER_INTERRUPTED',finished_at=now()
           WHERE state='running' AND started_at<now()-interval '20 minutes' RETURNING id`,
@@ -535,7 +544,7 @@ async function claimHttp() {
         if (running.count >= HTTP_MAX_CONCURRENCY) return null;
         const [job] = await query(
           `SELECT j.id,j.order_id AS "orderId",j.order_number AS "orderNumber",
-          j.account_key AS "accountKey",b.requested_by AS "requestedBy"
+          j.account_key AS "accountKey",b.requested_by AS "requestedBy",b.purpose
           FROM official_order_refresh_jobs j JOIN official_order_refresh_batches b ON b.id=j.batch_id
           WHERE j.state='queued' AND b.paused_at IS NULL
           AND NOT EXISTS (SELECT 1 FROM official_order_refresh_jobs r WHERE r.state='running'
@@ -584,7 +593,7 @@ async function finish(input) {
           `SELECT j.id,j.order_id AS "orderId",j.order_number AS "orderNumber",
           j.account_key AS "accountKey",
           j.started_at AS "startedAt",j.batch_id AS "batchId",
-          b.requested_by AS "requestedBy" FROM official_order_refresh_jobs j
+          b.requested_by AS "requestedBy",b.purpose FROM official_order_refresh_jobs j
           JOIN official_order_refresh_batches b ON b.id=j.batch_id WHERE j.id=:id
           AND j.lease_token=:lease AND j.state='running' FOR UPDATE OF j`,
           { id: input.id, lease: input.leaseToken },
@@ -595,6 +604,7 @@ async function finish(input) {
           typeof input.outcome === 'string' && /^[A-Z_0-9]{1,80}$/.test(input.outcome)
             ? input.outcome
             : 'COLLECTOR_FAILED';
+        await lockStock(transaction);
         const order = await authorizedOrder(job, transaction);
         if (!order) errorCode = 'ACCESS_REVOKED';
         let result;
@@ -625,6 +635,13 @@ async function finish(input) {
             result = null;
           }
         }
+        await lifecycle.observe(
+          transaction,
+          job.orderId,
+          result,
+          errorCode,
+          order?.officialRawStatus
+        );
         await query(
           `UPDATE official_order_refresh_jobs SET state=:state,error_code=:error,
           finished_at=now(),result_run_id=:runId,result_sha256=:sha,previous_status=:previous,
@@ -677,7 +694,7 @@ async function finishGroup(input) {
         const jobs = await query(
           `SELECT j.id,j.order_id AS "orderId",j.order_number AS "orderNumber",
              j.account_key AS "accountKey",j.started_at AS "startedAt",j.batch_id AS "batchId",
-             b.requested_by AS "requestedBy"
+             b.requested_by AS "requestedBy",b.purpose
            FROM official_order_refresh_jobs j JOIN official_order_refresh_batches b ON b.id=j.batch_id
            WHERE j.account_group_id=:groupId AND j.lease_token=:lease AND j.state='running'
            ORDER BY j.order_id FOR UPDATE OF j`,
@@ -690,6 +707,7 @@ async function finishGroup(input) {
           lock: transaction.LOCK.SHARE,
         });
         const allowed = user?.role === 'admin' && user.status === 'active';
+        await lockStock(transaction);
         const orders = await Order.findAll({
           where: { id: { [Op.in]: jobs.map(job => job.orderId) } },
           attributes: ['id', 'orderNumber', 'appleId', 'officialRawStatus'],
@@ -732,6 +750,7 @@ async function finishGroup(input) {
             observed: result?.observedAt || null,
             runId: result?.runId || null,
             sha: result?.sha256 || null,
+            items: result?.items || [],
           };
         });
         const updated = await query(
@@ -749,6 +768,15 @@ async function finishGroup(input) {
             result.error = 'STALE_OFFICIAL_RESULT';
             result.status = result.observed = result.runId = result.sha = null;
           }
+        }
+        for (const row of results) {
+          await lifecycle.observe(
+            transaction,
+            row.orderId,
+            row.error ? null : { items: row.items, observedAt: row.observed },
+            row.error,
+            row.previous
+          );
         }
         await query(
           `UPDATE official_order_refresh_jobs j SET

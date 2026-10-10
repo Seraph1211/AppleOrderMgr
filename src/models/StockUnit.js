@@ -35,6 +35,19 @@ module.exports = sequelize =>
         field: 'state',
       },
       locationId: { type: DataTypes.UUID, allowNull: true, field: 'location_id' },
+      returnedAt: { type: DataTypes.DATE, allowNull: true, field: 'returned_at' },
+      returnPreviousState: {
+        type: DataTypes.STRING(16),
+        allowNull: true,
+        field: 'return_previous_state',
+      },
+      returnLocationId: { type: DataTypes.UUID, allowNull: true, field: 'return_location_id' },
+      lifecycleIssue: { type: DataTypes.STRING(40), allowNull: true, field: 'lifecycle_issue' },
+      returnDecisionFingerprint: {
+        type: DataTypes.STRING(64),
+        allowNull: true,
+        field: 'return_decision_fingerprint',
+      },
       acquiredOn: { type: DataTypes.DATEONLY, allowNull: true, field: 'acquired_on' },
       firstReceivedAt: { type: DataTypes.DATE, allowNull: true, field: 'first_received_at' },
       costStatus: {

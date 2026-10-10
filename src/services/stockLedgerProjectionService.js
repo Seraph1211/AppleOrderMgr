@@ -1,3 +1,9 @@
+const {
+  LEDGER_SQL,
+  ELIGIBLE_SQL,
+  ISSUES,
+  assertLifecycleWritable,
+} = require('./stockLifecycleRules');
 const { Op } = require('sequelize');
 const { parseStockProductFilters } = require('../utils/stockProductFilters');
 const { specification, PRICE_VERSION } = require('./stockFixedCatalog');
@@ -69,6 +75,12 @@ async function catalog(ctx) {
       }),
       filterOptions,
       warehouses,
+      statisticWarehouses: await db.StockLocation.findAll({
+        where: { kind: 'warehouse' },
+        attributes: ['id', 'name'],
+        transaction: ctx.transaction,
+        raw: true,
+      }),
       people,
       enabled: settings.enabled,
       ...(has(ctx, 'stock.settings.manage') ? { settingsVersion: settings.version } : {}),
@@ -139,7 +151,9 @@ function project(ctx, unit, g, allAllocations) {
   const location = get(g.StockLocation, unit.locationId);
   if (
     !(unit.state === 'in_stock' && location?.kind === 'warehouse') &&
-    !(unit.state === 'sold' && sale?.channel === 'local')
+    !(unit.state === 'sold' && sale?.channel === 'local') &&
+    !(unit.state === 'registered' && g.eligibleIds?.has(unit.id)) &&
+    unit.state !== 'returned'
   )
     return null;
   const product = get(g.StockProduct, unit.productId);
@@ -154,7 +168,14 @@ function project(ctx, unit, g, allAllocations) {
     serialNumber: unit.serialNumber,
     state: unit.state,
     product: null,
-    warehouse: locationDto(location),
+    warehouse: locationDto(
+      unit.state === 'returned' ? get(g.StockLocation, unit.returnLocationId) : location
+    ),
+    returnedAt: unit.returnedAt,
+    returnPreviousState: unit.returnPreviousState,
+    lifecycleIssue: unit.lifecycleIssue,
+    lifecycleMessage: ISSUES[unit.lifecycleIssue] || null,
+    check: g.checks?.get(unit.id) || null,
     receivedOn: dateLabel(unit.firstReceivedAt),
     notes: decrypt(unit.notesCiphertext),
     orderLinked: Boolean(binding),
@@ -168,8 +189,10 @@ function project(ctx, unit, g, allAllocations) {
       storageGb: product.storageGb,
       colorName: product.colorName,
     };
-  if (has(ctx, 'orders.read'))
+  if (has(ctx, 'orders.read')) {
     result.orderNumber = binding ? order?.orderNumber || null : unit.orderNumberText || null;
+    result.orderId = order?.id || null;
+  }
   if (has(ctx, 'stock.cost.read'))
     Object.assign(result, {
       officialCostAmount: unit.officialCostAmount,
@@ -179,13 +202,26 @@ function project(ctx, unit, g, allAllocations) {
       priceId: unit.priceId,
     });
   if (has(ctx, 'stock.expenses.read')) result.extraExpenseAmount = unit.extraExpenseAmount;
-  if (has(ctx, 'stock.receive')) result.allowedActions.push('edit');
+  if (['in_stock', 'sold'].includes(unit.state) && has(ctx, 'stock.receive'))
+    result.allowedActions.push('edit');
+  if (order && has(ctx, 'stock.correct', 'stock.receive', 'orders.read')) {
+    if (unit.lifecycleIssue === 'return_pending') result.allowedActions.push('confirm_return');
+    if (['sold_return_conflict', 'return_withdrawn'].includes(unit.lifecycleIssue))
+      result.allowedActions.push('resolve_return');
+  }
+  if (unit.state === 'registered' && !unit.lifecycleIssue && has(ctx, 'stock.receive'))
+    result.allowedActions.push('receive');
   if (!sale) {
     const picked = g.StockSaleUnit.some(
       row => row.stockUnitId === unit.id && row.status === 'picked'
     );
     if (picked) result.compatibilityReason = '该设备已有旧销售占用，请先处理原记录';
-    if (!picked && has(ctx, 'stock.sales.edit', 'stock.sales.ship'))
+    if (
+      unit.state === 'in_stock' &&
+      !unit.lifecycleIssue &&
+      !picked &&
+      has(ctx, 'stock.sales.edit', 'stock.sales.ship')
+    )
       result.allowedActions.push('sell');
     return result;
   }
@@ -252,7 +288,26 @@ function project(ctx, unit, g, allAllocations) {
 async function byIds(ctx, ids) {
   try {
     requirePermissions(ctx, 'stock.read');
+    if (!ids.length) return [];
     const graph = await oldProjection.graph(ctx, { unitIds: ids });
+    const [eligible] = await db.sequelize.query(
+      `SELECT u.id FROM stock_units u WHERE u.id IN (:ids) AND ${ELIGIBLE_SQL}`,
+      { replacements: { ids }, transaction: ctx.transaction }
+    );
+    graph.eligibleIds = new Set(eligible.map(row => row.id));
+    const [checks] = await db.sequelize.query(
+      `SELECT d.stock_unit_id AS id,
+      GREATEST(c.checked_at,j.finished_at) AS "checkedAt",c.observed_at AS "observedAt",
+      COALESCE(j.error_code,c.error_code) AS "errorCode",j.state AS "jobState",b.pause_reason AS "pauseReason",
+      COALESCE(r.heartbeat_at>now()-interval '5 minutes',false) AS "workerOnline"
+      FROM pickup_devices d LEFT JOIN stock_order_checks c ON c.order_id=d.order_id
+      LEFT JOIN LATERAL (SELECT state,error_code,batch_id,finished_at FROM official_order_refresh_jobs WHERE order_id=d.order_id ORDER BY created_at DESC,id DESC LIMIT 1) j ON true
+      LEFT JOIN official_order_refresh_batches b ON b.id=j.batch_id
+      LEFT JOIN official_order_refresh_runtime r ON r.id=1
+      WHERE d.stock_unit_id IN (:ids)`,
+      { replacements: { ids }, transaction: ctx.transaction }
+    );
+    graph.checks = new Map(checks.map(({ id, ...check }) => [id, check]));
     // 兼容性需要核对真实资金关系；仅内部查询，投影仍严格按原权限裁剪金额与状态。
     if (!has(ctx, 'stock.collections.read', 'stock.receipts.read') && graph.StockSale.length) {
       graph.StockCollection = await db.StockCollection.findAll({
@@ -309,6 +364,7 @@ async function dispatchPreview(ctx, query) {
       transaction: ctx.transaction,
     });
     if (!unit) return { needsReceive: true, unit: null };
+    assertLifecycleWritable(unit);
     if (!['registered', 'in_stock'].includes(unit.state))
       throw ApiError.conflict(
         '该设备已售出或不在可出库状态，请查看原记录',
@@ -371,7 +427,7 @@ async function detail(ctx, id) {
   }
 }
 /** 数据库分页与筛选，仓库现货和本地自销为唯一简化台账边界。 */
-async function list(ctx, query = {}) {
+async function list(ctx, query = {}, statistics = false) {
   try {
     requirePermissions(ctx, 'stock.read');
     only(query, [
@@ -382,6 +438,8 @@ async function list(ctx, query = {}) {
       'storageGbs',
       'colorNames',
       'warehouseId',
+      'warehouseIds',
+      'states',
       'salespersonName',
       'paymentStatus',
       'soldFrom',
@@ -389,7 +447,13 @@ async function list(ctx, query = {}) {
       'page',
       'pageSize',
     ]);
-    const view = choice(query.view || 'in_stock', ['in_stock', 'sold', 'all']);
+    const view = choice(query.view || 'in_stock', [
+      'registered',
+      'in_stock',
+      'sold',
+      'returned',
+      'all',
+    ]);
     const page = Number(query.page || 1),
       pageSize = Number(query.pageSize || 20);
     if (!Number.isInteger(page) || page < 1 || ![20, 50, 100].includes(pageSize))
@@ -413,7 +477,39 @@ async function list(ctx, query = {}) {
     }
     if (query.warehouseId) {
       replacements.warehouseId = uuid(query.warehouseId);
-      filters.push('COALESCE(u.location_id,su.from_location_id)=:warehouseId');
+      filters.push('wl.id=:warehouseId');
+    }
+    for (const key of ['states', 'warehouseIds']) {
+      if (!query[key]) continue;
+      let values;
+      try {
+        values = JSON.parse(query[key]);
+      } catch (_error) {
+        throw ApiError.badRequest('多选筛选无效');
+      }
+      if (
+        !Array.isArray(values) ||
+        values.length > 100 ||
+        values.some(value => typeof value !== 'string')
+      )
+        throw ApiError.badRequest('多选筛选无效');
+      if (!values.length) continue;
+      if (key === 'states') {
+        values.forEach(value => choice(value, ['registered', 'in_stock', 'sold', 'returned']));
+        replacements.states = values;
+        filters.push('u.state IN (:states)');
+      } else {
+        const ids = values.filter(value => value !== 'unassigned').map(value => uuid(value));
+        replacements.warehouseIds = ids;
+        filters.push(
+          `(${[
+            ids.length ? 'wl.id IN (:warehouseIds)' : '',
+            values.includes('unassigned') ? 'wl.id IS NULL' : '',
+          ]
+            .filter(Boolean)
+            .join(' OR ')})`
+        );
+      }
     }
     let searchFilter = '';
     let searchText = '';
@@ -466,11 +562,12 @@ async function list(ctx, query = {}) {
     }
     let base = `FROM stock_units u LEFT JOIN stock_products p ON p.id=u.product_id LEFT JOIN stock_locations l ON l.id=u.location_id
       LEFT JOIN stock_sale_units su ON su.stock_unit_id=u.id AND su.status='shipped'
+      LEFT JOIN stock_locations wl ON wl.id=COALESCE(u.location_id,u.return_location_id,su.from_location_id) AND wl.kind='warehouse'
       LEFT JOIN stock_sale_lines sl ON sl.id=su.sale_line_id LEFT JOIN stock_sales s ON s.id=sl.sale_id AND s.status='shipped'
       LEFT JOIN stock_parties sp ON sp.id=s.salesperson_id
       LEFT JOIN stock_collections c ON c.sale_id=s.id AND c.status='posted'
       LEFT JOIN LATERAL (SELECT COALESCE(SUM(a.amount),0) received FROM stock_receipt_allocations a WHERE a.sale_unit_id=su.id AND a.status='active') cash ON true
-      WHERE ((u.state='in_stock' AND l.kind='warehouse') OR (u.state='sold' AND s.channel='local'))${filters.length ? ' AND ' + filters.join(' AND ') : ''}`;
+      WHERE ${LEDGER_SQL}${filters.length ? ' AND ' + filters.join(' AND ') : ''}`;
     if (searchFilter) {
       // 加密备注只能在服务端匹配；先限定台账及其他筛选，再按主键分批读取密文。
       const noteIds = [];
@@ -493,8 +590,23 @@ async function list(ctx, query = {}) {
       replacements.noteIds = noteIds;
       base += ` AND (${searchFilter}${noteIds.length ? ' OR u.id IN (:noteIds)' : ''})`;
     }
+    if (statistics) {
+      const [items] = await db.sequelize.query(
+        `SELECT COALESCE(p.model_name,'机型待补') AS "modelName",p.storage_gb AS "storageGb",p.color_name AS "colorName",COUNT(DISTINCT u.id)::integer AS count
+        ${base} GROUP BY p.model_name,p.storage_gb,p.color_name ORDER BY p.model_name NULLS LAST,p.storage_gb,p.color_name`,
+        { replacements, transaction: ctx.transaction }
+      );
+      const models = new Map();
+      for (const item of items)
+        models.set(item.modelName, (models.get(item.modelName) || 0) + item.count);
+      return {
+        items,
+        models: [...models].map(([modelName, count]) => ({ modelName, count })),
+        total: items.reduce((n, item) => n + item.count, 0),
+      };
+    }
     const [counts] = await db.sequelize.query(
-      `SELECT COUNT(*) FILTER(WHERE u.state='in_stock')::integer AS "inStock",COUNT(*) FILTER(WHERE u.state='sold')::integer AS sold ${base}`,
+      `SELECT COUNT(*) FILTER(WHERE u.state='in_stock')::integer AS "inStock",COUNT(*) FILTER(WHERE u.state='sold')::integer AS sold,COUNT(*) FILTER(WHERE u.state='registered')::integer AS pending,COUNT(*) FILTER(WHERE u.state='returned')::integer AS returned ${base}`,
       { replacements, transaction: ctx.transaction }
     );
     const scope = view === 'all' ? '' : ` AND u.state='${view}'`;
@@ -502,6 +614,12 @@ async function list(ctx, query = {}) {
       `SELECT u.id ${base}${scope} ORDER BY COALESCE(s.shipped_at,u.first_received_at,u.created_at) DESC,u.id DESC LIMIT :limit OFFSET :offset`,
       { replacements, transaction: ctx.transaction }
     );
+    const countKey = new Map([
+      ['registered', 'pending'],
+      ['in_stock', 'inStock'],
+      ['sold', 'sold'],
+      ['returned', 'returned'],
+    ]).get(view);
     return {
       items: await byIds(
         ctx,
@@ -509,10 +627,8 @@ async function list(ctx, query = {}) {
       ),
       total:
         view === 'all'
-          ? counts[0].inStock + counts[0].sold
-          : view === 'sold'
-            ? counts[0].sold
-            : counts[0].inStock,
+          ? Object.values(counts[0]).reduce((sum, n) => sum + n, 0)
+          : counts[0][countKey],
       page,
       pageSize,
       counts: counts[0],

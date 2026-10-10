@@ -82,8 +82,8 @@
 
 /* 库存视图共用一组分段页签，数量与标签分开呈现。 */
 .stock-view-tabs {
-  @apply inline-grid min-w-0 grid-cols-3 gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1;
-  width: 320px;
+  @apply inline-grid min-w-0 grid-cols-5 gap-1 rounded-xl border border-gray-200 bg-gray-100 p-1;
+  width: 600px;
   max-width: calc(100% - 52px);
 }
 .stock-view-tab {
@@ -667,5 +667,15 @@
   .overflow-x-auto {
     max-width: 100%;
     overscroll-behavior-x: contain;
+  }
+}
+
+@media (max-width: 639px) {
+  .stock-view-tab {
+    flex-direction: column;
+    gap: 2px;
+    padding-left: 2px;
+    padding-right: 2px;
+    font-size: 12px;
   }
 }

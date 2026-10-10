@@ -1,3 +1,8 @@
+import {
+  StockLifecycleInfo,
+  StockReturnForm,
+  StockStatistics,
+} from '../components/stock/stockLifecycle';
 import TagMultiSelect from '../components/TagMultiSelect';
 import TableHeaderHint from '../components/TableHeaderHint';
 import { useEffect, useState } from 'react';
@@ -52,7 +57,9 @@ function StockNote({ notes }) {
 export default function Stock() {
   const { can } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const tab = ['in_stock', 'sold', 'all'].includes(searchParams.get('view'))
+  const tab = ['registered', 'in_stock', 'sold', 'returned', 'all'].includes(
+    searchParams.get('view')
+  )
     ? searchParams.get('view')
     : 'in_stock';
   const [query, setQuery] = useState('');
@@ -63,6 +70,7 @@ export default function Stock() {
   const [selected, setSelected] = useState([]);
   const [showSelected, setShowSelected] = useState(false);
   const [action, setAction] = useState(null);
+  const [showStatistics, setShowStatistics] = useState(false);
   const [detail, setDetail] = useState(null);
   const [notice, setNotice] = useState('');
   const [initialSerials, setInitialSerials] = useState([]);
@@ -138,10 +146,10 @@ export default function Stock() {
     );
   const allSell = selected.length > 0 && selected.every(unit => ledgerCan(unit, 'sell'));
   const allPayment = selected.length > 0 && selected.every(unit => ledgerCan(unit, 'payment'));
-  const mobileSummary = unit =>
+  const mobileSummary = (unit, mobile = true) =>
     unit.state === 'sold' ? (
       <>
-        <div>{unit.soldOn || '日期待补'}</div>
+        {mobile && <div>销售：{unit.soldOn || '日期待补'}</div>}
         {can('stock.sales.read') && (
           <div className="font-medium text-gray-900">售价 {moneyText(unit.saleAmount)}</div>
         )}
@@ -160,7 +168,7 @@ export default function Stock() {
               : moneyText(unit.grossProfit)}
           </div>
         )}
-        {unit.paymentStatus && (
+        {mobile && unit.paymentStatus && (
           <div className="mt-1 text-xs text-gray-500">
             {LEDGER_PAYMENT_LABELS[unit.paymentStatus]}
           </div>
@@ -219,6 +227,15 @@ export default function Stock() {
           <div className="hidden text-xs text-gray-500 sm:block">
             订单：{unit.orderNumber || (unit.orderLinked ? '已关联' : '待补')}
           </div>
+          <StockLifecycleInfo
+            unit={unit}
+            disabled={writesDisabled}
+            onReview={value => setAction({ type: 'return', unit: value })}
+            onReceive={value => {
+              setInitialSerials([value.serialNumber]);
+              setAction({ type: 'receive' });
+            }}
+          />
           {tab === 'all' && (
             <div className="mt-1">
               <StockBadge value={unit.state} />
@@ -276,27 +293,37 @@ export default function Stock() {
       title: '仓库',
       mobileHidden: true,
       className: 'ledger-summary-cell',
-      render: unit => unit.warehouse?.name || unit.sourceWarehouse?.name || '仓库待补',
+      render: unit => unit.warehouse?.name || unit.sourceWarehouse?.name || '未分配仓库',
     },
     {
       key: 'receivedOn',
-      title: '入库日期',
+      title: ['sold', 'all'].includes(tab) ? '入库日期 / 销售日期' : '入库日期',
       mobileHidden: true,
       className: 'whitespace-nowrap',
-      render: unit => unit.receivedOn || '日期待补',
+      render: unit => (
+        <>
+          <div>
+            {unit.receivedOn ||
+              (['registered', 'returned'].includes(unit.state) ? '尚未入库' : '日期待补')}
+          </div>
+          {unit.state === 'sold' && (
+            <div className="mt-1 text-xs text-gray-500">销售：{unit.soldOn || '日期待补'}</div>
+          )}
+        </>
+      ),
     },
-    ...(tab !== 'in_stock'
+    ...(['sold', 'all'].includes(tab)
       ? [
           {
             key: 'place',
-            title: '销售 / 货款',
+            title: '销售金额',
             mobileHidden: true,
             className: 'ledger-summary-cell',
-            render: mobileSummary,
+            render: unit => mobileSummary(unit, false),
           },
         ]
       : []),
-    ...(tab !== 'in_stock' && can('stock.sales.read')
+    ...(['sold', 'all'].includes(tab) && can('stock.sales.read')
       ? [
           {
             key: 'people',
@@ -316,13 +343,21 @@ export default function Stock() {
           },
         ]
       : []),
+    ...(['sold', 'all'].includes(tab) && can('stock.collections.read') && can('stock.receipts.read')
+      ? [
+          {
+            key: 'paymentStatus',
+            title: '货款状态',
+            mobileHidden: true,
+            render: unit => LEDGER_PAYMENT_LABELS[unit.paymentStatus] || '—',
+          },
+        ]
+      : []),
     {
       key: 'notes',
       title: '备注',
       mobileHidden: true,
-      render: unit => (
-        <StockNote notes={unit.notes} />
-      ),
+      render: unit => <StockNote notes={unit.notes} />,
     },
     {
       key: 'actions',
@@ -427,8 +462,10 @@ export default function Stock() {
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div role="tablist" aria-label="库存视图" className="stock-view-tabs">
           {[
+            ['registered', '未入库', resource.data?.counts?.pending],
             ['in_stock', '在库', resource.data?.counts?.inStock],
             ['sold', '已售', resource.data?.counts?.sold],
+            ['returned', '已退货', resource.data?.counts?.returned],
             ['all', '全部'],
           ].map(([view, label, count]) => (
             <button
@@ -448,6 +485,20 @@ export default function Stock() {
           <span className="hidden sm:inline">刷新</span>
         </button>
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-gray-500">
+          全历史已取货关联订单每 30 分钟检查退货；异常须人工核实。
+        </p>
+        <button className="btn btn-secondary" onClick={() => setShowStatistics(true)}>
+          数量统计
+        </button>
+      </div>
+      {tab === 'registered' && (
+        <p className="text-sm text-gray-500">
+          取货照片和 SN
+          登记后，需有已取货依据。订单状态尚未更新时，可在取货记录明确确认已取货并填写备注依据。
+        </p>
+      )}
       <div className="relative">
         <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-gray-400" />
         <input
@@ -524,7 +575,7 @@ export default function Stock() {
           重置筛选
         </button>
       </div>
-      {tab !== 'in_stock' && (
+      {['sold', 'all'].includes(tab) && (
         <div className="grid grid-cols-2 gap-3 rounded-lg border border-gray-200 bg-white p-3 lg:grid-cols-3">
           <label className="min-w-0 text-sm">
             销售人
@@ -623,7 +674,7 @@ export default function Stock() {
               ? '没有符合条件的设备，请调整搜索或筛选'
               : tab === 'in_stock'
                 ? '还没有在库设备，可点击“入库登记”开始'
-                : '还没有销售记录，可从在库登记售出或使用出库登记'
+                : '当前视图暂无设备'
           }
         />
       )}
@@ -667,6 +718,12 @@ export default function Stock() {
             ]}
           />
         </StockModal>
+      )}
+      {showStatistics && (
+        <StockStatistics catalog={catalog} onClose={() => setShowStatistics(false)} />
+      )}
+      {action?.type === 'return' && (
+        <StockReturnForm unit={action.unit} onClose={() => setAction(null)} onSaved={done} />
       )}
       {action?.type === 'receive' && (
         <LedgerEntryForm

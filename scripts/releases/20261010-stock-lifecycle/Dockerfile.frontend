@@ -1,0 +1,8 @@
+# 沿用已发布界面，仅覆盖本次库存及官网队列展示。
+FROM apple-order-mgr-frontend-builder:20261010-ui-feedback-amd64
+COPY src/components/OfficialOrderRefreshPanel.jsx /app/src/components/OfficialOrderRefreshPanel.jsx
+COPY src/components/stock/stockHelpers.js /app/src/components/stock/stockHelpers.js
+COPY src/index.css /app/src/index.css
+COPY src/pages/Stock.jsx /app/src/pages/Stock.jsx
+COPY src/components/stock/stockLifecycle.jsx /app/src/components/stock/stockLifecycle.jsx
+RUN npm run lint && npm run build

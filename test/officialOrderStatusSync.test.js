@@ -22,10 +22,11 @@ const valid = () => ({
     observedAt: new Date(now - 1000).toISOString(),
   },
 });
-test('仅输出官网状态、实际取货日期及观测元数据，不产生商品或付款写入', () => {
+test('仅输出官网状态、实际取货日期及观测元数据，包含库存退货白名单，不产生订单商品或付款写入', () => {
   const result = validateOfficialStatusResult(valid(), job, now);
   expect(Object.keys(result).sort()).toEqual([
     'actualPickupDate',
+    'items',
     'observedAt',
     'runId',
     'sha256',

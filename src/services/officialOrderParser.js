@@ -1,4 +1,5 @@
 const cheerio = require('cheerio');
+const { explicitSerials } = require('./stockLifecycleRules');
 
 const HTTP_OK = 200;
 const MAX_BODY_BYTES = 8388608; // 8 MiB。
@@ -161,6 +162,9 @@ function parseOfficialOrderDetail(body, expectedOrderNumber) {
       name,
       quantity: quantityValue(data.quantity),
       rawStatus,
+      ...(explicitSerials(data, quantityValue(data.quantity)).length
+        ? { serialNumbers: explicitSerials(data, quantityValue(data.quantity)) }
+        : {}),
       pickupDateText:
         rawStatus === 'PICKED_UP' && validText(data.deliveryDate, MAX_NAME_LENGTH)
           ? data.deliveryDate

@@ -169,6 +169,7 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
           >
             {recent.map(item => (
               <option key={item.id} value={item.id}>
+                {item.purpose === 'stock_returns' ? '库存退货检查 · ' : ''}
                 {new Date(item.createdAt).toLocaleString('zh-CN')} · {item.total} 单
                 {item.pausedAt ? ' · 已暂停' : ''}
               </option>

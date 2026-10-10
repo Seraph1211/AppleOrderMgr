@@ -1,0 +1,17 @@
+# 沿用现行生产依赖及源码，叠加库存生命周期模块。
+FROM apple-order-mgr-runtime:20261009-order-date-export-amd64
+COPY --chown=node:node src/controllers/pickupDeviceController.js /app/src/controllers/pickupDeviceController.js
+COPY --chown=node:node src/models/StockUnit.js /app/src/models/StockUnit.js
+COPY --chown=node:node src/routes/stock.js /app/src/routes/stock.js
+COPY --chown=node:node src/services/officialOrderParser.js /app/src/services/officialOrderParser.js
+COPY --chown=node:node src/services/officialOrderRefreshService.js /app/src/services/officialOrderRefreshService.js
+COPY --chown=node:node src/services/officialOrderStatusSync.js /app/src/services/officialOrderStatusSync.js
+COPY --chown=node:node src/services/stockLedgerProjectionService.js /app/src/services/stockLedgerProjectionService.js
+COPY --chown=node:node src/services/stockLedgerService.js /app/src/services/stockLedgerService.js
+COPY --chown=node:node src/services/stockProjectionService.js /app/src/services/stockProjectionService.js
+COPY --chown=node:node src/services/stockUnitService.js /app/src/services/stockUnitService.js
+COPY --chown=node:node src/services/stockLifecycleRules.js /app/src/services/stockLifecycleRules.js
+COPY --chown=node:node src/services/stockLifecycleService.js /app/src/services/stockLifecycleService.js
+COPY --chown=node:node src/services/stockReturnScheduler.js /app/src/services/stockReturnScheduler.js
+COPY scripts/releases/20261010-stock-lifecycle/preserveProductionPickup.cjs /tmp/preservePickup.cjs
+RUN node /tmp/preservePickup.cjs

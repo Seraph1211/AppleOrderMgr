@@ -1484,7 +1484,7 @@ if (
     expect(page1.items).toHaveLength(20);
     expect(page2.items).toHaveLength(3);
     expect(new Set([...page1.items, ...page2.items].map(item => item.id)).size).toBe(23);
-    expect(page1.counts).toEqual({ inStock: 23, sold: 2 });
+    expect(page1.counts).toEqual({ pending: 0, returned: 0, inStock: 23, sold: 2 });
     const sold = await projection.list(ctx, { ...query, view: 'sold' });
     expect(sold.total).toBe(2);
     expect(
@@ -1530,7 +1530,7 @@ if (
     const first = await projection.list(ctx, query);
     const second = await projection.list(ctx, { ...query, page: 2 });
     expect(first.total).toBe(23);
-    expect(first.counts).toEqual({ inStock: 23, sold: 0 });
+    expect(first.counts).toEqual({ pending: 0, returned: 0, inStock: 23, sold: 0 });
     expect(first.items).toHaveLength(20);
     expect(second.items).toHaveLength(3);
     expect(new Set([...first.items, ...second.items].map(row => row.id)).size).toBe(23);
@@ -1544,7 +1544,7 @@ if (
     const sold = await projection.list(ctx, { ...query, view: 'sold' });
     expect(sold.items).toHaveLength(1);
     expect(sold.items[0].id).toBe(originalId);
-    expect(sold.counts).toEqual({ inStock: 22, sold: 1 });
+    expect(sold.counts).toEqual({ pending: 0, returned: 0, inStock: 22, sold: 1 });
     const restricted = await projection.list(await command.createReadContext(limited), query);
     expect(restricted.total).toBe(23);
     expect(restricted.items[0]).not.toHaveProperty('officialCostAmount');
@@ -1573,7 +1573,7 @@ if (
       pageSize: 20,
     });
     expect(result.total).toBe(501);
-    expect(result.counts).toEqual({ inStock: 501, sold: 0 });
+    expect(result.counts).toEqual({ pending: 0, returned: 0, inStock: 501, sold: 0 });
     expect(result.items).toHaveLength(1);
     expect(result.items[0].notes).toBe(marker);
     const [row] = await receive([newInput()]);

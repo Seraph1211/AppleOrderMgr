@@ -39,10 +39,11 @@ export const STOCK_LABELS = Object.freeze({
   active: '有效',
   picked: '已挑选',
   released: '已释放',
-  registered: '已登记待收货',
+  registered: '未入库',
   in_stock: '在库',
   in_transit: '在途',
   sold: '已售',
+  returned: '已退货',
   draft: '草稿',
   reserved: '已接单',
   shipped: '已出货',
@@ -71,6 +72,9 @@ export function stockEventLabel(event) {
   return (
     event.actionLabel ||
     {
+      'lifecycle.return': '官网退货状态核对',
+      'lifecycle.confirm_mapping': '人工确认退货设备',
+      'lifecycle.resolve': '人工核实退货异常',
       ledger_receive: '入库登记',
       ledger_order: '更新订单号',
       ledger_history_identity: '补录历史设备',

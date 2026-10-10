@@ -107,7 +107,7 @@ function write(action, permissions, work, fields, { allowDisabled = false, creat
   return asyncHandler(async (req, res) => {
     try {
       only(req.body, [...fields, 'requestKey', 'expectedVersion']);
-      const input = { ...req.body, targetId: req.params.id || null };
+      const input = { ...req.body, targetId: req.params.id || req.params.orderId || null };
       const refs = await command.runCommand(
         req.user,
         input,
@@ -148,7 +148,7 @@ router.get(
       )
         throw ApiError.badRequest('SN 清单无效');
       const rows = await require('../models').StockUnit.findAll({
-        where: { serialNumber: serials, state: ['in_stock', 'sold', 'in_transit'] },
+        where: { serialNumber: serials, state: ['in_stock', 'sold', 'in_transit', 'returned'] },
         attributes: ['id', 'serialNumber'],
         transaction: ctx.transaction,
         raw: true,
@@ -175,6 +175,40 @@ router.post(
     (ctx, req) => ledger.dispatchUnit(ctx, req.body),
     ['unit', 'salespersonName', 'handlerName', 'soldOn', 'payment', 'notes'],
     { created: true }
+  )
+);
+router.get(
+  '/ledger/statistics',
+  read(readStock, (ctx, req) => ledgerProjection.list(ctx, req.query, true))
+);
+router.get(
+  '/ledger/returns/:orderId',
+  read(['stock.read', 'orders.read'], (ctx, req) =>
+    require('../services/stockLifecycleService').returnReview(ctx, req.params.orderId)
+  )
+);
+router.post(
+  '/ledger/returns/:orderId',
+  write(
+    'lifecycle.confirm',
+    ['stock.read', 'stock.correct', 'stock.receive', 'orders.read'],
+    (ctx, req) =>
+      require('../services/stockLifecycleService').confirmReturns(
+        ctx,
+        req.params.orderId,
+        req.body
+      ),
+    ['fingerprint', 'serialNumbers', 'reason']
+  )
+);
+router.post(
+  '/ledger/:id/resolve-return',
+  write(
+    'lifecycle.resolve',
+    ['stock.read', 'stock.correct', 'stock.receive', 'orders.read'],
+    (ctx, req) =>
+      require('../services/stockLifecycleService').resolveReturn(ctx, req.params.id, req.body),
+    ['resolution', 'reason']
   )
 );
 router.get(

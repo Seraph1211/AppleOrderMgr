@@ -1,0 +1,3 @@
+# 仅添加本次正式迁移，保留现行迁移运行时。
+FROM apple-order-mgr-migrator:20261009-stock-dispatch-amd64
+COPY --chown=node:node migrations/20261010000001-stock-lifecycle.js /app/migrations/20261010000001-stock-lifecycle.js

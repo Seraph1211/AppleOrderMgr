@@ -1,3 +1,4 @@
+const { assertLifecycleWritable } = require('./stockLifecycleRules');
 const logger = require('../utils/logger');
 const { Op } = require('sequelize');
 const db = require('../models');
@@ -115,6 +116,7 @@ async function bindSource(ctx, unit, orderId, bindingId, { legacy = false } = {}
         await binding.update({ stockUnitId: unit.id }, { transaction: ctx.transaction });
       return binding;
     }
+    assertLifecycleWritable(unit);
     if (binding && (legacy || binding.id !== bindingId))
       throw ApiError.conflict('来源绑定已变化，请刷新核对', undefined, 'SOURCE_BINDING_CONFLICT');
     if (!binding && bindingId)

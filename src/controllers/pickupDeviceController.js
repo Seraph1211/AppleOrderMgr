@@ -2,6 +2,7 @@ const { UniqueConstraintError } = require('sequelize');
 const { sequelize, Order, PickupDevice, PickupRecord, PickupRecordEvent } = require('../models');
 const { scopeOrderWhere } = require('../services/orderAccessService');
 const { normalizeDeviceBarcodes } = require('../services/pickupDeviceRules');
+const { assertLifecycleWritable } = require('../services/stockLifecycleRules');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
 const { lockStock, legacyContext, updateRow } = require('../services/stockCommandService');
@@ -187,6 +188,7 @@ async function remove(req, res) {
       );
       const ctx = await legacyContext(req.user, transaction, 'legacy.device_unbind');
       const unit = await ensureUnit(ctx, device.serialNumber);
+      assertLifecycleWritable(unit);
       await device.destroy({ transaction });
       await updateRow(ctx, unit, { orderNumberText: null }, 'legacy.source_unbind');
       return true;

@@ -1,3 +1,4 @@
+const { assertLifecycleWritable } = require('./stockLifecycleRules');
 const { Op } = require('sequelize');
 const { fixedCost, specification } = require('./stockFixedCatalog');
 const db = require('../models');
@@ -223,6 +224,7 @@ function supplementary(ctx, item, unit) {
 }
 async function stockAvailable(ctx, unit) {
   try {
+    assertLifecycleWritable(unit);
     if (unit.state !== 'in_stock')
       throw ApiError.conflict(
         `设备 ${unit.serialNumber} 已不在库，请刷新`,
@@ -257,6 +259,7 @@ async function registeredUnit(ctx, item, history) {
       requirePermissions(ctx, 'stock.cost.edit');
     const serialNumber = normalizeDeviceBarcodes({ serialBarcode: item.serialNumber }).serialNumber;
     const current = await db.StockUnit.findOne({ where: { serialNumber }, ...options(ctx) });
+    assertLifecycleWritable(current);
     if (current && current.state !== 'registered')
       throw ApiError.conflict(
         '该 SN 已有记录，请打开原记录操作',
@@ -925,6 +928,8 @@ async function editUnit(ctx, id, input) {
     assertVersion(unit, input.expectedVersion);
     if (!['in_stock', 'sold'].includes(unit.state))
       throw ApiError.conflict('该设备不适用简化台账编辑');
+    if (input.serialNumber !== undefined || input.orderNumber !== undefined)
+      assertLifecycleWritable(unit);
     const facts = unit.state === 'sold' ? await saleFacts(ctx, unit, false) : null;
     if (!facts) await stockAvailable(ctx, unit);
     if (

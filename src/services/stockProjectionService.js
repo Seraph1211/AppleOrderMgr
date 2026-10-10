@@ -105,7 +105,7 @@ async function graph(ctx, scope = null) {
       result.StockProduct = await load('StockProduct', { id: [...products] });
       const locations = new Set(
         [
-          ...result.StockUnit.map(u => u.locationId),
+          ...result.StockUnit.flatMap(u => [u.locationId, u.returnLocationId]),
           ...result.StockSaleUnit.map(u => u.fromLocationId),
           ...result.StockTransfer.flatMap(t => [t.fromLocationId, t.toLocationId]),
         ].filter(Boolean)

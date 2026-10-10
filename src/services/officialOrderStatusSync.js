@@ -1,3 +1,4 @@
+const { explicitSerials } = require('./stockLifecycleRules');
 const ApiError = require('../utils/ApiError');
 const { deriveOfficialPickupDate } = require('./officialPickupDate');
 
@@ -48,6 +49,13 @@ function validateOfficialStatusResult(result, job, now = Date.now()) {
   return {
     status: [...new Set(items.map(item => item.rawStatus))].sort().join(' | '),
     actualPickupDate: deriveOfficialPickupDate(result, source.observedAt).date,
+    items: items.map(item => ({
+      key: typeof item.key === 'string' ? item.key.slice(0, 100) : null,
+      name: item.name.slice(0, 1000),
+      quantity: item.quantity,
+      rawStatus: item.rawStatus,
+      serialNumbers: explicitSerials(item, item.quantity),
+    })),
     observedAt: new Date(observed).toISOString(),
     runId: source.runId,
     sha256: source.sha256,

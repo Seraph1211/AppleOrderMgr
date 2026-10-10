@@ -776,7 +776,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 | 方法与路径               | 契约                                                                                                                                                                                                                                                 |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET /ledger/catalog      | products、warehouses、people、enabled；管理员另有settingsVersion；可在当前表单新增规格和姓名                                                                                                                                                         |
-| GET /ledger              | view=in_stock/sold/all（默认在库）、q、productId、warehouseId、salespersonName、paymentStatus、soldFrom、soldTo、page、pageSize=20/50/100；返回items,total,page,pageSize,counts:{inStock,sold}                                                       |
+| GET /ledger              | view=registered/in_stock/sold/returned/all（默认在库）、q、productId、warehouseId、salespersonName、paymentStatus、soldFrom、soldTo、page、pageSize=20/50/100；返回items,total,page,pageSize,counts:{pending,inStock,sold,returned}                                                       |
 | GET /ledger/:id          | 单台DTO及审计摘要events，附件沿用units/:id与原附件接口                                                                                                                                                                                               |
 | POST /ledger/receive     | units:[{serialNumber,productId或product:{modelName,storageGb,colorName},warehouseId,receivedOn,orderNumber?,officialCostAmount?,acquiredOn?,extraExpenseAmount?,notes?}]                                                                             |
 | POST /ledger/sell        | units:[{id,expectedVersion,saleAmount,settlementAmount?,extraExpenseAmount?}],salespersonName,handlerName,soldOn,payment,notes?                                                                                                                      |
@@ -1088,7 +1088,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 `GET /api/stock/ledger/catalog` 增加 skuCode、entryEligible；cost.read 可见 fixedCostAmount 和 priceVersion。入库及历史补录每台独立 productId；未提供 officialCostAmount 时服务端默认匹配固定目录，显式人工金额或待补仍需 cost.edit。未知拿货日期保持空。
 
-`GET /api/stock/ledger/check-serials?serials=[...]`：最多100个 SN，返回 `existing:[{id,serialNumber}]`，只含已在库、已售、在途；registered 不拦截，正式保存仍在事务内检查规格与既有成本。人工成本的可选 `costBasis` 按成本权限校验并加密保存。单行失败错误附 `details.row`（1起始）；整批回滚。
+`GET /api/stock/ledger/check-serials?serials=[...]`：最多100个 SN，返回 `existing:[{id,serialNumber}]`，只含已在库、已售、已退货、在途；registered 无退货异常时不拦截，正式保存仍在事务内检查规格与既有成本。人工成本的可选 `costBasis` 按成本权限校验并加密保存。单行失败错误附 `details.row`（1起始）；整批回滚。
 
 ### 台账机型、容量与颜色筛选（2026-10-05）
 
@@ -1125,3 +1125,13 @@ DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit �
 - `POST /api/stock/ledger/dispatch`：基础权限同上；请求 `{ requestKey, unit: { serialNumber, id?, expectedVersion?, needsReceive, productId, warehouseId?, receivedOn?, officialCostAmount?, extraExpenseAmount?, saleAmount, settlementAmount? }, salespersonName, handlerName, soldOn, payment, notes? }`。仅一台固定目录规格；未入库需要 stock.receive 及仓库/日期；已有成本默认保持，传入变更需要 stock.cost.edit。提交重新核验身份、版本、状态、规格；原子入库+售出，返回 ledgerUnitIds/items。幂等复用原请求键。
 - `/box/recognize` 允许 stock.receive 或 stock.sales.edit + stock.sales.ship 用户使用；仅识别、不写库，保留成本读取权限与服务端额度限制。
 - 简化台账付款 `agent_pending` 允许结算为空，仅记录代收人/日期，列表状态仍为 agent_pending；`company_received` 必须有明确结算金额。后续补齐结算时创建资金记录，沿用更正及货款权限。其他旧复杂资金接口保持原契约。
+
+## 库存生命周期接口（2026-10-10 本地实现，未发布）
+
+- GET `/api/stock/ledger`：view 扩展 registered/in_stock/sold/returned/all；counts 含 pending/inStock/sold/returned；设备返回 lifecycleIssue、returnedAt、returnPreviousState、check（checkedAt/observedAt/errorCode/jobState/pauseReason/workerOnline）和允许操作，订单标识仍按订单读取及 TAG 裁剪。
+- GET `/api/stock/ledger/statistics`：states、warehouseIds 为 JSON 多选数组，仓库 unassigned 表示未分配；返回 items（modelName/storageGb/colorName/count）、models 小计及 total，按整个筛选范围统计。
+- GET `/api/stock/ledger/returns/:orderId`：stock.read＋orders.read 且订单可访问；返回本订单绑定设备、核对快照 fingerprint（官网内容＋人工映射＋设备版本）、退货数量及已确认集合。
+- POST 同路径：stock.correct＋stock.receive＋orders.read，requestKey、fingerprint、serialNumbers（完整退货 SN 集合）、reason；再次检查绑定、官网观测及状态，事务审计，过期返回冲突。已售 SN 只产生冲突提示。
+- POST `/api/stock/ledger/:id/resolve-return`：stock.correct＋stock.receive＋orders.read，requestKey、expectedVersion、resolution（keep_sold/restore_previous）、reason。keep_sold 保留销售资金，restore_previous 只允许官网已经撤销退货，恢复先前状态及仓库。权限、幂等重放与版本保护沿用台账命令。
+
+官网更新批次查询新增 `purpose=manual/stock_returns`；管理员近期列表包含系统库存退货批次。系统批次 `requestedBy=null`，仅内部调度创建，现有公开提交接口不接受 purpose 或系统身份。
