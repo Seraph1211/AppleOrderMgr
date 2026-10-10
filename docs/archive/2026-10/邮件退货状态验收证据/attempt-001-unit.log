@@ -1,0 +1,56 @@
+ Container mail-return-independent-qa-postgres-1 Running 
+ Container mail-return-independent-qa-postgres-1 Waiting 
+ Container mail-return-independent-qa-postgres-1 Healthy 
+ Container mail-return-independent-qa-qa-run-eb50138f836a Creating 
+ Container mail-return-independent-qa-qa-run-eb50138f836a Created 
+FAIL test/orderMailReturnIndependent.test.js
+  独立邮件退货解析边界
+    ✓ 同一商品段重复引用不翻倍；退货段外数量不计入 (4 ms)
+    ✕ 两个商品行第二个缺数量，不允许悄悄保留第一件通过 (1 ms)
+    ✕ 两个商品行第一个缺数量，不允许只识别第二件通过
+    ✓ 不同退货号累计超出总数量后不得推断全退
+    ✓ 多个订单号不能仅凭退货标题/数量通过
+    ✓ 正文缺少确认事件不能通过
+    ✓ 既有辅导精确标题规则不被Fwd: 个人设置辅导，帮你上手新 iPhone。放宽 (1 ms)
+    ✓ 既有辅导精确标题规则不被Re: 个人设置辅导，帮你上手新 iPhone。放宽
+
+  ● 独立邮件退货解析边界 › 两个商品行第二个缺数量，不允许悄悄保留第一件通过
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      27 |     const parsed = parse(['要退回的商品', product, 'RMB 16,499.00', '数量 1',
+      28 |       product, 'RMB 16,499.00', '总计', 'RMB 32,998.00']);
+    > 29 |     expect(parsed.needsReview).toBe(true);
+         |                                ^
+      30 |     expect(parsed.orderStatus).toBeNull();
+      31 |   });
+      32 |
+
+      at Object.toBe (test/orderMailReturnIndependent.test.js:29:32)
+
+  ● 独立邮件退货解析边界 › 两个商品行第一个缺数量，不允许只识别第二件通过
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+      34 |     const parsed = parse(['要退回的商品', product, 'RMB 16,499.00',
+      35 |       product, 'RMB 16,499.00', '数量 1', '总计', 'RMB 32,998.00']);
+    > 36 |     expect(parsed.needsReview).toBe(true);
+         |                                ^
+      37 |     expect(parsed.orderStatus).toBeNull();
+      38 |   });
+      39 |
+
+      at Object.toBe (test/orderMailReturnIndependent.test.js:36:32)
+
+Test Suites: 1 failed, 1 total
+Tests:       2 failed, 6 passed, 8 total
+Snapshots:   0 total
+Time:        0.813 s
+Ran all test suites within paths "test/orderMailReturnIndependent.test.js".
+

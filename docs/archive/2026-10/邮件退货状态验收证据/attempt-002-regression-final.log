@@ -1,0 +1,201 @@
+ Container mail-return-independent-qa-postgres-1 Running 
+ Container mail-return-independent-qa-postgres-1 Waiting 
+ Container mail-return-independent-qa-postgres-1 Healthy 
+ Container mail-return-independent-qa-qa-run-19bb3e2a1e5c Creating 
+ Container mail-return-independent-qa-qa-run-19bb3e2a1e5c Created 
+PASS test/orderMailLifecycle.integration.test.js
+  ● Console
+
+    console.log
+      2026-10-10 11:01:36 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"6c01578a-2706-4692-ad01-60db47b6b954","orderId":1,"templateType":"processing","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:36 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"6c01578a-2706-4692-ad01-60db47b6b954","orderId":1,"templateType":"processing","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:36 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"b411ebaf-b944-4689-b791-b0b5969eb8f1","orderId":null,"templateType":"ready_update","result":"waiting_order"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:36 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"cdf6f811-a7b7-470d-aa62-dae28c0a2908","orderId":1,"templateType":"personal_setup","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:36 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"1447e9fd-e7f6-4603-bffb-04534ea9d9c7","orderId":1,"templateType":"ready_update","result":"needs_review"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:37 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"6ba51298-bf1f-42ab-a01a-4e91b67fbe74","orderId":1,"templateType":"processing","result":"parsed"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:37 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"6ba51298-bf1f-42ab-a01a-4e91b67fbe74","orderId":1,"templateType":"processing","result":"applied_pending_payment"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:37 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"6ba51298-bf1f-42ab-a01a-4e91b67fbe74","orderId":1,"templateType":"processing","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:37 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"ded04598-7a6f-475f-95e7-101c3abe3718","orderId":1,"templateType":"processing","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:37 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"e3072519-e6ad-49ab-acf5-6c137bb5a2d0","orderId":1,"templateType":"expired","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:37 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"57ccc8be-3ead-4f37-8aad-bbd29b6884fd","orderId":1,"templateType":"processing","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:37 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"1697df4d-0ace-43fc-ba55-eedae5d52cba","orderId":1,"templateType":"cancelled","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:37 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"00f8de8e-d4e5-49b8-ba24-b89d1d97f05b","orderId":1,"templateType":"cancelled","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:37 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"ebefd465-5b9b-461b-8d7e-d99cafde2085","orderId":1,"templateType":"processing","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+PASS test/orderMailLifecycleParser.test.js
+PASS test/orderMailReturnIndependent.integration.test.js
+  ● Console
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"711089fc-1d56-496b-8854-8b4aaff1dc78","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"dfeb4d14-24b4-4470-9c29-9d84c3b2fa6d","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"06d61ca8-2e7a-41d8-90aa-983c0569da61","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"bf8ca1e7-ee42-4db2-9620-1ca3190d15d5","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"c368ce28-5fd6-42df-bc43-baecb006ecb7","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"bf8ca1e7-ee42-4db2-9620-1ca3190d15d5","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"e9169139-301d-42e2-9653-b99cdc7c0d3d","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+          at async Promise.all (index 0)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"f5383cdd-c612-40dd-acf4-1f298d7d165d","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+          at async Promise.all (index 1)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"0645b437-4cca-42ad-8e84-946e00f7f68e","orderId":1,"templateType":"return_requested","result":"needs_review"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"9eda2a2a-d8c5-49ba-bc38-b76c039375e4","orderId":1,"templateType":"return_requested","result":"needs_review"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"b44e82c3-ce2f-45d8-9c98-21be3266d098","orderId":1,"templateType":"return_requested","result":"needs_review"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"174f1355-f392-4802-8c84-2f2c2512b71b","orderId":1,"templateType":"return_requested","result":"needs_review"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"1d6f9001-4547-4ac9-91d4-ebe67256038c","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"32b9f1fa-9044-4dee-a15d-3d621cd8690b","orderId":1,"templateType":"return_requested","result":"needs_review"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"820cf81e-6e95-4fb2-b8a0-9ce33ab5a7db","orderId":1,"templateType":"return_requested","result":"needs_review"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"a6188d4a-0cc9-4ef4-851a-477619615df9","orderId":1,"templateType":"return_requested","result":"needs_review"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"40d91a41-a205-48cf-9d10-7d323611faba","orderId":1,"templateType":"return_requested","result":"needs_review"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+PASS test/orderMailContent.test.js
+PASS test/orderMailReturn.integration.test.js
+  ● Console
+
+    console.log
+      2026-10-10 11:01:38 [WARN]: 退货邮件定向回放未完成 {"service":"apple-order-manager","errorType":"ApiError","apply":true,"messageCount":2}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"b67c5cd1-9ba0-4ef9-8e4d-126908b052c3","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+          at async Promise.all (index 0)
+
+    console.log
+      2026-10-10 11:01:38 [INFO]: 订单邮件生命周期解析完成 {"service":"apple-order-manager","messageId":"b73932d7-bd29-4cdb-ad89-62a74fb4aed6","orderId":1,"templateType":"return_requested","result":"applied"}
+
+      at Console.log (../app/node_modules/winston/lib/winston/transports/console.js:87:23)
+          at async Promise.all (index 1)
+
+PASS test/orderMailReturnRules.test.js
+PASS test/orderMailReturnIndependent.test.js
+PASS test/paymentEligibility.test.js
+PASS test/orderDisplayStatus.test.js
+PASS test/orderMailAuthentication.test.js
+
+Test Suites: 10 passed, 10 total
+Tests:       125 passed, 125 total
+Snapshots:   0 total
+Time:        3.601 s
+Ran all test suites within paths "test/orderMailReturnIndependent.test.js", "test/orderMailReturnIndependent.integration.test.js", "test/orderMailReturnRules.test.js", "test/orderMailReturn.integration.test.js", "test/orderMailLifecycle.integration.test.js", "test/orderMailLifecycleParser.test.js", "test/orderMailContent.test.js", "test/orderMailAuthentication.test.js", "test/paymentEligibility.test.js", "test/orderDisplayStatus.test.js".

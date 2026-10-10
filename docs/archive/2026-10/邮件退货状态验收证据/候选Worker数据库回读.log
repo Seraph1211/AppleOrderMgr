@@ -1,0 +1,6 @@
+ Container mail-return-independent-qa-postgres-1 Running 
+ Container mail-return-independent-qa-postgres-1 Waiting 
+ Container mail-return-independent-qa-postgres-1 Healthy 
+ Container mail-return-independent-qa-qa-run-577ba34c51ca Creating 
+ Container mail-return-independent-qa-qa-run-577ba34c51ca Created 
+{"status":"PASS","orderStatus":"return_requested","needsReview":false,"paymentTask":"processing","ruleVersion":"apple-cn-pickup-v7-return-request"}

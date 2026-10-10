@@ -1,0 +1,19 @@
+ Container mail-return-independent-qa-postgres-1 Running 
+ Container mail-return-independent-qa-postgres-1 Waiting 
+ Container mail-return-independent-qa-postgres-1 Healthy 
+ Container mail-return-independent-qa-qa-run-da30eab496c1 Creating 
+ Container mail-return-independent-qa-qa-run-da30eab496c1 Created 
+
+> apple-order-manager@1.0.0 docs:check
+> npm run docs:check:links && npm run docs:check:schema
+
+
+> apple-order-manager@1.0.0 docs:check:links
+> node scripts/checkDocLinks.js
+
+文档结构检查通过：256 份文档，256 份可达；本地链接、锚点、旧路径与 npm 命令通过。
+
+> apple-order-manager@1.0.0 docs:check:schema
+> node scripts/check-doc-consistency.js
+
+模型字段文档覆盖检查通过：88 个模型（不验证数据库实际结构）

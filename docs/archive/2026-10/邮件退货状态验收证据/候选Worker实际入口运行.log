@@ -1,0 +1,2 @@
+candidate-worker-1  | {"level":"info","message":"订单邮件Worker已启动","service":"apple-order-manager","timestamp":"2026-10-10T11:00:45.719Z"}
+candidate-worker-1  | {"level":"info","message":"订单邮件生命周期解析完成","messageId":"e93db91c-8247-40d5-8c60-5022204e10ba","orderId":2,"result":"applied","service":"apple-order-manager","templateType":"return_requested","timestamp":"2026-10-10T11:00:48.817Z"}
