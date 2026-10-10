@@ -33,6 +33,7 @@
     "test:browser:order-tags": "node scripts/testOrderTagAccessBrowser.js",
     "test:browser:tag-rules": "node scripts/testPaymentTagRulesBrowser.js",
     "test:browser:orders": "node scripts/testOrdersBrowser.js",
+    "orders:replay-return-mail": "node scripts/replayReturnMail.js",
     "orders:restore-times": "node scripts/restoreOrderTimes.js",
     "collector:package": "node scripts/packageCollectorRelease.js",
     "test:browser:monitor": "node scripts/testServerMonitorBrowser.js",

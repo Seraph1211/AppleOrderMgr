@@ -41,6 +41,7 @@ const TEMPLATE_LABELS = {
   expired: '取货安排已过期',
   cancelled: '取货安排已取消',
   excluded: '本期排除',
+  return_requested: '退货申请',
   unknown: '未知模板',
 };
 const LIFECYCLE_STATUS_LABELS = {
@@ -50,6 +51,8 @@ const LIFECYCLE_STATUS_LABELS = {
   ready_for_pickup: '可取货',
   picked_up: '已取货',
   partially_cancelled: '部分取消',
+  partially_return_requested: '部分发起退货',
+  return_requested: '已发起退货',
   expired: '已过期',
   cancelled: '已取消',
   paid: '已付款',
@@ -481,6 +484,8 @@ export default function OrderMailDrawer({ order, onClose }) {
                                     <option value="ready_for_pickup">可取货</option>
                                     <option value="picked_up">已取货</option>
                                     <option value="partially_cancelled">部分取消</option>
+                                    <option value="partially_return_requested">部分发起退货</option>
+                                    <option value="return_requested">已发起退货</option>
                                     <option value="expired">已过期</option>
                                     <option value="cancelled">已取消</option>
                                   </select>

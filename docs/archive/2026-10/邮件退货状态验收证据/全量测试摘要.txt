@@ -1,0 +1,5 @@
+All files                                         |   51.85 |    49.68 |   51.88 |   52.71 |                                                                                                                                                                                                                                                                 
+  orderMailReturnRules.js                         |   88.37 |     86.3 |    92.3 |   94.28 | 38-39,89-90                                                                                                                                                                                                                                                     
+Test Suites: 48 skipped, 140 passed, 140 of 188 total
+Tests:       636 skipped, 2588 passed, 3224 total
+Time:        23.839 s

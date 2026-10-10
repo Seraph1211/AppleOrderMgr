@@ -1,0 +1,54 @@
+{
+  "mode": "强制PostgreSQL会话default_transaction_read_only=on并验证，候选源码内存加载",
+  "apply": false,
+  "messageCount": 78,
+  "orderCount": 76,
+  "outcomes": {
+    "return_requested": 65,
+    "partially_return_requested": 10,
+    "picked_up": 1
+  },
+  "needsReview": 7,
+  "reviewReasons": {
+    "UNKNOWN_LIFECYCLE_TEMPLATE": 7,
+    "RETURN_QUANTITY_EXCEEDS_ORDER": 1
+  },
+  "multipleMessageGroups": [
+    {
+      "orderId": 1176,
+      "orderQuantity": 2,
+      "messageQuantities": [
+        1,
+        1
+      ],
+      "distinctRequestCount": 2,
+      "parseReviewReasons": []
+    },
+    {
+      "orderId": 906,
+      "orderQuantity": 2,
+      "messageQuantities": [
+        2,
+        2
+      ],
+      "distinctRequestCount": 2,
+      "parseReviewReasons": []
+    }
+  ],
+  "retainedRows": [
+    {
+      "orderId": 906,
+      "version": 12,
+      "nextVersion": 13,
+      "beforeStatus": "picked_up",
+      "afterStatus": "picked_up",
+      "needsReview": true,
+      "reviewReasons": [
+        "RETURN_QUANTITY_EXCEEDS_ORDER",
+        "UNKNOWN_LIFECYCLE_TEMPLATE"
+      ],
+      "messageCount": 2
+    }
+  ],
+  "parseReviewCount": 0
+}

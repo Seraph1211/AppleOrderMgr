@@ -1,7 +1,8 @@
+const { parseReturnRequest } = require('./orderMailReturnRules');
 const { normalizeProductName } = require('../utils/productFilter');
 const { extractOrderNumber, htmlToText, mailText } = require('./orderMailContent');
 
-const RULE_VERSION = 'apple-cn-pickup-v6-terminal-statuses';
+const RULE_VERSION = 'apple-cn-pickup-v7-return-request';
 const PERSONAL_SETUP_SUBJECT = '个人设置辅导，帮你上手新 iPhone。';
 const RELATIVE_PICKUP_DAY_OFFSETS = Object.freeze({
   今天: 0,
@@ -9,6 +10,7 @@ const RELATIVE_PICKUP_DAY_OFFSETS = Object.freeze({
   后天: 2,
 });
 const TEMPLATE_TYPES = Object.freeze({
+  RETURN_REQUESTED: 'return_requested',
   CONFIRMED: 'confirmed',
   PROCESSING: 'processing',
   READY_UPDATE: 'ready_update',
@@ -38,6 +40,9 @@ function contentLines(parsed) {
 
 function classifyTemplate(subject) {
   const value = cleanText(subject);
+  const returnSubject = value.replace(/^(?:(?:Fwd?|Re)\s*:\s*|转发\s*[:：]\s*)+/i, '');
+  if (/^我们已经收到您的退货申请[。.]?$/.test(returnSubject))
+    return TEMPLATE_TYPES.RETURN_REQUESTED;
   if (/^你的\s*Apple Store\s*在线商店订单\s*-?\s*W\d{10}$/i.test(value))
     return TEMPLATE_TYPES.CONFIRMED;
   if (/^我们正在处理你的订单\s+W\d{10}$/i.test(value)) return TEMPLATE_TYPES.PROCESSING;
@@ -293,6 +298,21 @@ function parseOrderMailLifecycle(parsed) {
       bodyEventMatched: false,
     },
   };
+  if (templateType === TEMPLATE_TYPES.RETURN_REQUESTED) {
+    const request = parseReturnRequest(lines, parseProducts);
+    result.products = request.products;
+    result.pickupInfo = null;
+    result.evidence.returnRequest = request;
+    result.evidence.bodyEventMatched = lines.some(line =>
+      /^我们已(?:经)?收到您的退货申请[。.!！]?$/.test(line)
+    );
+    result.reviewReasons.push(...request.reviewReasons);
+    if (!result.evidence.bodyEventMatched) result.reviewReasons.push('BODY_EVENT_NOT_CONFIRMED');
+    if (!orderNumber) result.reviewReasons.push('ORDER_NUMBER_AMBIGUOUS');
+    result.needsReview = result.reviewReasons.length > 0;
+    result.orderStatus = result.needsReview ? null : 'return_requested';
+    return result;
+  }
   if (templateType === TEMPLATE_TYPES.EXCLUDED) return result;
   if (templateType === TEMPLATE_TYPES.CONFIRMED && /我们收到了你的订单/.test(body)) {
     result.orderStatus = 'confirmed';

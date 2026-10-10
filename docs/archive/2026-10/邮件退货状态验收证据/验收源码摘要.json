@@ -1,0 +1,8 @@
+{
+  "src/services/orderMailReturnRules.js": "d3e1ce4b2b71c47ba5937a102a7f899880b91799e015a4fa2a7f493f9d4ee002",
+  "src/services/orderMailLifecycleParser.js": "abbf9a031b4875958c2d6c5e8ac46767931077f95d85c07b2d21f9bf584e40cc",
+  "src/services/orderMailLifecycleService.js": "88338d6d30699eb0369ee1851845172de7b06de082b6d2f7d13fccb14c0e9728",
+  "test/orderMailReturnIndependent.test.js": "33305c9cc11aae25c45d5d048d942b2771b38c62fe04849bc05d72cb4a8b02f8",
+  "test/orderMailReturnIndependent.integration.test.js": "04a13c9fc73221434879de2551035750296ab0581e92bb5ddd313bc847a6dd3f",
+  "test/browser/orderMailReturnIndependentAcceptance.cjs": "120ea53b8b43670f6e6d1c7b89896f485d5f500986203ddbb9b93d2a5b0d0bc7"
+}

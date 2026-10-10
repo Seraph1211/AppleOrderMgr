@@ -731,9 +731,9 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 错误码：ORDER_MAIL_UNAVAILABLE、ORDER_MAIL_EXPIRED、IDEMPOTENCY_CONFLICT；队列 PREPARE_TEMPORARY/SMTP_TEMPORARY/SMTP_REJECTED/SMTP_AUTH/SEND_UNKNOWN/ACCESS_REVOKED。PREPARE_TEMPORARY 表示发信前的临时处理失败，最多尝试 3 次；accepted 仅表示 SMTP 接受。
 
-订单列表和详情响应新增：`email_order_status`、`email_payment_status`、`email_status_needs_review`、`email_status_review_reasons`、`email_status_version`、`email_status_evidence_at`、`email_pickup_info`、`email_pickup_date`、`email_lifecycle_updated_at`。这些字段只表达官方订单邮件结论，原 `status/payment_status/pickup_status/official_*` 继续表达官网观测。`email_pickup_info.pickupDateEvidence` 在存在日期线索时返回 `raw`、`basis`、`referenceDate` 和 `offsetDays`；“今天／明天／后天”的 `basis` 固定为 `order_date`，不得使用邮件或页面当前时间换算。列表和导出接受 JSON 数组参数 `emailOrderStatuses`（unknown/confirmed/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired）及 `emailPaymentStatuses`（unknown/paid）；`picked_up` 表示收到精确标题的 Apple 个人设置辅导邮件后的单向推定，不是人工取货记录或实际取货时间。付款状态导出字段作为兼容 API 保留，但订单管理页面的列表、筛选、详情和导出字段弹窗均不展示付款状态。无权访问的订单仍不会因邮件字段泄露。
+订单列表和详情响应新增：`email_order_status`、`email_payment_status`、`email_status_needs_review`、`email_status_review_reasons`、`email_status_version`、`email_status_evidence_at`、`email_pickup_info`、`email_pickup_date`、`email_lifecycle_updated_at`。这些字段只表达官方订单邮件结论，原 `status/payment_status/pickup_status/official_*` 继续表达官网观测。`email_pickup_info.pickupDateEvidence` 在存在日期线索时返回 `raw`、`basis`、`referenceDate` 和 `offsetDays`；“今天／明天／后天”的 `basis` 固定为 `order_date`，不得使用邮件或页面当前时间换算。列表和导出接受 JSON 数组参数 `emailOrderStatuses`（unknown/confirmed/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired/partially_return_requested/return_requested）及 `emailPaymentStatuses`（unknown/paid）；`picked_up` 表示收到精确标题的 Apple 个人设置辅导邮件后的单向推定，不是人工取货记录或实际取货时间。付款状态导出字段作为兼容 API 保留，但订单管理页面的列表、筛选、详情和导出字段弹窗均不展示付款状态。无权访问的订单仍不会因邮件字段泄露。
 
-订单管理列表与详情另返回 `display_order_status`，只用于页面显示：邮件状态为 `confirmed`、邮件付款状态不是 `paid` 且完整来源下单时间 `order_date + 30 分钟` 已到时为 `payment_timeout`（显示“付款超时”）；其他情况沿用 `email_order_status`。缺少有效来源时间不推定付款超时；后续邮件确认付款或推进订单阶段后立即按新证据显示。该推算不证明 Apple 官网已取消订单，也不改写邮件生命周期、付款任务或人工取货记录。列表和导出新增 `displayOrderStatuses` 多选筛选（unknown/confirmed/payment_timeout/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired），在数据库分页前按相同规则计算；原 `emailOrderStatuses` 保持纯邮件状态筛选，两个参数同时提供时取交集。导出字段键 `emailOrderStatus` 为兼容保留，列标题改为“订单状态”，值按 `display_order_status` 映射为与页面一致的中文名称（待确认、订单已确认、付款超时、处理中、可取货、已取货、部分取消、已取消、已过期），缺失或未知值输出“待确认”，不再输出英文状态码；列表／详情 JSON 仍保留状态码。`picked_up` 的页面短名称为“已取货”，邮件推定的含义仍见订单状态说明，不代表人工实际取货。
+订单管理列表与详情另返回 `display_order_status`，只用于页面显示：邮件状态为 `confirmed`、邮件付款状态不是 `paid` 且完整来源下单时间 `order_date + 30 分钟` 已到时为 `payment_timeout`（显示“付款超时”）；其他情况沿用 `email_order_status`。缺少有效来源时间不推定付款超时；后续邮件确认付款或推进订单阶段后立即按新证据显示。该推算不证明 Apple 官网已取消订单，也不改写邮件生命周期、付款任务或人工取货记录。列表和导出新增 `displayOrderStatuses` 多选筛选（unknown/confirmed/payment_timeout/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired/partially_return_requested/return_requested），在数据库分页前按相同规则计算；原 `emailOrderStatuses` 保持纯邮件状态筛选，两个参数同时提供时取交集。导出字段键 `emailOrderStatus` 为兼容保留，列标题改为“邮件订单状态”，值按 `display_order_status` 映射为与页面一致的中文名称（待确认、订单已确认、付款超时、处理中、可取货、已取货、部分取消、已取消、已过期），缺失或未知值输出“待确认”，不再输出英文状态码；列表／详情 JSON 仍保留状态码。`picked_up` 的页面短名称为“已取货”，邮件推定的含义仍见订单状态说明，不代表人工实际取货。
 
 邮件终态 `expired` 显示“已过期”，由完整订单号匹配的“订单 W… 已过期。”及明确未按时取货正文确认。取消邮件“订单 W… 已取消。”及正文“你的取货安排已取消”按不同归档消息 ID 计数：取消邮件数小于订单商品总件数时为 `partially_cancelled`（“部分取消”），达到总件数时为 `cancelled`（“已取消”）。同一封邮件重放／解析修订不重复计数，单封无需列全商品。两件订单一封取消为部分取消、两封取消为已取消；有任一有效过期邮件时统一为已过期，即过期优先于全部／部分取消，不按邮件先后覆盖。旧确认／处理／取货邮件不能撤销以上状态。取消／过期不新增付款或退款结论，已有 `paid` 保留。商品总件数缺失或非法时保留部分取消并待核对；人工核定的明确订单状态继续优先该封解析候选。`expired` 查询值现在只指 Apple 过期邮件，不再代表 30 分钟付款超时。
 
@@ -1003,7 +1003,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 ## 仪表板筛选与分布（2026-09-23）
 
-- `/api/dashboard/stats`、`daily-trend`、`product-distribution`、新增 `city-distribution` 及兼容 `store-distribution` 统一接受 `startDate/endDate`（北京时间日期）、`emailOrderStatuses`、`productKeys`、`recipientTags`。多选为 JSON 数组，最多 100 项；TAG 每项最多 500 字符，保留原始空格；状态仅 unknown/confirmed/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired，商品键复用订单筛选校验。非法参数返回 400。兼容旧 `status/productModel/store` 单值参数。
+- `/api/dashboard/stats`、`daily-trend`、`product-distribution`、新增 `city-distribution` 及兼容 `store-distribution` 统一接受 `startDate/endDate`（北京时间日期）、`emailOrderStatuses`、`productKeys`、`recipientTags`。多选为 JSON 数组，最多 100 项；TAG 每项最多 500 字符，保留原始空格；状态仅 unknown/confirmed/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired/partially_return_requested/return_requested，商品键复用订单筛选校验。非法参数返回 400。兼容旧 `status/productModel/store` 单值参数。
 - stats 新增 `paidOrders`，仅统计当前条件与 processing/ready_for_pickup/picked_up 的交集；保留 `pendingOrders` 兼容字段但也与当前筛选取交集。`totalOrders/totalAmount/missingAmountOrders/amountSource/orderGrowth/amountGrowth` 保留；无完整日期范围时增长率为 null。金额查询失败返回错误，不伪装成 0。
 - `filter-options` 接受相同参数，返回 `productOptions`、`recipientTags`，分别排除自身维度后从完整可见范围生成；保留 `productModels/stores` 兼容字段。候选和所有订单聚合必须叠加账号订单 TAG 访问范围。
 - `daily-trend` 返回 `{ date, count }`，date 为北京时间 `YYYY-MM-DD`；完整日范围补 0（超过 3660 天只返回实际日期点）。商品／城市分布返回 `{ name, value }` 数组，商品附稳定 `key`，value 为订单数；商品按每订单每身份去重，多商品订单可进入不同组。城市取门店字典、未知归“未知城市”，不截断前 10 项。可用取机人数是独立档案统计，只有 TAG 筛选生效。完整规则见[仪表板说明](仪表板说明.md)。
@@ -1149,3 +1149,7 @@ DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit �
 ### 2026-10-10 未入库资料与提示优化
 
 库存台账补充：registered 设备允许 PATCH 基础资料，权限及版本沿用原编辑命令，禁止附 warehouseId、receivedOn、sale 伪造入库。productId 为空时按关联订单全部商品的唯一可识别料号提供规格；返回 productSource=order/manual/null。列表、详情、规格筛选、统计均采用同一关联规则，不产生读取写入。混合规格、未知料号不自动映射；入库时仍验证明确规格。
+
+### 邮件退货状态（2026-10-10）
+
+订单页表头、筛选、详情、列设置与导出统一显示“邮件订单状态”，API 字段键保持兼容。`partially_return_requested` 显示“部分发起退货”，`return_requested` 显示“已发起退货”；两种状态均参与现有邮件和展示状态筛选。退货申请只改变邮件阶段和核对证据，不表示已退款，不修改官网/付款/库存结果。

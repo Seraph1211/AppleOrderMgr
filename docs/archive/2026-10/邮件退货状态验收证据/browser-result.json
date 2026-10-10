@@ -1,0 +1,42 @@
+{
+  "checks": [
+    {
+      "viewport": 1440,
+      "noOverflow": true,
+      "labels": true,
+      "filter": true,
+      "readOnly": true
+    },
+    {
+      "viewport": 768,
+      "noOverflow": true,
+      "labels": true,
+      "filter": true,
+      "readOnly": true
+    },
+    {
+      "viewport": 390,
+      "noOverflow": true,
+      "labels": true,
+      "filter": true,
+      "readOnly": true
+    },
+    {
+      "viewport": 375,
+      "noOverflow": true,
+      "labels": true,
+      "filter": true,
+      "readOnly": true
+    },
+    {
+      "viewport": 320,
+      "noOverflow": true,
+      "labels": true,
+      "filter": true,
+      "readOnly": true
+    }
+  ],
+  "details": true,
+  "exportLabels": true,
+  "errors": []
+}

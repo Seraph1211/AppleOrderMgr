@@ -29,6 +29,8 @@ const EMAIL_ORDER_STATUSES = Object.freeze([
   'partially_cancelled',
   'cancelled',
   'expired',
+  'partially_return_requested',
+  'return_requested',
 ]);
 
 const USER_ROLES = Object.freeze(['admin', 'operator', 'pickupStaff', 'readOnly']);

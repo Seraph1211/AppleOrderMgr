@@ -464,26 +464,33 @@ const enabled = process.env.RUN_ORDER_MAIL_LIFECYCLE_DB === 'true';
     const migration = require('../migrations/20260928000001-add-mail-terminal-order-statuses');
     const Sequelize = require('sequelize');
     const queryInterface = models.sequelize.getQueryInterface();
-    await migration.down(queryInterface, Sequelize);
-    await expect(
-      models.Order.create({
+    try {
+      await migration.down(queryInterface, Sequelize);
+      await expect(
+        models.Order.create({
+          orderNumber: `W${++sequence}`,
+          products: [{ name: '合成测试商品', quantity: 1 }],
+          emailOrderStatus: 'expired',
+        })
+      ).rejects.toMatchObject({ original: { constraint: 'orders_email_order_status_valid' } });
+      await migration.up(queryInterface, Sequelize);
+      const order = await models.Order.create({
         orderNumber: `W${++sequence}`,
         products: [{ name: '合成测试商品', quantity: 1 }],
         emailOrderStatus: 'expired',
-      })
-    ).rejects.toMatchObject({ original: { constraint: 'orders_email_order_status_valid' } });
-    await migration.up(queryInterface, Sequelize);
-    const order = await models.Order.create({
-      orderNumber: `W${++sequence}`,
-      products: [{ name: '合成测试商品', quantity: 1 }],
-      emailOrderStatus: 'expired',
-    });
-    await expect(migration.down(queryInterface, Sequelize)).rejects.toThrow('不得丢失已有终态');
-    await order.reload();
-    expect(order.emailOrderStatus).toBe('expired');
-    await order.update({ emailOrderStatus: 'partially_cancelled' });
-    await expect(migration.down(queryInterface, Sequelize)).rejects.toThrow('不得丢失已有终态');
-    await order.update({ emailOrderStatus: 'cancelled' });
-    await expect(migration.down(queryInterface, Sequelize)).rejects.toThrow('不得丢失已有终态');
+      });
+      await expect(migration.down(queryInterface, Sequelize)).rejects.toThrow('不得丢失已有终态');
+      await order.reload();
+      expect(order.emailOrderStatus).toBe('expired');
+      await order.update({ emailOrderStatus: 'partially_cancelled' });
+      await expect(migration.down(queryInterface, Sequelize)).rejects.toThrow('不得丢失已有终态');
+      await order.update({ emailOrderStatus: 'cancelled' });
+      await expect(migration.down(queryInterface, Sequelize)).rejects.toThrow('不得丢失已有终态');
+    } finally {
+      await require('../migrations/20261010000001-add-mail-return-statuses').up(
+        queryInterface,
+        Sequelize
+      );
+    }
   });
 });

@@ -67,7 +67,7 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
         .join('、'),
   },
   emailOrderStatus: {
-    label: '订单状态',
+    label: '邮件订单状态',
     value: item => getDisplayOrderStatusLabel(item.display_order_status),
   },
   officialOrderStatus: {

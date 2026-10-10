@@ -50,6 +50,8 @@ export const EMAIL_ORDER_STATUS_BADGES = {
     class: 'bg-blue-100 text-blue-800 border border-blue-200',
   },
   partially_cancelled: { text: '部分取消', class: 'badge-warning' },
+  partially_return_requested: { text: '部分发起退货', class: 'badge-warning' },
+  return_requested: { text: '已发起退货', class: 'badge-warning' },
   expired: { text: '已过期', class: 'badge-error' },
   cancelled: { text: '已取消', class: 'badge-error' },
 };
@@ -62,6 +64,8 @@ export const DISPLAY_ORDER_STATUS_BADGES = {
   ready_for_pickup: EMAIL_ORDER_STATUS_BADGES.ready_for_pickup,
   picked_up: EMAIL_ORDER_STATUS_BADGES.picked_up,
   partially_cancelled: EMAIL_ORDER_STATUS_BADGES.partially_cancelled,
+  partially_return_requested: EMAIL_ORDER_STATUS_BADGES.partially_return_requested,
+  return_requested: EMAIL_ORDER_STATUS_BADGES.return_requested,
   expired: EMAIL_ORDER_STATUS_BADGES.expired,
   cancelled: EMAIL_ORDER_STATUS_BADGES.cancelled,
 };

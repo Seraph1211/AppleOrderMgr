@@ -30,7 +30,7 @@ export const ordersColumns = [
   },
   {
     key: 'emailOrderStatus',
-    label: '订单状态',
+    label: '邮件订单状态',
     width: '120px',
     defaultVisible: true,
     sortable: false,

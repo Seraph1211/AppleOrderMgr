@@ -1,0 +1,8 @@
+# 继承实际API生产基线，保留已上线库存及官网独立差异。
+FROM apple-order-mgr-runtime:20261010-stock-receive-amd64
+COPY --chown=node:node src/services/orderMailLifecycleParser.js src/services/orderMailLifecycleService.js src/services/orderMailReturnRules.js /app/src/services/
+COPY --chown=node:node src/constants/business.js /app/src/constants/
+COPY --chown=node:node src/controllers/orderController.js /app/src/controllers/
+COPY --chown=node:node src/utils/orderDisplayStatus.js /app/src/utils/
+COPY --chown=node:node scripts/replayReturnMail.js /app/scripts/
+COPY --chown=node:node package.json /app/package.json

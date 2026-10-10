@@ -195,7 +195,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
             <h3 className="mb-4 text-lg font-semibold">订单状态</h3>
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
               <div>
-                <p className="text-sm text-gray-600">订单状态</p>
+                <p className="text-sm text-gray-600">邮件订单状态</p>
                 <span className={`badge mt-1 ${statusBadge.class}`}>{statusBadge.text}</span>
               </div>
               <div>

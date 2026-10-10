@@ -1,0 +1,4 @@
+# 仅升级现行订单邮件Worker的状态枚举及生命周期模块。
+FROM apple-order-mgr-runtime:20260927T182816Z-f063a22125d5-amd64
+COPY --chown=node:node src/services/orderMailLifecycleParser.js src/services/orderMailLifecycleService.js src/services/orderMailReturnRules.js /app/src/services/
+COPY --chown=node:node src/constants/business.js /app/src/constants/

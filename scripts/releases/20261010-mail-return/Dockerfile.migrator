@@ -1,0 +1,2 @@
+FROM apple-order-mgr-migrator:20261010-stock-lifecycle-amd64
+COPY --chown=node:node migrations/20261010000001-add-mail-return-statuses.js /app/migrations/

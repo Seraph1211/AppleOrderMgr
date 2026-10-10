@@ -865,14 +865,14 @@ export default function Orders() {
 
           {/* 邮件订单状态 */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">订单状态</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">邮件订单状态</label>
             <TagMultiSelect
               enableSelectAll
               options={Object.keys(DISPLAY_ORDER_STATUS_LABELS)}
               optionLabels={DISPLAY_ORDER_STATUS_LABELS}
               value={filters.displayOrderStatuses}
               onChange={value => handleFilterChange('displayOrderStatuses', value)}
-              ariaLabel="订单状态筛选"
+              ariaLabel="邮件订单状态筛选"
               placeholder="全部状态"
               itemLabel="状态"
             />
@@ -1194,7 +1194,7 @@ export default function Orders() {
                         <span className="inline-flex items-center gap-1">
                           {col.label}
                           {col.key === 'emailOrderStatus' && (
-                            <TableHeaderHint label="订单状态说明">
+                            <TableHeaderHint label="邮件订单状态说明">
                               <p>订单已确认：已下单，待付款</p>
                               <p>付款超时：订单已确认，下单满 30 分钟仍无付款邮件证据</p>
                               <p>已过期：Apple 邮件确认未按时取货，订单自动取消</p>

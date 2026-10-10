@@ -10,6 +10,8 @@ const DISPLAY_ORDER_STATUSES = Object.freeze([
   'partially_cancelled',
   'cancelled',
   'expired',
+  'partially_return_requested',
+  'return_requested',
 ]);
 
 /* eslint-disable camelcase -- 键名沿用 API 状态码 */
@@ -23,6 +25,8 @@ const DISPLAY_ORDER_STATUS_LABELS = Object.freeze({
   partially_cancelled: '部分取消',
   cancelled: '已取消',
   expired: '已过期',
+  partially_return_requested: '部分发起退货',
+  return_requested: '已发起退货',
 });
 /* eslint-enable camelcase */
 

@@ -1,0 +1,5 @@
+FROM apple-order-mgr-frontend-builder:20261010-stock-receive-amd64
+COPY src/pages/Orders.jsx /app/src/pages/
+COPY src/components/OrderDetailModal.jsx src/components/OrderMailDrawer.jsx /app/src/components/
+COPY src/constants/orderExportFields.js src/constants/orderStatus.js src/constants/tableColumns.js /app/src/constants/
+RUN npm run lint && npm run build

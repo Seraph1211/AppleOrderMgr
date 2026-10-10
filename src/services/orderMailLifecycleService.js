@@ -1,3 +1,8 @@
+const {
+  RETURN_STATUSES,
+  evaluateReturnScope,
+  aggregateReturnRequests,
+} = require('./orderMailReturnRules');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
 const {
@@ -36,6 +41,7 @@ const ORDER_STATUS_SEQUENCE = Object.freeze([
   'partially_cancelled',
   'cancelled',
   'expired',
+  ...RETURN_STATUSES,
 ]);
 const orderStatusRank = status => Math.max(0, ORDER_STATUS_SEQUENCE.indexOf(status));
 
@@ -82,6 +88,8 @@ function normalizeReplayOrderIds(orderIds) {
 
 /** 辅导与明确终态按订单号和模板事件应用；普通阶段继续核对整单商品。 */
 function evaluateLifecycleScope(templateType, mailProducts, orderProducts) {
+  if (templateType === TEMPLATE_TYPES.RETURN_REQUESTED)
+    return evaluateReturnScope(mailProducts, orderProducts);
   if (templateType === TEMPLATE_TYPES.PERSONAL_SETUP) {
     return { matched: true, reason: null, evidence: 'not_required_personal_setup' };
   }
@@ -223,6 +231,7 @@ function aggregateOrderLifecycle(order, events) {
     if (!orderNumberMatched || !scope.matched || event.needsReview) continue;
     applicable.push(event);
     if (
+      event.templateType !== TEMPLATE_TYPES.RETURN_REQUESTED &&
       (event.orderStatus !== 'cancelled' || event.source === 'manual') &&
       orderStatusRank(event.orderStatus) > orderStatusRank(orderStatus)
     ) {
@@ -247,6 +256,23 @@ function aggregateOrderLifecycle(order, events) {
     if (orderStatusRank(cancellationStatus) > orderStatusRank(orderStatus))
       orderStatus = cancellationStatus;
   }
+
+  const returns = aggregateReturnRequests(order, applicable);
+  for (const reason of returns.reviewReasons) reviewReasons.add(reason);
+  const hasReturnEvents = effective.some(
+    event => event.templateType === TEMPLATE_TYPES.RETURN_REQUESTED
+  );
+  const returnConflict =
+    hasReturnEvents &&
+    (['partially_cancelled', 'cancelled', 'expired'].includes(orderStatus) ||
+      ['partially_cancelled', 'cancelled', 'expired'].includes(order.emailOrderStatus));
+  if (returnConflict) reviewReasons.add('RETURN_TERMINAL_CONFLICT');
+  if (
+    returns.orderStatus &&
+    !returnConflict &&
+    ![...reviewReasons].some(reason => /^(?:RETURN_|ORDER_QUANTITY_UNKNOWN)/.test(reason))
+  )
+    orderStatus = returns.orderStatus;
 
   const pickupCandidates = applicable
     .filter(event => event.pickupInfo)
@@ -337,7 +363,7 @@ async function completePaymentTaskFromMail(order, aggregate, transaction) {
 }
 
 /** 在一个事务中归并同一订单全部有效邮件，并按开关更新订单及付款任务。 */
-function applyOrderLifecycle(orderId, transaction, config = getOrderMailConfig()) {
+function applyOrderLifecycle(orderId, transaction, config = getOrderMailConfig(), options = {}) {
   const apply = async currentTransaction => {
     const order = await Order.findByPk(orderId, {
       transaction: currentTransaction,
@@ -365,28 +391,38 @@ function applyOrderLifecycle(orderId, transaction, config = getOrderMailConfig()
         : order.emailOrderStatus;
     const nextPaymentStatus =
       order.emailPaymentStatus === 'paid' ? 'paid' : aggregate.paymentStatus;
-    await order.update(
-      {
-        emailOrderStatus: nextOrderStatus,
-        emailPaymentStatus: nextPaymentStatus,
-        emailStatusNeedsReview: aggregate.needsReview,
-        emailStatusReviewReasons: aggregate.reviewReasons,
-        emailStatusVersion: order.emailStatusVersion + 1,
-        emailStatusEvidenceAt: aggregate.evidenceAt || order.emailStatusEvidenceAt,
-        emailPickupInfo: aggregate.pickupInfo || order.emailPickupInfo,
-        emailPickupDate: aggregate.pickupInfo?.pickupDate || order.emailPickupDate,
-        emailLifecycleUpdatedAt: new Date(),
-      },
-      { transaction: currentTransaction }
-    );
-    if (config.lifecycle.paymentTaskApplyEnabled) {
+    const updates = {
+      emailOrderStatus:
+        options.returnOnly && !RETURN_STATUSES.includes(nextOrderStatus)
+          ? order.emailOrderStatus
+          : nextOrderStatus,
+      emailPaymentStatus: nextPaymentStatus,
+      emailStatusNeedsReview: aggregate.needsReview,
+      emailStatusReviewReasons: aggregate.reviewReasons,
+      emailStatusVersion: order.emailStatusVersion + 1,
+      emailStatusEvidenceAt: aggregate.evidenceAt || order.emailStatusEvidenceAt,
+      emailPickupInfo: aggregate.pickupInfo || order.emailPickupInfo,
+      emailPickupDate: aggregate.pickupInfo?.pickupDate || order.emailPickupDate,
+      emailLifecycleUpdatedAt: new Date(),
+    };
+    if (options.returnOnly) {
+      delete updates.emailPaymentStatus;
+      delete updates.emailPickupInfo;
+      delete updates.emailPickupDate;
+    }
+    await order.update(updates, { transaction: currentTransaction });
+    if (!options.returnOnly && config.lifecycle.paymentTaskApplyEnabled) {
       await completePaymentTaskFromMail(
         order,
         { ...aggregate, paymentStatus: nextPaymentStatus },
         currentTransaction
       );
     }
-    const eventIds = aggregate.applicable.map(event => event.id);
+    const eventIds = aggregate.applicable
+      .filter(
+        event => !options.returnOnly || event.templateType === TEMPLATE_TYPES.RETURN_REQUESTED
+      )
+      .map(event => event.id);
     if (eventIds.length)
       await OrderMailEvent.update(
         { appliedAt: new Date() },
@@ -394,7 +430,9 @@ function applyOrderLifecycle(orderId, transaction, config = getOrderMailConfig()
       );
     const status = aggregate.needsReview
       ? 'needs_review'
-      : nextPaymentStatus === 'paid' && !config.lifecycle.paymentTaskApplyEnabled
+      : !options.returnOnly &&
+          nextPaymentStatus === 'paid' &&
+          !config.lifecycle.paymentTaskApplyEnabled
         ? 'applied_pending_payment'
         : 'applied';
     return {
@@ -427,7 +465,11 @@ async function processClaimedJob(job, config) {
       const parsed = await parseOrderMail(rawBuffer);
       const parsedResult = parseOrderMailLifecycle(parsed);
       const order = parsedResult.orderNumber
-        ? await Order.findOne({ where: { orderNumber: parsedResult.orderNumber }, transaction })
+        ? await Order.findOne({
+          where: { orderNumber: parsedResult.orderNumber },
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        })
         : null;
       let authentication = { status: 'not_checked', reason: null, evidence: {} };
       if (parsedResult.templateType !== TEMPLATE_TYPES.EXCLUDED) {
@@ -443,7 +485,10 @@ async function processClaimedJob(job, config) {
       let outcome = {
         status: parsedResult.templateType === TEMPLATE_TYPES.EXCLUDED ? 'ignored' : 'parsed',
       };
-      if (order) outcome = await applyOrderLifecycle(order.id, transaction, config);
+      if (order)
+        outcome = await applyOrderLifecycle(order.id, transaction, config, {
+          returnOnly: parsedResult.templateType === TEMPLATE_TYPES.RETURN_REQUESTED,
+        });
       else if (parsedResult.templateType !== TEMPLATE_TYPES.EXCLUDED)
         outcome = { status: 'waiting_order' };
       lockedJob.status = outcome.status;
@@ -748,12 +793,174 @@ function reviewLifecycleEvent(user, orderId, messageId, input) {
       await order.save({ fields: ['emailStatusVersion'], transaction });
       return { status: 'parsed', version: order.emailStatusVersion };
     }
-    const result = await applyOrderLifecycle(order.id, transaction, config);
+    const result = await applyOrderLifecycle(order.id, transaction, config, {
+      returnOnly: current.templateType === TEMPLATE_TYPES.RETURN_REQUESTED,
+    });
     return { status: result.status, version: result.version };
   });
 }
 
+/** 预览或有限回放明确选中的退货邮件；apply 必须带预览版本，不改付款或取货。 */
+async function replayReturnMailMessages({ messageIds, apply = false, expectedVersions = {} }) {
+  if (
+    !Array.isArray(messageIds) ||
+    !messageIds.length ||
+    messageIds.length > 500 ||
+    messageIds.some(id => typeof id !== 'string' || !/^[0-9a-f-]{36}$/i.test(id))
+  )
+    throw ApiError.badRequest('退货回放须明确指定 1-500 封邮件');
+  const ids = [...new Set(messageIds)].sort();
+  const transaction = await sequelize.transaction();
+  try {
+    const jobs = apply
+      ? await OrderMailProcessingJob.findAll({
+        where: { messageId: { [Op.in]: ids } },
+        order: [['messageId', 'ASC']],
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      })
+      : [];
+    if (jobs.some(job => job.status === 'processing'))
+      throw ApiError.conflict('目标邮件仍在处理中');
+    const messages = await OrderMailMessage.findAll({
+      where: { id: { [Op.in]: ids } },
+      order: [['id', 'ASC']],
+      transaction,
+    });
+    if (messages.length !== ids.length) throw ApiError.badRequest('目标邮件不存在');
+    const byOrder = new Map();
+    for (const message of messages) {
+      if (!message.rawContent) throw ApiError.badRequest('目标邮件原文已过期');
+      const parsed = parseOrderMailLifecycle(
+        await parseOrderMail(Buffer.from(message.rawContent, 'base64'))
+      );
+      if (
+        parsed.templateType !== TEMPLATE_TYPES.RETURN_REQUESTED ||
+        parsed.orderNumber !== message.orderNumber
+      )
+        throw ApiError.badRequest('目标不是精确匹配订单的退货申请');
+      if (!byOrder.has(message.orderNumber)) byOrder.set(message.orderNumber, []);
+      byOrder.get(message.orderNumber).push({ message, parsed });
+    }
+    const results = [];
+    for (const orderNumber of [...byOrder.keys()].sort()) {
+      const order = await Order.findOne({
+        where: { orderNumber },
+        transaction,
+        ...(apply ? { lock: transaction.LOCK.UPDATE } : {}),
+      });
+      if (!order) throw ApiError.badRequest('退货邮件关联订单不存在');
+      const beforeStatus = order.emailOrderStatus;
+      const version = order.emailStatusVersion;
+      if (apply && expectedVersions[order.id] !== version)
+        throw ApiError.conflict('订单邮件版本已变化，须重新预览');
+      const selected = byOrder.get(orderNumber);
+      let events = await OrderMailEvent.findAll({
+        where: { orderId: order.id, supersededAt: null },
+        include: [
+          {
+            model: OrderMailMessage,
+            as: 'message',
+            attributes: ['id', 'orderNumber', 'emailDate', 'receivedAt', 'createdAt'],
+          },
+        ],
+        transaction,
+      });
+      if (apply) {
+        for (const { message, parsed } of selected)
+          await appendParserEvent(
+            message,
+            order,
+            parsed,
+            verifyOrderNumberMatch(message, parsed, order),
+            transaction
+          );
+        const config = getOrderMailConfig();
+        if (!config.lifecycle.applyEnabled) throw ApiError.conflict('邮件生命周期应用开关未开启');
+        const outcome = await applyOrderLifecycle(order.id, transaction, config, {
+          returnOnly: true,
+        });
+        for (const { message } of selected) {
+          const job = jobs.find(item => item.messageId === message.id);
+          if (job)
+            await job.update(
+              {
+                status: outcome.status,
+                attempts: 0,
+                completedAt: new Date(),
+                leaseExpiresAt: null,
+                lastErrorCode: null,
+              },
+              { transaction }
+            );
+        }
+        await order.reload({ transaction });
+        results.push({
+          orderId: order.id,
+          version,
+          nextVersion: order.emailStatusVersion,
+          beforeStatus,
+          afterStatus: order.emailOrderStatus,
+          needsReview: outcome.aggregate.needsReview,
+          reviewReasons: outcome.aggregate.reviewReasons,
+          messageCount: selected.length,
+        });
+      } else {
+        events = events.filter(
+          event => !ids.includes(event.messageId) || event.source === 'manual'
+        );
+        for (const { message, parsed } of selected) {
+          const scope = evaluateLifecycleScope(
+            parsed.templateType,
+            parsed.products,
+            order.products
+          );
+          const reasons = [...parsed.reviewReasons, ...(scope.matched ? [] : [scope.reason])];
+          events.push({
+            ...parsed,
+            id: message.id,
+            messageId: message.id,
+            source: 'parser',
+            revision: Number.MAX_SAFE_INTEGER,
+            message,
+            needsReview: reasons.length > 0,
+            reviewReasons: reasons,
+          });
+        }
+        const aggregate = aggregateOrderLifecycle(order, events);
+        const nextStatus =
+          RETURN_STATUSES.includes(aggregate.orderStatus) &&
+          orderStatusRank(aggregate.orderStatus) >= orderStatusRank(beforeStatus)
+            ? aggregate.orderStatus
+            : beforeStatus;
+        results.push({
+          orderId: order.id,
+          version,
+          nextVersion: version + 1,
+          beforeStatus,
+          afterStatus: nextStatus,
+          needsReview: aggregate.needsReview,
+          reviewReasons: aggregate.reviewReasons,
+          messageCount: selected.length,
+        });
+      }
+    }
+    if (apply) await transaction.commit();
+    else await transaction.rollback();
+    return { apply, messageCount: ids.length, orderCount: results.length, results };
+  } catch (error) {
+    if (!transaction.finished) await transaction.rollback();
+    logger.warn('退货邮件定向回放未完成', {
+      errorType: error.name,
+      apply,
+      messageCount: ids.length,
+    });
+    throw error;
+  }
+}
+
 module.exports = {
+  replayReturnMailMessages,
   enqueueLifecycleJob,
   aggregateOrderLifecycle,
   applyOrderLifecycle,
