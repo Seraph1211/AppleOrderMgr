@@ -1,0 +1,8 @@
+# 继承现用生产基线，只替换付款筛选及共用筛选解析文件。
+FROM apple-order-mgr-runtime:20261011-payment-history-scope-amd64
+COPY --chown=node:node src/controllers/orderController.js /app/src/controllers/orderController.js
+COPY --chown=node:node src/services/paymentTaskService.js /app/src/services/paymentTaskService.js
+COPY --chown=node:node src/services/paymentDispatchService.js /app/src/services/paymentDispatchService.js
+COPY --chown=node:node src/services/paymentStatusFilter.js /app/src/services/paymentStatusFilter.js
+COPY --chown=node:node src/utils/officialStatusFilter.js /app/src/utils/officialStatusFilter.js
+COPY --chown=node:node src/utils/multiSelectFilter.js /app/src/utils/multiSelectFilter.js

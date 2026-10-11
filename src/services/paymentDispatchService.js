@@ -22,7 +22,10 @@ const {
   validatePaymentOrderUrl,
   assessAssignment,
 } = require('./paymentEligibility');
-const { buildEmailStatusCondition } = require('./paymentStatusFilter');
+const {
+  buildEmailStatusCondition,
+  buildPaymentOfficialStatusCondition,
+} = require('./paymentStatusFilter');
 const { PAYMENT_EXECUTION_PERMISSIONS } = require('../constants/permissionCatalog');
 const { PAYMENT_ASSIGNMENT_LOCK_ID, getEffectivePermissions } = require('./permissionService');
 const {
@@ -31,6 +34,7 @@ const {
   buildRecipientTagCondition,
   listProductNameOptions,
   listRecipientTagOptions,
+  listOfficialStatusOptions,
   serializeTask,
 } = require('./paymentTaskService');
 
@@ -940,11 +944,16 @@ async function listDispatchTasks(query = {}) {
     const recipientTagCondition = buildRecipientTagCondition(
       query.recipientTags ?? query.recipientTag
     );
+    const officialCondition = buildPaymentOfficialStatusCondition(query, sequelize, Sequelize);
+    const officialOptionOrderWhere = { ...orderWhere };
+    officialOptionOrderWhere[Op.and] = [productCondition, recipientTagCondition].filter(Boolean);
     const tagOptionOrderWhere = { ...orderWhere };
-    if (productCondition) tagOptionOrderWhere[Op.and] = [productCondition];
+    tagOptionOrderWhere[Op.and] = [productCondition, officialCondition].filter(Boolean);
     const productOptionOrderWhere = { ...orderWhere };
-    if (recipientTagCondition) productOptionOrderWhere[Op.and] = [recipientTagCondition];
-    const orderConditions = [productCondition, recipientTagCondition].filter(Boolean);
+    productOptionOrderWhere[Op.and] = [recipientTagCondition, officialCondition].filter(Boolean);
+    const orderConditions = [productCondition, recipientTagCondition, officialCondition].filter(
+      Boolean
+    );
     if (orderConditions.length > 0) orderWhere[Op.and] = orderConditions;
     const page = query.page === undefined ? 1 : Number(query.page);
     if (!Number.isInteger(page) || page <= 0 || page > 100000) {
@@ -954,67 +963,81 @@ async function listDispatchTasks(query = {}) {
     if (!Number.isInteger(limit) || limit <= 0 || limit > 200) {
       throw ApiError.badRequest('limit 必须是 1-200 之间的整数');
     }
-    const [{ count, rows }, productCandidates, recipientTagOptions, rules, overview] =
-      await Promise.all([
-        PaymentTask.findAndCountAll({
-          attributes: { include: [[Sequelize.literal(`(SELECT j.state FROM official_order_refresh_jobs j
-            WHERE j.order_id="PaymentTask".order_id AND j.state IN ('queued','running')
-            ORDER BY j.created_at LIMIT 1)`), 'officialRefreshState']] },
-          where,
+    const [
+      { count, rows },
+      productCandidates,
+      recipientTagOptions,
+      officialOrderStatuses,
+      rules,
+      overview,
+    ] = await Promise.all([
+      PaymentTask.findAndCountAll({
+        attributes: {
           include: [
-            {
-              model: Order,
-              as: 'order',
-              attributes: [
-                'id',
-                'orderNumber',
-                'orderUrl',
-                'ingestionSource',
-                'sourceRecipientTag',
-                'tag',
-                'products',
-                'productFilterItems',
-                'officialRawStatus',
-                'officialStatusObservedAt',
-                'emailOrderStatus',
-                'emailPaymentStatus',
-                'paymentAssignmentHoldReason',
-                'emailStatusNeedsReview',
-                'emailStatusEvidenceAt',
-                'emailLifecycleUpdatedAt',
-                'emailPickupInfo',
-                'paymentMethod',
-                'sourceSnapshot',
-                'orderAmount',
-                'orderAmountPriceVersion',
-                'payerName',
-                'payerVersion',
-                'orderDate',
-                'updatedAt',
-              ],
-              where: orderWhere,
-            },
-            {
-              model: User,
-              as: 'assignee',
-              paranoid: false,
-              attributes: ['id', 'username', 'nickname'],
-            },
+            [
+              Sequelize.literal(`(SELECT j.state FROM official_order_refresh_jobs j
+            WHERE j.order_id="PaymentTask".order_id AND j.state IN ('queued','running')
+            ORDER BY j.created_at LIMIT 1)`),
+              'officialRefreshState',
+            ],
           ],
-          order: [
-            [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
-            [Sequelize.literal('"order"."order_date"'), 'DESC'],
-            ['id', 'DESC'],
-          ],
-          distinct: true,
-          limit,
-          offset: (page - 1) * limit,
-        }),
-        listProductNameOptions(where, productOptionOrderWhere, true),
-        listRecipientTagOptions(where, tagOptionOrderWhere),
-        PaymentTagRule.findAll({ where: { enabled: true } }),
-        getDispatchOverview(),
-      ]);
+        },
+        where,
+        include: [
+          {
+            model: Order,
+            as: 'order',
+            attributes: [
+              'id',
+              'orderNumber',
+              'orderUrl',
+              'ingestionSource',
+              'sourceRecipientTag',
+              'tag',
+              'products',
+              'productFilterItems',
+              'officialRawStatus',
+              'officialStatusObservedAt',
+              'emailOrderStatus',
+              'emailPaymentStatus',
+              'paymentAssignmentHoldReason',
+              'emailStatusNeedsReview',
+              'emailStatusEvidenceAt',
+              'emailLifecycleUpdatedAt',
+              'emailPickupInfo',
+              'paymentMethod',
+              'sourceSnapshot',
+              'orderAmount',
+              'orderAmountPriceVersion',
+              'payerName',
+              'payerVersion',
+              'orderDate',
+              'updatedAt',
+            ],
+            where: orderWhere,
+          },
+          {
+            model: User,
+            as: 'assignee',
+            paranoid: false,
+            attributes: ['id', 'username', 'nickname'],
+          },
+        ],
+        order: [
+          [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
+          [Sequelize.literal('"order"."order_date"'), 'DESC'],
+          ['id', 'DESC'],
+        ],
+        distinct: true,
+        limit,
+        offset: (page - 1) * limit,
+      }),
+      listProductNameOptions(where, productOptionOrderWhere, true),
+      listRecipientTagOptions(where, tagOptionOrderWhere),
+      listOfficialStatusOptions(where, officialOptionOrderWhere),
+      PaymentTagRule.findAll({ where: { enabled: true } }),
+      getDispatchOverview(),
+    ]);
     const serverTime = new Date();
     const ruleIndex = buildRuleIndex(rules);
     return {
@@ -1029,6 +1052,7 @@ async function listDispatchTasks(query = {}) {
       })),
       ...productCandidates,
       recipientTagOptions,
+      officialOrderStatuses,
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
       serverTime,
     };

@@ -1,0 +1,10 @@
+# 继承现用前端，保留其他页面及手机交互修复。
+FROM apple-order-mgr-frontend-builder:20261011-payment-management-amd64
+COPY src/constants/navigation.js /app/src/constants/navigation.js
+COPY src/components/PaymentOrdersTable.jsx /app/src/components/PaymentOrdersTable.jsx
+COPY src/components/OfficialStatusFilter.jsx /app/src/components/OfficialStatusFilter.jsx
+COPY src/pages/PaymentDispatch.jsx /app/src/pages/PaymentDispatch.jsx
+COPY src/pages/PaymentTasks.jsx /app/src/pages/PaymentTasks.jsx
+COPY src/index.css /app/src/index.css
+COPY src/components/dateRangeFilter.css /app/src/components/dateRangeFilter.css
+RUN npm run lint && npm run build

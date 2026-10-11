@@ -1,6 +1,8 @@
 const { Op } = require('sequelize');
 const { EMAIL_ORDER_STATUSES } = require('../constants/business');
 const ApiError = require('../utils/ApiError');
+const { parseMultiSelectFilter } = require('../utils/multiSelectFilter');
+const { buildOfficialStatusCondition } = require('../utils/officialStatusFilter');
 
 /**
  * 解析两张付款列表的邮件订单状态筛选。
@@ -8,13 +10,6 @@ const ApiError = require('../utils/ApiError');
  * @returns {Object|null} Sequelize 状态条件；未选择时为空
  */
 function buildEmailStatusCondition(query) {
-  if (query.officialOrderStatus !== undefined || query.officialOrderStatuses !== undefined) {
-    throw ApiError.badRequest(
-      '官网订单状态筛选参数已退休，请使用 emailOrderStatus 或 emailOrderStatuses',
-      undefined,
-      'FILTER_RETIRED'
-    );
-  }
   let statuses = query.emailOrderStatuses;
   if (statuses === undefined) {
     if (!query.emailOrderStatus) return null;
@@ -37,4 +32,23 @@ function buildEmailStatusCondition(query) {
   return { [Op.in]: [...new Set(statuses)] };
 }
 
-module.exports = { buildEmailStatusCondition, EMAIL_ORDER_STATUSES };
+/** 付款官网状态与订单管理共用解析和精确复合匹配，不改变历史邮件兼容参数。 */
+function buildPaymentOfficialStatusCondition(query, sequelize, Sequelize) {
+  if (query.officialOrderStatus !== undefined)
+    throw ApiError.badRequest(
+      '请使用官网状态多选参数 officialOrderStatuses',
+      undefined,
+      'FILTER_RETIRED'
+    );
+  const statuses = parseMultiSelectFilter(query.officialOrderStatuses, 'officialOrderStatuses', {
+    maxItems: 100,
+    maxLength: 100,
+  });
+  return buildOfficialStatusCondition(statuses, sequelize, Sequelize, 'order');
+}
+
+module.exports = {
+  buildEmailStatusCondition,
+  buildPaymentOfficialStatusCondition,
+  EMAIL_ORDER_STATUSES,
+};

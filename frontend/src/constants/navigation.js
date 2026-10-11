@@ -44,16 +44,16 @@ export const NAVIGATION_GROUPS = [
     icon: 'CreditCard',
     children: [
       {
-        name: '付款任务',
-        href: '/payment-tasks',
-        icon: 'CreditCard',
-        permission: PERMISSIONS.PAYMENT_TASKS_READ_OWN,
-      },
-      {
         name: '付款调度',
         href: '/payment-dispatch',
         icon: 'ListChecks',
         permission: PERMISSIONS.PAYMENT_DISPATCH_READ,
+      },
+      {
+        name: '付款任务',
+        href: '/payment-tasks',
+        icon: 'CreditCard',
+        permission: PERMISSIONS.PAYMENT_TASKS_READ_OWN,
       },
     ],
   },

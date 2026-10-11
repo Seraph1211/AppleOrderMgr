@@ -280,7 +280,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 ## 付款任务与付款人姓名
 
 - 新增付款接口沿用项目现有 JavaScript API 的 camelCase 请求／响应，不对既有 snake_case 订单 DTO 做隐式全局转换。普通用户的列表、详情、状态、付款人、链接和刷新入口均同时校验权限和最新 assigneeUserId；转派后原负责人立即失去访问。
-- 本人任务列表支持 page、limit、orderNumber、productNames、recipientTags、processingStatus；`productNames` 是 JSON 数组，最多 100 项，每项去除首尾空格后按完整 `products[].name` 精确匹配且最长 500 字符，多个商品之间为 OR。筛选在分页前完成，与 TAG、订单号、状态和日期等其他维度之间为 AND。旧 `productModel`、`productKeyword` 继续兼容且与商品名称条件命中同一 products 元素。`recipientTags` 同样最多 100 项、每项最长 500 字符，多个 TAG 之间为 OR；兼容单值 `recipientTag`。AOS 订单使用来源 TAG，其他订单使用订单入库时保存的 `tag`。
+- 本人任务列表支持 page、limit、orderNumber、productNames、recipientTags、officialOrderStatuses、processingStatus；官网多选与订单管理共用分项精确匹配、同义归一、未知原值和未观测项，空选不限制。返回完整范围的 `officialOrderStatuses` 候选，忽略当前官网选择但保留其余筛选和本人归属；`productNames` 是 JSON 数组，最多 100 项，每项去除首尾空格后按完整 `products[].name` 精确匹配且最长 500 字符，多个商品之间为 OR。筛选在分页前完成，与 TAG、订单号、状态和日期等其他维度之间为 AND。旧 `productModel`、`productKeyword` 继续兼容且与商品名称条件命中同一 products 元素。`recipientTags` 同样最多 100 项、每项最长 500 字符，多个 TAG 之间为 OR；兼容单值 `recipientTag`。AOS 订单使用来源 TAG，其他订单使用订单入库时保存的 `tag`。
 - `PUT /api/payment-tasks/:id` 是行级原子保存接口，body 可包含 `{ processingStatus?, processingNotes?, expectedVersion?, payerName?, expectedPayerVersion? }`，幂等键通过请求头传入。接口只更新实际提交且发生变化的字段；任务字段要求 `payment_tasks.handle_own`，付款人字段要求 `payment_tasks.payer.edit_own`，同时修改时在同一事务提交或全部回滚。四态为 pending、processing、completed、exception；官网状态、复制链接、登记付款人、到期和转派不自动改变处理状态。状态变更与备注填写、保存无关，备注可空。兼容的独立付款人接口仍保留。
 - 外部付款人姓名在四种状态、到期、官网已付／退款／取消后仍可维护。`PUT /api/payment-tasks/:id/payer` 使用 `{ payerName: string | null, expectedVersion, reason? }`；系统不提供付款人候选接口，不创建付款人账号或主数据。
 - 单项和当前页勾选批量复制订单信息均通过既有链接接口逐单校验 `payment_tasks.link.read_own` 和当前任务归属，接口直接返回该任务关联订单的 `orders.orderUrl`；前端结合本人任务 DTO 生成 `orders.id || 商品信息 || 支付方式 || 付款截止时间 || 订单链接`，批量结果按当前列表顺序每单一行。商品名称优先、型号兜底，每项按 `名称 x 数量` 展示，多商品使用 `、` 连接；`WECHAT`／`WECHAT PAY`／`微信支付` 显示为 `微信`，`ALIPAY` 显示为 `支付宝`，其他非空值保留原文，商品或支付方式缺失时使用 `-`，付款截止时间仅由任务 DTO 的来源下单时间 `orderDate + 30 分钟` 计算，固定北京时间 `YY/MM/DD HH:mm`；来源时间缺失、不含时分／时区或无效时使用 `-`，不回退官网时间；链接保持普通 URL。接口不按核实、截止时间、人工处理状态或官网支付／订单状态限制复制；链接为空时返回资源不存在，响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
@@ -1161,3 +1161,12 @@ DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit �
 复用官网刷新持久队列、身份校验、限流和状态回写。正式 Migration 仅扩展 `official_order_refresh_batches.purpose` CHECK：`payment_manual` 必须有 requested_by，`payment_auto` 必须为空；不新增表。down 如已有付款刷新审计则拒绝，保留证据。
 
 API 进程每三分钟扫描付款任务关联订单；仅核对 `orders.created_at >= PAYMENT_OFFICIAL_REFRESH_FROM` 的新入库订单，起点为持久环境配置的完整 ISO 时间，首次启用时刻固定，不随重启推进；缺失或非法起点时自动核对关闭并只记录错误分类。`payment_auto` 在领取和回写时再次校验相同入库范围，手动历史单刷新不受此限制。`PAYMENT_OFFICIAL_REFRESH_ENABLED=true`、合法 `PAYMENT_OFFICIAL_REFRESH_FROM` 且 `NODE_ENV=production` 才自动运行，默认关闭。数据库共享队列锁去重，以上次任务建立时间约束每单三分钟间隔，保护暂停批次保留，自动核对至少延后30分钟；冷却到期仅当前可访问付款订单的旧暂停 queued 标记 cancelled／`REQUEUED_FOR_PAYMENT`，再创建付款目的任务，不恢复整个历史批次、不触碰 running。手动遇到冷却中的暂停 queued 返回409 `OFFICIAL_REFRESH_PAUSED`；更晚人工成功可解除该订单的历史暂停影响。每单24小时最多建立10次任务，`ORDER_ATTEMPT_LIMIT` 至少延后24小时，官网已有预算、冷却与限流继续生效。候选先排除完整终态，再按上次入队时间排序，避免历史终态或固定前500单挤占后续订单。仅邮件 paid 或完整官网状态集合全部属于已付款后阶段／明确过期取消终态时停止；未知、部分待付款、来源下单30分钟倒计时结束均继续核对。人工 processingStatus、付款人及付款备注不作停止判断或自动修改。刷新失败保留有效官网状态与时间。
+
+
+## 付款页面官网状态筛选（2026-10-11 已批准）
+
+两张付款页面删除邮件订单状态筛选控件，新增与订单管理一致的官网状态多选与全选。`GET /api/payment-tasks`、`GET /api/payment-dispatch/tasks` 使用 `officialOrderStatuses`（JSON 字符串数组或数组，兼容单值），最多100项、每项最长100字符；空数组或未传表示不限制。单项必须是一个官网状态，拒绝含 `|` 的复合输入。筛选对 `orders.official_raw_status` 的复合状态逐项精确匹配，多个选择 OR，与日期、TAG、商品、任务归属等其他条件 AND。`PICKUP_READY`／`READY_FOR_PICKUP` 等同义项与订单管理共用归一规则；未知原值保留，`__not_observed__` 匹配空状态。
+
+列表顶层返回 `officialOrderStatuses: string[]` 候选，按当前权限、任务归属及其他查询条件从数据库完整范围生成，忽略当前官网状态选择，独立于分页，供全选使用。服务端在分页和计数之前筛选，不允许按当页结果补过滤。旧邮件筛选参数继续作为 API 兼容能力，页面不再发送。
+
+日期继续使用与订单管理共用的来源 `orderDate` 范围与北京时间日边界；商品选择继续使用稳定 `productKeys`，界面只显示机型文字，不显示 SKU 编号。此次不修改数据库、自动刷新起点、权限或终态判断。

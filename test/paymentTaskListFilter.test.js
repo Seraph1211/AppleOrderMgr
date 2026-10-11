@@ -1,4 +1,5 @@
 jest.mock('../src/models', () => ({
+  sequelize: { escape: value => `'${String(value).replaceAll("'", "''")}'` },
   PaymentTask: { findAndCountAll: jest.fn(), findAll: jest.fn() },
   Order: {},
   User: {},
@@ -56,4 +57,19 @@ test('非法状态不能变成全部查询', async () => {
 test('查询失败继续向调用方报告', async () => {
   PaymentTask.findAndCountAll.mockRejectedValue(new Error('synthetic query failure'));
   await expect(listOwnTasks(17)).rejects.toThrow('synthetic query failure');
+});
+
+test('官网多选先过滤再分页，候选不受当前状态选择且严格本人范围', async () => {
+  const { Op } = require('sequelize');
+  await listOwnTasks(17, { officialOrderStatuses: '["SHIPPED"]', page: 2, limit: 10 });
+  const main = PaymentTask.findAndCountAll.mock.calls[0][0];
+  expect(main.where).toEqual({ assigneeUserId: 17 });
+  expect(main.offset).toBe(10);
+  expect(main.include[0].where[Op.and][0].val).toContain("'SHIPPED'");
+  const candidates = PaymentTask.findAll.mock.calls.find(
+    ([options]) => options.raw && options.attributes[0][1] === 'officialRawStatus'
+  )[0];
+  expect(candidates.where).toEqual({ assigneeUserId: 17 });
+  expect(candidates.include[0].where[Op.and]).toEqual([]);
+  expect(candidates.limit).toBeUndefined();
 });

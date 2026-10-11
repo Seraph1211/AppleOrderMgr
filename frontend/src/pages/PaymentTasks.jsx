@@ -1,10 +1,10 @@
 import PaymentOrdersTable from '../components/PaymentOrdersTable';
 import usePaymentOrderRefresh from '../hooks/usePaymentOrderRefresh';
 import AutoDismissToast from '../components/AutoDismissToast';
-import OrderDateFilter from '../components/OrderDateFilter';
+import DateRangeFilter from '../components/dateRangeFilter';
 import ProductFilter from '../components/ProductFilter';
 import PaymentNotesModal from '../components/PaymentNotesModal';
-import EmailStatusFilter from '../components/EmailStatusFilter';
+import OfficialStatusFilter from '../components/OfficialStatusFilter';
 import ProcessingStatusFilter from '../components/ProcessingStatusFilter';
 import { readPaymentCopyText } from '../utils/paymentCopySource';
 import { getPaymentTaskCode } from '../api/paymentCodesApi';
@@ -41,7 +41,7 @@ const INITIAL_FILTERS = {
   orderNumber: '',
   productKeys: [],
   recipientTags: [],
-  emailOrderStatuses: [],
+  officialOrderStatuses: [],
   dateFrom: '',
   dateTo: '',
 };
@@ -59,6 +59,7 @@ export default function PaymentTasks() {
   const [pagination, setPagination] = useState({ total: 0, totalPages: 0 });
   const [productOptions, setProductOptions] = useState([]);
   const [recipientTagOptions, setRecipientTagOptions] = useState([]);
+  const [officialStatusOptions, setOfficialStatusOptions] = useState([]);
   const loadRequest = useRef(0);
   const [filterDrafts, setFilterDrafts] = useState(INITIAL_FILTERS);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
@@ -102,8 +103,8 @@ export default function PaymentTasks() {
         );
         if (params.productKeys) params.productKeys = JSON.stringify(params.productKeys);
         if (params.recipientTags) params.recipientTags = JSON.stringify(params.recipientTags);
-        if (params.emailOrderStatuses)
-          params.emailOrderStatuses = JSON.stringify(params.emailOrderStatuses);
+        if (params.officialOrderStatuses)
+          params.officialOrderStatuses = JSON.stringify(params.officialOrderStatuses);
         const response = await getPaymentTasks({
           ...params,
           page,
@@ -113,6 +114,7 @@ export default function PaymentTasks() {
         setPagination(response.data.pagination);
         setProductOptions(response.data.productOptions || []);
         setRecipientTagOptions(response.data.recipientTagOptions || []);
+        setOfficialStatusOptions(response.data.officialOrderStatuses || []);
         const lastPage = Math.max(1, response.data.pagination.totalPages);
         if (page > lastPage) {
           setSelectedTaskIds([]);
@@ -339,6 +341,8 @@ export default function PaymentTasks() {
           />
           <div className="payment-filter-product">
             <ProductFilter
+              enableSelectAll
+              hideProductCode
               options={productOptions}
               value={filters.productKeys}
               onChange={productKeys => {
@@ -348,21 +352,22 @@ export default function PaymentTasks() {
             />
           </div>
           <TagMultiSelect
+            enableSelectAll
             options={recipientTagOptions}
-            value={filterDrafts.recipientTags}
-            onChange={recipientTags =>
-              setFilterDrafts(previous => ({ ...previous, recipientTags }))
-            }
+            value={filters.recipientTags}
+            onChange={recipientTags => {
+              setFilterDrafts(previous => ({ ...previous, recipientTags }));
+              changeFilters({ ...filters, recipientTags });
+            }}
           />
 
-          <EmailStatusFilter
-            value={filterDrafts.emailOrderStatuses}
-            onChange={emailOrderStatuses =>
-              setFilterDrafts(previous => ({
-                ...previous,
-                emailOrderStatuses,
-              }))
-            }
+          <OfficialStatusFilter
+            options={officialStatusOptions}
+            value={filters.officialOrderStatuses}
+            onChange={officialOrderStatuses => {
+              setFilterDrafts(previous => ({ ...previous, officialOrderStatuses }));
+              changeFilters({ ...filters, officialOrderStatuses });
+            }}
           />
           <ProcessingStatusFilter
             value={filterDrafts.processingStatus}
@@ -375,10 +380,13 @@ export default function PaymentTasks() {
           />
         </div>
         <div className="payment-filter-footer">
-          <OrderDateFilter
-            dateFrom={filterDrafts.dateFrom}
-            dateTo={filterDrafts.dateTo}
-            onChange={range => setFilterDrafts(previous => ({ ...previous, ...range }))}
+          <DateRangeFilter
+            dateFrom={filters.dateFrom}
+            dateTo={filters.dateTo}
+            onChange={range => {
+              setFilterDrafts(previous => ({ ...previous, ...range }));
+              changeFilters({ ...filters, ...range });
+            }}
           />
           <div className="payment-filter-submit">
             {JSON.stringify(filterDrafts) !== JSON.stringify(filters) && (

@@ -12,7 +12,7 @@ async function main() {
   const output = process.env.DATE_FILTER_OUTPUT || '/tmp/order-date-filter-ui';
   fs.mkdirSync(output, { recursive: true });
   try {
-    for (const width of [375, 768, 1440]) {
+    for (const width of [320, 375, 768, 1440]) {
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       const errors = [];
       const requests = [];

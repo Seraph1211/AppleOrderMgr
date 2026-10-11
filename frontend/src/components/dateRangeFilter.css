@@ -119,3 +119,22 @@
     padding: 12px;
   }
 }
+
+/* 手机日期条件单选可收缩，清空与关闭按钮保持单行和完整触控区域。 */
+.date-range-toolbar > .responsive-select-trigger {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+}
+.date-range-toolbar > .btn:not(.responsive-select-trigger) {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+@media (max-width: 767px) {
+  .date-range-toolbar {
+    gap: 8px;
+  }
+  .date-range-toolbar > .btn:not(.responsive-select-trigger) {
+    min-width: 44px;
+  }
+}

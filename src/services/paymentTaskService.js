@@ -1,9 +1,13 @@
 const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 const { parseProductKeys, productKeySql } = require('../utils/productFilterQuery');
+const { collectOfficialStatusOptions } = require('../utils/officialStatusFilter');
 const { collectProductOptions } = require('../utils/productFilter');
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
 const logger = require('../utils/logger');
-const { buildEmailStatusCondition } = require('./paymentStatusFilter');
+const {
+  buildEmailStatusCondition,
+  buildPaymentOfficialStatusCondition,
+} = require('./paymentStatusFilter');
 const { Op, Sequelize } = require('sequelize');
 const {
   sequelize,
@@ -160,6 +164,23 @@ async function listRecipientTagOptions(taskWhere, orderWhere) {
     raw: true,
   });
   return rows.map(row => row.recipientTag).filter(Boolean);
+}
+
+/** 读取完整本人／调度任务范围内的官网状态候选，忽略当前状态选择与分页。 */
+async function listOfficialStatusOptions(taskWhere, orderWhere) {
+  try {
+    const rows = await PaymentTask.findAll({
+      where: taskWhere,
+      attributes: [[Sequelize.col('order.official_raw_status'), 'officialRawStatus']],
+      include: [{ model: Order, as: 'order', attributes: [], where: orderWhere, required: true }],
+      group: [Sequelize.col('order.official_raw_status')],
+      raw: true,
+    });
+    return collectOfficialStatusOptions(rows);
+  } catch (error) {
+    logger.error('查询付款官网状态候选失败', { errorType: error.name });
+    throw error;
+  }
 }
 
 /**
@@ -352,37 +373,45 @@ async function listOwnTasks(userId, query = {}) {
     const recipientTagCondition = buildRecipientTagCondition(
       query.recipientTags ?? query.recipientTag
     );
+    const officialCondition = buildPaymentOfficialStatusCondition(query, sequelize, Sequelize);
+    const officialOptionOrderWhere = { ...orderWhere };
+    officialOptionOrderWhere[Op.and] = [productCondition, recipientTagCondition].filter(Boolean);
     const tagOptionOrderWhere = { ...orderWhere };
-    if (productCondition) tagOptionOrderWhere[Op.and] = [productCondition];
+    tagOptionOrderWhere[Op.and] = [productCondition, officialCondition].filter(Boolean);
     const productOptionOrderWhere = { ...orderWhere };
-    if (recipientTagCondition) productOptionOrderWhere[Op.and] = [recipientTagCondition];
-    const orderConditions = [productCondition, recipientTagCondition].filter(Boolean);
+    productOptionOrderWhere[Op.and] = [recipientTagCondition, officialCondition].filter(Boolean);
+    const orderConditions = [productCondition, recipientTagCondition, officialCondition].filter(
+      Boolean
+    );
     if (orderConditions.length > 0) orderWhere[Op.and] = orderConditions;
 
     const serverTime = new Date();
     const include = includeTaskRelations();
     include[0].where = orderWhere;
-    const [{ count, rows }, productCandidates, recipientTagOptions] = await Promise.all([
-      PaymentTask.findAndCountAll({
-        where,
-        attributes: taskAttributes(),
-        include,
-        distinct: true,
-        order: [
-          [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
-          [Sequelize.literal('"order"."order_date"'), 'DESC'],
-          ['id', 'DESC'],
-        ],
-        limit,
-        offset: (page - 1) * limit,
-      }),
-      listProductNameOptions(where, productOptionOrderWhere, true),
-      listRecipientTagOptions(where, tagOptionOrderWhere),
-    ]);
+    const [{ count, rows }, productCandidates, recipientTagOptions, officialOrderStatuses] =
+      await Promise.all([
+        PaymentTask.findAndCountAll({
+          where,
+          attributes: taskAttributes(),
+          include,
+          distinct: true,
+          order: [
+            [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],
+            [Sequelize.literal('"order"."order_date"'), 'DESC'],
+            ['id', 'DESC'],
+          ],
+          limit,
+          offset: (page - 1) * limit,
+        }),
+        listProductNameOptions(where, productOptionOrderWhere, true),
+        listRecipientTagOptions(where, tagOptionOrderWhere),
+        listOfficialStatusOptions(where, officialOptionOrderWhere),
+      ]);
     return {
       items: rows.map(row => serializeTask(row, serverTime)),
       ...productCandidates,
       recipientTagOptions,
+      officialOrderStatuses,
       pagination: { page, limit, total: count, totalPages: Math.ceil(count / limit) },
       serverTime,
     };
@@ -601,6 +630,7 @@ module.exports = {
   buildProductCondition,
   listProductNameOptions,
   listRecipientTagOptions,
+  listOfficialStatusOptions,
   serializeTask,
   listOwnTasks,
   getOwnTask,

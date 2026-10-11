@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const {
   EMAIL_ORDER_STATUSES,
   buildEmailStatusCondition,
+  buildPaymentOfficialStatusCondition,
 } = require('../src/services/paymentStatusFilter');
 
 test('邮件状态多选按 OR 去重，兼容单值，空选不限制', () => {
@@ -34,11 +35,56 @@ test.each([
   expect(() => buildEmailStatusCondition({ emailOrderStatuses })).toThrow();
 });
 
-test.each([{ officialOrderStatus: 'payment_due' }, { officialOrderStatuses: '[]' }])(
-  '拒绝退休的官网状态参数 %j',
-  query => expect(() => buildEmailStatusCondition(query)).toThrow('官网订单状态筛选参数已退休')
-);
-
 test.each(['partially_cancelled', 'expired', 'cancelled'])('接受 Apple 邮件终态 %s', status => {
   expect(buildEmailStatusCondition({ emailOrderStatus: status })).toEqual({ [Op.in]: [status] });
+});
+
+const { Sequelize } = require('sequelize');
+const sequelize = { escape: value => "'" + String(value).replaceAll("'", "''") + "'" };
+test('官网状态匹配共用Orders同义项，复合任一项和未观测', () => {
+  const condition = buildPaymentOfficialStatusCondition(
+    { officialOrderStatuses: '["PICKUP_READY","__not_observed__"]' },
+    sequelize,
+    Sequelize
+  );
+  expect(condition.val).toContain('"order"."official_raw_status"');
+  expect(condition.val).toContain("'READY_FOR_PICKUP'");
+  expect(condition.val).toContain("'PICKUP_READY'");
+  expect(condition.val).toContain('regexp_split_to_array');
+  expect(condition.val).toContain("= '' OR");
+});
+test.each([undefined, null, '', '[]', []])('官网空选%j不限制', officialOrderStatuses => {
+  expect(
+    buildPaymentOfficialStatusCondition({ officialOrderStatuses }, sequelize, Sequelize)
+  ).toBeNull();
+});
+test.each([
+  '[',
+  '[1]',
+  {},
+  '["A | B"]',
+  JSON.stringify(Array(101).fill('SHIPPED')),
+  JSON.stringify(['A'.repeat(101)]),
+])('官网非法选择%j拒绝', officialOrderStatuses => {
+  expect(() =>
+    buildPaymentOfficialStatusCondition({ officialOrderStatuses }, sequelize, Sequelize)
+  ).toThrow();
+});
+test('未知状态安全转义且不被当成已知枚举强制丢弃', () => {
+  const condition = buildPaymentOfficialStatusCondition(
+    { officialOrderStatuses: ["NEW'); SELECT 1; --"] },
+    sequelize,
+    Sequelize
+  );
+  expect(condition.val).toContain("'NEW''); SELECT 1; --'");
+});
+
+test('拒绝退休的旧单值付款阶段参数，避免静默放宽', () => {
+  expect(() =>
+    buildPaymentOfficialStatusCondition(
+      { officialOrderStatus: 'payment_due' },
+      sequelize,
+      Sequelize
+    )
+  ).toThrow('officialOrderStatuses');
 });

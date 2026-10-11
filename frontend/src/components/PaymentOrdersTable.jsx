@@ -44,7 +44,7 @@ export default function PaymentOrdersTable({
     <div>
       <p className="px-4 py-2 text-xs text-gray-500">窄屏可左右滑动表格，操作位于最右侧</p>
       <div className="overflow-x-auto" data-payment-orders-table>
-        <table className="w-full min-w-[1500px]">
+        <table className="w-full min-w-[1680px]">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               {canSelect && (
@@ -172,7 +172,7 @@ export default function PaymentOrdersTable({
                       </p>
                     </td>
                     <td data-label="操作" className="px-4 py-4">
-                      <div className="flex w-44 flex-col items-stretch gap-2">
+                      <div className="payment-order-actions grid grid-cols-2 items-stretch gap-2">
                         {canCopy &&
                           (isAlipayPayment(task.paymentMethod) ? (
                             <AlipayPaymentLinkButton

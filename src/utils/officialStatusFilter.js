@@ -29,7 +29,8 @@ function collectOfficialStatusOptions(rows) {
 }
 
 /** 构造分隔项精确匹配条件；仅可信字段名进入 SQL，外部值统一转义。 */
-function buildOfficialStatusCondition(statuses, sequelize, Sequelize) {
+function buildOfficialStatusCondition(statuses, sequelize, Sequelize, tableAlias = 'Order') {
+  if (!['Order', 'order'].includes(tableAlias)) throw new Error('官网状态筛选表别名无效');
   if (!statuses.length) return null;
   if (statuses.some(status => status.includes('|'))) {
     throw ApiError.badRequest('officialOrderStatuses 每项必须是单个官网状态');
@@ -40,7 +41,7 @@ function buildOfficialStatusCondition(statuses, sequelize, Sequelize) {
   for (const [alias, canonical] of Object.entries(STATUS_ALIASES)) {
     if (values.has(canonical)) values.add(alias);
   }
-  const field = 'BTRIM(COALESCE("Order"."official_raw_status", \'\'))';
+  const field = `BTRIM(COALESCE("${tableAlias}"."official_raw_status", ''))`;
   const parts = [];
   if (statuses.includes(NOT_OBSERVED)) parts.push(`${field} = ''`);
   if (values.size) {
