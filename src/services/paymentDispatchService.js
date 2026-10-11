@@ -463,6 +463,8 @@ async function previewAssignment(input) {
             'orderUrl',
             'orderDate',
             'emailPaymentStatus',
+            'officialRawStatus',
+            'officialStatusObservedAt',
             'emailOrderStatus',
             'emailStatusNeedsReview',
             'paymentAssignmentHoldReason',
@@ -615,6 +617,8 @@ async function executeAssignment(input, actorUserId) {
             'orderNumber',
             'orderUrl',
             'emailPaymentStatus',
+            'officialRawStatus',
+            'officialStatusObservedAt',
             'emailOrderStatus',
             'emailStatusNeedsReview',
             'paymentAssignmentHoldReason',
@@ -708,6 +712,8 @@ async function executeAssignment(input, actorUserId) {
           'sourceRecipientTag',
           'tag',
           'products',
+          'officialRawStatus',
+          'officialStatusObservedAt',
           'emailOrderStatus',
           'emailPaymentStatus',
           'paymentAssignmentHoldReason',
@@ -725,7 +731,7 @@ async function executeAssignment(input, actorUserId) {
           'updatedAt',
         ],
       },
-      { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
+      { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username', 'nickname'] },
     ],
     order: [['id', 'ASC']],
   });
@@ -829,6 +835,8 @@ async function updateTaskNotes(taskId, input, actorUserId) {
           'sourceRecipientTag',
           'tag',
           'products',
+          'officialRawStatus',
+          'officialStatusObservedAt',
           'emailOrderStatus',
           'emailPaymentStatus',
           'paymentAssignmentHoldReason',
@@ -846,7 +854,7 @@ async function updateTaskNotes(taskId, input, actorUserId) {
           'updatedAt',
         ],
       },
-      { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
+      { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username', 'nickname'] },
     ],
   });
   if (!task) throw ApiError.notFound('付款任务不存在');
@@ -949,6 +957,9 @@ async function listDispatchTasks(query = {}) {
     const [{ count, rows }, productCandidates, recipientTagOptions, rules, overview] =
       await Promise.all([
         PaymentTask.findAndCountAll({
+          attributes: { include: [[Sequelize.literal(`(SELECT j.state FROM official_order_refresh_jobs j
+            WHERE j.order_id="PaymentTask".order_id AND j.state IN ('queued','running')
+            ORDER BY j.created_at LIMIT 1)`), 'officialRefreshState']] },
           where,
           include: [
             {
@@ -963,6 +974,8 @@ async function listDispatchTasks(query = {}) {
                 'tag',
                 'products',
                 'productFilterItems',
+                'officialRawStatus',
+                'officialStatusObservedAt',
                 'emailOrderStatus',
                 'emailPaymentStatus',
                 'paymentAssignmentHoldReason',
@@ -981,7 +994,12 @@ async function listDispatchTasks(query = {}) {
               ],
               where: orderWhere,
             },
-            { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
+            {
+              model: User,
+              as: 'assignee',
+              paranoid: false,
+              attributes: ['id', 'username', 'nickname'],
+            },
           ],
           order: [
             [Sequelize.literal('CASE WHEN "order"."order_date" IS NULL THEN 1 ELSE 0 END'), 'ASC'],

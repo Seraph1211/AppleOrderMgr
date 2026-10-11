@@ -61,7 +61,7 @@ const enabled = process.env.RUN_ASSIGNMENT_INTEGRATION === 'true';
   test('预检只读；无官网时间、身份异常、状态未知均可手动分配；重试幂等', async () => {
     const task = await makeTask({
       status: 'unknown',
-      officialStatusNeedsReview: true,
+      emailStatusNeedsReview: true,
       validationIssues: [{ type: 'order_identity' }],
     });
     const input = request([task]);
@@ -83,7 +83,7 @@ const enabled = process.env.RUN_ASSIGNMENT_INTEGRATION === 'true';
     );
     await makeTask({ orderUrl: 'https://invalid.example' });
     const task = await makeTask(
-      { officialStatusNeedsReview: true, validationIssues: [{ type: 'order_identity' }] },
+      { emailStatusNeedsReview: true, validationIssues: [{ type: 'order_identity' }] },
       { deadlineAt: new Date(0), deadlineSource: 'official' }
     );
     const expired = await makeTask({ orderDate: new Date(Date.now() - 3600000) });
@@ -95,7 +95,7 @@ const enabled = process.env.RUN_ASSIGNMENT_INTEGRATION === 'true';
 
   test('整批失败无部分提交，失败原因在事务外落库；仅选择合格子集可成功', async () => {
     const good = await makeTask();
-    const paid = await makeTask({ paymentStatus: 'paid' });
+    const paid = await makeTask({ emailPaymentStatus: 'paid' });
     const missing = await makeTask({ orderDate: null, officialOrderCreatedAt: new Date() });
     const input = request([good, paid, missing]);
     const preview = await service.previewAssignment(input);
@@ -195,7 +195,7 @@ const enabled = process.env.RUN_ASSIGNMENT_INTEGRATION === 'true';
     try {
       await new Promise(resolve => server.once('listening', resolve));
       const base = `http://127.0.0.1:${server.address().port}/api/payment-dispatch/tasks`;
-      const task = await makeTask({ paymentStatus: 'paid' });
+      const task = await makeTask({ emailPaymentStatus: 'paid' });
       const input = request([task]);
       const send = (path, method, role) =>
         fetch(base + path, {

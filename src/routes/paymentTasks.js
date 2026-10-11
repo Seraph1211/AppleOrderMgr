@@ -4,7 +4,6 @@ const asyncHandler = require('../utils/asyncHandler');
 const { requireAnyPermission, requirePermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
 const controller = require('../controllers/paymentTaskController');
-const retiredFeature = require('../middleware/retiredFeature');
 
 const router = express.Router();
 
@@ -41,8 +40,42 @@ router.get(
   requirePermission(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN),
   asyncHandler(controller.getOwnAlipayPaymentLink)
 );
-router.post('/:id/refresh', retiredFeature('付款任务官网刷新'));
-router.get('/:id/refresh/:jobId', retiredFeature('付款任务官网刷新进度'));
+router.post(
+  '/:id/refresh',
+  requirePermission(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN),
+  asyncHandler(async (req, res) => {
+    try {
+      const data = await require('../services/paymentOfficialRefreshService').enqueue(
+        req.user,
+        Number(req.params.id),
+        req.body,
+        false
+      );
+      res.set('Cache-Control', 'no-store').status(202).json({ success: true, data });
+    } catch (error) {
+      error.component = 'paymentOfficialRefresh';
+      throw error;
+    }
+  })
+);
+router.get(
+  '/:id/refresh/:jobId',
+  requirePermission(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN),
+  asyncHandler(async (req, res) => {
+    try {
+      const data = await require('../services/paymentOfficialRefreshService').progress(
+        req.user,
+        Number(req.params.id),
+        req.params.jobId,
+        false
+      );
+      res.set('Cache-Control', 'no-store').json({ success: true, data });
+    } catch (error) {
+      error.component = 'paymentOfficialRefresh';
+      throw error;
+    }
+  })
+);
 
 router.get(
   '/:id/payment-code',

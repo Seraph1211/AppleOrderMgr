@@ -1,27 +1,18 @@
-import ResponsiveSelect from '../components/responsiveSelect';
-import OrderAmount from '../components/OrderAmount';
-import PaymentCodeButton from '../components/PaymentCodeButton';
-import AlipayPaymentLinkButton from '../components/AlipayPaymentLinkButton';
+import PaymentOrdersTable from '../components/PaymentOrdersTable';
+import usePaymentOrderRefresh from '../hooks/usePaymentOrderRefresh';
 import AutoDismissToast from '../components/AutoDismissToast';
 import OrderDateFilter from '../components/OrderDateFilter';
 import ProductFilter from '../components/ProductFilter';
-import ProductSummary from '../components/ProductSummary';
 import PaymentNotesModal from '../components/PaymentNotesModal';
 import EmailStatusFilter from '../components/EmailStatusFilter';
 import ProcessingStatusFilter from '../components/ProcessingStatusFilter';
 import { readPaymentCopyText } from '../utils/paymentCopySource';
 import { getPaymentTaskCode } from '../api/paymentCodesApi';
-import OrderLinkCopyButton from '../components/OrderLinkCopyButton';
 import { copyDeferredText } from '../utils/copyDeferredText';
-import { updateSelectedTaskStatuses } from '../utils/paymentTaskBatch';
-import { formatOrderTime } from '../utils/orderTime';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
-import { formatPaymentCountdown } from '../utils/paymentCountdown';
-import { isAlipayPayment } from '../utils/paymentMethod';
-import { getEmailOrderStatusBadge } from '../constants/orderStatus';
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, CreditCard, Pencil, RotateCcw, Save, Search } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Copy, CreditCard, RotateCcw, Search } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
@@ -36,13 +27,6 @@ const STATUS_LABELS = {
   processing: '处理中',
   completed: '已完成',
   exception: '异常',
-};
-
-const STATUS_STYLES = {
-  pending: 'bg-amber-50 border-amber-200 text-amber-700',
-  processing: 'bg-blue-50 border-blue-200 text-blue-700',
-  completed: 'bg-green-50 border-green-200 text-green-700',
-  exception: 'bg-red-50 border-red-200 text-red-700',
 };
 
 const STATUS_BADGES = {
@@ -64,19 +48,11 @@ const INITIAL_FILTERS = {
 
 const COPY_LINK_CONCURRENCY = 5;
 
-function formatDateTime(value) {
-  if (!value) return '尚未获取';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return '尚未获取';
-  const pad = number => String(number).padStart(2, '0');
-  return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-
 export default function PaymentTasks() {
   const { can } = useAuth();
   const canCopyTaskInfo = can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN);
   const canHandleTasks = can(PERMISSIONS.PAYMENT_TASKS_HANDLE_OWN);
-  const canSelectTasks = canCopyTaskInfo || canHandleTasks;
+  const canSelectTasks = canCopyTaskInfo;
   const [tasks, setTasks] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -86,7 +62,6 @@ export default function PaymentTasks() {
   const loadRequest = useRef(0);
   const [filterDrafts, setFilterDrafts] = useState(INITIAL_FILTERS);
   const [filters, setFilters] = useState(INITIAL_FILTERS);
-  const [drafts, setDrafts] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [now, setNow] = useState(Date.now());
@@ -95,12 +70,6 @@ export default function PaymentTasks() {
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
   const [batchCopyAction, setBatchCopyAction] = useState(null);
   const [showFilters, setShowFilters] = useState(false);
-  const [batchEditorOpen, setBatchEditorOpen] = useState(false);
-  const [batchStatus, setBatchStatus] = useState('processing');
-  const [batchNotes, setBatchNotes] = useState('');
-  const [batchSaving, setBatchSaving] = useState(false);
-  const batchLock = useRef(false);
-  const [batchResults, setBatchResults] = useState([]);
   const [notesModalTask, setNotesModalTask] = useState(null);
   const [notesModalSaving, setNotesModalSaving] = useState(false);
   const [notesModalError, setNotesModalError] = useState('');
@@ -154,22 +123,9 @@ export default function PaymentTasks() {
         setSelectedTaskIds(previous => previous.filter(id => visibleIds.has(id)));
         setTasks(response.data.items);
         setServerClockOffset(new Date(response.data.serverTime).getTime() - Date.now());
-        setDrafts(previous =>
-          Object.fromEntries(
-            response.data.items.map(task => [
-              task.id,
-              preserveDrafts && previous[task.id]
-                ? previous[task.id]
-                : {
-                    status: task.processingStatus,
-                  },
-            ])
-          )
-        );
       } catch (loadError) {
         if (request === loadRequest.current) {
           setError(loadError.message);
-          setTasks([]);
         }
       } finally {
         if (request === loadRequest.current) setLoading(false);
@@ -209,13 +165,6 @@ export default function PaymentTasks() {
     [selectedTaskIds, tasks]
   );
 
-  const updateDraft = (taskId, field, value) => {
-    setDrafts(previous => ({
-      ...previous,
-      [taskId]: { ...previous[taskId], [field]: value },
-    }));
-  };
-
   const updateRowAction = (taskId, patch) => {
     setRowActions(previous => ({
       ...previous,
@@ -223,50 +172,10 @@ export default function PaymentTasks() {
     }));
   };
 
-  const applyUpdatedTask = (taskId, updatedTask, draftPatch = {}) => {
+  const applyUpdatedTask = (taskId, updatedTask) => {
     setTasks(previous => previous.map(task => (task.id === taskId ? updatedTask : task)));
-    setDrafts(previous => ({
-      ...previous,
-      [taskId]: {
-        ...previous[taskId],
-        status: updatedTask.processingStatus,
-        ...draftPatch,
-      },
-    }));
   };
-
-  const saveProcessingStatus = async (task, processingStatus) => {
-    updateDraft(task.id, 'status', processingStatus);
-    if (processingStatus === task.processingStatus) return;
-    updateRowAction(task.id, {
-      savingStatus: true,
-      type: 'info',
-      message: '状态更新中...',
-    });
-    try {
-      setError('');
-      const response = await updatePaymentTask(
-        task.id,
-        { processingStatus, expectedVersion: task.version },
-        crypto.randomUUID()
-      );
-      applyUpdatedTask(task.id, response.data);
-      updateRowAction(task.id, {
-        savingStatus: false,
-        type: 'success',
-        message: '处理状态已更新',
-      });
-      showToast('success', '处理状态已更新');
-    } catch (actionError) {
-      updateDraft(task.id, 'status', task.processingStatus);
-      updateRowAction(task.id, {
-        savingStatus: false,
-        type: 'error',
-        message: actionError.message,
-      });
-      showToast('error', actionError.message);
-    }
-  };
+  const officialRefresh = usePaymentOrderRefresh({ reload: loadTasks });
 
   const saveProcessingNotes = async notes => {
     if (!notesModalTask || notesModalSaving) return;
@@ -309,53 +218,6 @@ export default function PaymentTasks() {
       showToast('error', actionError.message);
     } finally {
       setNotesModalSaving(false);
-    }
-  };
-
-  const saveSelectedStatuses = async event => {
-    event.preventDefault();
-    if (batchLock.current || !canHandleTasks || !selectedTasks.length) return;
-    batchLock.current = true;
-    // 忽略提交前已发出的列表响应，防止旧快照覆盖批量结果。
-    loadRequest.current += 1;
-    setBatchSaving(true);
-    setBatchResults([]);
-    try {
-      const results = await updateSelectedTaskStatuses(
-        selectedTasks,
-        batchStatus,
-        batchNotes,
-        updatePaymentTask,
-        () => crypto.randomUUID()
-      );
-      setBatchResults(results);
-      const successful = new Map(
-        results.filter(result => result.success).map(result => [result.id, result.task])
-      );
-      setTasks(previous => previous.map(task => successful.get(task.id) || task));
-      setDrafts(previous => {
-        const next = { ...previous };
-        for (const [id, task] of successful) {
-          next[id] = { ...next[id], status: task.processingStatus };
-        }
-        return next;
-      });
-      setSelectedTaskIds(results.filter(result => !result.success).map(result => result.id));
-      if (results.every(result => result.success)) {
-        setBatchEditorOpen(false);
-        setBatchNotes('');
-      }
-      const succeededCount = results.filter(result => result.success).length;
-      const failedCount = results.length - succeededCount;
-      showToast(
-        failedCount ? 'error' : 'success',
-        `批量修改：成功 ${succeededCount} 项，失败 ${failedCount} 项`
-      );
-    } catch (actionError) {
-      setError(actionError.message);
-    } finally {
-      batchLock.current = false;
-      setBatchSaving(false);
     }
   };
 
@@ -426,21 +288,8 @@ export default function PaymentTasks() {
     setFilters(next);
   };
 
-  const renderNotes = task => (
-    <p className="max-w-80 whitespace-pre-wrap break-words text-sm text-gray-700">
-      {task.processingNotes || '-'}
-    </p>
-  );
-  const renderTime = value => (
-    <span className="payment-task-time">
-      {value.split(' ').map((part, index) => (
-        <span key={index}>{part}</span>
-      ))}
-    </span>
-  );
-
   return (
-    <fieldset disabled={batchSaving} className="payment-tasks min-w-0 space-y-4">
+    <fieldset className="payment-tasks min-w-0 space-y-4">
       <AutoDismissToast toast={toast} onDismiss={dismissToast} />
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
@@ -599,20 +448,6 @@ export default function PaymentTasks() {
                 />
                 全选本页
               </label>
-              {canHandleTasks && (
-                <button
-                  className="mobile-batch-action btn btn-primary inline-flex items-center gap-2"
-                  disabled={
-                    loading ||
-                    !selectedTasks.length ||
-                    Object.values(rowActions).some(action => action.saving)
-                  }
-                  onClick={() => setBatchEditorOpen(previous => !previous)}
-                >
-                  <Save className="w-4 h-4" />
-                  批量修改处理状态
-                </button>
-              )}
               {canCopyTaskInfo && (
                 <button
                   className="mobile-batch-action btn btn-secondary inline-flex items-center gap-2"
@@ -626,351 +461,31 @@ export default function PaymentTasks() {
             </div>
           </div>
         )}
-        {batchEditorOpen && canHandleTasks && (
-          <form
-            onSubmit={saveSelectedStatuses}
-            className="space-y-3 border-b border-blue-100 bg-blue-50 p-4"
-          >
-            <h3 className="font-medium text-primary">
-              修改选中的 {selectedTasks.length} 项人工处理状态
-            </h3>
-            <label className="block text-sm">
-              目标处理状态
-              <ResponsiveSelect
-                aria-label="批量目标处理状态"
-                className="input mt-1"
-                value={batchStatus}
-                onChange={event => setBatchStatus(event.target.value)}
-              >
-                {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </ResponsiveSelect>
-            </label>
-            <label className="block text-sm">
-              统一处理备注（选填）
-              <textarea
-                className="input mt-1"
-                rows="2"
-                maxLength="2000"
-                value={batchNotes}
-                onChange={event => setBatchNotes(event.target.value)}
-                placeholder="留空保留每单原备注；填写将替换选中单的备注"
-              />
-            </label>
-            <p className="text-sm text-gray-600">
-              仅修改人工处理状态，与备注是否填写无关。逐单提交，可能部分成功；留空统一备注会保留每单原备注。
-            </p>
-            <div className="flex flex-wrap gap-2">
-              <button type="submit" className="btn btn-primary" disabled={!selectedTasks.length}>
-                确认修改 {selectedTasks.length} 项
-              </button>
-              <button
-                type="button"
-                className="btn btn-secondary"
-                onClick={() => setBatchEditorOpen(false)}
-              >
-                取消
-              </button>
-            </div>
-          </form>
-        )}
-        {batchSaving && (
-          <p role="status" className="p-4 text-primary">
-            正在逐单修改，请稍候…
-          </p>
-        )}
-        {batchResults.length > 0 && (
-          <div role="status" className="p-4 text-sm space-y-1">
-            <button className="btn btn-secondary mb-2" onClick={() => loadTasks(true)}>
-              重新加载列表
-            </button>
-            <p>
-              批量修改：成功 {batchResults.filter(result => result.success).length} 项，失败{' '}
-              {batchResults.filter(result => !result.success).length} 项
-            </p>
-            {batchResults
-              .filter(result => !result.success)
-              .map(result => (
-                <p key={result.id} className="text-red-600">
-                  订单 ID {result.orderId}：{result.message}
-                </p>
-              ))}
-          </div>
-        )}
-        {loading ? (
-          <p className="text-center text-gray-500 py-12">加载中...</p>
-        ) : tasks.length === 0 ? (
-          <p className="text-center text-gray-500 py-12">暂无匹配的付款任务</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="payment-task-table w-full">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  {canSelectTasks && (
-                    <th data-column="选择" className="px-4 py-3">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 cursor-pointer accent-primary"
-                        aria-label="选择当前页全部任务"
-                        disabled={batchCopyAction?.copying}
-                        checked={tasks.length > 0 && selectedTaskIds.length === tasks.length}
-                        ref={element => {
-                          if (element)
-                            element.indeterminate =
-                              selectedTaskIds.length > 0 && selectedTaskIds.length < tasks.length;
-                        }}
-                        onChange={event =>
-                          setSelectedTaskIds(event.target.checked ? tasks.map(task => task.id) : [])
-                        }
-                      />
-                    </th>
-                  )}
-                  {[
-                    '订单',
-                    '商品信息',
-                    'TAG',
-                    '下单时间',
-                    '邮件状态',
-                    '付款方式',
-                    '倒计时',
-                    '处理状态',
-                    '处理备注',
-                    '数据更新时间',
-                    '操作',
-                  ].map(title => (
-                    <th
-                      key={title}
-                      data-column={title}
-                      title={title === '下单时间' ? '北京时间，邮件或人工录入来源' : undefined}
-                      className="text-left px-4 py-3 text-sm font-medium text-gray-500"
-                    >
-                      {title}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {tasks.map(task => (
-                  <Fragment key={task.id}>
-                    <tr
-                      className={`border-b border-gray-100 align-top hover:bg-gray-50 ${selectedTaskIds.includes(task.id) ? 'mobile-selected' : ''}`}
-                    >
-                      {canSelectTasks && (
-                        <td data-label="选择" className="px-4 py-4 mobile-selection">
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 cursor-pointer accent-primary"
-                            aria-label={`选择订单 ${task.orderNumber}`}
-                            disabled={batchCopyAction?.copying}
-                            checked={selectedTaskIds.includes(task.id)}
-                            onChange={() =>
-                              setSelectedTaskIds(previous =>
-                                previous.includes(task.id)
-                                  ? previous.filter(id => id !== task.id)
-                                  : [...previous, task.id]
-                              )
-                            }
-                          />
-                        </td>
-                      )}
-                      <td data-label="订单" className="px-4 py-4 mobile-order">
-                        <div className="order-system-id mb-1 text-sm font-semibold text-gray-900">
-                          订单 ID：{task.orderId ?? '-'}
-                        </div>
-                        {canCopyTaskInfo ? (
-                          <OrderLinkCopyButton
-                            task={task}
-                            getLink={getPaymentTaskLink}
-                            onResult={showToast}
-                          />
-                        ) : (
-                          <div className="font-mono text-sm font-medium text-primary">
-                            {task.orderNumber}
-                          </div>
-                        )}
-                      </td>
-                      <td data-label="商品信息" className="px-4 py-4 text-sm text-gray-700">
-                        <div className="max-w-96 break-words">
-                          <ProductSummary
-                            products={task.products}
-                            selectedKeys={filters.productKeys}
-                          />
-                          <OrderAmount amount={task.orderAmount} compact />
-                        </div>
-                      </td>
-                      <td data-label="TAG" data-secondary="true" className="px-4 py-4">
-                        {task.recipientTag ? (
-                          <span
-                            className="badge badge-info max-w-48 truncate"
-                            title={task.recipientTag}
-                          >
-                            {task.recipientTag}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td
-                        data-label="下单时间"
-                        data-secondary="true"
-                        className="px-4 py-4 text-sm text-gray-600"
-                      >
-                        {renderTime(formatOrderTime(task.orderDate))}
-                      </td>
-                      <td data-label="邮件状态" className="px-4 py-4 text-sm">
-                        <span
-                          className={`badge ${getEmailOrderStatusBadge(task.emailOrderStatus).class}`}
-                        >
-                          {getEmailOrderStatusBadge(task.emailOrderStatus).text}
-                        </span>
-                        <p className="mt-2 text-xs text-gray-600">
-                          {task.emailPaymentStatus === 'paid' ? '已付款' : '付款待确认'}
-                        </p>
-                        {task.emailStatusNeedsReview && (
-                          <p className="mt-1 text-xs text-amber-700">邮件结论待核对</p>
-                        )}
-                        {task.paymentAssignmentHoldReason && (
-                          <p className="mt-1 text-xs text-amber-700">历史付款限制：禁止重新分配</p>
-                        )}
-                      </td>
-                      <td
-                        data-label="付款方式"
-                        data-secondary="true"
-                        className="px-4 py-4 text-sm text-gray-700"
-                      >
-                        {task.paymentMethod || '-'}
-                      </td>
-                      <td
-                        data-label="倒计时"
-                        data-secondary="true"
-                        className={`px-4 py-4 text-sm ${formatPaymentCountdown(task, now).className}`}
-                      >
-                        {formatPaymentCountdown(task, now, '时间未知').text}
-                      </td>
-                      <td data-label="人工处理状态" className="px-4 py-4">
-                        <ResponsiveSelect
-                          aria-label={`订单 ${task.orderId} 人工处理状态`}
-                          className={`input min-w-0 font-medium ${STATUS_STYLES[drafts[task.id]?.status || task.processingStatus]}`}
-                          disabled={
-                            !canHandleTasks ||
-                            rowActions[task.id]?.savingStatus ||
-                            rowActions[task.id]?.savingNotes
-                          }
-                          value={drafts[task.id]?.status || task.processingStatus}
-                          onChange={event => saveProcessingStatus(task, event.target.value)}
-                        >
-                          {Object.entries(STATUS_LABELS).map(([value, label]) => (
-                            <option key={value} value={value}>
-                              {label}
-                            </option>
-                          ))}
-                        </ResponsiveSelect>
-                      </td>
-                      <td data-label="处理备注" data-secondary="true" className="px-4 py-4">
-                        {renderNotes(task)}
-                      </td>
-                      <td
-                        data-label="数据更新时间"
-                        data-secondary="true"
-                        className="px-4 py-4 text-sm text-gray-600"
-                      >
-                        {renderTime(formatDateTime(task.emailLifecycleUpdatedAt))}
-                      </td>
-                      <td data-label="操作" className="px-4 py-4">
-                        <div className="payment-task-actions">
-                          {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) &&
-                            (isAlipayPayment(task.paymentMethod) ? (
-                              <AlipayPaymentLinkButton
-                                task={task}
-                                getLink={getPaymentTaskAlipayLink}
-                                onResult={showToast}
-                              />
-                            ) : (
-                              <PaymentCodeButton taskId={task.id} orderDate={task.orderDate} />
-                            ))}
-                          {can(PERMISSIONS.PAYMENT_TASKS_LINK_READ_OWN) && (
-                            <button
-                              className="btn btn-secondary px-2 inline-flex items-center justify-center gap-2"
-                              onClick={() => copyPaymentLink(task)}
-                              disabled={rowActions[task.id]?.copying}
-                              title="复制订单信息"
-                              aria-label="复制订单信息"
-                            >
-                              <Copy className="w-4 h-4" />
-                              <span>
-                                {rowActions[task.id]?.copying ? '复制中...' : '复制订单信息'}
-                              </span>
-                            </button>
-                          )}
-                          {canHandleTasks && (
-                            <button
-                              className="btn btn-secondary px-2 inline-flex items-center justify-center gap-2"
-                              onClick={() => {
-                                setNotesModalError('');
-                                setNotesModalTask(task);
-                              }}
-                              disabled={rowActions[task.id]?.savingNotes}
-                              aria-label={`修改备注 订单 ${task.orderId}`}
-                            >
-                              <Pencil className="w-4 h-4" />
-                              <span>修改备注</span>
-                            </button>
-                          )}
-                        </div>
-                        {rowActions[task.id]?.message && (
-                          <p
-                            className={`mt-2 text-xs max-w-44 ${
-                              rowActions[task.id].type === 'error'
-                                ? 'text-red-600'
-                                : rowActions[task.id].type === 'success'
-                                  ? 'text-green-700'
-                                  : 'text-gray-500'
-                            }`}
-                          >
-                            {rowActions[task.id].message}
-                          </p>
-                        )}
-                      </td>
-                    </tr>
-                    <tr className="payment-task-details" id={`task-details-${task.id}`}>
-                      <td colSpan={11 + (canSelectTasks ? 1 : 0)}>
-                        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
-                          <div className="min-w-0 space-y-1">
-                            <p className="text-gray-600">处理备注</p>
-                            {renderNotes(task)}
-                          </div>
-                          <div>
-                            <p className="mb-1 text-gray-600">数据更新时间</p>
-                            {renderTime(formatDateTime(task.emailLifecycleUpdatedAt))}
-                          </div>
-                          <div className="min-[1200px]:hidden break-words">
-                            <p className="mb-1 text-gray-600">TAG</p>
-                            {task.recipientTag || '-'}
-                          </div>
-                          <div className="min-[1200px]:hidden">
-                            <p className="mb-1 text-gray-600">下单时间</p>
-                            {renderTime(formatOrderTime(task.orderDate))}
-                          </div>
-                          <div className="min-[1200px]:hidden">
-                            <p className="mb-1 text-gray-600">付款方式</p>
-                            {task.paymentMethod || '-'}
-                          </div>
-                          <div className="min-[1200px]:hidden">
-                            <p className="mb-1 text-gray-600">倒计时</p>
-                            {formatPaymentCountdown(task, now, '时间未知').text}
-                          </div>
-                        </div>
-                      </td>
-                    </tr>
-                  </Fragment>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <PaymentOrdersTable
+          tasks={tasks}
+          loading={loading}
+          now={now}
+          selectedKeys={filters.productKeys}
+          selectedIds={selectedTaskIds}
+          onSelect={setSelectedTaskIds}
+          canSelect={canSelectTasks}
+          canCopy={canCopyTaskInfo}
+          canEdit={canHandleTasks}
+          canRefresh={canHandleTasks}
+          copyingIds={
+            batchCopyAction?.copying
+              ? selectedTaskIds
+              : tasks.filter(task => rowActions[task.id]?.copying).map(task => task.id)
+          }
+          onCopy={copyPaymentLink}
+          onEdit={task => {
+            setNotesModalError('');
+            setNotesModalTask(task);
+          }}
+          getAlipayLink={getPaymentTaskAlipayLink}
+          onResult={showToast}
+          refresh={officialRefresh}
+        />
       </div>
 
       {!loading && pagination.total > 0 && (

@@ -1,0 +1,7 @@
+# 保留现用前端的其他页面与手机交互修复。
+FROM apple-order-mgr-frontend-builder:20261011-pickup-retirement-amd64
+COPY src/pages/PaymentDispatch.jsx /app/src/pages/PaymentDispatch.jsx
+COPY src/pages/PaymentTasks.jsx /app/src/pages/PaymentTasks.jsx
+COPY src/components/PaymentOrdersTable.jsx /app/src/components/PaymentOrdersTable.jsx
+COPY src/hooks/usePaymentOrderRefresh.js /app/src/hooks/usePaymentOrderRefresh.js
+RUN npm run lint && npm run build

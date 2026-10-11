@@ -1,0 +1,13 @@
+# 继承实际生产基线，仅更新付款管理相关源码。
+FROM apple-order-mgr-runtime:20261011-pickup-retirement-amd64
+COPY --chown=node:node src/services/paymentStatusFilter.js /app/src/services/paymentStatusFilter.js
+COPY --chown=node:node src/app.js /app/src/app.js
+COPY --chown=node:node src/routes/paymentTasks.js /app/src/routes/paymentTasks.js
+COPY --chown=node:node src/routes/paymentDispatch.js /app/src/routes/paymentDispatch.js
+COPY --chown=node:node src/services/paymentTaskService.js /app/src/services/paymentTaskService.js
+COPY --chown=node:node src/services/paymentDispatchService.js /app/src/services/paymentDispatchService.js
+COPY --chown=node:node src/services/officialOrderRefreshService.js /app/src/services/officialOrderRefreshService.js
+COPY --chown=node:node src/services/paymentOfficialRefreshService.js /app/src/services/paymentOfficialRefreshService.js
+COPY --chown=node:node src/services/paymentOfficialRefreshScheduler.js /app/src/services/paymentOfficialRefreshScheduler.js
+COPY --chown=node:node scripts/releases/20261011-payment-management/preserveProductionPickup.cjs /tmp/preserveProductionPickup.cjs
+RUN node /tmp/preserveProductionPickup.cjs && rm /tmp/preserveProductionPickup.cjs

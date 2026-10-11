@@ -1,0 +1,3 @@
+# 仅添加付款官网刷新目的约束迁移。
+FROM apple-order-mgr-migrator:20261010-mail-return-amd64
+COPY --chown=node:node migrations/20261011000001-payment-official-refresh.js /app/migrations/20261011000001-payment-official-refresh.js

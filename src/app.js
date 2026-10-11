@@ -169,6 +169,7 @@ const server = app.listen(DEFAULT_PORT, () => {
 
   require('./services/stockReturnScheduler').start();
   paymentDispatchScheduler.start();
+  require('./services/paymentOfficialRefreshScheduler').start();
   identityVerificationRunner.start();
   ingestionScheduler.start();
   require('./services/proxyOrderScheduler').start();
@@ -192,6 +193,7 @@ function shutdown(signal) {
   // 停止领取新的后台任务；邮件在途处理在关闭数据库前等待完成。
   const stockStopped = require('./services/stockReturnScheduler').stop();
   paymentDispatchScheduler.stop();
+  const paymentRefreshStopped = require('./services/paymentOfficialRefreshScheduler').stop();
   const identityStopped = identityVerificationRunner.stop();
   const ingestionStopped = ingestionScheduler.stop();
   const proxyStopped = require('./services/proxyOrderScheduler').stop();
@@ -205,6 +207,7 @@ function shutdown(signal) {
 
     try {
       await stockStopped;
+      await paymentRefreshStopped;
       await identityStopped;
       await ingestionStopped;
       await proxyStopped;

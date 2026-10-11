@@ -49,6 +49,12 @@ function validateNotes(value) {
 
 function taskAttributes() {
   return [
+    [
+      Sequelize.literal(`(SELECT j.state FROM official_order_refresh_jobs j
+      WHERE j.order_id="PaymentTask".order_id AND j.state IN ('queued','running')
+      ORDER BY j.created_at LIMIT 1)`),
+      'officialRefreshState',
+    ],
     'id',
     'orderId',
     'assigneeUserId',
@@ -80,6 +86,8 @@ function includeTaskRelations() {
         'tag',
         'products',
         'productFilterItems',
+        'officialRawStatus',
+        'officialStatusObservedAt',
         'emailOrderStatus',
         'emailPaymentStatus',
         'emailStatusNeedsReview',
@@ -97,7 +105,7 @@ function includeTaskRelations() {
         'updatedAt',
       ],
     },
-    { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username'] },
+    { model: User, as: 'assignee', paranoid: false, attributes: ['id', 'username', 'nickname'] },
   ];
 }
 
@@ -212,6 +220,9 @@ function serializeTask(task, serverTime = new Date()) {
     orderNumber: plain.order?.orderNumber,
     recipientTag: getOrderRecipientTag(plain.order),
     products: serializePublicProducts(plain.order?.products, plain.order?.productFilterItems),
+    officialRefreshState: plain.officialRefreshState || null,
+    officialRawStatus: plain.order?.officialRawStatus || null,
+    officialStatusObservedAt: plain.order?.officialStatusObservedAt || null,
     emailOrderStatus: plain.order?.emailOrderStatus || 'unknown',
     emailPaymentStatus: plain.order?.emailPaymentStatus || 'unknown',
     emailPaymentConfirmed: plain.order?.emailPaymentStatus === 'paid',

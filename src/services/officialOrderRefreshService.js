@@ -420,6 +420,8 @@ async function authorizedAdmin(userId, transaction) {
 /** 单笔兼容回写独立检查最新管理员与订单身份。 */
 async function authorizedOrder(job, transaction) {
   try {
+    if (['payment_manual', 'payment_auto'].includes(job.purpose))
+      return await require('./paymentOfficialRefreshService').authorizedOrder(job, transaction);
     const system = job.purpose === 'stock_returns' && job.requestedBy == null;
     const user = system ? null : await authorizedAdmin(job.requestedBy, transaction);
     if (!system && !user) return null;
@@ -482,7 +484,10 @@ async function claim() {
           { groupId: job.accountGroupId },
           transaction
         );
-        if (!(await authorizedAdmin(job.requestedBy, transaction))) {
+        const allowed = ['payment_manual', 'payment_auto'].includes(job.purpose)
+          ? await authorizedOrder(job, transaction)
+          : await authorizedAdmin(job.requestedBy, transaction);
+        if (!allowed) {
           await query(
             `UPDATE official_order_refresh_jobs SET state='failed',error_code='ACCESS_REVOKED',finished_at=now()
             WHERE account_group_id=:groupId AND state='queued' RETURNING id`,
@@ -623,7 +628,11 @@ async function finish(input) {
               id: job.orderId,
               number: job.orderNumber,
               status: result.status,
-              pickupDate: input.transport === 'http' ? result.actualPickupDate : null,
+              pickupDate:
+                input.transport === 'http' &&
+                !['payment_manual', 'payment_auto'].includes(job.purpose)
+                  ? result.actualPickupDate
+                  : null,
               observed: result.observedAt,
             },
             transaction
@@ -707,6 +716,14 @@ async function finishGroup(input) {
         });
         const allowed = user?.role === 'admin' && user.status === 'active';
         await lockStock(transaction);
+        const authorizedPayment = new Set();
+        for (const job of jobs) {
+          if (
+            ['payment_manual', 'payment_auto'].includes(job.purpose) &&
+            (await authorizedOrder(job, transaction))
+          )
+            authorizedPayment.add(job.id);
+        }
         const orders = await Order.findAll({
           where: { id: { [Op.in]: jobs.map(job => job.orderId) } },
           attributes: ['id', 'orderNumber', 'appleId', 'officialRawStatus'],
@@ -728,7 +745,12 @@ async function finishGroup(input) {
           let error = /^[A-Z_0-9]{1,80}$/.test(value?.outcome || '')
             ? value.outcome
             : 'COLLECTOR_FAILED';
-          if (!allowed) error = 'ACCESS_REVOKED';
+          if (
+            ['payment_manual', 'payment_auto'].includes(job.purpose)
+              ? !authorizedPayment.has(job.id)
+              : !allowed
+          )
+            error = 'ACCESS_REVOKED';
           else if (!order || order.orderNumber !== job.orderNumber) error = 'ORDER_NOT_FOUND';
           else if (officialAccountKey(order.appleId) !== job.accountKey) error = 'ACCOUNT_CHANGED';
           let result;
@@ -815,6 +837,8 @@ async function finishGroup(input) {
 }
 
 module.exports = {
+  query,
+  mutate,
   claimHttp,
   enqueue,
   listBatches,

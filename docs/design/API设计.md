@@ -191,8 +191,8 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | PUT    | /api/payment-tasks/:id/payer                        | payment_tasks.payer.edit_own＋当前归属                                                 |
 | GET    | /api/payment-tasks/:id/payment-link                 | payment_tasks.link.read_own＋当前归属                                                  |
 | GET    | /api/payment-tasks/:id/alipay-payment-link          | payment_tasks.link.read_own＋当前归属；仅支付宝订单                                    |
-| POST   | /api/payment-tasks/:id/refresh                      | payment_tasks.refresh_own＋当前归属                                                    |
-| GET    | /api/payment-tasks/:id/refresh/:jobId               | payment_tasks.refresh_own＋当前归属；仅关联订单任务                                    |
+| POST   | /api/payment-tasks/:id/refresh                      | payment_tasks.handle_own＋当前归属                                                    |
+| GET    | /api/payment-tasks/:id/refresh/:jobId               | payment_tasks.handle_own＋当前归属；仅关联订单任务                                    |
 | GET    | /api/payment-dispatch/overview                      | payment_dispatch.read（admin 保留）                                                    |
 | GET    | /api/payment-dispatch/tasks                         | payment_dispatch.read（admin 保留）                                                    |
 | GET    | /api/payment-dispatch/tasks/:id/alipay-payment-link | payment_dispatch.read（admin 保留）；仅支付宝订单                                      |
@@ -202,7 +202,8 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | PUT    | /api/payment-dispatch/tasks/assignee                | payment_dispatch.assign（admin 保留）；原子批量分配／转派                              |
 | PUT    | /api/payment-dispatch/tasks/:id/notes               | payment_dispatch.correct（admin 保留）；修改处理备注                                   |
 | POST   | /api/payment-dispatch/tasks/:id/refresh             | payment_dispatch.assign（admin 保留）                                                  |
-| POST   | /api/payment-dispatch/tasks/refresh                 | payment_dispatch.assign（admin 保留）；1–100 项批量刷新                                |
+| GET    | /api/payment-dispatch/tasks/:id/refresh/:jobId      | payment_dispatch.assign（admin 保留）；当前任务订单白名单进度                          |
+| POST   | /api/payment-dispatch/tasks/refresh                 | 已退役，返回410；当前页面只提供单笔刷新                                               |
 | POST   | /api/payment-dispatch/tasks/:id/reopen              | payment_dispatch.correct（admin 保留）                                                 |
 | POST   | /api/payment-dispatch/scan                          | payment_dispatch.assign（admin 保留）                                                  |
 
@@ -283,12 +284,12 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - `PUT /api/payment-tasks/:id` 是行级原子保存接口，body 可包含 `{ processingStatus?, processingNotes?, expectedVersion?, payerName?, expectedPayerVersion? }`，幂等键通过请求头传入。接口只更新实际提交且发生变化的字段；任务字段要求 `payment_tasks.handle_own`，付款人字段要求 `payment_tasks.payer.edit_own`，同时修改时在同一事务提交或全部回滚。四态为 pending、processing、completed、exception；官网状态、复制链接、登记付款人、到期和转派不自动改变处理状态。状态变更与备注填写、保存无关，备注可空。兼容的独立付款人接口仍保留。
 - 外部付款人姓名在四种状态、到期、官网已付／退款／取消后仍可维护。`PUT /api/payment-tasks/:id/payer` 使用 `{ payerName: string | null, expectedVersion, reason? }`；系统不提供付款人候选接口，不创建付款人账号或主数据。
 - 单项和当前页勾选批量复制订单信息均通过既有链接接口逐单校验 `payment_tasks.link.read_own` 和当前任务归属，接口直接返回该任务关联订单的 `orders.orderUrl`；前端结合本人任务 DTO 生成 `orders.id || 商品信息 || 支付方式 || 付款截止时间 || 订单链接`，批量结果按当前列表顺序每单一行。商品名称优先、型号兜底，每项按 `名称 x 数量` 展示，多商品使用 `、` 连接；`WECHAT`／`WECHAT PAY`／`微信支付` 显示为 `微信`，`ALIPAY` 显示为 `支付宝`，其他非空值保留原文，商品或支付方式缺失时使用 `-`，付款截止时间仅由任务 DTO 的来源下单时间 `orderDate + 30 分钟` 计算，固定北京时间 `YY/MM/DD HH:mm`；来源时间缺失、不含时分／时区或无效时使用 `-`，不回退官网时间；链接保持普通 URL。接口不按核实、截止时间、人工处理状态或官网支付／订单状态限制复制；链接为空时返回资源不存在，响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
-- 本人任务刷新提交返回 HTTP `202`、`jobId`、是否新建或合并；`GET /api/payment-tasks/:id/refresh/:jobId` 仅允许当前负责人查询同一关联订单的刷新任务，返回 pending、running、succeeded、failed、skipped、错误摘要和订单最新抓取时间。入队不表示官网已更新；前端应展示提交中、排队／运行、成功／失败，终态后重新加载当前列表，Worker 未运行时明确保持“等待后台处理”。
-- 本人任务列表和详情返回关联订单已有的 `paymentMethod` 和派生的 `recipientTag`；两个付款列表额外返回当前权限及其他筛选条件范围内的 `productNameOptions` 和 `recipientTagOptions`，分别不受已选商品、已选 TAG 限制，供可搜索下拉多选使用，不能只从当前页计算。这些字段只用于展示和筛选，不作为任务处理结果或可编辑选项。本人任务和管理员调度列表均按关联订单 `orderDate DESC` 稳定分页，时间相同时按任务 ID 倒序；`updatedAt` 仍取付款任务与关联订单更新时间中的较新值，但两张付款页面的“数据更新时间”只展示最后一次成功官网抓取时间 `lastCrawledAt`。
+- 本人任务刷新沿用 `payment_tasks.handle_own`，接收 `{requestKey: UUID}`，返回 HTTP `202` 和 `{jobId,created,state}`；`GET /api/payment-tasks/:id/refresh/:jobId` 仅允许当前负责人查询同一关联订单的刷新任务，返回 queued、running、succeeded、failed、cancelled、错误码及共用官网状态与观测时间（`officialRawStatus`／`officialStatusObservedAt`）。入队不表示官网已更新；前端应展示提交中、排队／运行、成功／失败，终态后重新加载当前列表，Worker 未运行时明确保持“等待后台处理”。
+- 本人任务列表和详情返回关联订单已有的 `paymentMethod` 和派生的 `recipientTag`；两个付款列表额外返回当前权限及其他筛选条件范围内的 `productNameOptions` 和 `recipientTagOptions`，分别不受已选商品、已选 TAG 限制，供可搜索下拉多选使用，不能只从当前页计算。这些字段只用于展示和筛选，不作为任务处理结果或可编辑选项。本人任务和管理员调度列表均按关联订单 `orderDate DESC` 稳定分页，时间相同时按任务 ID 倒序；`updatedAt` 仍取付款任务与关联订单更新时间中的较新值，但两张付款页面的“官网核对时间”只展示共用 `officialStatusObservedAt`，无观测时显示尚未核对。
 - 付款截止、倒计时、复制、付款码弹窗和分配资格统一使用来源 `orderDate + 30 分钟`，`deadlineSource=source_order`；缺失或不完整来源时间返回 null，不回退官网时间。客户端按 `serverTime` 校准，未知显示“时间未知”，到期显示“已超时”，明确已付／取消等终态优先。官网字段保持独立；历史任务截止缓存不决定分配资格。
-- `GET /api/payment-dispatch/tasks` 新增 `page`（默认 1，1–100000）和 `pagination: { page, limit, total, totalPages }`；`limit` 保持默认 100、上限 200，页面使用 10/20/50/100。两个付款列表新增返回 `orderDate`（关联订单已有的下单时间，与订单管理一致），`officialOrderCreatedAt` 继续供官网时间和截止规则使用；下单时间展示优先 `orderDate`、缺失时回退已确认的 `officialOrderCreatedAt`，都缺失保持未知。支持 `orderNumber`、`productNames`、`recipientTags`、`assignee`、`officialOrderStatus` 和 `processingStatus` 组合筛选；商品名称和 TAG 各自组内 OR、跨维度 AND，均在数据库分页前执行，并兼容旧商品查询参数和单值 `recipientTag`。每项返回关联订单已有的 `paymentMethod`、派生的 `recipientTag`、`officialOrderStatus`、`lastCrawledAt` 和派生的 `deadlineAt`，列表级返回 `productNameOptions`、`recipientTagOptions`，其中页面“数据更新时间”只使用最后一次成功官网抓取时间 `lastCrawledAt`。
+- `GET /api/payment-dispatch/tasks` 支持 `page`（默认1，上限100000）及 `pagination: {page,limit,total,totalPages}`；`limit` 默认100、上限200。下单时间只展示来源 `orderDate`。返回 `paymentMethod`、`recipientTag`、`officialRawStatus`、`officialStatusObservedAt`、`officialRefreshState`、`assignee` 与派生截止时间；不从旧官网时间字段补造。列表筛选接口继续兼容已有条件，当前付款页面仅展示订单、TAG、处理人、商品、官网状态、邮件付款状态、下单时间、付款倒计时、官网核对时间及单笔刷新入口。
 - `PUT /api/payment-dispatch/tasks/:id/notes` 允许具有 `payment_dispatch.correct` 的管理员修改任意现有付款任务的处理备注。body 为 `{ processingNotes: string | null, expectedVersion }`，备注去除首尾空格后最长 2000 字，空字符串保存为 `null`；`Idempotency-Key` 必填。接口使用任务版本防覆盖，只修改备注并递增任务版本，不改变人工状态、负责人或官网状态；写入 `notes_updated` 任务事件并返回更新后的任务 DTO。任务不存在返回 404，旧版本返回 `CONCURRENT_MODIFICATION`。
-- 批量分配 body 为 `{ tasks: [{ id, expectedVersion }], assigneeUserId, handoffConfirmed?, reason? }`，一次最多 100 项，在同一事务内校验版本、状态、付款窗口、目标权限和容量后全部提交或全部回滚。管理员单项刷新返回 HTTP `202` 和 `{ jobId, status, created, merged }`；批量刷新 body 为 `{ taskIds }`，返回 `{ total, created, merged, missing, results }` 汇总。两者都只把对应订单提交持久化刷新队列，HTTP `202` 不代表官网已更新。
+- 批量分配 body 为 `{ tasks: [{ id, expectedVersion }], assigneeUserId, handoffConfirmed?, reason? }`，一次最多 100 项，在同一事务内校验版本、状态、付款窗口、目标权限和容量后全部提交或全部回滚。管理员单项刷新接收 `{requestKey: UUID}`，返回 HTTP `202` 和 `{jobId,created,state}`，通过该任务专用进度路径查询；批量刷新旧接口保持410退役。只提交对应订单的持久化官网队列，202不代表官网已更新。
 - payment-dispatch/settings 首次启用写 scope_started_at；默认关闭且 mode=manual。自动和手动分配都要求完整付款执行权限、账号正常、上限有余量、合法付款链接及有效来源下单时间；自动分配额外要求来源下单时间加 30 分钟尚未到期，手动允许超时。已付款、退款、取消等明确终态禁止新分配；身份异常、状态待核实及抓取失败仅提示，不阻止分配；active_count 为 pending＋processing＋exception，completed 释放容量，官网收款不自动修改人工四态。
 
 ### 生命周期与来源冲突响应
@@ -1151,3 +1152,12 @@ DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit �
 ### 邮件退货状态（2026-10-10）
 
 订单页表头、筛选、详情、列设置与导出统一显示“邮件订单状态”，API 字段键保持兼容。`partially_return_requested` 显示“部分发起退货”，`return_requested` 显示“已发起退货”；两种状态均参与现有邮件和展示状态筛选。退货申请只改变邮件阶段和核对证据，不表示已退款，不修改官网/付款/库存结果。
+
+
+## 付款官网状态刷新（2026-10-11 已批准）
+
+付款任务与调度 DTO 共用订单 `officialRawStatus`、`officialStatusObservedAt`，处理人沿用 `assignee`（id、username、nickname），`officialRefreshState` 为 queued／running／null。单笔 `POST /api/payment-tasks/:id/refresh` 与 `GET /api/payment-tasks/:id/refresh/:jobId` 要求 `payment_tasks.handle_own` 及当前归属；调度对应 `/api/payment-dispatch/tasks/:id/refresh` 和 `/:jobId` 要求 admin 与 `payment_dispatch.assign`。POST 接收 `{requestKey: UUID}`，返回 202 与 `{jobId,created,state}`；GET 返回白名单 `{jobId,orderId,state,errorCode,officialRawStatus,officialStatusObservedAt,workerOnline}`。进度每次复核当前归属，不返回租约、账号、链接或其他任务凭据。原订单管理员刷新接口权限不变。
+
+复用官网刷新持久队列、身份校验、限流和状态回写。正式 Migration 仅扩展 `official_order_refresh_batches.purpose` CHECK：`payment_manual` 必须有 requested_by，`payment_auto` 必须为空；不新增表。down 如已有付款刷新审计则拒绝，保留证据。
+
+API 进程每三分钟扫描付款任务关联订单；`PAYMENT_OFFICIAL_REFRESH_ENABLED=true` 且 `NODE_ENV=production` 才自动运行，默认关闭。数据库共享队列锁去重，以上次任务建立时间约束每单三分钟间隔，保护暂停批次保留，自动核对至少延后30分钟；冷却到期仅当前可访问付款订单的旧暂停 queued 标记 cancelled／`REQUEUED_FOR_PAYMENT`，再创建付款目的任务，不恢复整个历史批次、不触碰 running。手动遇到冷却中的暂停 queued 返回409 `OFFICIAL_REFRESH_PAUSED`；更晚人工成功可解除该订单的历史暂停影响。每单24小时最多建立10次任务，`ORDER_ATTEMPT_LIMIT` 至少延后24小时，官网已有预算、冷却与限流继续生效。候选先排除完整终态，再按上次入队时间排序，避免历史终态或固定前500单挤占后续订单。仅邮件 paid 或完整官网状态集合全部属于已付款后阶段／明确过期取消终态时停止；未知、部分待付款、来源下单30分钟倒计时结束均继续核对。人工 processingStatus、付款人及付款备注不作停止判断或自动修改。刷新失败保留有效官网状态与时间。

@@ -1,38 +1,22 @@
+import PaymentOrdersTable from '../components/PaymentOrdersTable';
+import usePaymentOrderRefresh from '../hooks/usePaymentOrderRefresh';
 import ResponsiveSelect from '../components/responsiveSelect';
-import OrderAmount from '../components/OrderAmount';
 import PaymentAssignmentModal from '../components/PaymentAssignmentModal';
-import PaymentCodeButton from '../components/PaymentCodeButton';
-import AlipayPaymentLinkButton from '../components/AlipayPaymentLinkButton';
 import AutoDismissToast from '../components/AutoDismissToast';
 import OrderDateFilter from '../components/OrderDateFilter';
 import ProductFilter from '../components/ProductFilter';
-import ProductSummary from '../components/ProductSummary';
 import EmailStatusFilter from '../components/EmailStatusFilter';
 import ProcessingStatusFilter from '../components/ProcessingStatusFilter';
 import PaymentNotesModal from '../components/PaymentNotesModal';
 import { copyDeferredText } from '../utils/copyDeferredText';
 import { readPaymentCopyText } from '../utils/paymentCopySource';
 import { getPaymentDispatchCode } from '../api/paymentCodesApi';
-import OrderLinkCopyButton from '../components/OrderLinkCopyButton';
 import PendingPaymentOverviewModal from '../components/PendingPaymentOverviewModal';
 import PaymentTagRulesModal from '../components/PaymentTagRulesModal';
-import { formatOrderTime } from '../utils/orderTime';
 import Pagination from '../components/Pagination';
 import TagMultiSelect from '../components/TagMultiSelect';
-import { formatPaymentCountdown } from '../utils/paymentCountdown';
-import { isAlipayPayment } from '../utils/paymentMethod';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Copy,
-  ListChecks,
-  Pencil,
-  RotateCcw,
-  Save,
-  ScanSearch,
-  Search,
-  Users,
-  X,
-} from 'lucide-react';
+import { Copy, ListChecks, RotateCcw, Save, ScanSearch, Search, Users, X } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import {
@@ -45,15 +29,6 @@ import {
   updatePaymentDispatchSettings,
   updatePaymentStaffSettingsBatch,
 } from '../api/paymentDispatchApi';
-
-import { getEmailOrderStatusBadge } from '../constants/orderStatus';
-
-const STATUS_LABELS = {
-  pending: '待处理',
-  processing: '处理中',
-  completed: '已完成',
-  exception: '异常',
-};
 
 const INITIAL_FILTERS = {
   orderNumber: '',
@@ -68,15 +43,6 @@ const INITIAL_FILTERS = {
 
 const BUTTON_LAYOUT_CLASS =
   'inline-flex items-center justify-center gap-2 whitespace-nowrap disabled:cursor-not-allowed disabled:opacity-50';
-const CHECKBOX_CLASS =
-  'h-4 w-4 shrink-0 cursor-pointer accent-primary disabled:cursor-not-allowed disabled:opacity-50';
-const PROCESSING_STATUS_BADGE_CLASSES = {
-  pending: 'badge-warning',
-  processing: 'badge-info',
-  completed: 'badge-success',
-  exception: 'badge-error',
-};
-
 function ToggleSwitch({ ariaLabel, checked, disabled, label, onChange }) {
   return (
     <button
@@ -211,7 +177,6 @@ export default function PaymentDispatch() {
       } catch (loadError) {
         if (request === loadRequest.current) {
           setError(loadError.message);
-          setTasks([]);
         }
       } finally {
         if (request === loadRequest.current) setLoading(false);
@@ -283,7 +248,10 @@ export default function PaymentDispatch() {
     }
   };
 
-  const allVisibleSelected = tasks.length > 0 && selectedTaskIds.length === tasks.length;
+  const officialRefresh = usePaymentOrderRefresh({
+    dispatch: true,
+    reload: load,
+  });
 
   const runAction = async (actionKey, action, successMessage) => {
     setError('');
@@ -332,12 +300,6 @@ export default function PaymentDispatch() {
     } finally {
       setNotesModalSaving(false);
     }
-  };
-
-  const toggleTask = taskId => {
-    setSelectedTaskIds(previous =>
-      previous.includes(taskId) ? previous.filter(id => id !== taskId) : [...previous, taskId]
-    );
   };
 
   const openAssignmentModal = () => {
@@ -619,7 +581,7 @@ export default function PaymentDispatch() {
                 }))
               }
             >
-              <option value="">全部负责人</option>
+              <option value="">全部处理人</option>
               <option value="unassigned">未分配</option>
               {overview?.staff.map(person => (
                 <option key={person.id} value={person.id}>
@@ -678,223 +640,30 @@ export default function PaymentDispatch() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[2160px]">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-4 py-3 text-left">
-                  <input
-                    type="checkbox"
-                    className={CHECKBOX_CLASS}
-                    aria-label="选择当前页全部任务"
-                    disabled={loading}
-                    ref={element => {
-                      if (element)
-                        element.indeterminate =
-                          selectedTaskIds.length > 0 && selectedTaskIds.length < tasks.length;
-                    }}
-                    checked={allVisibleSelected}
-                    onChange={event =>
-                      setSelectedTaskIds(event.target.checked ? tasks.map(task => task.id) : [])
-                    }
-                  />
-                </th>
-                {[
-                  '订单',
-                  '商品信息',
-                  'TAG',
-                  '下单时间',
-                  '邮件状态',
-                  '付款方式',
-                  '处理状态',
-                  '负责人',
-                  '付款倒计时',
-                  '处理备注',
-                  '数据更新时间',
-                  '操作',
-                ].map(title => (
-                  <th
-                    key={title}
-                    title={title === '下单时间' ? '北京时间，邮件或人工录入来源' : undefined}
-                    className={`px-4 py-3 text-sm font-medium text-gray-500 ${
-                      title === '操作' ? 'text-right' : 'text-left'
-                    }`}
-                  >
-                    {title}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {!loading &&
-                tasks.map(task => {
-                  const countdown = formatPaymentCountdown(task, now);
-                  return (
-                    <tr
-                      key={task.id}
-                      className="border-t border-gray-100 transition-colors hover:bg-gray-50"
-                    >
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          className={CHECKBOX_CLASS}
-                          aria-label={`选择订单 ${task.orderNumber}`}
-                          checked={selectedTaskIds.includes(task.id)}
-                          onChange={() => toggleTask(task.id)}
-                        />
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="mb-1 text-sm font-semibold text-gray-900">
-                          订单 ID：{task.orderId ?? '-'}
-                        </div>
-                        <OrderLinkCopyButton
-                          task={task}
-                          getLink={getPaymentDispatchLink}
-                          onResult={(type, message) => {
-                            setError(type === 'error' ? message : '');
-                            setNotice(type === 'success' ? message : '');
-                          }}
-                        />
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        <div className="max-w-96 break-words">
-                          <ProductSummary
-                            products={task.products}
-                            selectedKeys={filters.productKeys}
-                          />
-                          <OrderAmount amount={task.orderAmount} compact />
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {task.recipientTag ? (
-                          <span
-                            className="badge badge-info max-w-48 truncate"
-                            title={task.recipientTag}
-                          >
-                            {task.recipientTag}
-                          </span>
-                        ) : (
-                          <span className="text-sm text-gray-400">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                        {formatOrderTime(task.orderDate)}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`badge ${getEmailOrderStatusBadge(task.emailOrderStatus).class}`}
-                        >
-                          {getEmailOrderStatusBadge(task.emailOrderStatus).text}
-                        </span>
-                        <p className="mt-2 text-xs text-gray-600">
-                          {task.emailPaymentStatus === 'paid' ? '已付款' : '付款待确认'}
-                        </p>
-                        {task.emailStatusNeedsReview && (
-                          <p className="mt-1 text-xs text-amber-700">邮件结论待核对</p>
-                        )}
-                        {task.paymentAssignmentHoldReason && (
-                          <p className="mt-1 text-xs text-amber-700">历史付款限制：禁止重新分配</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700">
-                        {task.paymentMethod || '-'}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`badge ${
-                            PROCESSING_STATUS_BADGE_CLASSES[task.processingStatus] ||
-                            'bg-gray-100 text-gray-700'
-                          }`}
-                        >
-                          {STATUS_LABELS[task.processingStatus] || task.processingStatus || '未知'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3">
-                        {task.assignee?.username || '未分配'}
-                        {task.autoAssignment && (
-                          <div className="text-xs mt-1 max-w-52 space-y-1">
-                            {task.autoAssignment.ruleName && (
-                              <p className="text-primary break-words">
-                                规则：{task.autoAssignment.ruleName}
-                              </p>
-                            )}
-                            <p className="text-gray-500 break-words">
-                              {task.autoAssignment.reason}
-                            </p>
-                          </div>
-                        )}
-                      </td>
-                      <td className={`px-4 py-3 ${countdown.className}`}>{countdown.text}</td>
-                      <td className="px-4 py-3">
-                        <p className="max-w-80 whitespace-pre-wrap break-words text-sm text-gray-700">
-                          {task.processingNotes || '-'}
-                        </p>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600">
-                        {formatDateTime(task.emailLifecycleUpdatedAt)}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="payment-dispatch-actions">
-                          {can(PERMISSIONS.PAYMENT_DISPATCH_READ) &&
-                            (isAlipayPayment(task.paymentMethod) ? (
-                              <AlipayPaymentLinkButton
-                                task={task}
-                                getLink={getPaymentDispatchAlipayLink}
-                                onResult={showToast}
-                              />
-                            ) : (
-                              <PaymentCodeButton
-                                taskId={task.id}
-                                orderDate={task.orderDate}
-                                dispatch
-                              />
-                            ))}
-                          {can(PERMISSIONS.PAYMENT_DISPATCH_READ) && (
-                            <button
-                              className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
-                              disabled={copyingIds.length > 0}
-                              aria-label={`复制订单信息 ${task.orderNumber}`}
-                              onClick={() => copyTasks([task])}
-                            >
-                              <Copy className="w-4 h-4" />
-                              {copyingIds.includes(task.id) ? '复制中...' : '复制订单信息'}
-                            </button>
-                          )}
-                          {canCorrectTasks && (
-                            <button
-                              className={`btn btn-secondary px-3 py-1.5 text-sm ${BUTTON_LAYOUT_CLASS}`}
-                              aria-label={`修改备注 订单 ${task.orderId}`}
-                              onClick={() => {
-                                setNotesModalError('');
-                                setNotesModalTask(task);
-                              }}
-                            >
-                              <Pencil className="w-4 h-4" />
-                              修改备注
-                            </button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              {loading && (
-                <tr>
-                  <td colSpan="13" className="px-4 py-12 text-center text-gray-500">
-                    加载中...
-                  </td>
-                </tr>
-              )}
-              {!loading && tasks.length === 0 && (
-                <tr>
-                  <td colSpan="13" className="px-4 py-12 text-center text-gray-500">
-                    没有符合条件的付款任务
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+        <PaymentOrdersTable
+          tasks={tasks}
+          loading={loading}
+          now={now}
+          selectedKeys={filters.productKeys}
+          selectedIds={selectedTaskIds}
+          onSelect={setSelectedTaskIds}
+          canSelect={
+            can(PERMISSIONS.PAYMENT_DISPATCH_READ) || can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN)
+          }
+          canCopy={can(PERMISSIONS.PAYMENT_DISPATCH_READ)}
+          canEdit={canCorrectTasks}
+          canRefresh={can(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN)}
+          copyingIds={copyingIds}
+          onCopy={task => copyTasks([task])}
+          onEdit={task => {
+            setNotesModalError('');
+            setNotesModalTask(task);
+          }}
+          getAlipayLink={getPaymentDispatchAlipayLink}
+          onResult={showToast}
+          dispatch
+          refresh={officialRefresh}
+        />
       </div>
 
       {!loading && pagination.total > 0 && (

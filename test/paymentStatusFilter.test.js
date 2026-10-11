@@ -17,6 +17,8 @@ test('邮件状态多选按 OR 去重，兼容单值，空选不限制', () => {
     [Op.in]: ['picked_up'],
   });
   expect(buildEmailStatusCondition({})).toBeNull();
+  expect(buildEmailStatusCondition({ emailOrderStatuses: [] })).toBeNull();
+  expect(buildEmailStatusCondition({ emailOrderStatuses: '[]' })).toBeNull();
 });
 test.each([
   'bad',

@@ -81,7 +81,42 @@ router.put(
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CORRECT),
   asyncHandler(controller.updateTaskNotes)
 );
-router.post('/tasks/:id/refresh', retiredFeature('付款调度官网刷新'));
+router.post(
+  '/tasks/:id/refresh',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),
+  asyncHandler(async (req, res) => {
+    try {
+      const data = await require('../services/paymentOfficialRefreshService').enqueue(
+        req.user,
+        Number(req.params.id),
+        req.body,
+        true
+      );
+      res.set('Cache-Control', 'no-store').status(202).json({ success: true, data });
+    } catch (error) {
+      error.component = 'paymentOfficialRefresh';
+      throw error;
+    }
+  })
+);
+router.get(
+  '/tasks/:id/refresh/:jobId',
+  requirePermission(PERMISSIONS.PAYMENT_DISPATCH_ASSIGN),
+  asyncHandler(async (req, res) => {
+    try {
+      const data = await require('../services/paymentOfficialRefreshService').progress(
+        req.user,
+        Number(req.params.id),
+        req.params.jobId,
+        true
+      );
+      res.set('Cache-Control', 'no-store').json({ success: true, data });
+    } catch (error) {
+      error.component = 'paymentOfficialRefresh';
+      throw error;
+    }
+  })
+);
 router.post(
   '/tasks/:id/reopen',
   requirePermission(PERMISSIONS.PAYMENT_DISPATCH_CORRECT),

@@ -33,6 +33,7 @@ function buildEmailStatusCondition(query) {
   ) {
     throw ApiError.badRequest('emailOrderStatuses 包含非法状态或数量超限');
   }
+  if (!statuses.length) return null;
   return { [Op.in]: [...new Set(statuses)] };
 }
 
