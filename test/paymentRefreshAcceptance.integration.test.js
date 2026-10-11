@@ -12,6 +12,7 @@ suite('付款官网刷新独立隔离验收', () => {
   let outsider;
   let orders;
   let tasks;
+  const originalFrom = process.env.PAYMENT_OFFICIAL_REFRESH_FROM;
   const sql = async (text, replacements = {}) => {
     try {
       return (await db.sequelize.query(text, { replacements }))[0];
@@ -26,6 +27,7 @@ suite('付款官网刷新独立隔离验收', () => {
       process.env.DATABASE_URL
     )
       throw new Error('仅允许本轮专用付款验收库');
+    process.env.PAYMENT_OFFICIAL_REFRESH_FROM = '2026-10-01T00:00:00Z';
     db = require('../src/models');
     service = require('../src/services/paymentOfficialRefreshService');
     queue = require('../src/services/officialOrderRefreshService');
@@ -78,10 +80,19 @@ suite('付款官网刷新独立隔离验收', () => {
       'INSERT INTO official_order_refresh_runtime(id,heartbeat_at) VALUES(1,now()) ON CONFLICT(id) DO UPDATE SET heartbeat_at=now()'
     );
     for (const order of orders)
-      await order.update({ emailPaymentStatus: 'unknown', officialRawStatus: 'PAYMENT_PENDING' });
+      await order.update({
+        emailPaymentStatus: 'unknown',
+        officialRawStatus: 'PAYMENT_PENDING',
+        createdAt: new Date(),
+      });
+    await sql('UPDATE orders SET created_at=now() WHERE id IN (:ids)', {
+      ids: orders.map(order => order.id),
+    });
     for (const task of tasks) await task.update({ assigneeUserId: staff.id });
   });
   afterAll(async () => {
+    if (originalFrom === undefined) delete process.env.PAYMENT_OFFICIAL_REFRESH_FROM;
+    else process.env.PAYMENT_OFFICIAL_REFRESH_FROM = originalFrom;
     if (db) await db.sequelize.close();
   });
 
@@ -303,6 +314,83 @@ suite('付款官网刷新独立隔离验收', () => {
       await sql('DELETE FROM official_order_refresh_jobs');
       await sql('DELETE FROM official_order_refresh_batches');
       await db.Order.destroy({ where: { id: extraOrders.map(order => order.id) } });
+    }
+  });
+  test('应该只自动核对cutoff等于和之后订单，历史手动刷新仍允许', async () => {
+    const previous = process.env.NODE_ENV;
+    const cutoff = '2026-10-11T06:00:00.000Z';
+    process.env.NODE_ENV = 'production';
+    process.env.PAYMENT_OFFICIAL_REFRESH_ENABLED = 'true';
+    process.env.PAYMENT_OFFICIAL_REFRESH_FROM = cutoff;
+    try {
+      for (let index = 0; index < orders.length; index += 1) {
+        await sql('UPDATE orders SET created_at=:created WHERE id=:id', {
+          created: new Date(Date.parse(cutoff) + index - 1),
+          id: orders[index].id,
+        });
+      }
+      expect(await service.scan()).toEqual({ queued: 2 });
+      const autoIds = (
+        await sql('SELECT order_id FROM official_order_refresh_jobs ORDER BY order_id')
+      ).map(row => row.order_id);
+      expect(autoIds).toEqual([orders[1].id, orders[2].id]);
+      // 三张订单均为本地倒计时过期，入队依据只按created_at界定而不按orderDate。
+      const manual = await service.enqueue(staff, Number(tasks[0].id), {
+        requestKey: crypto.randomUUID(),
+      });
+      expect(manual.created).toBe(true);
+      expect(
+        (
+          await sql(
+            'SELECT b.purpose FROM official_order_refresh_jobs j JOIN official_order_refresh_batches b ON b.id=j.batch_id WHERE j.id=:id',
+            { id: manual.jobId }
+          )
+        )[0].purpose
+      ).toBe('payment_manual');
+      // 修改时间范围后领取必须再次校验；历史自动任务不能继续执行。
+      process.env.PAYMENT_OFFICIAL_REFRESH_FROM = '2026-10-11T07:00:00.000Z';
+      expect(await queue.claimHttp()).toBeNull();
+      expect(await queue.claimHttp()).toBeNull();
+      expect((await queue.claimHttp()).orderId).toBe(orders[0].id);
+    } finally {
+      process.env.NODE_ENV = previous;
+      delete process.env.PAYMENT_OFFICIAL_REFRESH_ENABLED;
+      process.env.PAYMENT_OFFICIAL_REFRESH_FROM = '2026-10-01T00:00:00Z';
+    }
+  });
+  test('应该在自动任务已领取后起点变化时拒绝回写旧范围', async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    process.env.PAYMENT_OFFICIAL_REFRESH_ENABLED = 'true';
+    try {
+      expect(await service.scan()).toEqual({ queued: 3 });
+      const job = await queue.claimHttp();
+      process.env.PAYMENT_OFFICIAL_REFRESH_FROM = new Date(Date.now() + 86400000).toISOString();
+      expect(await queue.finish({ ...job, outcome: 'SUCCEEDED', result: {} })).toEqual({
+        state: 'failed',
+        errorCode: 'ACCESS_REVOKED',
+      });
+      const order = await db.Order.findByPk(job.orderId);
+      expect(order.officialRawStatus).toBe('PAYMENT_PENDING');
+    } finally {
+      process.env.NODE_ENV = previous;
+      delete process.env.PAYMENT_OFFICIAL_REFRESH_ENABLED;
+      process.env.PAYMENT_OFFICIAL_REFRESH_FROM = '2026-10-01T00:00:00Z';
+    }
+  });
+  test.each([undefined, 'invalid'])('应该缺失或非法cutoff不扫描任何历史订单 %s', async value => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    process.env.PAYMENT_OFFICIAL_REFRESH_ENABLED = 'true';
+    if (value === undefined) delete process.env.PAYMENT_OFFICIAL_REFRESH_FROM;
+    else process.env.PAYMENT_OFFICIAL_REFRESH_FROM = value;
+    try {
+      expect(await service.scan()).toEqual({ queued: 0 });
+      expect((await sql('SELECT id FROM official_order_refresh_jobs')).length).toBe(0);
+    } finally {
+      process.env.NODE_ENV = previous;
+      delete process.env.PAYMENT_OFFICIAL_REFRESH_ENABLED;
+      process.env.PAYMENT_OFFICIAL_REFRESH_FROM = '2026-10-01T00:00:00Z';
     }
   });
   test('应该拒绝共享requestKey对应其他订单而不是数据库500', async () => {

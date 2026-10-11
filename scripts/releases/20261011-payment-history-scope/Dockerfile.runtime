@@ -1,0 +1,3 @@
+# 仅限制付款自动核对的历史范围，保留已发布的其他源码。
+FROM apple-order-mgr-runtime:20261011-payment-management-amd64
+COPY --chown=node:node src/services/paymentOfficialRefreshService.js /app/src/services/paymentOfficialRefreshService.js

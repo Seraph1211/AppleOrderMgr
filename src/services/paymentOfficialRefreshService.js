@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { Op, QueryTypes } = require('sequelize');
 const db = require('../models');
 const ApiError = require('../utils/ApiError');
+const logger = require('../utils/logger');
 const { scopeOrderWhere } = require('./orderAccessService');
 const { getEffectivePermissions } = require('./permissionService');
 const { officialAccountKey } = require('./officialOrderAccount');
@@ -35,11 +36,42 @@ function needsRefresh(order) {
   return !states.length || states.some(value => !TERMINAL.has(value));
 }
 
-/** 自动核对仅允许生产显式启用，开发环境永不自动请求官网。 */
+const ISO_TIMESTAMP =
+  /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/;
+let invalidCutoffWarned = false;
+
+/** 解析持久环境配置的自动核对起点，缺失、非法时间和非法日历日期拒绝。 */
+function automaticFrom(value = process.env.PAYMENT_OFFICIAL_REFRESH_FROM) {
+  if (typeof value !== 'string' || !ISO_TIMESTAMP.test(value)) return null;
+  const date = new Date(value);
+  const calendarDate = new Date(`${value.slice(0, 10)}T00:00:00Z`);
+  if (
+    !Number.isFinite(date.getTime()) ||
+    !Number.isFinite(calendarDate.getTime()) ||
+    calendarDate.toISOString().slice(0, 10) !== value.slice(0, 10)
+  )
+    return null;
+  return date;
+}
+
+/** 自动核对仅允许生产显式启用且存在合法起点，开发环境永不自动请求官网。 */
 function automaticEnabled() {
-  return (
-    process.env.NODE_ENV === 'production' && process.env.PAYMENT_OFFICIAL_REFRESH_ENABLED === 'true'
-  );
+  if (
+    process.env.NODE_ENV !== 'production' ||
+    process.env.PAYMENT_OFFICIAL_REFRESH_ENABLED !== 'true'
+  )
+    return false;
+  if (!automaticFrom()) {
+    if (!invalidCutoffWarned) {
+      logger.warn('付款官网自动核对未启动：缺失或非法入库起点', {
+        errorCode: 'PAYMENT_REFRESH_FROM_INVALID',
+      });
+      invalidCutoffWarned = true;
+    }
+    return false;
+  }
+  invalidCutoffWarned = false;
+  return true;
 }
 
 /** 在当前权限和归属下读取付款任务；不存在与不可见统一返回404。 */
@@ -100,7 +132,11 @@ async function authorizedOrder(job, transaction) {
       await accessibleTask(user, task.id, user.role === 'admin', transaction);
     }
     const order = await db.Order.findOne({
-      where: { id: job.orderId, orderNumber: job.orderNumber },
+      where: {
+        id: job.orderId,
+        orderNumber: job.orderNumber,
+        ...(job.purpose === 'payment_auto' ? { createdAt: { [Op.gte]: automaticFrom() } } : {}),
+      },
       transaction,
       lock: transaction.LOCK.UPDATE,
     });
@@ -265,6 +301,7 @@ async function scan() {
         const rows = await db.sequelize.query(
           `SELECT o.id FROM orders o
           JOIN payment_tasks t ON t.order_id=o.id WHERE o.email_payment_status IS DISTINCT FROM 'paid'
+          AND o.created_at>=:refreshFrom
           AND (NULLIF(btrim(o.official_raw_status),'') IS NULL OR EXISTS
             (SELECT 1 FROM unnest(string_to_array(o.official_raw_status, '|')) AS s(status)
             WHERE btrim(s.status) NOT IN (:terminal)))
@@ -282,7 +319,11 @@ async function scan() {
                   AND newer.created_at>j.created_at AND newer.state='succeeded'))))
           ORDER BY (SELECT max(j.created_at) FROM official_order_refresh_jobs j
             WHERE j.order_id=o.id) NULLS FIRST,o.id LIMIT 500`,
-          { transaction, replacements: { terminal: [...TERMINAL] }, type: QueryTypes.SELECT }
+          {
+            transaction,
+            replacements: { terminal: [...TERMINAL], refreshFrom: automaticFrom().toISOString() },
+            type: QueryTypes.SELECT,
+          }
         );
         const orders = await db.Order.findAll({
           where: { id: { [Op.in]: rows.map(row => row.id) } },
@@ -306,4 +347,12 @@ async function scan() {
     throw error;
   }
 }
-module.exports = { needsRefresh, automaticEnabled, authorizedOrder, enqueue, progress, scan };
+module.exports = {
+  needsRefresh,
+  automaticFrom,
+  automaticEnabled,
+  authorizedOrder,
+  enqueue,
+  progress,
+  scan,
+};
