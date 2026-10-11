@@ -36,7 +36,7 @@ const INITIAL_FILTERS = {
   modelNames: [],
   storageGbs: [],
   colorNames: [],
-  warehouseId: '',
+  warehouseIds: [],
   salespersonName: '',
   paymentStatus: '',
   soldFrom: '',
@@ -535,22 +535,21 @@ export default function Stock() {
       <div
         className={`ledger-filters ${['sold', 'all'].includes(tab) ? 'ledger-sales-filters' : ''}`}
       >
-        <label className="min-w-0 text-sm">
-          仓库
-          <ResponsiveSelect
-            aria-label="按仓库筛选"
-            className="input mt-1 w-full"
-            value={filters.warehouseId}
-            onChange={event => changeFilter('warehouseId', event.target.value)}
-          >
-            <option value="">全部仓库</option>
-            {catalog.warehouses.map(warehouse => (
-              <option key={warehouse.id} value={warehouse.id}>
-                {warehouse.name}
-              </option>
-            ))}
-          </ResponsiveSelect>
-        </label>
+        <div className="min-w-0 text-sm">
+          <div className="mb-1">仓库</div>
+          <TagMultiSelect
+            options={catalog.warehouses.map(warehouse => warehouse.id)}
+            optionLabels={Object.fromEntries(
+              catalog.warehouses.map(warehouse => [warehouse.id, warehouse.name])
+            )}
+            value={filters.warehouseIds}
+            onChange={values => changeFilter('warehouseIds', values)}
+            ariaLabel="按仓库筛选"
+            placeholder="全部仓库"
+            itemLabel="仓库"
+            enableSelectAll
+          />
+        </div>
         {[
           ['modelNames', '机型', '全部机型'],
           ['storageGbs', '容量', '全部容量'],
