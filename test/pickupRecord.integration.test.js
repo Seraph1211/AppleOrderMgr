@@ -115,58 +115,7 @@ suite('取货记录数据库与 TAG 范围', () => {
     expect(res.body.data.items.map(item => item.orderId)).toEqual([visibleOrder.id]);
   });
 
-  test('登记已取货自动写时间并追加操作记录', async () => {
-    const res = response();
-    await controller.update(
-      {
-        params: { orderId: String(visibleOrder.id) },
-        body: {
-          status: 'picked_up',
-          settlementAmount: '88.50',
-          settlementPerson: '测试结款人',
-          notes: '',
-          expectedVersion: 0,
-        },
-        user: {
-          id: user.id,
-          role: user.role,
-          username: user.username,
-          nickname: '测试员工',
-          orderAccess: user.orderAccess,
-        },
-      },
-      res
-    );
-    expect(res.body.data.status).toBe('picked_up');
-    expect(res.body.data.pickedUpAt).toBeTruthy();
-    expect(Number(res.body.data.settlementAmount)).toBe(88.5);
-    expect(await models.PickupRecordEvent.count({ where: { orderId: visibleOrder.id } })).toBe(1);
-  });
-
-  test('越权订单和陈旧版本均被拒绝', async () => {
-    await expect(
-      controller.update(
-        {
-          params: { orderId: String(hiddenOrder.id) },
-          body: { status: 'picked_up', expectedVersion: 0 },
-          user: { id: user.id, role: user.role, orderAccess: user.orderAccess },
-        },
-        response()
-      )
-    ).rejects.toMatchObject({ statusCode: 404 });
-    await expect(
-      controller.update(
-        {
-          params: { orderId: String(visibleOrder.id) },
-          body: { status: 'exception', expectedVersion: 0 },
-          user: { id: user.id, role: user.role, orderAccess: user.orderAccess },
-        },
-        response()
-      )
-    ).rejects.toMatchObject({ statusCode: 409, code: 'CONCURRENT_MODIFICATION' });
-  });
-
-  test('TAG 候选、列表和导出保持范围交集，多选保留逗号及引号', async () => {
+  test('历史照片列表保持范围交集，多选保留逗号及引号', async () => {
     const unusualTag = "TAG, O'Neil";
     const extra = await models.Order.create({
       orderNumber: 'W9700000003',
@@ -174,9 +123,6 @@ suite('取货记录数据库与 TAG 范围', () => {
       products: [{ name: '合成手机', quantity: 1 }],
     });
     user.orderAccess = { mode: 'tags', tags: ['TAG-INTERNAL', unusualTag] };
-    const options = await request('/pickups/filter-options');
-    expect(options.status).toBe(200);
-    expect((await options.json()).data.tags.sort()).toEqual(['TAG-INTERNAL', unusualTag].sort());
     const query = {
       tags: JSON.stringify(['TAG-INTERNAL', unusualTag, 'TAG-EXTERNAL']),
       pageSize: 1,
@@ -187,29 +133,13 @@ suite('取货记录数据库与 TAG 范围', () => {
     expect([first.data.items[0].orderId, second.data.items[0].orderId].sort()).toEqual(
       [visibleOrder.id, extra.id].sort()
     );
-    const pending = await (await request('/pickups', { ...query, status: 'pending' })).json();
-    expect(pending.data.items.map(row => row.orderId)).toEqual([extra.id]);
-    const exported = await request('/pickups/export', { ...query, status: 'pending' });
-    const XLSX = require('xlsx');
-    const workbook = XLSX.read(Buffer.from(await exported.arrayBuffer()), { type: 'buffer' });
-    expect(XLSX.utils.sheet_to_json(workbook.Sheets['取货清单']).map(row => row['订单号'])).toEqual(
-      [extra.orderNumber]
-    );
     expect((await request('/pickups', { tags: JSON.stringify([unusualTag]) })).status).toBe(200);
     const legacy = await (await request('/pickups', { tag: unusualTag })).json();
     expect(legacy.data.total).toBe(1);
   });
 
   test('功能权限和范围分别生效，非法筛选失败关闭', async () => {
-    for (const path of [
-      '/pickups',
-      '/pickups/filter-options',
-      '/pickups/export',
-      `/pickups/${visibleOrder.id}/events`,
-    ]) {
-      expect((await request(path, {}, 'denied')).status).toBe(403);
-    }
-    expect((await request(`/pickups/${hiddenOrder.id}/events`)).status).toBe(404);
+    expect((await request('/pickups', {}, 'denied')).status).toBe(403);
     const none = await (await request('/pickups', { tags: '["TAG-EXTERNAL"]' })).json();
     expect(none.data.total).toBe(0);
     for (const query of [
@@ -223,7 +153,6 @@ suite('取货记录数据库与 TAG 范围', () => {
     ]) {
       expect((await request('/pickups', query)).status).toBe(400);
     }
-    expect((await request('/pickups/export', { status: 'invalid' })).status).toBe(400);
   });
 
   test('邮件门店真实 SQL、候选、组合多选与导出口径一致', async () => {

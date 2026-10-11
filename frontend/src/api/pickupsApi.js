@@ -9,45 +9,12 @@ function serializeFilters(params = {}) {
   );
 }
 
-/** 获取授权范围内可搜索的 TAG 候选。 */
-export const getPickupFilterOptions = () => client.get('/pickups/filter-options');
+/** 读取历史照片所在记录，保留订单详情的分页和精确身份核对。 */
 export const getPickupRecords = params =>
   client.get('/pickups', { params: serializeFilters(params) });
-export const updatePickupRecord = (orderId, payload) => client.put(`/pickups/${orderId}`, payload);
-export const getPickupEvents = orderId => client.get(`/pickups/${orderId}/events`);
-/** 读取当前订单的设备号码清单。 */
-export const getPickupDevices = orderId => client.get(`/pickups/${orderId}/devices`);
-/** 绑定本次识别的序列号，服务端幂等保存。 */
-export const bindPickupDevice = (orderId, payload) =>
-  client.post(`/pickups/${orderId}/devices`, payload);
-export const preparePickupEvidence = (orderId, payload) =>
-  client.post(`/pickups/${orderId}/evidence/prepare`, payload);
-export const confirmPickupEvidence = (orderId, payload) =>
-  client.post(`/pickups/${orderId}/evidence/confirm`, payload);
+/** 取得授权订单历史凭证的短期读取地址。 */
 export const getPickupEvidenceUrl = (orderId, evidenceId) =>
   client.get(`/pickups/${orderId}/evidence/${evidenceId}`);
-
-export async function exportPickupRecords(params) {
-  const token = localStorage.getItem('token') || sessionStorage.getItem('token');
-  const query = new URLSearchParams(
-    Object.entries(serializeFilters(params)).filter(([, value]) => value)
-  );
-  const response = await fetch(`/api/pickups/export?${query}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-  });
-  if (!response.ok) throw new Error('导出取货清单失败');
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = `取货清单_${new Date().toISOString().slice(0, 10)}.xlsx`;
-  anchor.click();
-  URL.revokeObjectURL(url);
-}
-
-/** 解除明确设备的订单绑定，保留服务端操作历史。 */
-export const unbindPickupDevice = (orderId, deviceId) =>
-  client.delete(`/pickups/${orderId}/devices/${deviceId}`);
 
 /** 上传单张标签图片到服务端 OCR，取消只停止等待，不保证撤回已受理调用。 */
 export function recognizePickupSerial(orderId, image, signal) {

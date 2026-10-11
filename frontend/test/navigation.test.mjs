@@ -30,7 +30,7 @@ test('管理员专属菜单不因普通人员具有其他业务权限而可见',
   );
   assert.deepEqual(
     admin[0].children.map(item => item.name),
-    ['订单管理', '代抢管理', '取货记录', '库存管理']
+    ['订单管理', '代抢管理', '库存管理']
   );
   assert.deepEqual(
     admin[5].children.map(item => item.name),
@@ -64,4 +64,12 @@ test('详情路径高亮归属菜单，监控父子入口不会同时选中', ()
   }
   assert.equal(isNavigationItemActive({ href: '/orders' }, '/orders-other'), false);
   assert.equal(isNavigationItemActive({ href: '/' }, '/orders'), false);
+});
+
+test('仅有历史取货权限不会暴露库存入口，库存授权仍独立生效', () => {
+  const items = permissions => getVisibleNavigationGroups(
+    { role: 'pickupStaff' }, permission => permissions.includes(permission)
+  ).flatMap(group => group.children).map(item => item.href);
+  assert.deepEqual(items(['pickups.read', 'pickups.edit', 'pickups.export']), []);
+  assert.deepEqual(items(['stock.read', 'pickups.read', 'pickups.edit']), ['/stock']);
 });

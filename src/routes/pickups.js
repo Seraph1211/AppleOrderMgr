@@ -57,37 +57,8 @@ router.delete(
   requirePermission(PERMISSIONS.PICKUPS_EDIT),
   asyncHandler(devices.remove)
 );
-router.get(
-  '/filter-options',
-  requirePermission(PERMISSIONS.PICKUPS_READ),
-  asyncHandler(controller.filterOptions)
-);
+// 历史照片读取仍由订单详情使用；独立页面的登记、结款、导出和上传已退役。
 router.get('/', requirePermission(PERMISSIONS.PICKUPS_READ), asyncHandler(controller.list));
-router.get(
-  '/export',
-  requirePermission(PERMISSIONS.PICKUPS_EXPORT),
-  asyncHandler(controller.exportList)
-);
-router.put(
-  '/:orderId',
-  requirePermission(PERMISSIONS.PICKUPS_EDIT),
-  asyncHandler(controller.update)
-);
-router.get(
-  '/:orderId/events',
-  requirePermission(PERMISSIONS.PICKUPS_READ),
-  asyncHandler(controller.events)
-);
-router.post(
-  '/:orderId/evidence/prepare',
-  requirePermission(PERMISSIONS.PICKUPS_EDIT),
-  asyncHandler(controller.prepareEvidence)
-);
-router.post(
-  '/:orderId/evidence/confirm',
-  requirePermission(PERMISSIONS.PICKUPS_EDIT),
-  asyncHandler(controller.confirmEvidence)
-);
 router.get(
   '/:orderId/evidence/:evidenceId',
   requirePermission(PERMISSIONS.PICKUPS_READ),

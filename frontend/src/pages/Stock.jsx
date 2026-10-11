@@ -501,7 +501,7 @@ export default function Stock() {
       {tab === 'registered' && (
         <p className="text-sm text-gray-500">
           取货照片和 SN
-          登记后，需有已取货依据。订单状态尚未更新时，可在取货记录明确确认已取货并填写备注依据。
+          登记后，需有已取货依据。订单状态尚未更新时，请先核实取货情况并同步订单状态。
         </p>
       )}
       <div className="flex items-center gap-3">

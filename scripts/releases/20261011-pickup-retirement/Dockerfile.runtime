@@ -1,0 +1,5 @@
+# 继承已核验的生产 API，仅移除取货页面专用接口，保留其他生产差异。
+FROM apple-order-mgr-runtime:20261010-official-return-expired-amd64
+COPY --chown=node:node src/constants/permissionCatalog.js /app/src/constants/permissionCatalog.js
+COPY --chown=node:node src/controllers/pickupController.js /app/src/controllers/pickupController.js
+COPY --chown=node:node src/routes/pickups.js /app/src/routes/pickups.js

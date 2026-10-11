@@ -419,22 +419,6 @@
   .orders-mobile-actions > div {
     justify-content: flex-start;
   }
-  .pickups-page .input {
-    font-size: 16px;
-    min-height: 44px;
-  }
-  .pickups-page .btn,
-  .pickups-page select,
-  .pickups-page input:not([type='file']),
-  .pickups-page textarea {
-    min-height: 44px;
-  }
-  .pickups-page .btn {
-    min-width: 44px;
-  }
-  .pickup-dialog-footer {
-    padding-bottom: max(12px, env(safe-area-inset-bottom));
-  }
   .payment-tasks .input,
   .login-page .input {
     font-size: 16px;
@@ -596,26 +580,6 @@
   .payment-task-table .payment-task-details {
     display: none;
   }
-}
-
-/* 取货页图标与文字同行；长订单、TAG、备注和文件名不撑宽手机视口。 */
-.pickups-page .btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-}
-.pickups-page .btn svg,
-.pickups-page .badge {
-  flex-shrink: 0;
-}
-.pickups-page .card,
-.pickups-page [role='dialog'] {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.pickups-page [role='dialog'] > div {
-  min-width: 0;
 }
 
 /* 手机表单统一尺寸，避免聚焦缩放及 iOS 日期控件的固有宽度撑开页面。

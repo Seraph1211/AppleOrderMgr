@@ -959,7 +959,9 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 原 `/api/pickups/:orderId/devices` 的请求响应及 orderId 必填语义保持。内部 create 改为先取得模块事务锁，再保证 stockUnit 存在并写入绑定；删除只删除绑定，主档保留。原相同订单重扫幂等、跨订单冲突、TAG权限及旧UUID重试语义须回归。新无来源订单 OCR 走 `/api/stock/serial/recognize`，复用现有识别服务和同一每月额度，不要求伪造订单或绕过原OCR授权。OCR为外部计费识别，不是库存记账命令，不自动重试；沿用每用户每分钟10次限制，超限429。事务锁等待、语句超时及死锁返回503 STOCK_BUSY；数据库连接意外中断或暂时不可用返回503 STOCK_CONNECTION_LOST；两类业务命令均使用原requestKey安全重试。真正的输入格式与数据库字段约束错误返回400，不把断连误报成字段无效。
 
-## 取货记录接口（2026-09-22，本地实现）
+## 取货记录兼容接口（2026-10-11 页面下线）
+
+独立页面及其专用功能已移除。`GET /api/pickups/filter-options`、`GET /api/pickups/export`、`PUT /api/pickups/:orderId`、`GET /api/pickups/:orderId/events` 和凭证 `prepare/confirm` 上传接口不再注册，返回 404。保留列表与凭证读取供订单详情查看历史照片，保留设备接口、OCR 和既有权限供订单／库存共用。不删除业务数据或 OSS 对象，不变更库存生命周期判定。
 
 2026-09-23 设备扫码扩展（已生产发布，真实手机待验收）：
 
@@ -968,16 +970,10 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 `/api/pickups` 的全部接口同时检查对应功能权限与 `orders.tag` 范围。管理员范围为全部；混合或越权订单不返回存在性信息。
 
-- `GET /api/pickups`：分页列表，支持 search、tags（JSON 字符串数组，最多 100 项，每项 1–500 字符；完整值精确 OR 匹配，保留原文）、兼容单值 tag 和 status；page/pageSize 为正整数，每页最多 100 条。列表和导出使用相同筛选及授权交集。
-- `GET /api/pickups/filter-options`：需 pickups.read，返回 `{tags: string[]}`；候选来自授权范围内全部订单的非空 `orders.tag`，去重排序，不受分页限制。
-- `GET /api/pickups/export`：导出当前筛选和授权范围 Excel。
-- `PUT /api/pickups/:orderId`：请求状态、实际时间、结款金额、结款人、备注和 expectedVersion；首次已取货自动补当前时间，冲突返回 409 CONCURRENT_MODIFICATION。
-- `GET /api/pickups/:orderId/events`：最多返回最近 200 条追加历史。
-- `POST /api/pickups/:orderId/evidence/prepare`：校验文件和订单权限后返回 5 分钟 OSS PUT 地址。
-- `POST /api/pickups/:orderId/evidence/confirm`：核验 OSS 对象后登记元数据并追加事件。
+- `GET /api/pickups`：分页列表，支持 search、tags（JSON 字符串数组，最多 100 项，每项 1–500 字符；完整值精确 OR 匹配，保留原文）、兼容单值 tag 和 status；page/pageSize 为正整数，每页最多 100 条。列表使用原有筛选及授权交集。
 - `GET /api/pickups/:orderId/evidence/:evidenceId`：复验订单范围并返回 5 分钟私有读取地址，响应 no-store。
 
-凭证仅允许 JPG/PNG/WebP/PDF，单文件上限 10MB。未配置 OSS 时上传端点返回 503 OSS_NOT_CONFIGURED，其他取货登记和导出仍可使用。
+历史凭证包含 JPG/PNG/WebP/PDF；未配置 OSS 时私有读取返回 503 OSS_NOT_CONFIGURED。独立取货凭证上传、登记和导出接口已退役，库存凭证使用原独立接口。
 
 ## 邮件联系人与多收件人转发（2026-09-22）
 

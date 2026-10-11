@@ -1,0 +1,11 @@
+# 继承当前生产前端，保留手机选择器、焦点及其他已有修复。
+FROM apple-order-mgr-frontend-builder:20261010-mobile-select-ios-amd64
+COPY src/App.jsx /app/src/App.jsx
+COPY src/api/pickupsApi.js /app/src/api/pickupsApi.js
+COPY src/components/PermissionConfigModal.jsx /app/src/components/PermissionConfigModal.jsx
+COPY src/constants/navigation.js /app/src/constants/navigation.js
+COPY src/index.css /app/src/index.css
+COPY src/pages/OrderDetail.jsx /app/src/pages/OrderDetail.jsx
+COPY src/pages/Stock.jsx /app/src/pages/Stock.jsx
+RUN rm /app/src/pages/Pickups.jsx /app/src/components/PickupDeviceScanner.jsx /app/src/utils/pickupHistory.js
+RUN npm run lint && npm run build

@@ -26,7 +26,6 @@ import WecomNotifications from './pages/WecomNotifications';
 import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
 import IdentityVerifications from './pages/IdentityVerifications';
-import Pickups from './pages/Pickups';
 import PublicIphone18Quotes from './pages/PublicIphone18Quotes';
 import Iphone18QuotePricing from './pages/Iphone18QuotePricing';
 import { PERMISSIONS } from './constants/permissions';
@@ -141,6 +140,7 @@ function ManagementApp() {
                     path="/orders"
                     element={permissionRoute(PERMISSIONS.ORDERS_READ, <Orders />)}
                   />
+                  <Route path="/pickups" element={<Navigate to="/stock" replace />} />
                   <Route
                     path="/stock"
                     element={permissionRoute(PERMISSIONS.STOCK_READ, stockPage(<Stock />))}
@@ -149,10 +149,6 @@ function ManagementApp() {
                   <Route
                     path="/stock-receipts"
                     element={<Navigate to="/stock?view=sold" replace />}
-                  />
-                  <Route
-                    path="/pickups"
-                    element={permissionRoute(PERMISSIONS.PICKUPS_READ, <Pickups />)}
                   />
                   <Route
                     path="/orders/:id"
