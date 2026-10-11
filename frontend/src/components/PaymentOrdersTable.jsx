@@ -70,7 +70,7 @@ export default function PaymentOrdersTable({
                 <th
                   key={title}
                   data-column={title}
-                  className={`px-4 py-3 text-sm font-medium text-gray-500 whitespace-nowrap ${title === '操作' ? 'text-right' : 'text-left'}`}
+                  className="px-4 py-3 text-sm font-medium text-gray-500 whitespace-nowrap text-left"
                 >
                   {title}
                 </th>
