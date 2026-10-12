@@ -59,6 +59,7 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
     });
     user = {
       id: created.id,
+      role: created.role,
       permissions: Object.values(require('../src/constants/business').PERMISSIONS),
     };
   });
@@ -374,6 +375,9 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
     await changeBinding(x, b.id);
     const order = await models.Order.create({
       orderNumber: 'W7000000010',
+      ingestionSource: 'aos',
+      recipientPhone: '13900000001',
+      recipientEmail: 'different@example.invalid',
       appleId: a.appleId,
       recipientName: '证据人',
       recipientIdLast4: x.idCardLast4,
@@ -398,6 +402,8 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
       recipientRef: x.id,
       appleIdRef: a.id,
       applePassword: '历史密码',
+      recipientPhone: '13900000001',
+      recipientEmail: 'different@example.invalid',
       tag: '历史TAG',
     });
   });

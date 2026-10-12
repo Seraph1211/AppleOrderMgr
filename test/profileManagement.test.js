@@ -324,21 +324,31 @@ describe('订单自身证据与歧义防误配', () => {
       ])
     ).toBeNull();
   });
-  test('完整证件优先；AOS 联系信息冲突拒绝', () => {
-    expect(matchRecipient({ recipientName: '欧阳明', recipientIdCard: idCard }, [person])).toBe(
-      person
-    );
+  test('完整证件提取尾号，同名同尾号多档案仍拒绝', () => {
+    const order = { recipientName: '欧阳明', recipientIdCard: idCard };
+    expect(matchRecipient(order, [person])).toBe(person);
     expect(
-      matchRecipient(
-        {
-          recipientName: '欧阳明',
-          ingestionSource: 'aos',
-          recipientPhone: person.phone,
-          recipientEmail: 'different@vvv8.net',
-        },
-        [person]
-      )
+      matchRecipient(order, [person, { ...person, id: 2, idCardHash: 'different' }])
     ).toBeNull();
+  });
+  test.each(['aos', 'email', 'manual'])(
+    '来源 %s 的手机号和邮箱不同不拦截姓名尾号匹配',
+    ingestionSource => {
+      expect(
+        matchRecipient(
+          {
+            recipientName: '欧阳明',
+            recipientIdLast4: '0001',
+            ingestionSource,
+            recipientPhone: '13900000001',
+            recipientEmail: 'different@example.invalid',
+          },
+          [person]
+        )
+      ).toBe(person);
+    }
+  );
+  test('只有姓名和相同联系方式，缺少证件尾号不关联', () => {
     expect(
       matchRecipient(
         {
@@ -349,6 +359,20 @@ describe('订单自身证据与歧义防误配', () => {
         },
         [person]
       )
-    ).toBe(person);
+    ).toBeNull();
+  });
+  test.each([
+    { recipientName: '其他人', recipientIdLast4: '0001' },
+    { recipientName: '欧阳明', recipientIdLast4: '0002' },
+    { recipientName: '欧阳明', recipientIdLast4: 'bad!' },
+    { recipientName: '欧阳明', recipientIdLast4: '0002', recipientIdCard: idCard },
+  ])('姓名、尾号不符或证据冲突不关联：%j', order => {
+    expect(matchRecipient(order, [person])).toBeNull();
+  });
+  test('尾号末位 x 和首尾空白规范化，保留前导零', () => {
+    const candidate = { ...person, idCardLast4: '001X' };
+    expect(
+      matchRecipient({ recipientName: ' 欧阳明 ', recipientIdLast4: ' 001x ' }, [candidate])
+    ).toBe(candidate);
   });
 });

@@ -1,57 +1,43 @@
 const { Op } = require('sequelize');
 const { Recipient } = require('../models');
-const { blindIndex } = require('../utils/fieldEncryption');
 const logger = require('../utils/logger');
 
-/** 批量加载候选人，供导入历史关联使用，避免逐订单读取。 */
+/** 提取订单自身的有效证件尾号；冲突证据不用于自动关联。 */
+function recipientTail(order) {
+  const tail = order.recipientIdLast4?.trim().toUpperCase();
+  const card = order.recipientIdCard?.trim().toUpperCase();
+  const cardTail = card && /^\d{17}[\dX]$/.test(card) ? card.slice(-4) : null;
+  if (tail) {
+    if (!/^\d{3}[\dX]$/.test(tail) || (cardTail && cardTail !== tail)) return null;
+    return tail;
+  }
+  return cardTail;
+}
+
+/** 批量加载证件尾号候选，供新订单和历史关联共用。 */
 async function loadRecipientCandidates(orders, transaction) {
   try {
-    const hashes = [],
-      tails = [],
-      phones = [];
-    for (const order of orders) {
-      const card = order.recipientIdCard?.trim().toUpperCase();
-      if (card && /^\d{17}[\dX]$/.test(card)) hashes.push(blindIndex(card));
-      else if (order.recipientIdLast4) tails.push(order.recipientIdLast4.toUpperCase());
-      else if (order.ingestionSource === 'aos' && order.recipientPhone)
-        phones.push(order.recipientPhone);
-    }
-    const conditions = [];
-    if (hashes.length) conditions.push({ idCardHash: [...new Set(hashes)] });
-    if (tails.length) conditions.push({ idCardLast4: [...new Set(tails)] });
-    if (phones.length) conditions.push({ phone: [...new Set(phones)] });
-    if (!conditions.length) return [];
-    return await Recipient.findAll({ where: { [Op.or]: conditions }, transaction });
+    const tails = [...new Set(orders.map(recipientTail).filter(Boolean))];
+    if (!tails.length) return [];
+    return await Recipient.findAll({
+      where: { idCardLast4: { [Op.in]: tails } },
+      transaction,
+    });
   } catch (error) {
     logger.warn('读取订单身份候选失败', { errorType: error.name });
     throw error;
   }
 }
 
-/** 只使用订单自身证据；同名、同尾号多候选时返回空。 */
+/** 仅使用全名＋证件后四位唯一匹配；手机号、邮箱和当前账号不参与判断。 */
 function matchRecipient(order, candidates) {
   const name = order.recipientName?.trim();
-  if (!name) return null;
-  const card = order.recipientIdCard?.trim().toUpperCase();
-  const hash = card && /^\d{17}[\dX]$/.test(card) ? blindIndex(card) : null;
-  const matches = candidates.filter(candidate => {
-    if (`${candidate.lastName}${candidate.firstName}` !== name) return false;
-    if (hash) {
-      if ((candidate.idCardHash || blindIndex(candidate.idCardNumber)) !== hash) return false;
-    } else if (order.recipientIdLast4) {
-      if (candidate.idCardLast4 !== order.recipientIdLast4.toUpperCase()) return false;
-    } else if (order.ingestionSource !== 'aos' || !order.recipientPhone) return false;
-    if (order.ingestionSource === 'aos') {
-      if (order.recipientPhone && candidate.phone !== order.recipientPhone) return false;
-      if (
-        order.recipientEmail &&
-        candidate.email &&
-        candidate.email.toLowerCase() !== order.recipientEmail.toLowerCase()
-      )
-        return false;
-    }
-    return true;
-  });
+  const tail = recipientTail(order);
+  if (!name || !tail) return null;
+  const matches = candidates.filter(
+    candidate =>
+      `${candidate.lastName}${candidate.firstName}` === name && candidate.idCardLast4 === tail
+  );
   return matches.length === 1 ? matches[0] : null;
 }
 

@@ -681,7 +681,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - PUT /recipients/:id/binding：{appleIdRef: 正整数或 null, expectedAppleIdRef: 当前值或 null}，要求 recipients.bind_apple_ids；账号被其他人占用返回 409，不自动抢占。GET /recipients/:id/bindings 和 /apple-ids/:id/bindings 返回历史，双方读取权限同时检查。绑定不改状态。
 - 导出 includeSensitive=true 要求 recipients.export_sensitive，默认脱敏。完整导出按腾讯文档“信息导入模板”公式生成 UTF-8 TXT，每条档案一行、无表头、不附加其他列；空账号输出空字符串。默认导出仍为脱敏 Excel。
 - POST /import/preview 支持 files（兼容 file），返回服务器会话 token、有效行／差异／来源位置／汇总；execute 提交 {type,sessionToken,decisions}，差异决策为 keep/source/skip，未裁定不能执行。跨资源写入分别检查账号导入／编辑、取机人编辑／绑定权限；执行前重验档案摘要。
-- POST /import/associations/preview 和 /execute：要求 orders.edit、orders.read、recipients.read、apple_ids.read；预览未关联订单并选中执行，只补空关联，不改快照、TAG、付款任务；无证据或歧义保持未关联。
+- POST /import/associations/preview 和 /execute：要求 orders.edit、orders.read、recipients.read、apple_ids.read；预览未关联订单并选中执行，只补空关联，不改快照、TAG、付款任务；无证据或歧义保持未关联。取机人统一按姓名＋身份证后四位唯一匹配（完整证件可提取尾号），手机号和邮箱差异不拦截，缺尾号不以联系方式代替。
 
 基础档案增量补充：
 

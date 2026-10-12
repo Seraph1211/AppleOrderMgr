@@ -28,6 +28,10 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
   let actor;
   let sequence = 0;
 
+  // 使用当前北京时间，避免固定上午时间使下午执行时付款窗口已过期。
+  const sourceOrderTime = () =>
+    new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, -1);
+
   function event(overrides = {}) {
     const orderNumber = `W99${String(++sequence).padStart(8, '0')}`;
     return {
@@ -41,7 +45,7 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
       rawLine: buildAosLine({
         0: orderNumber,
         13: `https://www.apple.com.cn/xc/cn/vieworder/${orderNumber}/contact%40example.com`,
-        14: `${repo.businessDate()} 10:00:00.123`,
+        14: sourceOrderTime(),
       }),
       ...overrides,
     };
@@ -184,7 +188,7 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
       6: 'R502',
       9: '13900000000',
       13: `https://www.apple.com.cn/xc/cn/vieworder/${orderNumber}/` + 'store-match%40example.com',
-      14: `${repo.businessDate()} 10:00:00.123`,
+      14: sourceOrderTime(),
       15: '5678',
     });
     const mismatched = event();
@@ -253,9 +257,9 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
       data: { businessDate: yesterday, settingsVersion: 1 },
     });
     const old = event();
-    old.rawLine = old.rawLine.replace(`${repo.businessDate()} 10:00`, `${yesterday} 10:00`);
+    old.rawLine = old.rawLine.replace(repo.businessDate(), yesterday);
     const allowed = event();
-    allowed.rawLine = allowed.rawLine.replace(`${repo.businessDate()} 10:00`, `${yesterday} 10:00`);
+    allowed.rawLine = allowed.rawLine.replace(repo.businessDate(), yesterday);
     allowed.capturePermitId = permit.id;
     const result = await aos.receiveBatch(auth, { schemaVersion: 1, records: [old, allowed] });
     expect(result.results.map(r => r.eligibility)).toEqual(['out_of_range', 'allowed']);
@@ -550,7 +554,7 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     expect(await PaymentTask.count({ where: { orderId: row.orderId } })).toBe(1);
   });
 
-  test('取机人唯一姓名手机号且联系资料一致才关联，TAG 差异保留', async () => {
+  test('取机人姓名尾号唯一关联，联系方式差异不拦截，TAG 和来源快照保留', async () => {
     const first = await models.Recipient.create({
       lastName: '测试',
       firstName: '用户',
@@ -572,8 +576,11 @@ describeDatabase('AOS 隔离 PostgreSQL 事务验收', () => {
     const matched = await ingest();
     expect(matched.recipientRef).toBe(first.id);
     expect(matched.sourceRecipientTag).toBe('测试 TAG');
-    await first.update({ email: 'conflict@example.com' });
-    expect((await ingest()).recipientRef).toBeNull();
+    await first.update({ email: 'conflict@example.com', phone: '13900000001' });
+    const differentContacts = await ingest();
+    expect(differentContacts.recipientRef).toBe(first.id);
+    expect(differentContacts.recipientPhone).toBe('13800000000');
+    expect(differentContacts.recipientEmail).toBe('contact@example.com');
     await first.update({ email: 'contact@example.com' });
     await models.Recipient.create({
       lastName: '测试',
