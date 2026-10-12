@@ -90,42 +90,24 @@ describe('跨表去重和差异裁定', () => {
     expect(plan.writes[0].data).toMatchObject({ notes: '已有备注', status: '异常' });
     expect(plan.records[0].action).toBe('重复');
   });
-  test('缺密码的未知绑定、跨人共用账号明确阻断', () => {
-    const unknown = buildImportPlan(
-      [row({ ...data, appleId: 'unknown@example.invalid' })],
-      'recipients',
-      empty
-    );
-    expect(unknown.summary.blocked).toBe(1);
-    const collision = buildImportPlan(
+  test('旧账号列忽略且提示，不联合写账号或阻塞共用账号', () => {
+    const plan = buildImportPlan(
       [
-        row({ ...data, appleId: 'a@example.invalid', password: 'synthetic' }),
-        row({
-          ...data,
-          idCardNumber: '110101199001010002',
-          appleId: 'a@example.invalid',
-          password: 'synthetic',
-        }),
+        row({ ...data, appleId: 'invalid-old-account', password: 'synthetic' }),
+        row({ ...data, idCardNumber: '110101199001010002', appleId: 'invalid-old-account' }),
       ],
       'recipients',
       empty
     );
-    expect(collision.summary.blocked).toBe(1);
-    const skipped = buildImportPlan(
-      [
-        row({ ...data, appleId: 'a@example.invalid', password: 'synthetic' }),
-        row({
-          ...data,
-          idCardNumber: '110101199001010002',
-          appleId: 'a@example.invalid',
-          password: 'synthetic',
-        }),
-      ],
-      'recipients',
-      empty,
-      { 'g2:skip': true }
-    );
-    expect(skipped.summary.blocked).toBe(0);
+    expect(plan.summary).toMatchObject({ blocked: 0, records: 2, conflicts: 0 });
+    expect(plan.writes.every(write => write.kind === 'recipient')).toBe(true);
+    expect(
+      plan.writes.every(
+        write => write.data.appleId === undefined && write.data.password === undefined
+      )
+    ).toBe(true);
+    expect(plan.records.every(record => record.warnings.length === 1)).toBe(true);
+    expect(JSON.stringify(plan.records)).not.toContain('synthetic');
   });
   test('密码密保预览不泄密，非法决策不能裁定差异', () => {
     const profiles = {

@@ -26,15 +26,6 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
       password: 'synthetic-password',
       ...values,
     });
-  const changeBinding = (recipient, ref, expected = recipient.appleIdRef) =>
-    recipientController.updateBinding(
-      {
-        params: { id: recipient.id },
-        body: { appleIdRef: ref, expectedAppleIdRef: expected ?? null },
-        user,
-      },
-      response()
-    );
   const query = async sql => (await models.sequelize.query(sql))[0];
   beforeAll(async () => {
     if (
@@ -65,126 +56,6 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
   });
   afterAll(async () => {
     if (models) await models.sequelize.close();
-  });
-
-  test('当前双向唯一；换绑不改状态与订单归属，历史保留 A+B', async () => {
-    const a = await account({ status: '异常' }),
-      b = await account({ status: '已下架' });
-    const zhang = await person('张三', { status: '使用中' }),
-      li = await person('李四');
-    await changeBinding(zhang, a.id);
-    const old = await models.Order.create({
-      orderNumber: 'W7000000001',
-      appleIdRef: a.id,
-      recipientRef: zhang.id,
-      appleId: a.appleId,
-      recipientName: '张三',
-      tag: '原订单TAG',
-      products: [{ name: '合成商品', quantity: 1 }],
-    });
-    await expect(changeBinding(li, a.id)).rejects.toMatchObject({ statusCode: 409 });
-    await changeBinding(zhang, b.id, a.id);
-    await changeBinding(li, a.id);
-    await models.Order.create({
-      orderNumber: 'W7000000002',
-      appleIdRef: b.id,
-      recipientRef: zhang.id,
-      products: [{ name: '合成商品', quantity: 1 }],
-    });
-    await models.Order.create({
-      orderNumber: 'W7000000003',
-      appleIdRef: a.id,
-      recipientRef: li.id,
-      products: [{ name: '合成商品', quantity: 1 }],
-    });
-    expect(await models.Order.count({ where: { recipientRef: zhang.id } })).toBe(2);
-    expect(await models.Order.count({ where: { appleIdRef: a.id } })).toBe(2);
-    expect((await old.reload()).toJSON()).toMatchObject({
-      appleIdRef: a.id,
-      recipientRef: zhang.id,
-      tag: '原订单TAG',
-    });
-    expect((await a.reload()).status).toBe('异常');
-    expect((await b.reload()).status).toBe('已下架');
-    expect((await zhang.reload()).status).toBe('使用中');
-    const history = await query(
-      `SELECT * FROM profile_bindings WHERE recipient_id=${zhang.id} ORDER BY id`
-    );
-    expect(history).toHaveLength(2);
-    expect(history[0].ended_at).not.toBeNull();
-    expect(history[1].ended_at).toBeNull();
-    expect(history[1].started_at).not.toBeNull();
-    const res = response();
-    await recipientController.getRecipientDetail({ params: { id: zhang.id }, user }, res);
-    expect(res.json.mock.lastCall[0].data.order_count).toBe(2);
-  });
-
-  test('并发抢占只有一个成功；数据库绕过应用也阻止重复绑定', async () => {
-    const a = await account(),
-      x = await person(),
-      y = await person();
-    const outcomes = await Promise.allSettled([changeBinding(x, a.id), changeBinding(y, a.id)]);
-    expect(outcomes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
-    expect(await models.Recipient.count({ where: { appleIdRef: a.id } })).toBe(1);
-    const loser = (await x.reload()).appleIdRef ? y : x;
-    await expect(loser.update({ appleIdRef: a.id })).rejects.toMatchObject({
-      name: 'SequelizeUniqueConstraintError',
-    });
-    await expect(
-      models.AppleId.create({ appleId: a.appleId.toUpperCase(), password: 'synthetic' })
-    ).rejects.toMatchObject({ name: 'SequelizeUniqueConstraintError' });
-  });
-
-  test('Apple ID 列表可按当前取机人姓名搜索并返回绑定姓名', async () => {
-    const a = await account({ status: '使用中' });
-    const recipient = await person('欧阳明');
-    await changeBinding(recipient, a.id);
-    const res = response();
-
-    await appleController.listAppleIds(
-      { query: { keyword: '欧阳明', bound: 'true', status: '使用中' }, user },
-      res
-    );
-
-    expect(res.json.mock.lastCall[0].data.apple_ids).toEqual([
-      expect.objectContaining({
-        id: a.id,
-        recipient_count: 1,
-        recipient_names: ['欧阳明'],
-      }),
-    ]);
-  });
-
-  test('过期绑定值拒绝，不会抢占；删除账号关闭历史并清空当前关联', async () => {
-    const a = await account(),
-      b = await account(),
-      x = await person();
-    await changeBinding(x, a.id);
-    await expect(changeBinding(x, b.id, null)).rejects.toMatchObject({ statusCode: 409 });
-    await appleController.deleteAppleId({ params: { id: a.id }, user }, response());
-    expect((await x.reload()).appleIdRef).toBeNull();
-    expect(x.appleId).toBeNull();
-    const history = await query(`SELECT * FROM profile_bindings WHERE recipient_id=${x.id}`);
-    expect(history[0].ended_at).not.toBeNull();
-    expect(history[0].apple_id).toBe(a.appleId);
-  });
-
-  test('批量分配跳过已绑定人及已占用账号，双方状态不联动', async () => {
-    const used = await account(),
-      free = await account();
-    const first = await person(),
-      second = await person();
-    await changeBinding(first, used.id);
-    const res = response();
-    await recipientController.batchBindAppleIds(
-      { body: { recipientIds: [first.id, second.id] }, user },
-      res
-    );
-    expect((await first.reload()).appleIdRef).toBe(used.id);
-    expect((await second.reload()).appleIdRef).not.toBeNull();
-    expect((await free.reload()).status).toBe('未使用');
-    expect(second.status).toBe('未使用');
-    expect(res.json.mock.lastCall[0].data).toMatchObject({ boundCount: 1, unboundCount: 1 });
   });
 
   test('编辑地址、真实电话和备注；生成下单资料不会覆盖真实电话', async () => {
@@ -259,7 +130,7 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
     expect((await a.reload()).securityQa).toBeNull();
   });
 
-  test('已确认导入差异才更新；初次关系时间未知、密码加密且备注不丢', async () => {
+  test('已确认账号差异才更新；取机人导入不回绑、密码加密且备注不丢', async () => {
     const a = await account({ notes: '旧备注' });
     const snapshot = await importService.loadProfiles();
     const rows = [
@@ -320,7 +191,8 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
       await importService.applyImportPlan(recipientPlan, { user }, transaction);
     });
     const history = await query(`SELECT * FROM profile_bindings WHERE recipient_id=${x.id}`);
-    expect(history[0].started_at).toBeNull();
+    expect(history).toEqual([]);
+    expect((await x.reload()).appleIdRef).toBeNull();
   });
 
   test('文件预览只读、资料变化后令牌拒绝执行，无真实文件留存', async () => {
@@ -370,9 +242,7 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
 
   test('历史关联必须确认；只补空外键，不依赖当前绑定，不改快照', async () => {
     const x = await person('证据人'),
-      a = await account(),
-      b = await account();
-    await changeBinding(x, b.id);
+      a = await account();
     const order = await models.Order.create({
       orderNumber: 'W7000000010',
       ingestionSource: 'aos',
@@ -418,11 +288,7 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
         realPhone: '13900000000',
         notes: '备注',
       }),
-      a = await account(),
-      y = await person('测试乙', { phone: '13900000001', tag: '第二TAG' }),
-      b = await account();
-    await changeBinding(x, a.id);
-    await changeBinding(y, b.id);
+      y = await person('测试乙', { phone: '13900000001', tag: '第二TAG' });
     const res = response();
     await recipientController.exportRecipients(
       { query: { ids: `${x.id},${y.id}`, includeSensitive: 'true' }, user },
@@ -435,95 +301,8 @@ describeIntegration('取机人和账号管理 PostgreSQL 回归', () => {
     const lines = res.send.mock.lastCall[0].toString('utf8').split('\n');
     expect(lines).toHaveLength(2);
     expect(lines).toContain(
-      `${a.appleId},${a.password},,,1,指定地址,13800000000,欧阳,明,,13800000000@vvv8.net,,,,,,,,,,,,WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#,${x.idCardNumber},合成TAG,,,`
+      `,,,,1,指定地址,13800000000,欧阳,明,,13800000000@vvv8.net,,,,,,,,,,,,WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#,${x.idCardNumber},合成TAG,,,`
     );
-    expect(lines.some(line => line.startsWith(`${b.appleId},${b.password},`))).toBe(true);
-  });
-  test('手工新增默认值、按邮箱换绑和解绑、权限及不存在账号校验', async () => {
-    const res = response();
-    await appleController.createAppleId(
-      { body: { apple_id: 'manual@example.invalid', password: 'manual-synthetic' }, user },
-      res
-    );
-    const a = await models.AppleId.findByPk(res.json.mock.lastCall[0].data.id);
-    expect(a.status).toBe('未使用');
-    expect(a.country).toBe('中国');
-    await recipientController.createRecipient(
-      {
-        body: {
-          lastName: '欧阳',
-          firstName: '手工',
-          idCardNumber: '110101199001019991',
-          appleId: 'MANUAL@example.invalid',
-        },
-        user,
-      },
-      res
-    );
-    const x = await models.Recipient.findByPk(res.json.mock.lastCall[0].data.id);
-    expect(x.status).toBe('未使用');
-    expect(x.appleIdRef).toBe(a.id);
-    await expect(
-      recipientController.updateRecipient(
-        {
-          params: { id: x.id },
-          body: { appleId: 'missing@example.invalid', expectedAppleIdRef: a.id },
-          user,
-        },
-        res
-      )
-    ).rejects.toMatchObject({ statusCode: 400 });
-    await expect(
-      recipientController.updateRecipient(
-        {
-          params: { id: x.id },
-          body: { appleId: '', expectedAppleIdRef: a.id },
-          user: { id: user.id, permissions: ['recipients.edit'] },
-        },
-        res
-      )
-    ).rejects.toMatchObject({ statusCode: 403 });
-    await recipientController.updateRecipient(
-      { params: { id: x.id }, body: { appleId: '', expectedAppleIdRef: a.id }, user },
-      res
-    );
-    expect((await x.reload()).appleIdRef).toBeNull();
-    const matcher = require('../src/services/profileOrderMatching');
-    expect(
-      (
-        await matcher.findRecipientForOrder({
-          recipientName: '欧阳手工',
-          recipientIdCard: x.idCardNumber,
-        })
-      ).id
-    ).toBe(x.id);
-    expect(await matcher.findRecipientForOrder({ recipientName: '欧阳手工' })).toBeNull();
-  });
-
-  test('Migration down/up 可演练；存量双占用使升级事务完全回滚', async () => {
-    const migration = require('../migrations/20260917000001-profile-management');
-    const qi = models.sequelize.getQueryInterface();
-    const count = await models.Order.count();
-    await migration.down(qi);
-    const columns = await qi.describeTable('recipients');
-    expect(columns.real_phone).toBeUndefined();
-    const rows = await query(
-      'SELECT id, apple_id_ref FROM recipients WHERE apple_id_ref IS NOT NULL ORDER BY id LIMIT 2'
-    );
-    expect(rows).toHaveLength(2);
-    await models.sequelize.query('UPDATE recipients SET apple_id_ref=:ref WHERE id=:id', {
-      replacements: { ref: rows[0].apple_id_ref, id: rows[1].id },
-    });
-    await expect(migration.up(qi, models.Sequelize)).rejects.toThrow('存在重复当前绑定');
-    expect((await qi.describeTable('recipients')).real_phone).toBeUndefined();
-    await models.sequelize.query('UPDATE recipients SET apple_id_ref=:ref WHERE id=:id', {
-      replacements: { ref: rows[1].apple_id_ref, id: rows[1].id },
-    });
-    await migration.up(qi, models.Sequelize);
-    expect((await qi.describeTable('recipients')).real_phone).toBeDefined();
-    expect(await models.Order.count()).toBe(count);
-    const open = await query('SELECT * FROM profile_bindings WHERE ended_at IS NULL');
-    expect(open.length).toBeGreaterThan(0);
-    expect(open.every(row => row.started_at === null)).toBe(true);
+    expect(lines.every(line => line.startsWith(',,,,1,'))).toBe(true);
   });
 });

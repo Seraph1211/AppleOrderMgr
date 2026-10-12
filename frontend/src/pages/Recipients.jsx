@@ -1,7 +1,7 @@
 import ResponsiveSelect from '../components/responsiveSelect';
 import ProfileAssociationModal from '../components/ProfileAssociationModal';
 import ProfileDetailsModal from '../components/ProfileDetailsModal';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search,
   Plus,
@@ -16,7 +16,6 @@ import {
   Zap,
   MapPin,
   FileText,
-  Link,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import {
@@ -27,11 +26,7 @@ import {
   deleteRecipient,
   exportRecipients,
 } from '../api';
-import {
-  batchGenerateContact,
-  batchGenerateAddress,
-  batchBindAppleIds,
-} from '../api/recipientsApi';
+import { batchGenerateContact, batchGenerateAddress } from '../api/recipientsApi';
 import useColumnConfig from '../hooks/useColumnConfig';
 import ColumnConfigModal from '../components/ColumnConfigModal';
 import Pagination from '../components/Pagination';
@@ -42,7 +37,6 @@ import ConfirmModal from '../components/ConfirmModal';
 import SuccessModal from '../components/SuccessModal';
 import GenerateAddressModal from '../components/GenerateAddressModal';
 import AlertModal from '../components/AlertModal';
-import BindAppleIdModal from '../components/BindAppleIdModal';
 import { recipientsColumns } from '../constants/tableColumns';
 import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status';
 import { PERMISSIONS } from '../constants/permissions';
@@ -81,12 +75,13 @@ export default function Recipients() {
   const [importInfo, setImportInfo] = useState('');
   const [importInfoLoading, setImportInfoLoading] = useState(false);
   const [importInfoError, setImportInfoError] = useState('');
-  const [showBindModal, setShowBindModal] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [selectedIds, setSelectedIds] = useState([]);
   const [generating, setGenerating] = useState(false);
   const [generatingAddress, setGeneratingAddress] = useState(false);
   const { columns, saveConfig, resetConfig } = useColumnConfig('recipients', recipientsColumns);
+
+  const requestSequence = useRef(0);
 
   // 分页状态
   const [pagination, setPagination] = useState({
@@ -95,17 +90,6 @@ export default function Recipients() {
     totalItems: 0,
     totalPages: 0,
   });
-
-  useEffect(() => {
-    loadRecipients();
-  }, [
-    pagination.currentPage,
-    pagination.pageSize,
-    searchTerm,
-    filterTags,
-    filterChannels,
-    filterStatus,
-  ]);
 
   useEffect(() => {
     setSelectedIds([]);
@@ -127,7 +111,8 @@ export default function Recipients() {
       .catch(error => setPageError(error.message || '加载 TAG／渠道选项失败'));
   }, []);
 
-  const loadRecipients = async () => {
+  const loadRecipients = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     setPageError('');
     try {
@@ -140,6 +125,8 @@ export default function Recipients() {
         status: filterStatus || undefined,
       };
       const res = await getRecipients(params);
+      if (requestId !== requestSequence.current) return;
+      if (!res.success) throw new Error(res.error?.message || '加载失败');
       if (res.success) {
         setRecipients(
           res.data.recipients.map(item => ({
@@ -151,10 +138,7 @@ export default function Recipients() {
             phone: item.phone || '-',
             realPhone: item.real_phone || '',
             notes: item.notes || '',
-            password: item.password || '',
             streetAddress: item.street_address || '',
-            appleIdRef: item.apple_id_ref,
-            bound: Boolean(item.apple_id_ref),
             email: item.email || '-',
             address: item.street_address
               ? [item.province, item.city, item.district, item.street_address]
@@ -164,7 +148,6 @@ export default function Recipients() {
             province: item.province || '',
             city: item.city || '',
             district: item.district || '',
-            boundAppleId: item.apple_id || '-',
             tag: item.tag || '-',
             channel: item.channel || '-',
             status: item.status,
@@ -181,11 +164,29 @@ export default function Recipients() {
         }));
       }
     } catch (error) {
-      setPageError(error.message || '加载取机人失败');
+      if (requestId === requestSequence.current) {
+        setPageError(error.message || '加载取机人失败');
+        setRecipients([]);
+        setPagination(previous => ({ ...previous, totalItems: 0, totalPages: 0 }));
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
-  };
+  }, [
+    pagination.currentPage,
+    pagination.pageSize,
+    searchTerm,
+    filterTags,
+    filterChannels,
+    filterStatus,
+  ]);
+
+  useEffect(() => {
+    loadRecipients();
+    return () => {
+      requestSequence.current += 1;
+    };
+  }, [loadRecipients]);
 
   // 分页处理函数
   const handlePageChange = page => {
@@ -246,7 +247,6 @@ export default function Recipients() {
         throw new Error(response.error || '删除失败');
       }
     } catch (error) {
-      console.error('删除取机人失败:', error);
       alert(error.message || '删除失败');
     }
   };
@@ -299,7 +299,6 @@ export default function Recipients() {
         throw new Error(response.error || '生成失败');
       }
     } catch (error) {
-      console.error('批量生成联系方式失败:', error);
       setSuccessMessage(error.message || '生成失败，请稍后重试');
       setShowSuccessModal(true);
     } finally {
@@ -348,7 +347,6 @@ export default function Recipients() {
         throw new Error(response.error || '生成地址失败');
       }
     } catch (error) {
-      console.error('批量生成地址失败:', error);
       setSuccessMessage(error.message || '生成地址失败，请稍后重试');
       setShowSuccessModal(true);
     } finally {
@@ -446,44 +444,12 @@ export default function Recipients() {
     }
   };
 
-  // 批量绑定 Apple ID
-  const handleBatchBindAppleIds = () => {
-    if (selectedIds.length === 0) {
-      setAlertMessage('请先选择需要绑定 Apple ID 的取机人');
-      setShowAlertModal(true);
-      return;
-    }
-
-    setShowBindModal(true);
-  };
-
-  const handleConfirmBind = async () => {
-    try {
-      const response = await batchBindAppleIds(selectedIds);
-
-      if (response.success) {
-        const { boundCount, unboundCount, availableCount } = response.data;
-
-        let message = `成功绑定 ${boundCount} 个取机人`;
-        if (unboundCount > 0) {
-          message += `，${unboundCount} 个取机人因库存不足未绑定`;
-        }
-
-        setSuccessMessage(message);
-        setShowSuccessModal(true);
-        setSelectedIds([]);
-        await loadRecipients();
-      } else {
-        throw new Error(response.error || '绑定失败');
-      }
-    } catch (error) {
-      console.error('批量绑定 Apple ID 失败:', error);
-      setAlertMessage(error.message || '绑定失败，请稍后重试');
-      setShowAlertModal(true);
-    }
-  };
-
-  const visibleColumns = columns.filter(col => col.visible);
+  const availableColumns = columns.filter(
+    col =>
+      can(PERMISSIONS.ORDERS_READ) ||
+      !['orderCount', 'totalAmount', 'lastOrderDate'].includes(col.key)
+  );
+  const visibleColumns = availableColumns.filter(col => col.visible);
 
   const getStatusBadge = status => {
     return STATUS_BADGE_MAP[status] || { text: status, class: 'badge-secondary' };
@@ -500,7 +466,12 @@ export default function Recipients() {
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900">{item.name}</p>
+              <button
+                className="text-sm font-medium text-primary hover:underline"
+                onClick={() => setDetailItem(item)}
+              >
+                {item.name}
+              </button>
             </div>
           </div>
         );
@@ -515,20 +486,11 @@ export default function Recipients() {
         );
       case 'realPhone':
       case 'notes':
-      case 'password':
         return <span className="text-sm text-gray-600">{item[column.key] || '-'}</span>;
-      case 'bound':
-        return item.bound ? '已绑定' : '未绑定';
       case 'email':
         return <span className="text-sm text-gray-600">{item.email}</span>;
       case 'address':
         return <span className="text-sm text-gray-600">{item.address}</span>;
-      case 'boundAppleId':
-        return (
-          <button className="text-sm text-primary underline" onClick={() => setDetailItem(item)}>
-            {item.boundAppleId}
-          </button>
-        );
       case 'tag':
         return item.tag !== '-' ? (
           <span className="badge badge-info">{item.tag}</span>
@@ -578,6 +540,14 @@ export default function Recipients() {
       case 'actions':
         return (
           <div className="flex items-center justify-end space-x-2">
+            {can(PERMISSIONS.ORDERS_READ) && (
+              <button
+                className="btn btn-secondary whitespace-nowrap"
+                onClick={() => setDetailItem(item)}
+              >
+                名下订单
+              </button>
+            )}
             {can(PERMISSIONS.RECIPIENTS_EDIT) && (
               <button
                 onClick={() => handleEdit(item)}
@@ -660,9 +630,12 @@ export default function Recipients() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="搜索姓名、身份证号或 Apple ID..."
+              placeholder="搜索姓名、身份证号..."
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
+              onChange={e => {
+                setSearchTerm(e.target.value);
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
               className="input pl-10 w-full"
             />
           </div>
@@ -693,7 +666,10 @@ export default function Recipients() {
           </div>
           <ResponsiveSelect
             value={filterStatus}
-            onChange={e => setFilterStatus(e.target.value)}
+            onChange={e => {
+              setFilterStatus(e.target.value);
+              setPagination(previous => ({ ...previous, currentPage: 1 }));
+            }}
             className="input flex-shrink-0"
             style={{ width: 'auto' }}
           >
@@ -733,17 +709,6 @@ export default function Recipients() {
                   : selectedIds.length > 0
                     ? `生成地址 (${selectedIds.length})`
                     : '生成地址'}
-              </span>
-            </button>
-          )}
-          {can(PERMISSIONS.RECIPIENTS_BIND_APPLE_IDS) && (
-            <button
-              onClick={handleBatchBindAppleIds}
-              className="btn btn-primary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"
-            >
-              <Link className="w-4 h-4" />
-              <span>
-                {selectedIds.length > 0 ? `绑定Apple ID (${selectedIds.length})` : '绑定Apple ID'}
               </span>
             </button>
           )}
@@ -851,6 +816,7 @@ export default function Recipients() {
       )}
       {detailItem && (
         <ProfileDetailsModal
+          key={detailItem.id}
           kind="recipient"
           item={detailItem}
           onClose={() => setDetailItem(null)}
@@ -860,7 +826,7 @@ export default function Recipients() {
       {/* 列配置弹窗 */}
       {showColumnConfig && (
         <ColumnConfigModal
-          columns={columns}
+          columns={availableColumns}
           onSave={saveConfig}
           onReset={resetConfig}
           onClose={() => setShowColumnConfig(false)}
@@ -960,15 +926,6 @@ export default function Recipients() {
       {/* 提示弹窗 */}
       {showAlertModal && (
         <AlertModal title="提示" message={alertMessage} onClose={() => setShowAlertModal(false)} />
-      )}
-
-      {/* 绑定 Apple ID 弹窗 */}
-      {showBindModal && (
-        <BindAppleIdModal
-          selectedRecipients={selectedRecipients}
-          onClose={() => setShowBindModal(false)}
-          onConfirm={handleConfirmBind}
-        />
       )}
 
       {showImportInfo && (

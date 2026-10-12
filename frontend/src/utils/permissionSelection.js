@@ -41,3 +41,20 @@ export function getPermissionSelectionState(selected, codes) {
   const count = codes.filter(code => selected.includes(code)).length;
   return count === codes.length ? 'all' : count ? 'partial' : 'none';
 }
+
+/**
+ * 保存初始已停用授权；面板不能新增或误撤销隐藏权限，也不补授其旧依赖。
+ * @param {string[]} selected - 当前可见权限选择
+ * @param {string[]} initial - 用户打开面板时的原授权
+ * @param {Object[]} catalog - 包含 retired 标记的完整权限目录
+ * @returns {string[]} 保留原已停用授权后的完整集合
+ */
+export function preserveRetiredPermissions(selected, initial, catalog) {
+  const retired = new Set(catalog.filter(item => item.retired).map(item => item.code));
+  return [
+    ...new Set([
+      ...selected.filter(code => !retired.has(code)),
+      ...initial.filter(code => retired.has(code)),
+    ]),
+  ];
+}

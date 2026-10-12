@@ -994,11 +994,7 @@ export default function ProxyOrders() {
                         <td className="p-3 font-mono">{row.appleId}</td>
                         <td className="p-3">{row.status}</td>
                         <td className="p-3">
-                          {row.assignment
-                            ? `代抢 #${row.assignment.proxyOrderId}`
-                            : row.boundRecipient
-                              ? "已绑定普通取机人"
-                              : "未占用"}
+                          {row.assignment ? `代抢 #${row.assignment.proxyOrderId}` : "未占用"}
                         </td>
                         <td className="p-3 max-w-80 whitespace-normal">
                           {row.notes || "—"}

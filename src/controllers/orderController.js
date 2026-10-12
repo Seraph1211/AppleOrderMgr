@@ -383,20 +383,21 @@ function buildListFilters(query) {
   );
   if (emailPaymentStatuses.length) where.emailPaymentStatus = { [Op.in]: emailPaymentStatuses };
 
-  if (query.apple_id) {
-    const appleIdInt = parseInt(query.apple_id, 10);
-    if (Number.isNaN(appleIdInt) || appleIdInt <= 0) {
-      throw ApiError.badRequest('apple_id 必须是正整数', { received: query.apple_id });
+  for (const [parameter, field] of [
+    ['apple_id', 'appleIdRef'],
+    ['recipient_id', 'recipientRef'],
+  ]) {
+    if (query[parameter] === undefined) continue;
+    const value = query[parameter];
+    if (
+      !['string', 'number'].includes(typeof value) ||
+      !/^\d+$/.test(String(value)) ||
+      !Number.isSafeInteger(Number(value)) ||
+      Number(value) <= 0
+    ) {
+      throw ApiError.badRequest(`${parameter} 必须是正安全整数`);
     }
-    where.appleIdRef = appleIdInt;
-  }
-
-  if (query.recipient_id) {
-    const recipientInt = parseInt(query.recipient_id, 10);
-    if (Number.isNaN(recipientInt) || recipientInt <= 0) {
-      throw ApiError.badRequest('recipient_id 必须是正整数', { received: query.recipient_id });
-    }
-    where.recipientRef = recipientInt;
+    where[field] = Number(value);
   }
 
   const recipientTags = parseMultiSelectFilter(query.recipientTags, 'recipientTags', {

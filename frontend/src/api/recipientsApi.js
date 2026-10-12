@@ -113,14 +113,3 @@ export const batchGenerateAddress = (recipientIds, province, city, district) => 
     district,
   });
 };
-
-/**
- * 批量绑定 Apple ID
- * @param {Array<number>} recipientIds - 取机人ID数组
- * @returns {Promise<Object>} 绑定结果
- */
-export const batchBindAppleIds = recipientIds => {
-  return client.post('/recipients/bind-apple-ids', {
-    recipientIds,
-  });
-};

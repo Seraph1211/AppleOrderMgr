@@ -211,7 +211,6 @@ describe('固定 SheetJS 制品与读写兼容', () => {
       'idCardNumber',
       'phone',
       'email',
-      'appleId',
       'channel',
       'status',
     ]);
@@ -562,7 +561,8 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     await exportRecipients({ query: {}, user: { id: 2, role: 'operator' } }, res);
     const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
     const data = XLSX.utils.sheet_to_json(book.Sheets['取机人数据']);
-    expect(data[0]['密码']).toBe('******');
+    expect(data[0]['密码']).toBe('');
+    expect(data[0]['Apple ID']).toBe('');
     expect(data[0]['街道地址']).toBe('详细地址已隐藏');
     expect(data[0].TAG).toBe("'=1+1");
     expect(data[0]['渠道']).toBe("'=2+2");
@@ -602,8 +602,10 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     const text = res.send.mock.lastCall[0].toString('utf8');
     expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/plain; charset=utf-8');
     expect(text.split('\n')).toHaveLength(2);
-    expect(text).toMatch(/^a@example\.invalid,synthetic-a,/);
-    expect(text).toContain('\nb@example.invalid,synthetic-b,');
+    expect(text).toMatch(/^,,,,1,/);
+    expect(text).toContain('\n,,,,1,');
+    expect(text).not.toContain('synthetic-a');
+    expect(text).not.toContain('synthetic-b');
     expect(text).not.toContain('信息导入模板');
   });
 });

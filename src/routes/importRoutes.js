@@ -163,6 +163,11 @@ router.get('/template/:type', (req, res) => {
           '真实联系电话',
           '备注',
         ];
+    if (type === 'recipients') {
+      headers[0] = '旧账号（已忽略）';
+      headers[1] = '旧密码（已忽略）';
+      res.setHeader('X-Profile-Import-Notice', 'ACCOUNT_COLUMNS_IGNORED');
+    }
     const book = XLSX.utils.book_new();
     const sheet = XLSX.utils.aoa_to_sheet([headers]);
     for (let row = 1; row <= 1000; row++) {

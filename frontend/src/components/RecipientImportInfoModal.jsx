@@ -33,7 +33,9 @@ export default function RecipientImportInfoModal({ content, loading, error, onCl
         <div className="p-5 border-b flex items-center justify-between gap-4">
           <div>
             <h2 className="text-xl font-semibold text-gray-900">选中记录的录入信息</h2>
-            <p className="text-sm text-gray-500 mt-1">每条记录一行，可直接复制后粘贴使用。</p>
+            <p className="text-sm text-gray-500 mt-1">
+              每条记录一行。账号和密码位置留空，请独立填写 Apple ID 及密码后使用。
+            </p>
           </div>
           <button aria-label="关闭" onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
             <X className="w-5 h-5" />

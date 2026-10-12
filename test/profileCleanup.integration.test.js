@@ -32,7 +32,6 @@ describeIntegration('基础资料清理与可空手机号隔离数据库验证',
       firstName: '试',
       idCardNumber: '110101199001011234',
       phone: null,
-      appleIdRef: apple.id,
     });
     order = await models.Order.create({
       orderNumber: 'W7333333333',

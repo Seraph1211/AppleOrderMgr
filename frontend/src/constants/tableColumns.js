@@ -237,14 +237,6 @@ export const appleIdsColumns = [
     pinned: false,
   },
   {
-    key: 'bound',
-    label: '当前绑定',
-    defaultVisible: true,
-    sortable: false,
-    width: '160px',
-    pinned: false,
-  },
-  {
     key: 'country',
     label: '国家地区',
     width: '120px',
@@ -255,7 +247,7 @@ export const appleIdsColumns = [
   // 统计信息
   {
     key: 'orderCount',
-    label: '订单数',
+    label: '名下订单',
     width: '100px',
     defaultVisible: true,
     sortable: true,
@@ -331,14 +323,6 @@ export const recipientsColumns = [
     pinned: false,
   },
   {
-    key: 'boundAppleId',
-    label: '绑定 Apple ID',
-    width: '240px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  {
     key: 'realPhone',
     label: '真实联系电话',
     width: '160px',
@@ -356,7 +340,7 @@ export const recipientsColumns = [
   },
   {
     key: 'orderCount',
-    label: '订单数',
+    label: '名下订单',
     width: '100px',
     defaultVisible: true,
     sortable: true,
@@ -392,21 +376,6 @@ export const recipientsColumns = [
     defaultVisible: false,
     sortable: false,
     pinned: false,
-  },
-  {
-    key: 'password',
-    label: '关联账号密码',
-    defaultVisible: false,
-    sortable: false,
-    width: '160px',
-    sensitive: true,
-  },
-  {
-    key: 'bound',
-    label: '当前绑定',
-    defaultVisible: false,
-    sortable: false,
-    width: '160px',
   },
   {
     key: 'createdAt',

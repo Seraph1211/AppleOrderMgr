@@ -26,6 +26,8 @@ const COLUMN_MAPPING = {
     密保答案3: 'answer3',
   },
   recipients: {
+    '旧账号（已忽略）': 'appleId',
+    '旧密码（已忽略）': 'password',
     姓: 'lastName',
     名: 'firstName',
     身份证号: 'idCardNumber',
@@ -94,7 +96,11 @@ function parseExcelFile(filePath, type) {
           if (field === 'idCardNumber' && cell?.t === 'n')
             issues.push({ field, message: '身份证必须为文本；数值单元格可能已丢精度，请修正源表' });
           // 不执行公式。身份／凭据不能从无缓存公式猜测。
-          if (cell?.f && !cell.v)
+          if (
+            cell?.f &&
+            !cell.v &&
+            !(type === 'recipients' && ['appleId', 'password'].includes(field))
+          )
             issues.push({ field, message: '公式没有缓存值，请在源表确认后粘贴为值' });
           if (row[colIndex] !== '' && row[colIndex] != null)
             rowData[field] = field === 'tag' ? String(row[colIndex]) : String(row[colIndex]).trim();
@@ -233,13 +239,6 @@ function validateRecipient(data) {
   // 邮箱校验
   if (data.email && !isValidEmail(data.email)) {
     errors.push({ field: 'email', message: '邮箱格式不正确' });
-  }
-
-  if (data.appleId && !isValidEmail(data.appleId)) {
-    errors.push({
-      field: 'appleId',
-      message: '绑定的 Apple ID 必须是有效邮箱格式',
-    });
   }
 
   if (data.channel && data.channel.length > 100) {

@@ -1,7 +1,7 @@
 import ResponsiveSelect from '../components/responsiveSelect';
 import ProfileDetailsModal from '../components/ProfileDetailsModal';
 import { formatOrderTime } from '../utils/orderTime';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Plus, Mail, Package, Edit, Trash2, Settings, Upload } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAppleIds, createAppleId, updateAppleId, deleteAppleId } from '../api';
@@ -20,7 +20,6 @@ export default function AppleIds() {
   const { can } = useAuth();
   const [appleIds, setAppleIds] = useState([]);
   const [detailItem, setDetailItem] = useState(null);
-  const [filterBound, setFilterBound] = useState('');
   const [pageError, setPageError] = useState('');
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -33,6 +32,8 @@ export default function AppleIds() {
   const [selectedItem, setSelectedItem] = useState(null);
   const { columns, saveConfig, resetConfig } = useColumnConfig('appleIds', appleIdsColumns);
 
+  const requestSequence = useRef(0);
+
   // 分页状态
   const [pagination, setPagination] = useState({
     currentPage: 1,
@@ -41,11 +42,8 @@ export default function AppleIds() {
     totalPages: 0,
   });
 
-  useEffect(() => {
-    loadAppleIds();
-  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterStatus, filterBound]);
-
-  const loadAppleIds = async () => {
+  const loadAppleIds = useCallback(async () => {
+    const requestId = ++requestSequence.current;
     setLoading(true);
     setPageError('');
     try {
@@ -54,9 +52,10 @@ export default function AppleIds() {
         limit: pagination.pageSize,
         keyword: searchTerm || undefined,
         status: filterStatus || undefined,
-        bound: filterBound || undefined,
       };
       const res = await getAppleIds(params);
+      if (requestId !== requestSequence.current) return;
+      if (!res.success) throw new Error(res.error?.message || '加载失败');
       if (res.success) {
         setAppleIds(
           res.data.apple_ids.map(item => ({
@@ -64,8 +63,6 @@ export default function AppleIds() {
             appleId: item.apple_id,
             password: item.password || '-',
             notes: item.notes || '',
-            bound: item.recipient_count > 0,
-            boundRecipientNames: item.recipient_names || [],
             securityQa: item.security_qa || null,
             country: item.country || '-',
             status: item.status,
@@ -86,11 +83,22 @@ export default function AppleIds() {
         }));
       }
     } catch (error) {
-      setPageError(error.message || '加载账号失败');
+      if (requestId === requestSequence.current) {
+        setPageError(error.message || '加载账号失败');
+        setAppleIds([]);
+        setPagination(previous => ({ ...previous, totalItems: 0, totalPages: 0 }));
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestSequence.current) setLoading(false);
     }
-  };
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterStatus]);
+
+  useEffect(() => {
+    loadAppleIds();
+    return () => {
+      requestSequence.current += 1;
+    };
+  }, [loadAppleIds]);
 
   // 分页处理函数
   const handlePageChange = page => {
@@ -145,14 +153,16 @@ export default function AppleIds() {
         throw new Error(response.error || '删除失败');
       }
     } catch (error) {
-      console.error('删除 Apple ID 失败:', error);
       alert(error.message || '删除失败');
     }
   };
 
   const handleBatchImport = loadAppleIds;
 
-  const visibleColumns = columns.filter(col => col.visible);
+  const availableColumns = columns.filter(
+    col => can(PERMISSIONS.ORDERS_READ) || !['orderCount', 'lastOrderDate'].includes(col.key)
+  );
+  const visibleColumns = availableColumns.filter(col => col.visible);
 
   const getStatusBadge = status => {
     return STATUS_BADGE_MAP[status] || { text: status, class: 'badge-secondary' };
@@ -169,7 +179,12 @@ export default function AppleIds() {
               </div>
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-900">{item.appleId}</p>
+              <button
+                className="text-sm font-medium text-primary hover:underline"
+                onClick={() => setDetailItem(item)}
+              >
+                {item.appleId}
+              </button>
             </div>
           </div>
         );
@@ -184,12 +199,6 @@ export default function AppleIds() {
           </button>
         ) : (
           <span className="text-gray-400">无权限</span>
-        );
-      case 'bound':
-        return (
-          <button className="text-primary underline" onClick={() => setDetailItem(item)}>
-            {item.bound ? item.boundRecipientNames.join('、') : '未绑定'}
-          </button>
         );
       case 'country':
         return <span className="text-sm text-gray-600">{item.country}</span>;
@@ -227,6 +236,14 @@ export default function AppleIds() {
       case 'actions':
         return (
           <div className="flex items-center justify-end space-x-2">
+            {can(PERMISSIONS.ORDERS_READ) && (
+              <button
+                className="btn btn-secondary whitespace-nowrap"
+                onClick={() => setDetailItem(item)}
+              >
+                名下订单
+              </button>
+            )}
             {can(PERMISSIONS.APPLE_IDS_EDIT) && (
               <button
                 aria-label={`编辑 Apple ID ${item.id}`}
@@ -293,7 +310,7 @@ export default function AppleIds() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
-              placeholder="搜索 Apple ID 或取机人姓名..."
+              placeholder="搜索 Apple ID..."
               value={searchTerm}
               onChange={e => {
                 setSearchTerm(e.target.value);
@@ -318,20 +335,6 @@ export default function AppleIds() {
                 {option.label}
               </option>
             ))}
-          </ResponsiveSelect>
-          <ResponsiveSelect
-            aria-label="当前绑定筛选"
-            className="input"
-            style={{ width: 'auto' }}
-            value={filterBound}
-            onChange={e => {
-              setFilterBound(e.target.value);
-              setPagination(previous => ({ ...previous, currentPage: 1 }));
-            }}
-          >
-            <option value="">全部绑定状态</option>
-            <option value="true">已绑定</option>
-            <option value="false">未绑定</option>
           </ResponsiveSelect>
           <button
             onClick={() => setShowColumnConfig(true)}
@@ -409,13 +412,18 @@ export default function AppleIds() {
       </div>
 
       {detailItem && (
-        <ProfileDetailsModal kind="account" item={detailItem} onClose={() => setDetailItem(null)} />
+        <ProfileDetailsModal
+          key={detailItem.id}
+          kind="account"
+          item={detailItem}
+          onClose={() => setDetailItem(null)}
+        />
       )}
 
       {/* 列配置弹窗 */}
       {showColumnConfig && (
         <ColumnConfigModal
-          columns={columns}
+          columns={availableColumns}
           onSave={saveConfig}
           onReset={resetConfig}
           onClose={() => setShowColumnConfig(false)}

@@ -77,6 +77,12 @@ export default function BatchImportModal({ type, onClose, onImport }) {
             支持同时上传汇总表和渠道表的 .xlsx
             文件。自动去重；差异必须选择来源后确认。首次导入后由系统维护。空值不覆盖已有资料。
           </p>
+          {type === 'recipients' && (
+            <p className="text-sm text-blue-800 bg-blue-50 p-3 rounded">
+              取机人与 Apple ID 独立管理。旧表中的账号、密码列会忽略，不会创建或修改 Apple
+              ID；账号请到 Apple ID 管理单独导入。
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-3">
             {can(`${apiType}.template.read`) && (
               <button
@@ -124,6 +130,17 @@ export default function BatchImportModal({ type, onClose, onImport }) {
               导入完成：新增 {result.imported}，更新 {result.updated}，重复或跳过 {result.skipped}
               ，无效源行 {result.errors?.length || 0}。
             </p>
+          )}
+          {plan?.warnings?.length > 0 && (
+            <div role="status" className="text-sm text-blue-800 bg-blue-50 p-3 rounded">
+              {plan.warnings.map((warning, index) => (
+                <p key={index}>
+                  {typeof warning === 'string'
+                    ? warning
+                    : warning.message || warning.warning || '已忽略旧账号列'}
+                </p>
+              ))}
+            </div>
           )}
           {plan && (
             <>

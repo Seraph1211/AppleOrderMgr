@@ -10,7 +10,6 @@ const {
 } = require('../utils/profileInput');
 const { PERMISSIONS, ACCOUNT_STATUSES } = require('../constants/business');
 const { maskIdCard } = require('../utils/masking');
-const { bindRecipient } = require('./profileBindingService');
 const ApiError = require('../utils/ApiError');
 
 const ACCOUNT_FIELDS = ['appleId', 'password', 'country', 'status', 'notes', 'securityQa'];
@@ -29,7 +28,6 @@ const RECIPIENT_FIELDS = [
   'channel',
   'status',
   'notes',
-  'appleId',
 ];
 const LABELS = {
   lastName: '姓',
@@ -99,21 +97,14 @@ function buildImportPlan(rows, type, profiles, decisions = {}) {
     try {
       if (row.issues?.length) throw ApiError.badRequest(row.issues.map(x => x.message).join('；'));
       const data = row.data;
-      validateAccountText(data);
+      if (type !== 'recipients') validateAccountText(data);
       const source = `${row.fileName} / ${row.sheetName} / 第${row.rowNumber}行`;
       if (type === 'recipients') {
         const normalized = recipientInput(data, true);
         if (!data.status) delete normalized.status;
-        if (data.appleId && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.appleId))
-          throw ApiError.badRequest('Apple ID 邮箱格式错误');
-        add(
-          'recipient',
-          blindIndex(normalized.idCardNumber),
-          { ...normalized, appleId: data.appleId },
-          source
-        );
-        if (data.appleId && data.password)
-          add('account', data.appleId, { appleId: data.appleId, password: data.password }, source);
+        add('recipient', blindIndex(normalized.idCardNumber), normalized, source);
+        groups.get(`recipient:${blindIndex(normalized.idCardNumber)}`).rows.at(-1).ignoredAccount =
+          Boolean(data.appleId || data.password);
       } else {
         if (!data.appleId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.appleId))
           throw ApiError.badRequest('Apple ID 邮箱格式错误');
@@ -199,29 +190,15 @@ function buildImportPlan(rows, type, profiles, decisions = {}) {
         Object.entries(data).map(([field, value]) => [LABELS[field], displayValue(field, value)])
       ),
       problems: [],
+      warnings:
+        kind === 'recipient' && group.rows.some(row => row.ignoredAccount)
+          ? ['旧账号与密码列已忽略；取机人与 Apple ID 独立维护，不创建或修改账号']
+          : [],
     };
     if (!skipped && kind === 'account' && !data.password)
       record.problems.push('缺少密码，请先补齐账号资料');
     records.push(record);
     if (!skipped) writes.push({ ...group, data, changed, record });
-  }
-  const accounts = new Set(profiles.accounts.map(x => x.appleId.trim().toLowerCase()));
-  writes
-    .filter(x => x.kind === 'account' && x.data.password)
-    .forEach(x => accounts.add(x.data.appleId));
-  const occupancy = new Map(
-    profiles.recipients
-      .filter(x => x.appleIdRef)
-      .map(x => [x.appleId?.trim().toLowerCase(), `existing:${x.id}`])
-  );
-  for (const write of writes.filter(x => x.kind === 'recipient')) {
-    const account = write.data.appleId?.toLowerCase();
-    const owner = write.existing ? `existing:${write.existing.id}` : write.id;
-    if (account && !accounts.has(account))
-      write.record.problems.push('绑定账号不存在或缺少密码，请先导入账号');
-    if (account && occupancy.has(account) && occupancy.get(account) !== owner)
-      write.record.problems.push('该账号当前或本批次已关联其他取机人，请先解决占用或跳过冲突档案');
-    if (account) occupancy.set(account, owner);
   }
   return {
     writes,
@@ -243,7 +220,7 @@ function buildImportPlan(rows, type, profiles, decisions = {}) {
 async function applyImportPlan(plan, req, transaction) {
   try {
     if (plan.conflicts.some(x => !x.resolved) || plan.records.some(x => x.problems.length))
-      throw ApiError.conflict('仍有未裁定差异或绑定问题，请先确认或跳过相关档案');
+      throw ApiError.conflict('仍有未裁定差异或资料问题，请先确认或跳过相关档案');
     let imported = 0,
       updated = 0,
       skipped = plan.records.filter(x => x.action === '跳过' || x.action === '重复').length;
@@ -265,13 +242,11 @@ async function applyImportPlan(plan, req, transaction) {
         imported++;
       }
     }
-    const accounts = await AppleId.findAll({ attributes: ['id', 'appleId'], transaction });
-    const accountMap = new Map(accounts.map(x => [x.appleId.trim().toLowerCase(), x.id]));
     for (const write of plan.writes.filter(x => x.kind === 'recipient')) {
       const { data, existing, changed } = write;
       if (existing && !changed.length) continue;
       assertPermission(req, existing ? PERMISSIONS.RECIPIENTS_EDIT : PERMISSIONS.RECIPIENTS_IMPORT);
-      const { appleId, ...fields } = data;
+      const fields = data;
       let recipient;
       if (existing) {
         recipient = await Recipient.findByPk(existing.id, { transaction });
@@ -280,10 +255,6 @@ async function applyImportPlan(plan, req, transaction) {
       } else {
         recipient = await Recipient.create(fields, { transaction });
         imported++;
-      }
-      if (appleId && recipient.appleIdRef !== accountMap.get(appleId.toLowerCase())) {
-        assertPermission(req, PERMISSIONS.RECIPIENTS_BIND_APPLE_IDS);
-        await bindRecipient(recipient, accountMap.get(appleId.toLowerCase()), transaction);
       }
     }
     return { imported, updated, skipped, errors: plan.errors };

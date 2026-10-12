@@ -496,3 +496,11 @@ test.each([
 ])('预约取货范围拒绝非法参数 %j', query => {
   expect(() => buildListFilters(query)).toThrow();
 });
+
+test.each(['apple_id', 'recipient_id'])('名下订单 %s 只接收完整正安全整数', parameter => {
+  for (const value of ['1.5', '1x', '0', '-1', '9007199254740992', '', ['1'], {}]) {
+    expect(() => buildListFilters({ [parameter]: value })).toThrow('必须是正安全整数');
+  }
+  const field = parameter === 'apple_id' ? 'appleIdRef' : 'recipientRef';
+  expect(buildListFilters({ [parameter]: '12' }).where[field]).toBe(12);
+});

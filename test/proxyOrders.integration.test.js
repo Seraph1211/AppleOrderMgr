@@ -76,8 +76,11 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
       'TRUNCATE proxy_events, proxy_assignments, proxy_orders, recipients, apple_ids, orders, users RESTART IDENTITY CASCADE'
     );
     const migration = require('../migrations/20260928000002-add-proxy-orders');
+    const independence = require('../migrations/20261012000001-retire-profile-bindings');
+    await independence.down(m.sequelize.getQueryInterface());
     await migration.down(m.sequelize.getQueryInterface());
     await migration.up(m.sequelize.getQueryInterface());
+    await independence.up(m.sequelize.getQueryInterface());
     actor = await m.User.create({
       username: 'proxy_synthetic',
       password: 'Synthetic-Password',
@@ -189,7 +192,7 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
       )
     ).rejects.toMatchObject({ statusCode: 409 });
   });
-  test('专用池数据库约束阻止普通绑定；普通已绑定账号不能纳入', async () => {
+  test('档案独立约束阻止所有旧绑定；独立普通账号可以纳入专用池', async () => {
     const [special] = await pool();
     await expect(
       m.Recipient.create({
@@ -200,18 +203,18 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
       })
     ).rejects.toThrow();
     const [ordinary] = await pool(1, { isProxyPool: false, notes: '代抢候选' });
-    await m.Recipient.create({
-      lastName: '李',
-      firstName: '四',
-      idCardNumber: '110101199001010022',
-      appleIdRef: ordinary.id,
-    });
     await expect(
-      service.changeAccounts('adopt', { ids: [ordinary.id] }, actor.id)
-    ).rejects.toMatchObject({ statusCode: 409 });
-    expect((await ordinary.reload()).isProxyPool).toBe(false);
-    const candidates = await service.listAccounts({ scope: 'candidates' });
-    expect(candidates.rows[0].boundRecipient).toBe(true);
+      m.Recipient.create({
+        lastName: '李',
+        firstName: '四',
+        idCardNumber: '110101199001010022',
+        appleIdRef: ordinary.id,
+      })
+    ).rejects.toThrow();
+    await service.changeAccounts('adopt', { ids: [ordinary.id] }, actor.id);
+    expect((await ordinary.reload()).isProxyPool).toBe(true);
+    const candidates = await service.listAccounts({});
+    expect(candidates.rows.every(row => row.boundRecipient === undefined)).toBe(true);
   });
   test('人工停止释放不靠账号状态；异常账号释放后保持异常', async () => {
     await pool();

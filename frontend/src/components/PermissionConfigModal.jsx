@@ -7,7 +7,10 @@ import {
   replaceUserPermissions,
 } from '../api/permissionsApi';
 import StockPermissionGroups from './StockPermissionGroups';
-import { changePermissionSelection } from '../utils/permissionSelection';
+import {
+  changePermissionSelection,
+  preserveRetiredPermissions,
+} from '../utils/permissionSelection';
 import { PAYMENT_EXECUTION_PERMISSIONS } from '../constants/permissions';
 
 export default function PermissionConfigModal({ user, onClose, onSuccess }) {
@@ -43,23 +46,31 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
       .finally(() => setLoading(false));
   }, [user.id]);
 
+  const visibleCatalog = useMemo(() => catalog.filter(item => !item.retired), [catalog]);
+
   const grouped = useMemo(
     () =>
-      catalog.reduce((result, item) => {
+      visibleCatalog.reduce((result, item) => {
         if (!result[item.module]) result[item.module] = { label: item.moduleLabel, items: [] };
         result[item.module].items.push(item);
         return result;
       }, {}),
-    [catalog]
+    [visibleCatalog]
   );
 
   const changePermissions = (codes, checked) => {
-    setSelected(current => changePermissionSelection(current, catalog, codes, checked));
+    setSelected(current =>
+      preserveRetiredPermissions(
+        changePermissionSelection(current, visibleCatalog, codes, checked),
+        initialPermissions,
+        catalog
+      )
+    );
   };
-  const addedPermissions = catalog.filter(
+  const addedPermissions = visibleCatalog.filter(
     item => selected.includes(item.code) && !initialPermissions.includes(item.code)
   );
-  const removedPermissions = catalog.filter(
+  const removedPermissions = visibleCatalog.filter(
     item => initialPermissions.includes(item.code) && !selected.includes(item.code)
   );
 
@@ -70,7 +81,7 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
       await replaceUserPermissions(
         user.id,
         {
-          permissions: selected,
+          permissions: preserveRetiredPermissions(selected, initialPermissions, catalog),
           orderAccess,
           expectedVersion: version,
           reason,
@@ -131,14 +142,24 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
                   <button
                     className="btn btn-secondary"
                     disabled={saving}
-                    onClick={() => setSelected([...PAYMENT_EXECUTION_PERMISSIONS])}
+                    onClick={() =>
+                      setSelected(
+                        preserveRetiredPermissions(
+                          PAYMENT_EXECUTION_PERMISSIONS,
+                          initialPermissions,
+                          catalog
+                        )
+                      )
+                    }
                   >
                     仅保留本人付款任务权限
                   </button>
                   <button
                     className="btn btn-secondary"
                     disabled={saving}
-                    onClick={() => setSelected([])}
+                    onClick={() =>
+                      setSelected(preserveRetiredPermissions([], initialPermissions, catalog))
+                    }
                   >
                     清空全部权限
                   </button>
@@ -251,7 +272,7 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
               {stockGroups.length > 0 && (
                 <StockPermissionGroups
                   groups={stockGroups}
-                  catalog={catalog}
+                  catalog={visibleCatalog}
                   selected={selected}
                   disabled={!editable || saving}
                   onChange={changePermissions}

@@ -8,7 +8,7 @@ const { scopeOrderWhere } = require('../services/orderAccessService');
  */
 
 const { Op } = require('sequelize');
-const { sequelize, Recipient, AppleId, Order } = require('../models');
+const { sequelize, Recipient, Order } = require('../models');
 const logger = require('../utils/logger');
 const ApiError = require('../utils/ApiError');
 const { paginatedResponse, parsePositiveInt } = require('../utils/apiResponse');
@@ -24,11 +24,12 @@ const {
   profileId,
   recipientInput,
 } = require('../utils/profileInput');
+const { lockProfiles } = require('../services/profileBindingService');
 const {
-  lockProfiles,
-  bindRecipient,
-  resolveAccount,
-} = require('../services/profileBindingService');
+  rejectLegacyBindingFields,
+  rejectLegacyBindingFilters,
+  bindingRetiredError,
+} = require('../services/profileIndependence');
 const {
   maskIdCard,
   maskPhone,
@@ -48,8 +49,7 @@ function serializeRecipient(
   recipient,
   stats = {},
   includeSensitive = false,
-  includeAddress = false,
-  includePassword = false
+  includeAddress = false
 ) {
   return {
     id: recipient.id,
@@ -59,12 +59,8 @@ function serializeRecipient(
     id_card_number: includeSensitive ? recipient.idCardNumber : maskIdCard(recipient.idCardNumber),
     id_card_last4: recipient.idCardLast4,
     real_phone: includeSensitive ? recipient.realPhone : maskPhone(recipient.realPhone),
-    ...(includePassword ? { password: recipient.password || null } : {}),
-    bound: Boolean(recipient.appleIdRef),
     phone: includeSensitive ? recipient.phone : maskPhone(recipient.phone),
     email: recipient.email,
-    apple_id: recipient.appleId,
-    apple_id_ref: recipient.appleIdRef,
     province: recipient.province,
     city: recipient.city,
     district: recipient.district,
@@ -86,7 +82,11 @@ function serializeRecipient(
  * @returns {Promise<Object>} { recipientId: { orderCount } }
  */
 async function getOrderCountsByRecipients(recipientIds, user) {
-  if (!recipientIds || recipientIds.length === 0) {
+  if (
+    !user?.permissions?.includes(PERMISSIONS.ORDERS_READ) ||
+    !recipientIds ||
+    recipientIds.length === 0
+  ) {
     return {};
   }
 
@@ -113,7 +113,7 @@ async function getOrderCountsByRecipients(recipientIds, user) {
  * @returns {Promise<Object>} { [id]: { orderCount, totalAmount, lastOrderDate } }
  */
 async function getOrderStatsByRecipients(ids, user) {
-  if (ids.length === 0) return {};
+  if (!user?.permissions?.includes(PERMISSIONS.ORDERS_READ) || ids.length === 0) return {};
   const { Order } = require('../models');
 
   // 查询订单数和最后下单日期
@@ -201,7 +201,6 @@ function applyRecipientFilters(where, query) {
           sequelize.fn('concat', sequelize.col('last_name'), sequelize.col('first_name')),
           { [Op.iLike]: `%${keyword}%` }
         ),
-        { appleId: { [Op.iLike]: `%${keyword}%` } },
       ];
       if (/^[\dXx]{4}$/.test(keyword)) where[Op.or].push({ idCardLast4: keyword.toUpperCase() });
       if (
@@ -222,18 +221,8 @@ async function listRecipients(req, res) {
     const limit = parsePositiveInt(req.query.limit, { defaultValue: 20, min: 1, max: 100 });
 
     const where = {};
-    if (['true', 'false'].includes(req.query.bound))
-      where.appleIdRef = req.query.bound === 'true' ? { [Op.ne]: null } : null;
+    rejectLegacyBindingFilters(req.query);
     applyRecipientFilters(where, req.query);
-    if (req.query.apple_id_ref) {
-      const ref = parseInt(req.query.apple_id_ref, 10);
-      if (Number.isNaN(ref) || ref <= 0) {
-        throw ApiError.badRequest('apple_id_ref 必须是正整数', {
-          received: req.query.apple_id_ref,
-        });
-      }
-      where.appleIdRef = ref;
-    }
     const { count, rows } = await Recipient.findAndCountAll({
       where,
       order: [['id', 'DESC']],
@@ -256,13 +245,7 @@ async function listRecipients(req, res) {
     res.json(
       paginatedResponse(
         rows.map(r =>
-          serializeRecipient(
-            r.toJSON(),
-            orderStats[r.id] || {},
-            includeSensitive,
-            includeAddress,
-            hasPermission(req, PERMISSIONS.APPLE_IDS_READ)
-          )
+          serializeRecipient(r.toJSON(), orderStats[r.id] || {}, includeSensitive, includeAddress)
         ),
         count,
         page,
@@ -326,9 +309,7 @@ async function getRecipientDetail(req, res) {
       throw ApiError.badRequest('收件人 ID 必须是正整数', { received: req.params.id });
     }
 
-    const recipient = await Recipient.findByPk(id, {
-      include: [{ model: AppleId, as: 'appleAccount' }],
-    });
+    const recipient = await Recipient.findByPk(id);
     if (!recipient) {
       throw ApiError.notFound('收件人不存在', { id });
     }
@@ -346,8 +327,7 @@ async function getRecipientDetail(req, res) {
         recipient.toJSON(),
         orderCounts[id] || {},
         includeSensitive,
-        includeAddress,
-        hasPermission(req, PERMISSIONS.APPLE_IDS_READ)
+        includeAddress
       ),
     });
   } catch (error) {
@@ -365,6 +345,7 @@ async function getRecipientDetail(req, res) {
 async function createRecipient(req, res) {
   try {
     const payload = req.body || {};
+    rejectLegacyBindingFields(payload);
     const data = recipientInput(payload, true);
     const created = await sequelize.transaction(async transaction => {
       await lockProfiles(transaction, req.user?.id);
@@ -373,28 +354,25 @@ async function createRecipient(req, res) {
         transaction,
       });
       if (duplicate) throw ApiError.conflict('该身份证号已存在');
-      let ref = payload.appleIdRef ?? null;
-      if (payload.appleId) ref = await resolveAccount(payload.appleId, transaction);
-      if (ref !== null) assertPermission(req, PERMISSIONS.RECIPIENTS_BIND_APPLE_IDS);
       const recipient = await Recipient.create(data, { transaction });
-      if (ref !== null) await bindRecipient(recipient, profileId(ref), transaction, null);
       return recipient;
     });
     res.status(201).json({ success: true, data: serializeRecipient(created.toJSON()) });
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error.name === 'SequelizeUniqueConstraintError')
-      throw ApiError.conflict('身份证或当前账号绑定已存在');
+      throw ApiError.conflict('该身份证号已存在');
     logger.error('创建取机人失败', { errorType: error.name });
     throw ApiError.database('创建取机人失败');
   }
 }
 
-/** 编辑档案及可选绑定，绑定变化必须携带预期值。 */
+/** 编辑独立取机人档案。 */
 async function updateRecipient(req, res) {
   try {
     const id = profileId(req.params.id);
     const payload = req.body || {};
+    rejectLegacyBindingFields(payload);
     const updates = recipientInput(payload);
     const recipient = await sequelize.transaction(async transaction => {
       await lockProfiles(transaction, req.user?.id);
@@ -410,20 +388,6 @@ async function updateRecipient(req, res) {
         });
         if (duplicate) throw ApiError.conflict('该身份证号已存在');
       }
-      if (payload.appleId !== undefined || payload.appleIdRef !== undefined) {
-        assertPermission(req, PERMISSIONS.RECIPIENTS_BIND_APPLE_IDS);
-        if (payload.expectedAppleIdRef === undefined) throw ApiError.badRequest('请提交当前绑定值');
-        const ref =
-          payload.appleId !== undefined
-            ? await resolveAccount(payload.appleId, transaction)
-            : payload.appleIdRef;
-        await bindRecipient(
-          row,
-          ref === null ? null : profileId(ref),
-          transaction,
-          payload.expectedAppleIdRef
-        );
-      }
       await row.update(updates, { transaction });
       return row;
     });
@@ -431,33 +395,15 @@ async function updateRecipient(req, res) {
   } catch (error) {
     if (error instanceof ApiError) throw error;
     if (error.name === 'SequelizeUniqueConstraintError')
-      throw ApiError.conflict('身份证或当前账号绑定已存在');
+      throw ApiError.conflict('该身份证号已存在');
     logger.error('更新取机人失败', { id: req.params.id, errorType: error.name });
     throw ApiError.database('更新取机人失败');
   }
 }
 
 /** 单独换绑或解绑。 */
-async function updateBinding(req, res) {
-  try {
-    assertPermission(req, PERMISSIONS.RECIPIENTS_BIND_APPLE_IDS);
-    const { appleIdRef, expectedAppleIdRef } = req.body || {};
-    if (expectedAppleIdRef === undefined || appleIdRef === undefined)
-      throw ApiError.badRequest('缺少当前或目标绑定值');
-    await sequelize.transaction(async transaction => {
-      await lockProfiles(transaction, req.user.id);
-      const row = await Recipient.findByPk(profileId(req.params.id), {
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      });
-      if (!row) throw ApiError.notFound('取机人不存在');
-      await bindRecipient(row, appleIdRef, transaction, expectedAppleIdRef);
-    });
-    res.json({ success: true });
-  } catch (error) {
-    logger.warn('基础档案操作未完成', { errorType: error.name });
-    throw error;
-  }
+function updateBinding() {
+  return Promise.reject(bindingRetiredError());
 }
 
 /** 查询不含密码和身份证的绑定历史。 */
@@ -726,10 +672,9 @@ async function batchGenerateAddress(req, res) {
 /**
  * 生成信息导入模版字段
  * @param {Object} recipient - 取机人数据
- * @param {Object} appleIdData - Apple ID数据
  * @returns {string} 信息导入模版
  */
-function generateImportTemplate(recipient, appleIdData) {
+function generateImportTemplate(recipient) {
   const {
     phone = '',
     email = '',
@@ -743,8 +688,8 @@ function generateImportTemplate(recipient, appleIdData) {
     tag = '',
   } = Object.fromEntries(Object.entries(recipient).map(([key, value]) => [key, value ?? '']));
 
-  const appleId = appleIdData?.appleId || '';
-  const password = appleIdData?.password || '';
+  const appleId = '';
+  const password = '';
 
   // Excel公式格式：A2,B2,,,1,指定地址,C2,I2,J2,,D2,E2,F2,G2,,,H2,,,,,,WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#,K2,L2,,,
   const fixedPart =
@@ -759,7 +704,8 @@ function generateImportTemplate(recipient, appleIdData) {
  */
 async function exportRecipients(req, res) {
   try {
-    const { status, keyword, apple_id: appleIdFilter, ids, bound } = req.query;
+    rejectLegacyBindingFilters(req.query);
+    const { status, keyword, ids } = req.query;
 
     // 构建查询条件
     const where = {};
@@ -772,26 +718,12 @@ async function exportRecipients(req, res) {
       }
     } else {
       // 未提供ID列表时，使用其他过滤条件
-      if (bound === 'true') where.appleIdRef = { [Op.ne]: null };
-      if (bound === 'false') where.appleIdRef = null;
       applyRecipientFilters(where, req.query);
-
-      if (appleIdFilter) {
-        where.appleId = appleIdFilter;
-      }
     }
 
     // 查询所有符合条件的取机人，包含关联的Apple ID
     const recipients = await Recipient.findAll({
       where,
-      include: [
-        {
-          model: AppleId,
-          as: 'appleAccount',
-          attributes: ['id', 'appleId', 'password', 'status'],
-          required: false,
-        },
-      ],
       order: [['createdAt', 'DESC']],
     });
 
@@ -803,23 +735,21 @@ async function exportRecipients(req, res) {
     const includeSensitive = req.query.includeSensitive === 'true';
     if (includeSensitive) assertPermission(req, PERMISSIONS.RECIPIENTS_EXPORT_SENSITIVE);
     res.set('Cache-Control', 'no-store');
+    res.setHeader('X-Profile-Export-Notice', 'ACCOUNT_COLUMNS_EMPTY');
     if (includeSensitive) {
       const lines = recipients.map(recipient =>
-        generateImportTemplate(
-          {
-            phone: recipient.phone,
-            email: recipient.email,
-            province: recipient.province,
-            city: recipient.city,
-            district: recipient.district,
-            streetAddress: recipient.streetAddress,
-            lastName: recipient.lastName,
-            firstName: recipient.firstName,
-            idCardNumber: recipient.idCardNumber,
-            tag: recipient.tag,
-          },
-          recipient.appleAccount
-        ).replace(/[\r\n]+/g, ' ')
+        generateImportTemplate({
+          phone: recipient.phone,
+          email: recipient.email,
+          province: recipient.province,
+          city: recipient.city,
+          district: recipient.district,
+          streetAddress: recipient.streetAddress,
+          lastName: recipient.lastName,
+          firstName: recipient.firstName,
+          idCardNumber: recipient.idCardNumber,
+          tag: recipient.tag,
+        }).replace(/[\r\n]+/g, ' ')
       );
       const filename = `取机人录入信息_${new Date().toISOString().slice(0, 10)}.txt`;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -836,11 +766,9 @@ async function exportRecipients(req, res) {
       return;
     }
     const excelData = recipients.map(recipient => {
-      const appleIdData = recipient.appleAccount;
-
       return {
-        'Apple ID': escapeSpreadsheetFormula(appleIdData?.appleId || ''),
-        密码: includeSensitive ? escapeSpreadsheetFormula(appleIdData?.password || '') : '******',
+        'Apple ID': '',
+        密码: '',
         下单手机号码: includeSensitive ? recipient.phone || '' : maskPhone(recipient.phone) || '',
         Email: escapeSpreadsheetFormula(recipient.email || ''),
         省: escapeSpreadsheetFormula(recipient.province || ''),
@@ -898,7 +826,6 @@ async function exportRecipients(req, res) {
         hasTag: Boolean(req.query.tags || req.query.tag),
         hasChannel: Boolean(req.query.channels || req.query.channel),
         hasKeyword: Boolean(keyword),
-        hasAppleIdFilter: Boolean(appleIdFilter),
       },
     });
 
@@ -914,59 +841,10 @@ async function exportRecipients(req, res) {
 
 /**
  * POST /api/recipients/bind-apple-ids
- * 批量绑定 Apple ID 到取机人
- * @description 为选中的取机人自动绑定未使用的 Apple ID
+ * 已退役批量绑定入口，保持明确错误响应及无副作用
  */
-async function batchBindAppleIds(req, res) {
-  try {
-    const values = req.body?.recipientIds;
-    if (!Array.isArray(values) || !values.length || values.length > 1000)
-      throw ApiError.badRequest('请选择 1–1000 个取机人');
-    const ids = [...new Set(values.map(profileId))];
-    const result = await sequelize.transaction(async transaction => {
-      await lockProfiles(transaction, req.user?.id);
-      const recipients = await Recipient.findAll({
-        where: { id: ids },
-        order: [['id', 'ASC']],
-        transaction,
-      });
-      const [accounts] = await sequelize.query(
-        `SELECT a.id FROM apple_ids a WHERE a.status='未使用' AND a.is_proxy_pool=false
-         AND NOT EXISTS (SELECT 1 FROM recipients r WHERE r.apple_id_ref=a.id)
-         ORDER BY a.created_at, a.id LIMIT :limit FOR UPDATE`,
-        { replacements: { limit: ids.length }, transaction }
-      );
-      const boundRecipients = [],
-        unboundRecipients = [];
-      let index = 0;
-      for (const row of recipients) {
-        if (row.appleIdRef || !accounts[index]) {
-          unboundRecipients.push({
-            recipientId: row.id,
-            reason: row.appleIdRef ? '已有绑定，保持不变' : '无可用账号',
-          });
-          continue;
-        }
-        await bindRecipient(row, accounts[index++].id, transaction, null);
-        boundRecipients.push({ recipientId: row.id });
-      }
-      for (const id of ids)
-        if (!recipients.some(row => row.id === id))
-          unboundRecipients.push({ recipientId: id, reason: '取机人不存在' });
-      return {
-        requestCount: ids.length,
-        availableCount: accounts.length,
-        boundCount: boundRecipients.length,
-        unboundCount: unboundRecipients.length,
-        boundRecipients,
-        unboundRecipients,
-      };
-    });
-    res.json({ success: true, data: result });
-  } catch (error) {
-    logger.warn('基础档案操作未完成', { errorType: error.name });
-    throw error;
-  }
+function batchBindAppleIds() {
+  return Promise.reject(bindingRetiredError());
 }
 
 module.exports = {

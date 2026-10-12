@@ -7,14 +7,13 @@ import { STATUS_OPTIONS } from '../constants/status';
 
 const clean = value => (value === '-' ? '' : value || '');
 
-/** 基础档案表单，保留姓与名，绑定与使用状态分别维护。 */
+/** 独立基础档案表单，账号与取机人分别维护。 */
 export default function ProfileFormModal({ kind, item, onClose, onSave }) {
   const account = kind === 'account';
   const { can } = useAuth();
   const canQa = can('apple_ids.secrets.read');
-  const canBind = can('recipients.bind_apple_ids') && can('apple_ids.read');
   const [form, setForm] = useState(() => ({
-    appleId: clean(account ? item?.appleId : item?.boundAppleId),
+    appleId: clean(account ? item?.appleId : ''),
     password: clean(item?.password),
     notes: clean(item?.notes),
     country: clean(item?.country) || '中国',
@@ -127,10 +126,6 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
             'notes',
           ].map(key => [key, form[key]])
         );
-        if (canBind && form.appleId.trim() !== clean(item?.boundAppleId)) {
-          payload.appleId = form.appleId.trim();
-          if (item) payload.expectedAppleIdRef = item.appleIdRef ?? null;
-        }
       }
       await onSave(payload);
       onClose();
@@ -185,7 +180,6 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
                 {field('streetAddress', '街道地址')}
                 {field('tag', 'TAG')}
                 {field('channel', '渠道')}
-                {canBind && field('appleId', '绑定 Apple ID（留空解除绑定）', false, 'email')}
               </>
             )}
             <label className="block text-sm text-gray-700">
@@ -234,7 +228,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
           )}
           {!account && (
             <p className="text-sm text-gray-500">
-              只能绑定未被其他取机人占用的账号；换绑和解绑不改变使用状态及历史订单。
+              取机人与 Apple ID 独立管理，名下订单按订单关联的取机人展示。
             </p>
           )}
         </div>

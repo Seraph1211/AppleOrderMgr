@@ -236,12 +236,15 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 
 ## Apple ID 与取机人
 
-- Apple ID 列表 query 为 page、limit、status、country、bound、keyword；前端筛选区使用 keyword、status、bound，不展示国家地区筛选。`keyword` 同时模糊搜索 Apple ID 和当前绑定取机人的完整姓名、姓或名；`bound` 仅接受 true／false。列表返回 `recipient_count` 和 `recipient_names`，当前绑定列直接展示姓名。新增接收 apple_id、password、notes、country、status、security_qa；更新不再接收或维护 is_modified。返回使用 snake_case。经 2026-09-17 用户确认，持有 `apple_ids.read` 的用户在所有环境均可通过列表和详情读取完整 `password`；普通请求不返回密保，详情 includeSecrets=true 另要求 secrets 权限。响应 `Cache-Control: no-store`，存储继续加密，日志不记录明文。
-- 取机人列表 query 包含 page、limit、tags、channels、status、apple_id_ref、keyword；`tags` 和 `channels` 分别接受数组或兼容逗号分隔值，逐项精确匹配，各自维度内按 OR、跨维度按 AND 组合，并兼容旧单值 `tag`／`channel`。数组形式可保留值内部的逗号。`keyword` 只搜索姓名、当前 Apple ID、完整身份证号或身份证后四位；完整身份证走盲索引精确匹配，不对密文字段做模糊查询。`GET /recipients/filter-options` 返回数据库中非空原始 `tags` 与 `channels`。新增必须 lastName、firstName、idCardNumber；可选 `channel` 是最长 100 字符、去除首尾空白、空值保存为 null 的单值渠道标签，独立于 TAG、订单权限、付款分配及渠道管理；关联写入使用 appleIdRef。写入为 camelCase，不按列表字段直接回传。
+- Apple ID 列表 query 为 page、limit、status、country、keyword；keyword 只搜索账号，不搜索取机人。响应移除 recipient_count、recipient_names 与详情 recipients。新增接收 apple_id、password、notes、country、status、security_qa。持有 apple_ids.read 可在列表/详情读取完整password；普通请求不返回密保，详情includeSecrets=true另需apple_ids.secrets.read。Cache-Control: no-store，存储继续加密、日志不记录明文。
+- 取机人列表 query 包含 page、limit、tags、channels、status、keyword；tags/channels 接受数组或兼容逗号分隔值，维度内 OR、跨维度 AND，兼容 tag/channel。keyword 搜索姓名、证件完整盲索引或后四位；不搜索 Apple ID。GET /recipients/filter-options 保持。新增必须 lastName、firstName、idCardNumber；channel 单值最长100字符，独立于订单权限。响应移除 bound、apple_id、apple_id_ref、password。
+- 双方 order_count 仅统计 orders.read 授权且 TAG 范围内订单；无 orders.read 返回0、账号 last_order_date=null，不查询订单。名下订单分别使用 GET /api/orders?apple_id=<档案id> 与 recipient_id=<档案id>，沿用 orders.read/TAG 权限；两个档案 ID 必须为完整正安全整数，小数、混合字符、0、负数、数组和超大数返回400。
+- 旧 PUT /recipients/:id/binding 和 POST /recipients/bind-apple-ids 返回410 PROFILE_BINDING_RETIRED，无副作用。CRUD 提交非空 appleId/appleIdRef/apple_id/apple_id_ref/password/expectedAppleIdRef 返回400 PROFILE_BINDING_RETIRED；旧绑定筛选返回400同错误码。历史 GET /:id/bindings 保留受原权限控制的审计读取。
+- 权限目录绑定授权保留常量及历史值，标记 retired=true，界面不再分配；其依赖为空，保留退役值时可撤销档案读取权限，不隐式补授读取。其他有效权限的依赖规则保持。代抢账号列表移除 boundRecipient，候选/可用/纳入仅按账号池与代抢占用规则。
 - 经 2026-09-17 用户确认，持有 `recipients.read` 的用户在所有环境均可通过列表和详情读取完整 `id_card_number`、`phone`，响应 `Cache-Control: no-store`。详细地址在具有 `recipients.edit` 或 `recipients.export_sensitive` 权限时返回；仍兼容本地管理员敏感显示配置，其他请求返回 `street_address=null`。订单快照及导出权限不随此变更扩大。
 - 下单手机号 `phone` 和真实联系电话 `realPhone` 非必填；新增／编辑支持省略、null、空字符串或纯空白，空值规范为 null；编辑时省略代表不修改，显式空值代表清空，非空须为合法大陆手机号。
-- 联系方式/地址批量生成接收 recipient_ids；联系方式生成会覆盖选中记录已有的电话和邮箱，电话满足 `^1[3-9]\\d{9}$`，邮箱为“电话@vvv8.net”。前端在生成意图首次确认后，若选中记录已有对应数据，必须再次确认覆盖；取消二次确认不得调用生成接口。绑定 Apple ID 使用 recipientIds，保留现状差异，不能统一猜测。
-- 取机人导出需要 export 权限；显式 includeSensitive=true 必须另有 recipients.export_sensitive 权限，否则 403。完整导出响应为 UTF-8 文本，只含逐条“信息导入模板”值，每条一行且无表头；该外部固定格式不增加渠道字段。页面只允许对已勾选记录请求完整文本，并在弹窗中展示及一键复制，不自动下载文件。默认脱敏 Excel 增加“渠道”列并处理公式注入，当前筛选导出沿用 `channels` 条件。
+- 联系方式/地址批量生成接收 recipient_ids；联系方式生成会覆盖选中记录已有的电话和邮箱，电话满足 `^1[3-9]\\d{9}$`，邮箱为“电话@vvv8.net”。前端在生成意图首次确认后，若选中记录已有对应数据，必须再次确认覆盖；取消二次确认不得调用生成接口。取机人与账号无当前绑定。
+- 取机人导出需要 export 权限；显式 includeSensitive=true 必须另有 recipients.export_sensitive 权限，否则 403。完整导出响应为 UTF-8 文本，只含逐条“信息导入模板”值，每条一行且无表头；该外部固定格式不增加渠道字段，旧 A/B 账号密码固定留空，响应 X-Profile-Export-Notice=ACCOUNT_COLUMNS_EMPTY。页面只允许对已勾选记录请求完整文本，并在弹窗中展示及一键复制，不自动下载文件。默认脱敏 Excel 增加“渠道”列并处理公式注入，当前筛选导出沿用 `channels` 条件。
 
 来源：[Apple ID 控制器](../../src/controllers/appleIdController.js)、[取机人控制器](../../src/controllers/recipientController.js)。
 
@@ -1026,9 +1029,9 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 | POST /api/proxy-orders/:id/release     | accounts | expectedVersion,assignmentIds,confirmedStopped=true；释放占用                                                                                                                                                                          |
 | POST /api/proxy-orders/:id/link        | link     | expectedVersion,orderNumber,reason；人工核对关联，不覆盖已有关系；orderNumber=null 为解除                                                                                                                                              |
 | POST /api/proxy-orders/copy            | copy     | ids 1–100；原子生成当前活跃账号模板，多行字符串；不更新状态                                                                                                                                                                            |
-| GET /api/proxy-orders/accounts         | accounts | page/limit/keyword，scope=pool/candidates；返回 rows/count/availableCount，其中 availableCount 为整个专用池中状态“未使用”、未占用且未绑定普通取机人的数量；无密码                                                                      |
+| GET /api/proxy-orders/accounts         | accounts | page/limit/keyword，scope=pool/candidates；返回 rows/count/availableCount，其中 availableCount 为整个专用池中状态“未使用”、未被代抢任务占用的数量；无密码                                                                      |
 | POST /api/proxy-orders/accounts/import | accounts | text，每行邮箱+密码；全量先验证，同账号密码差异拒绝不回显                                                                                                                                                                              |
-| POST /api/proxy-orders/accounts/adopt  | accounts | ids，核对后纳入已有账号；有普通绑定拒绝                                                                                                                                                                                                |
+| POST /api/proxy-orders/accounts/adopt  | accounts | ids，核对后纳入已有独立账号；不再检查旧取机人绑定                                                                                                                                                                                                |
 | POST /api/proxy-orders/accounts/status | accounts | accounts=[{id,expectedUpdatedAt}] 1–100 个专用池账号、status=未使用/使用中/已下架/异常；改为未使用须 confirmedStopped=true。整批行锁、版本校验与事务，任一账号不存在、非专用池或仍被代抢占用时整批拒绝；仅更新状态，保留备注和占用历史 |
 | PUT /api/proxy-orders/accounts/:id     | accounts | status,notes,expectedUpdatedAt；改为未使用须 confirmedStopped=true，仍被代抢占用的账号拒绝；原账号更新冲突拒绝                                                                                                                         |
 

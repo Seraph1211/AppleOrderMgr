@@ -103,51 +103,44 @@ describe('基础资料读取权限与选填联系电话', () => {
         const item = key ? data[key][0] : data;
         expect(item).toMatchObject(expected);
         expect(item).not.toHaveProperty('securityQa');
-        if (expected.phone) expect(item.password).toBe('hidden');
+        if (expected.phone) expect(item.password).toBeUndefined();
         expect(res.set).toHaveBeenCalledWith('Cache-Control', 'no-store');
       }
     }
   );
 
-  test.each(['apple_ids.read', 'recipients.read'])(
-    '无 %s 权限被后端拒绝',
-    permission => {
-      const next = jest.fn();
-      const res = response();
-      requirePermission(permission)({ user: { role: 'operator', permissions: [] } }, res, next);
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(next).not.toHaveBeenCalled();
-    }
-  );
-
-  test('Apple ID 列表按账号或取机人姓名搜索，并返回当前绑定姓名', async () => {
-    const appleRow = {
-      id: 1,
-      toJSON: () => ({ id: 1, appleId: 'synthetic@example.invalid', status: '使用中' }),
-    };
-    models.AppleId.findAndCountAll.mockResolvedValue({ count: 1, rows: [appleRow] });
-    models.Recipient.findAll.mockResolvedValue([
-      { id: 2, appleIdRef: 1, lastName: '欧阳', firstName: '明' },
-    ]);
+  test.each(['apple_ids.read', 'recipients.read'])('无 %s 权限被后端拒绝', permission => {
+    const next = jest.fn();
     const res = response();
-    await appleController.listAppleIds(
-      {
-        query: { keyword: '欧阳明', bound: 'true' },
-        user: { permissions: ['apple_ids.read'] },
-      },
-      res
-    );
-
-    const query = models.AppleId.findAndCountAll.mock.calls[0][0];
-    expect(query.where[Op.or]).toHaveLength(2);
-    expect(models.sequelize.literal).toHaveBeenCalledWith(expect.stringContaining('concat_ws'));
-    expect(models.sequelize.literal).toHaveBeenCalledWith(expect.stringContaining('EXISTS'));
-    expect(res.json.mock.calls[0][0].data.apple_ids[0]).toMatchObject({
-      recipient_count: 1,
-      recipient_names: ['欧阳明'],
-    });
+    requirePermission(permission)({ user: { role: 'operator', permissions: [] } }, res, next);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(next).not.toHaveBeenCalled();
   });
 
+  test('Apple ID 仅按账号搜索；无订单权限不查询订单或取机人', async () => {
+    const appleRow = { id: 1, toJSON: () => ({ id: 1, appleId: 'synthetic@example.invalid' }) };
+    models.AppleId.findAndCountAll.mockResolvedValue({ count: 1, rows: [appleRow] });
+    const res = response();
+    await appleController.listAppleIds(
+      { query: { keyword: '欧阳明' }, user: { permissions: ['apple_ids.read'] } },
+      res
+    );
+    expect(models.AppleId.findAndCountAll.mock.calls[0][0].where.appleId[Op.iLike]).toBe(
+      '%欧阳明%'
+    );
+    expect(models.Order.findAll).not.toHaveBeenCalled();
+    expect(models.Recipient.findAll).not.toHaveBeenCalled();
+    expect(res.json.mock.calls[0][0].data.apple_ids[0]).toMatchObject({
+      order_count: 0,
+      last_order_date: null,
+    });
+    expect(res.json.mock.calls[0][0].data.apple_ids[0]).not.toHaveProperty('recipient_count');
+  });
+  test('旧绑定筛选清晰拒绝', async () => {
+    await expect(
+      appleController.listAppleIds({ query: { bound: 'true' } }, response())
+    ).rejects.toMatchObject({ statusCode: 400, code: 'PROFILE_BINDING_RETIRED' });
+  });
   test.each([undefined, null, '', '   '])('空联系电话 %s 接受并清空', value => {
     expect(normalizeRecipientPhone(value)).toBeNull();
   });
@@ -184,7 +177,7 @@ describe('基础资料读取权限与选填联系电话', () => {
     });
   });
 
-  test('取机人列表支持多个 TAG、多个渠道、Apple ID 与身份证后四位关键词', async () => {
+  test('取机人列表支持多个 TAG、多个渠道、姓名与身份证后四位关键词', async () => {
     models.Recipient.findAndCountAll.mockResolvedValue({ count: 0, rows: [] });
     const res = response();
     await recipientController.listRecipients(
@@ -201,9 +194,7 @@ describe('基础资料读取权限与选填联系电话', () => {
     let where = models.Recipient.findAndCountAll.mock.lastCall[0].where;
     expect(where.tag[Op.in]).toEqual(['北京-负责人甲', '上海-负责人乙']);
     expect(where.channel[Op.in]).toEqual(['直营网', '合作方']);
-    expect(where[Op.or]).toEqual(
-      expect.arrayContaining([{ appleId: { [Op.iLike]: '%a@example.invalid%' } }])
-    );
+    expect(where[Op.or].some(condition => condition?.appleId)).toBe(false);
 
     await recipientController.listRecipients(
       {

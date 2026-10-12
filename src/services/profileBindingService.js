@@ -1,6 +1,5 @@
 const logger = require('../utils/logger');
-const { Op } = require('sequelize');
-const { sequelize, Recipient, AppleId } = require('../models');
+const { sequelize, AppleId } = require('../models');
 const ApiError = require('../utils/ApiError');
 
 /** 同一事务内串行化基础档案变更，避免导入、手工换绑及分配互相覆盖。 */
@@ -20,37 +19,11 @@ async function lockProfiles(transaction, actorId = null, initial = false) {
   }
 }
 
-/** 事务内换绑；不抢占、不改状态，历史由数据库触发器记录。 */
-async function bindRecipient(recipient, appleIdRef, transaction, expectedAppleIdRef) {
-  try {
-    if (expectedAppleIdRef !== undefined && (recipient.appleIdRef || null) !== expectedAppleIdRef) {
-      throw ApiError.conflict('当前绑定已改变，请刷新后重试');
-    }
-    if (appleIdRef !== null && (!Number.isSafeInteger(appleIdRef) || appleIdRef <= 0)) {
-      throw ApiError.badRequest('appleIdRef 必须是正整数或 null');
-    }
-    if (appleIdRef !== null) {
-      const account = await AppleId.findByPk(appleIdRef, {
-        transaction,
-        lock: transaction.LOCK.UPDATE,
-      });
-      if (!account) throw ApiError.notFound('Apple ID 不存在');
-      if (account.isProxyPool) throw ApiError.conflict('代抢专用账号不可绑定普通取机人');
-      const occupied = await Recipient.findOne({
-        where: { appleIdRef, id: { [Op.ne]: recipient.id } },
-        transaction,
-      });
-      if (occupied)
-        throw ApiError.conflict('该 Apple ID 已绑定其他取机人，请先明确解除原绑定', {
-          recipientId: occupied.id,
-        });
-    }
-    await recipient.update({ appleIdRef }, { transaction });
-    return recipient.reload({ transaction });
-  } catch (error) {
-    logger.warn('基础档案操作未完成', { errorType: error.name });
-    throw error;
-  }
+/** 兼容旧调用路径；绑定已退役，拒绝任何写入。 */
+function bindRecipient() {
+  return Promise.reject(
+    new ApiError(410, 'PROFILE_BINDING_RETIRED', '取机人与 Apple ID 已独立维护，绑定功能不再使用')
+  );
 }
 
 /** 依据邮箱解析现有账号，不猜测不存在账号的密码。 */

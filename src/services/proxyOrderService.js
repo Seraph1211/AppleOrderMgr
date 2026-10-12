@@ -6,7 +6,6 @@ const {
   ProxyEvent,
   AppleId,
   Order,
-  Recipient,
 } = require('../models');
 const { lockProfiles } = require('./profileBindingService');
 const input = require('../utils/proxyOrderInput');
@@ -107,7 +106,6 @@ async function assign(row, values, transaction, actorId) {
         `SELECT a.id FROM apple_ids a
         WHERE a.is_proxy_pool=true AND a.status='未使用'
         AND NOT EXISTS(SELECT 1 FROM proxy_assignments p WHERE p.apple_id_ref=a.id AND p.ended_at IS NULL)
-        AND NOT EXISTS(SELECT 1 FROM recipients r WHERE r.apple_id_ref=a.id)
         ORDER BY a.id LIMIT :count FOR UPDATE`,
         { replacements: { count }, transaction }
       );
@@ -393,21 +391,17 @@ async function listAccounts(query) {
       order: [['id', 'ASC']],
     });
     const accountIds = result.rows.map(a => a.id);
-    const [assignments, recipients] = accountIds.length
-      ? await Promise.all([
-        ProxyAssignment.findAll({ where: { appleIdRef: accountIds, endedAt: null }, raw: true }),
-        Recipient.findAll({
-          where: { appleIdRef: accountIds },
-          attributes: ['id', 'appleIdRef'],
-          raw: true,
-        }),
-      ])
-      : [[], []];
+    const assignments = accountIds.length
+      ? await ProxyAssignment.findAll({
+        where: { appleIdRef: accountIds, endedAt: null },
+        raw: true,
+      })
+      : [];
     const [[availability]] = await sequelize.query(
       `SELECT COUNT(*)::integer AS count FROM apple_ids a
        WHERE a.is_proxy_pool=true AND a.status='未使用'
        AND NOT EXISTS(SELECT 1 FROM proxy_assignments p WHERE p.apple_id_ref=a.id AND p.ended_at IS NULL)
-       AND NOT EXISTS(SELECT 1 FROM recipients r WHERE r.apple_id_ref=a.id)`
+       `
     );
     return {
       count: result.count,
@@ -415,7 +409,6 @@ async function listAccounts(query) {
       rows: result.rows.map(a => ({
         ...a.toJSON(),
         assignment: assignments.find(s => s.appleIdRef === a.id) || null,
-        boundRecipient: recipients.some(r => r.appleIdRef === a.id),
       })),
     };
   } catch (error) {
@@ -482,11 +475,7 @@ async function changeAccounts(action, body, actorId, accountId) {
         } else if (action === 'adopt') {
           accountIds = ids(body.ids, 500);
           const accounts = await AppleId.findAll({ where: { id: accountIds }, transaction });
-          if (
-            accounts.length !== accountIds.length ||
-            (await Recipient.count({ where: { appleIdRef: accountIds }, transaction }))
-          )
-            throw ApiError.conflict('部分账号不存在或已绑定普通取机人');
+          if (accounts.length !== accountIds.length) throw ApiError.conflict('部分账号不存在');
           await AppleId.update({ isProxyPool: true }, { where: { id: accountIds }, transaction });
         } else if (action === 'update') {
           const row = await AppleId.findByPk(id(accountId), {
