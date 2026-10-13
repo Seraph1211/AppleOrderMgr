@@ -330,7 +330,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `GET /api/orders` 和 `GET /api/orders/export` 支持 `statuses`、`productNames`、`pickupStores`、`recipientTags` 四个 JSON 数组筛选参数，每项最多 100 个值。同一数组内按 OR 匹配，不同筛选维度之间按 AND 组合；订单状态必须属于现有状态枚举，商品名称和门店按完整值精确匹配。继续兼容既有单值 `status`、`productModel`、`pickupStore` 参数。
 - `pickupDateFrom` / `pickupDateTo` 按邮件预约日期 `email_pickup_date` 筛选，格式为 `YYYY-MM-DD`，允许单边范围，双边包含当天；同一天表示单日。非法日期、数组和反向范围返回 400。列表、候选、导出及官网刷新筛选全选共用条件；兼容单日 `pickupDate`，同时传入时与范围取交集。
 - `pickupDate` 仅接受 `YYYY-MM-DD`，匹配邮件预约日期 `email_pickup_date`；不使用下单日期或实际取货日期替代。列表和详情继续返回独立的官网派生 `pickup_time`、`official_pickup_date`、`official_pickup_time_slot`，供核对官网履约提示。
-- `recipientTags` 按列表实际展示的 `recipient_tag` 精确匹配，最多 100 项、每项最长 500 字符；数组值保留内部逗号及首尾空格。AOS 订单依次使用非空来源 TAG、取机人档案 TAG、订单 TAG；其他订单使用取机人档案 TAG、订单 TAG。多个 TAG 为 OR，与其他维度为 AND，分页与导出前过滤，始终叠加已有订单访问范围。
+- `recipientTags` 按列表实际展示的 `recipient_tag` 精确匹配，最多 100 项、每项最长 500 字符；数组值保留内部逗号及首尾空格。所有来源订单只使用关联取机人当前档案 TAG；未关联或空值为缺失状态，不回退来源或历史订单 TAG。多个 TAG 为 OR，与其他维度为 AND，分页与导出前过滤，始终叠加已有订单访问范围。
 - `GET /api/orders/filter-options` 新增 `recipientTags`，来自当前账号可见的全部订单展示 TAG，排除空值、去重排序，不受分页或前 5000 条订单限制。返回 `productNames` 和 `stores`，候选来自订单完整 `products[].name` 与邮件 `email_pickup_info.storeName`，不从当前分页临时拼接。兼容返回 `productModels`，但订单管理页面不再使用型号筛选。
 - 订单管理主表不展示 `validation_status` 和 `apple_id` 列；校验问题仍通过行首提示图标进入原异常说明，异常行不使用整行红色背景。上述字段仍保留在既有 DTO、搜索和详情能力中。
 - `keyword` 为纯正整数且不超过 PostgreSQL `INTEGER` 上限时，额外对系统订单 `orders.id` 做精确匹配；官网订单号、Apple ID、取机人和商品等既有模糊搜索保持不变。
@@ -1176,7 +1176,7 @@ API 进程每三分钟扫描付款任务关联订单；仅核对 `orders.created
 
 ## 订单取机人 TAG 统一契约（2026-10-14）
 
-本轮已批准并实施中，验收和发布状态见[统一方案](../planning/订单取机人TAG统一方案.md)。所有来源及历史订单的业务 TAG 唯一读取 `orders.recipient_ref` 关联的 `recipients.tag`，档案修改实时生效。NULL、空串、全空白为缺失；非空值保留原字符串并区分大小写精确匹配。未关联或缺失不回退来源。`orders.tag`、`source_recipient_tag` 及 AOS 快照仅保留原始记录，不覆盖。
+本轮已实现、验收并生产发布，证据见[统一方案](../planning/订单取机人TAG统一方案.md)。所有来源及历史订单的业务 TAG 唯一读取 `orders.recipient_ref` 关联的 `recipients.tag`，档案修改实时生效。NULL、空串、全空白为缺失；非空值保留原字符串并区分大小写精确匹配。未关联或缺失不回退来源。`orders.tag`、`source_recipient_tag` 及 AOS 快照仅保留原始记录，不覆盖。
 
 订单响应 `recipient_tag`、`tag` 为当前值或 null，新增 `recipient_tag_state`（unlinked／missing／present）；付款对应 `recipientTag` 和 `recipientTagState`。列表、详情、导出、筛选候选、仪表板、渠道聚合和用户 TAG 范围采用相同规则；缺失值不构成真实渠道或授权 TAG。本人付款任务所有权须与当前 TAG 范围相交，不要求额外的 orders.read。
 
