@@ -11,6 +11,7 @@ export const OFFICIAL_ORDER_STATUS_LABELS = {
   PICKED_UP: '已取货',
   RETURN_STARTED: '已发起退货',
   RECEIVED_BY_CARRIER: '退货已揽收',
+  REFUND_INITIATED: '已发起退款',
   PREPARING_TO_SHIP: '准备发货',
   SHIPPED: '已发货',
   DELIVERED: '已送达',
