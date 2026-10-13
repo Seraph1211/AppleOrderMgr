@@ -78,7 +78,12 @@ test('按当前用户 TAG 范围查找并拒绝范围外订单', async () => {
   Order.findOne.mockResolvedValue(null);
   await expect(updateOrder(req, res)).rejects.toThrow('订单不存在');
   expect(Order.findOne).toHaveBeenCalledWith({
-    where: { [Op.and]: [{ id: 1 }, { tag: { [Op.in]: ['授权渠道'] } }] },
+    where: {
+      [Op.and]: [
+        { id: 1 },
+        require('../src/services/recipientTagService').recipientTagWhere({ [Op.in]: ['授权渠道'] }),
+      ],
+    },
   });
   expect(order.update).not.toHaveBeenCalled();
 });

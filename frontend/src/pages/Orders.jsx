@@ -1,3 +1,4 @@
+import RecipientTag from '../components/RecipientTag';
 import { OFFICIAL_ORDER_STATUS_LABELS } from '../constants/officialOrderStatus';
 import OfficialOrderStatus from '../components/OfficialOrderStatus';
 import OfficialOrderRefreshModal from '../components/OfficialOrderRefreshModal';
@@ -320,8 +321,6 @@ export default function Orders() {
           actualPickupDate: order.actual_pickup_date || null,
           ingestionSource: order.ingestion_source,
           sourceRecipientTag: order.source_recipient_tag,
-          recipientProfileTag: order.recipient_profile_tag,
-          recipientTagConflict: order.recipient_tag_conflict,
           recipientLinked: order.recipient_linked,
           emailOrderStatus: order.email_order_status || 'unknown',
           displayOrderStatus: order.display_order_status || order.email_order_status || 'unknown',
@@ -338,7 +337,8 @@ export default function Orders() {
           applePassword: order.apple_password || '-',
           // 收件人相关
           recipientName: order.recipient_name || '-',
-          recipientTag: order.recipient_tag || '-',
+          recipientTag: order.recipient_tag,
+          recipientTagState: order.recipient_tag_state,
           recipientIdCard: order.recipient_id_card || '-',
           recipientEmail: order.recipient_email || '-',
           recipientPhone: order.recipient_phone || '-',
@@ -512,19 +512,7 @@ export default function Orders() {
           <span className="text-gray-400">-</span>
         );
       case 'recipientTag':
-        return (
-          <div className="text-sm">
-            <span>{value}</span>
-            {order.recipientTagConflict && (
-              <p className="mt-1 text-xs text-amber-700">
-                与档案 TAG 不同：{order.recipientProfileTag}
-              </p>
-            )}
-            {order.ingestionSource === 'aos' && !order.recipientLinked && (
-              <p className="mt-1 text-xs text-amber-700">取机人待关联</p>
-            )}
-          </div>
-        );
+        return <RecipientTag value={value} state={order.recipientTagState} />;
 
       case 'emailOrderStatus': {
         const badge = getDisplayOrderStatusBadge(order.displayOrderStatus);
@@ -1120,9 +1108,8 @@ export default function Orders() {
                     </p>
                     <p className="mt-1 truncate text-xs text-gray-600">
                       取机人：{order.recipientName || '-'}
-                      {order.recipientTag && order.recipientTag !== '-'
-                        ? ` · ${order.recipientTag}`
-                        : ''}
+                      {' · '}
+                      <RecipientTag value={order.recipientTag} state={order.recipientTagState} />
                     </p>
                     <p className="mt-1 text-xs text-gray-600">
                       实际取货日期：{order.actualPickupDate || '尚未获取'}

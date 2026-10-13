@@ -1,3 +1,4 @@
+const { getRecipientTag, getRecipientTagState } = require('./recipientTagService');
 const { getSourcePaymentMethod, isWechatPayment } = require('../utils/paymentMethod');
 const { PNG } = require('pngjs');
 const jsQR = require('jsqr');
@@ -86,8 +87,8 @@ function buildNotificationText(order, url) {
       ? '支付宝'
       : method || '-';
   const tag =
-    clean(order.ingestionSource === 'aos' ? order.sourceRecipientTag || order.tag : order.tag) ||
-    '-';
+    getRecipientTag(order) ||
+    (getRecipientTagState(order) === 'unlinked' ? '未关联取机人' : '未设置 TAG');
   const deadline = getPaymentDeadline(order);
   const parts = deadline
     ? Object.fromEntries(formatter.formatToParts(deadline).map(p => [p.type, p.value]))

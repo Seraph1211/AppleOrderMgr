@@ -1,3 +1,10 @@
+const {
+  recipientTagSql,
+  recipientTagAttributes,
+  getRecipientTag,
+  getRecipientTagState,
+} = require('./recipientTagService');
+const { scopeOrderWhere, assertCurrentOrderAccess } = require('./orderAccessService');
 const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 const { parseProductKeys, productKeySql } = require('../utils/productFilterQuery');
 const { collectOfficialStatusOptions } = require('../utils/officialStatusFilter');
@@ -24,11 +31,7 @@ const { normalizePayerName, updateLockedOrderPayer } = require('./payerService')
 
 const PAYMENT_TASK_STATUSES = Object.freeze(['pending', 'processing', 'completed', 'exception']);
 const ACTIVE_PAYMENT_TASK_STATUSES = Object.freeze(['pending', 'processing', 'exception']);
-const RECIPIENT_TAG_EXPRESSION = `CASE
-  WHEN "order"."ingestion_source" = 'aos'
-    THEN COALESCE(NULLIF("order"."source_recipient_tag", ''), "order"."tag")
-  ELSE "order"."tag"
-END`;
+const RECIPIENT_TAG_EXPRESSION = recipientTagSql('order');
 const STATUS_TRANSITIONS = Object.freeze({
   pending: ['processing', 'completed', 'exception'],
   processing: ['completed', 'exception'],
@@ -87,6 +90,7 @@ function includeTaskRelations() {
         'orderNumber',
         'ingestionSource',
         'sourceRecipientTag',
+        ...recipientTagAttributes(),
         'tag',
         'products',
         'productFilterItems',
@@ -113,16 +117,8 @@ function includeTaskRelations() {
   ];
 }
 
-function getOrderRecipientTag(order) {
-  if (!order) return null;
-  if (order.ingestionSource === 'aos') {
-    return order.sourceRecipientTag || order.tag || null;
-  }
-  return order.tag || null;
-}
-
 /**
- * 构造订单入库 TAG 的精确筛选条件。
+ * 构造当前取机人 TAG 的精确筛选条件。
  * @param {*} value - 查询参数中的单个 TAG 或 TAG 数组 JSON
  * @returns {Object|null} Sequelize where 条件
  */
@@ -138,7 +134,11 @@ function buildRecipientTagCondition(value) {
   }
   if (!Array.isArray(values)) values = [values];
   if (values.length > 100) throw ApiError.badRequest('recipientTags 最多选择 100 项');
-  const recipientTags = [...new Set(values.map(item => String(item).trim()).filter(Boolean))];
+  if (values.some(item => typeof item !== 'string'))
+    throw ApiError.badRequest('recipientTags 每项必须是字符串');
+  const recipientTags = [
+    ...new Set(values.filter(item => typeof item === 'string' && item.trim())),
+  ];
   if (recipientTags.some(item => item.length > 500)) {
     throw ApiError.badRequest('recipientTags 每项不能超过 500 字符');
   }
@@ -239,7 +239,8 @@ function serializeTask(task, serverTime = new Date()) {
     id: plain.id,
     orderId: plain.orderId,
     orderNumber: plain.order?.orderNumber,
-    recipientTag: getOrderRecipientTag(plain.order),
+    recipientTag: getRecipientTag(plain.order),
+    recipientTagState: getRecipientTagState(plain.order),
     products: serializePublicProducts(plain.order?.products, plain.order?.productFilterItems),
     officialRefreshState: plain.officialRefreshState || null,
     officialRawStatus: plain.order?.officialRawStatus || null,
@@ -359,7 +360,12 @@ async function listOwnTasks(userId, query = {}) {
       }
       where.processingStatus = query.processingStatus;
     }
-    const orderWhere = {};
+    const user = await User.findByPk(userId);
+    if (!user || user.status !== 'active') throw ApiError.notFound('账号不可访问');
+    const accessCondition = scopeOrderWhere(user, {}, 'order');
+    const orderWhere = Reflect.ownKeys(accessCondition).length
+      ? { [Op.or]: [accessCondition] }
+      : {};
     const orderNumber = String(query.orderNumber || '').trim();
     if (orderNumber) {
       if (orderNumber.length > 20) throw ApiError.badRequest('orderNumber 过长');
@@ -434,6 +440,7 @@ async function getOwnTask(taskId, userId) {
     include: includeTaskRelations(),
   });
   if (!task) throw ApiError.notFound('付款任务不存在或已转派');
+  await assertCurrentOrderAccess(userId, [task.orderId]);
   return serializeTask(task);
 }
 
@@ -494,6 +501,7 @@ async function updateOwnTask(
       lock: transaction.LOCK.UPDATE,
     });
     if (!task) throw ApiError.notFound('付款任务不存在或已转派');
+    await assertCurrentOrderAccess(userId, [task.orderId], { transaction });
 
     const order = await Order.findByPk(task.orderId, {
       attributes: ['id', 'payerName', 'payerVersion'],
@@ -609,6 +617,7 @@ async function getOwnPaymentLink(taskId, userId) {
     ],
   });
   if (!task) throw ApiError.notFound('付款任务不存在或已转派');
+  await assertCurrentOrderAccess(userId, [task.orderId]);
   if (!task.order?.orderUrl) throw ApiError.notFound('订单链接不存在');
   const now = new Date();
   const paymentUrl = task.order.orderUrl;

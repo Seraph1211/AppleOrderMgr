@@ -20,11 +20,8 @@ const STATUS_MAP = {
   '已取货（邮件推定）': 'picked_up',
 };
 // 与订单管理页 recipient_tag 相同；子查询避免聚合 JOIN 产生重复计数。
-const PROFILE_TAG_SQL = '(SELECT r.tag FROM recipients r WHERE r.id = "Order".recipient_ref)';
-const RECIPIENT_TAG_SQL = `CASE WHEN "Order".ingestion_source = 'aos'
-  THEN COALESCE(NULLIF("Order".source_recipient_tag, ''),
-    NULLIF(${PROFILE_TAG_SQL}, ''), NULLIF("Order".tag, ''))
-  ELSE COALESCE(NULLIF(${PROFILE_TAG_SQL}, ''), NULLIF("Order".tag, '')) END`;
+const { recipientTagSql, recipientTagWhere } = require('./recipientTagService');
+const RECIPIENT_TAG_SQL = recipientTagSql();
 
 function parseList(value, field, allowedValues) {
   if (value === undefined || value === '') return [];
@@ -119,7 +116,7 @@ function buildDashboardWhere(filters = {}) {
     );
   if (filters.orderUser) {
     const tags = getOrderTagBind(filters.orderUser);
-    if (tags !== null) where.tag = { [Op.in]: tags };
+    if (tags !== null) and.push(recipientTagWhere({ [Op.in]: tags }));
   }
   if (and.length) where[Op.and] = and;
   return where;

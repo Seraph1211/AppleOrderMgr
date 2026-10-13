@@ -168,8 +168,9 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
               <section className="border border-gray-200 rounded-lg p-4 space-y-3">
                 <h3 className="font-semibold text-gray-900">订单数据范围</h3>
                 <p className="text-sm text-gray-500">
-                  按订单自身 TAG
-                  精确匹配，同时限制订单、历史取货照片和库存来源关联可访问的数据。下方功能权限决定可执行的操作；两者同时生效。管理员可访问全部订单，本人付款任务的信息和操作保持不变。
+                  按订单关联取机人的当前 TAG
+                  精确匹配，同时限制订单、本人付款任务、历史取货照片和库存来源关联。取机人 TAG
+                  修改后历史订单范围同步变化；下方功能权限与数据范围同时生效。管理员可访问全部订单。
                 </p>
                 <div className="flex flex-wrap gap-5">
                   {[
@@ -212,8 +213,8 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
                     </div>
                     <input
                       className="input"
-                      placeholder="搜索订单 TAG"
-                      aria-label="搜索订单 TAG"
+                      placeholder="搜索取机人 TAG"
+                      aria-label="搜索取机人 TAG"
                       value={tagSearch}
                       onChange={event => setTagSearch(event.target.value)}
                     />
@@ -236,15 +237,18 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
                               }
                             />
                             <span className="break-all whitespace-pre-wrap">{tag}</span>
+                            {!tagOptions.includes(tag) && (
+                              <span className="text-xs text-amber-700">暂无对应档案 TAG</span>
+                            )}
                           </label>
                         ))}
                     </div>
                     {tagOptions.length === 0 && (
-                      <p className="text-sm text-gray-500">暂无订单 TAG 候选</p>
+                      <p className="text-sm text-gray-500">暂无取机人 TAG 候选</p>
                     )}
                     <p className="text-sm text-gray-600">
                       已选择 {orderAccess.tags.length} 个 TAG；不选择时无法查看任何订单，无 TAG
-                      订单不可见。
+                      或未关联取机人的订单不可见。
                     </p>
                   </>
                 )}

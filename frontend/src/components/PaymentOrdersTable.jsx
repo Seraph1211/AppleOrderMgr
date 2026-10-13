@@ -1,3 +1,4 @@
+import RecipientTag from './RecipientTag';
 import { Copy, Pencil, RefreshCw } from 'lucide-react';
 import OfficialOrderStatus from './OfficialOrderStatus';
 import ProductSummary from './ProductSummary';
@@ -152,7 +153,7 @@ export default function PaymentOrdersTable({
                       )}
                     </td>
                     <td data-label="取机人TAG" className="px-4 py-4 text-sm">
-                      <span className="break-words">{task.recipientTag || '-'}</span>
+                      <RecipientTag value={task.recipientTag} state={task.recipientTagState} />
                     </td>
                     <td data-label="下单时间" className="px-4 py-4 text-sm text-gray-600">
                       {formatOrderTime(task.orderDate)}

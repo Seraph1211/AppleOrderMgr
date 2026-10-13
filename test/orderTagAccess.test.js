@@ -41,7 +41,9 @@ describe('订单 TAG 授权边界', () => {
     const user = { orderAccess: { mode: 'tags', tags: ['A'] } };
     const filter = { tag: 'B', [Op.or]: [{ status: 'pending' }, { status: 'paid' }] };
     const where = scopeOrderWhere(user, filter);
-    expect(where[Op.and]).toEqual([filter, { tag: { [Op.in]: ['A'] } }]);
+    expect(where[Op.and][0]).toEqual(filter);
+    expect(where[Op.and][1].attribute.val).toContain('recipients');
+    expect(where[Op.and][1].logic[Op.in]).toEqual(['A']);
     expect(() => assertTagAccess(user, 'B')).toThrow();
     expect(() => assertTagAccess(user, 'A')).not.toThrow();
   });

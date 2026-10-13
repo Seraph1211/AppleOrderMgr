@@ -51,12 +51,12 @@ async function replaceUserPermissions(req, res) {
   return res.json({ success: true, data: result, message: '权限配置已更新' });
 }
 
-/** 管理员获取订单自身 TAG 候选。 */
+/** 管理员获取当前档案 TAG 候选。 */
 async function getOrderTagOptions(_req, res) {
   try {
-    const { Order } = require('../models');
+    const { Recipient } = require('../models');
     const { Op } = require('sequelize');
-    const rows = await Order.findAll({
+    const rows = await Recipient.findAll({
       attributes: ['tag'],
       where: { tag: { [Op.ne]: null } },
       group: ['tag'],

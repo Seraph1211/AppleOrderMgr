@@ -1,3 +1,4 @@
+const { recipientTagSql, normalizeRecipientTag } = require('../services/recipientTagService');
 const { formatOrderTime, parseOrderTimeBoundary } = require('../utils/orderTime');
 /* eslint-disable camelcase */
 /**
@@ -184,7 +185,7 @@ async function getRecipientStats(req, res) {
       data: rows.map(r => ({
         recipient_id: r.recipientRef,
         name: r.recipient ? `${r.recipient.lastName || ''}${r.recipient.firstName || ''}` : null,
-        tag: r.recipient?.tag || null,
+        tag: normalizeRecipientTag(r.recipient?.tag),
         order_count: parseInt(r.orderCount, 10) || 0,
         product_count: parseInt(r.productCount, 10) || 0,
         latest_order_date: r.latestOrderDate,
@@ -210,7 +211,7 @@ const PRODUCT_STATS_SQL = `
        jsonb_array_elements(o.products) AS elem
   WHERE ($1::timestamptz IS NULL OR o.order_date >= $1)
     AND ($2::timestamptz IS NULL OR o.order_date <= $2)
-    AND ($3::text[] IS NULL OR o.tag = ANY($3::text[]))
+    AND ($3::text[] IS NULL OR ${recipientTagSql('o')} = ANY($3::text[]))
     AND elem ? 'name'
   GROUP BY elem->>'name'
   ORDER BY total_quantity DESC
@@ -268,7 +269,7 @@ async function getProductStats(req, res) {
            jsonb_array_elements(o.products) AS elem
       WHERE ($1::timestamptz IS NULL OR o.order_date >= $1)
         AND ($2::timestamptz IS NULL OR o.order_date <= $2)
-        AND ($3::text[] IS NULL OR o.tag = ANY($3::text[]))
+        AND ($3::text[] IS NULL OR ${recipientTagSql('o')} = ANY($3::text[]))
         AND elem ? 'name'
     `;
 

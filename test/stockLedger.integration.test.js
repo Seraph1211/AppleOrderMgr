@@ -118,6 +118,18 @@ if (
     }
   }
 
+  // 业务 TAG 来自关联档案；保留不同的订单历史值以防回退重新进入权限路径。
+  async function createTaggedRecipient(tag) {
+    try {
+      const row = await db.Recipient.create({
+        lastName: '合成', firstName: '库存验收', tag,
+        idCardNumber: `11010119900101${String((await db.Recipient.count()) + 1000).padStart(4, '0')}`,
+      });
+      return row.id;
+    } catch (error) {
+      throw new Error(`库存TAG测试夹具失败: ${error.message}`);
+    }
+  }
   beforeAll(async () => {
     try {
       await db.sequelize.authenticate();
@@ -360,7 +372,8 @@ if (
     const order = await db.Order.create({
       orderNumber,
       products: [{ name: '合成手机', quantity: 2 }],
-      tag: `forbidden_${prefix}`,
+      recipientRef: await createTaggedRecipient(`forbidden_${prefix}`),
+      tag: 'legacy_snapshot',
     });
     await execute('editUnit', { expectedVersion: rows[0].version, orderNumber }, admin, rows[0].id);
     const reread = await detail(rows[0].id);
@@ -389,7 +402,8 @@ if (
     const order = await db.Order.create({
       orderNumber,
       products: [{ name: '合成手机', quantity: 2 }],
-      tag: `forbidden_cleanup_${prefix}`,
+      recipientRef: await createTaggedRecipient(`forbidden_cleanup_${prefix}`),
+      tag: 'legacy_snapshot',
     });
     const viewer = await db.User.create({
       username: `ledger_tag_viewer_${prefix}`,
@@ -548,7 +562,8 @@ if (
     const order = await db.Order.create({
       orderNumber: `W${Date.now().toString().slice(-10)}`,
       products: [{ name: '合成手机', quantity: 2 }],
-      tag: `allowed_${prefix}`,
+      recipientRef: await createTaggedRecipient(`allowed_${prefix}`),
+      tag: 'legacy_snapshot',
     });
     for (const method of ['receiveUnits', 'importHistory']) {
       const unit = await db.StockUnit.create({
@@ -1082,7 +1097,8 @@ if (
     const order = await db.Order.create({
       orderNumber: `W${Date.now().toString().slice(-10)}`,
       products: [{ name: '合成手机', quantity: 2 }],
-      tag: `allowed_${prefix}`,
+      recipientRef: await createTaggedRecipient(`allowed_${prefix}`),
+      tag: 'legacy_snapshot',
     });
     const rows = await receive(
       [newInput(), newInput()].map(item => ({ ...item, orderNumber: order.orderNumber }))
@@ -2654,7 +2670,8 @@ if (
       status: 'picked_up',
       actualPickupDate: '2026-10-01',
       products: [{ name: '合成入库规格', model: product.skuCode, quantity: 3 }],
-      tag: `forbidden_${prefix}`,
+      recipientRef: await createTaggedRecipient(`forbidden_${prefix}`),
+      tag: 'legacy_snapshot',
     });
     const other = await db.StockProduct.create({
       modelKey: `receive_other_${prefix}`,

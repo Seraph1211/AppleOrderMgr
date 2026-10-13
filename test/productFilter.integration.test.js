@@ -12,11 +12,20 @@ const otherProduct = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A'
   let owner;
   let outsider;
   let sequence = 7000000000;
-  const keys = JSON.stringify(['sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478']);
+  const keys = JSON.stringify([
+    'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478',
+  ]);
 
   async function create(products, options = {}) {
     try {
+      const recipient = await models.Recipient.create({
+        lastName: '合成',
+        firstName: '取机人',
+        idCardNumber: `11010119900101${String(sequence).slice(-4)}`,
+        tag: options.tag || 'A',
+      });
       return await models.Order.create({
+        recipientRef: recipient.id,
         orderNumber: `W${++sequence}`,
         products,
         appleId: 'synthetic@example.test',
@@ -46,16 +55,18 @@ const otherProduct = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A'
     )
       throw new Error('仅允许独立商品筛选测试库');
     models = require('../src/models');
-    await models.sequelize.query('TRUNCATE orders, users RESTART IDENTITY CASCADE');
+    await models.sequelize.query('TRUNCATE recipients, orders, users RESTART IDENTITY CASCADE');
     owner = await models.User.create({
       username: 'product_owner',
       password: 'Synthetic-password-1!',
       role: 'operator',
+      orderAccess: { mode: 'tags', tags: ['A'] },
     });
     outsider = await models.User.create({
       username: 'product_other',
       password: 'Synthetic-password-1!',
       role: 'operator',
+      orderAccess: { mode: 'tags', tags: ['A'] },
     });
     const express = require('express');
     const app = express();
@@ -104,12 +115,18 @@ const otherProduct = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A'
       expect(response.status).toBe(200);
       const data = response.body.data;
       expect(path === 'orders' ? data.total : data.pagination.total).toBe(2);
-      expect((data.orders || data.items)[0].products[0].filterKeys).toContain('sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478');
+      expect((data.orders || data.items)[0].products[0].filterKeys).toContain(
+        'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478'
+      );
     }
     const options = await get('orders/filter-options', { productKeys: keys });
     expect(options.body.data.productOptions).toHaveLength(2);
     expect(
-      options.body.data.productOptions.find(option => option.value === 'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478').count
+      options.body.data.productOptions.find(
+        option =>
+          option.value ===
+          'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478'
+      ).count
     ).toBe(2);
   });
 
@@ -146,7 +163,9 @@ const otherProduct = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A'
     );
     await models.Order.update({ products: [otherProduct] }, { where: { id: order.id } });
     await order.reload();
-    expect(order.productFilterItems[0].key).toBe('sku:MJY64CH/A:4a8edec7d075531604683476fdda6c8896245f9d0eb84bdc970ce67b36080312');
+    expect(order.productFilterItems[0].key).toBe(
+      'sku:MJY64CH/A:4a8edec7d075531604683476fdda6c8896245f9d0eb84bdc970ce67b36080312'
+    );
     expect((await get('orders', { productKeys: keys })).body.data.total).toBe(0);
   });
 
@@ -174,7 +193,9 @@ const otherProduct = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A'
     const qi = models.sequelize.getQueryInterface();
     await migration.down(qi);
     const { previewProductFilters } = require('../scripts/previewProductFilters');
-    expect((await previewProductFilters(models.sequelize)).options[0].value).toBe('sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478');
+    expect((await previewProductFilters(models.sequelize)).options[0].value).toBe(
+      'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478'
+    );
     await migration.up(qi, models.Sequelize);
     await order.reload();
     expect(order.products).toEqual(before.products);
@@ -191,7 +212,19 @@ const otherProduct = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A'
       }
     );
     const options = (await get('orders/filter-options')).body.data.productOptions;
-    expect(options.find(option => option.value === 'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478').count).toBe(1);
-    expect(options.find(option => option.value === 'sku:MJY64CH/A:4a8edec7d075531604683476fdda6c8896245f9d0eb84bdc970ce67b36080312').count).toBe(5001);
+    expect(
+      options.find(
+        option =>
+          option.value ===
+          'sku:MJYD4CH/A:e72d13c5ecf63b929747f62f8b5fd42d7a7a04565a2a9bc11bef5d737e2a9478'
+      ).count
+    ).toBe(1);
+    expect(
+      options.find(
+        option =>
+          option.value ===
+          'sku:MJY64CH/A:4a8edec7d075531604683476fdda6c8896245f9d0eb84bdc970ce67b36080312'
+      ).count
+    ).toBe(5001);
   }, 30000);
 });

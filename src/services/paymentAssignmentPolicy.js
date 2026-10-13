@@ -1,3 +1,5 @@
+const { getRecipientTag } = require('./recipientTagService');
+const { getOrderAccess } = require('./orderAccessService');
 const {
   getPaymentDeadline,
   isAssignmentBlocked,
@@ -31,7 +33,12 @@ function describeAutoAssignment(task, rule, overview, now = new Date()) {
   );
   const eligible = staff.filter(
     person =>
-      person.status === 'active' && person.hasExecutionPermissions && person.autoAssignEnabled
+      person.status === 'active' &&
+      person.hasExecutionPermissions &&
+      person.autoAssignEnabled &&
+      (getOrderAccess(person).mode === 'all' ||
+        (getRecipientTag(task.order) !== null &&
+          getOrderAccess(person).tags.includes(getRecipientTag(task.order))))
   );
   if (!overview.settings.enabled) {
     reasonCode = 'DISABLED';

@@ -13,7 +13,7 @@ suite('仪表板统计（正式迁移后的专用 PostgreSQL）', () => {
 
   beforeAll(async () => {
     if (
-      process.env.DB_NAME !== 'apple_order_mgr_dashboard_test_20260923' ||
+      !/^apple_order_mgr_dashboard_test_\d+$/.test(process.env.DB_NAME || '') ||
       process.env.DATABASE_URL
     )
       throw new Error('仅允许仪表板专用隔离库');
@@ -26,12 +26,14 @@ suite('仪表板统计（正式迁移后的专用 PostgreSQL）', () => {
       ('合成', '一', 'synthetic-only-1', '未使用', '档案A', '南京', NOW(), NOW()),
       ('合成', '二', 'synthetic-only-2', '使用中', '档案A', '南京', NOW(), NOW()),
       ('合成', '三', 'synthetic-only-3', '已下架', '档案A', '南京', NOW(), NOW()),
-      ('合成', '四', 'synthetic-only-4', '未使用', '来源A', '南京', NOW(), NOW()) RETURNING id`);
+      ('合成', '四', 'synthetic-only-4', '未使用', '范围A', '南京', NOW(), NOW()),
+      ('合成', '五', 'synthetic-only-5', '已下架', ' O''Reilly,团队 ', '南京', NOW(), NOW()),
+      ('合成', '六', 'synthetic-only-6', '未使用', '范围B', '南京', NOW(), NOW()) RETURNING id`);
     recipientIds = recipients.map(row => row.id);
     filters = {
       startDate: '2026-09-23',
       endDate: '2026-09-23',
-      orderUser: { orderAccess: { mode: 'tags', tags: ['范围A'] } },
+      orderUser: { orderAccess: { mode: 'tags', tags: ['档案A', '范围A', " O'Reilly,团队 "] } },
     };
     const stores = await models.PickupStore.findAll({ raw: true });
     const tianjin = stores.find(store => store.city === '天津');
@@ -59,7 +61,8 @@ suite('仪表板统计（正式迁移后的专用 PostgreSQL）', () => {
       },
       {
         products: [{ name: '隐藏商品', quantity: 1 }],
-        tag: '范围B',
+        tag: '来源不可用于授权',
+        recipientRef: recipientIds[5],
         emailOrderStatus: 'processing',
       },
       { products: [productA], orderDate: '2026-09-23T16:00:00.000Z' },
@@ -73,7 +76,8 @@ suite('仪表板统计（正式迁移后的专用 PostgreSQL）', () => {
         products: [productA],
         emailOrderStatus: 'processing',
         ingestionSource: 'aos',
-        sourceRecipientTag: " O'Reilly,团队 ",
+        sourceRecipientTag: '来源特殊标签',
+        recipientRef: recipientIds[4],
         pickupStore: 'Apple 南京东路',
       },
     ];
@@ -81,7 +85,8 @@ suite('仪表板统计（正式迁移后的专用 PostgreSQL）', () => {
       const order = await models.Order.create({
         orderNumber: `W${String(9000000000 + index)}`,
         orderDate: '2026-09-22T16:00:00.000Z',
-        tag: '范围A',
+        tag: '历史来源',
+        recipientRef: recipientIds[3],
         ...override,
       });
       await models.Order.update(
@@ -120,14 +125,14 @@ suite('仪表板统计（正式迁移后的专用 PostgreSQL）', () => {
     });
     expect(stats).toMatchObject({ totalOrders: 0, availableRecipients: 2 });
     expect(
-      (await service.getStats({ ...filters, recipientTags: ['档案A', '来源A'] }))
+      (await service.getStats({ ...filters, recipientTags: ['档案A', '范围A'] }))
         .availableRecipients
     ).toBe(3);
   });
-  test('应统一趋势、商品和城市的复合筛选，并保留 AOS 来源 TAG 优先', async () => {
+  test('应统一趋势、商品和城市的复合筛选，所有来源统一读取当前档案 TAG', async () => {
     const selection = {
       ...filters,
-      recipientTags: ['来源A'],
+      recipientTags: ['档案A'],
       emailOrderStatuses: ['processing'],
       productKeys: [productKey],
     };
@@ -137,7 +142,8 @@ suite('仪表板统计（正式迁移后的专用 PostgreSQL）', () => {
       { key: productKey, name: productA.name, value: 1 },
     ]);
     expect(await service.getCityDistribution(selection)).toEqual([{ name: '北京', value: 1 }]);
-    expect((await service.getStats({ ...filters, recipientTags: ['档案A'] })).totalOrders).toBe(1);
+    expect((await service.getStats({ ...filters, recipientTags: ['档案A'] })).totalOrders).toBe(2);
+    expect((await service.getStats({ ...filters, recipientTags: ['来源A'] })).totalOrders).toBe(0);
   });
   test('商品应以订单去重，不将多件或重复明细算作多单', async () => {
     const rows = await service.getProductDistribution(filters);
@@ -157,7 +163,8 @@ suite('仪表板统计（正式迁移后的专用 PostgreSQL）', () => {
   test('候选应包含完整商品名称并受其他条件及访问范围限制', async () => {
     const options = await service.getFilterOptions({
       ...filters,
-      recipientTags: ['来源A'],
+      emailOrderStatuses: ['processing'],
+      recipientTags: ['档案A'],
       productKeys: [productKey],
     });
     expect(options.productOptions).toHaveLength(1);
@@ -205,7 +212,7 @@ suite('仪表板统计（正式迁移后的专用 PostgreSQL）', () => {
             startDate: filters.startDate,
             endDate: filters.endDate,
             productKeys: JSON.stringify([productKey]),
-            recipientTags: JSON.stringify(['来源A']),
+            recipientTags: JSON.stringify(['档案A']),
           },
         },
         res

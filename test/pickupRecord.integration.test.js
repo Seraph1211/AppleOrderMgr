@@ -45,7 +45,7 @@ suite('取货记录数据库与 TAG 范围', () => {
     models = require('../src/models');
     controller = require('../src/controllers/pickupController');
     await models.sequelize.query(
-      'TRUNCATE pickup_record_events, pickup_evidence, pickup_records, users, orders RESTART IDENTITY CASCADE'
+      'TRUNCATE pickup_record_events, pickup_evidence, pickup_records, recipients, users, orders RESTART IDENTITY CASCADE'
     );
     user = await models.User.create({
       username: 'pickup_staff_test',
@@ -74,10 +74,19 @@ suite('取货记录数据库与 TAG 范围', () => {
       server = app.listen(0, '127.0.0.1', resolve);
     });
     baseUrl = `http://127.0.0.1:${server.address().port}`;
+    const tagProfiles = await models.Recipient.bulkCreate(
+      ['TAG-INTERNAL', 'TAG-EXTERNAL'].map((tag, index) => ({
+        lastName: '合成',
+        firstName: '取机人',
+        idCardNumber: `1101011990010100${index + 10}`,
+        tag,
+      }))
+    );
     [visibleOrder, hiddenOrder] = await models.Order.bulkCreate([
       {
         orderNumber: 'W9700000001',
         tag: 'TAG-INTERNAL',
+        recipientRef: tagProfiles[0].id,
         recipientName: '合成取机人甲',
         products: [{ name: '合成手机', model: 'TEST-1', quantity: 2 }],
         emailPickupDate: '2026-09-23',
@@ -91,6 +100,7 @@ suite('取货记录数据库与 TAG 范围', () => {
       {
         orderNumber: 'W9700000002',
         tag: 'TAG-EXTERNAL',
+        recipientRef: tagProfiles[1].id,
         recipientName: '合成取机人乙',
         products: [{ name: '合成手机', model: 'TEST-2', quantity: 1 }],
       },
@@ -117,7 +127,14 @@ suite('取货记录数据库与 TAG 范围', () => {
 
   test('历史照片列表保持范围交集，多选保留逗号及引号', async () => {
     const unusualTag = "TAG, O'Neil";
+    const specialProfile = await models.Recipient.create({
+      lastName: '合成',
+      firstName: '特殊',
+      idCardNumber: '110101199001010019',
+      tag: unusualTag,
+    });
     const extra = await models.Order.create({
+      recipientRef: specialProfile.id,
       orderNumber: 'W9700000003',
       tag: unusualTag,
       products: [{ name: '合成手机', quantity: 1 }],
@@ -161,6 +178,7 @@ suite('取货记录数据库与 TAG 范围', () => {
     const other = await models.Order.create({
       orderNumber: 'W9700000004',
       tag: 'TAG-INTERNAL',
+      recipientRef: visibleOrder.recipientRef,
       emailOrderStatus: 'processing',
       products: [{ name: '合成手机', quantity: 1 }],
       emailPickupInfo: { storeName: "Apple 测试'门店" },

@@ -14,7 +14,7 @@ const emptyRule = () => ({ name: '', enabled: true, recipientTags: [], assigneeU
 const accountLabel = person =>
   person ? `${person.nickname || person.username}（${person.username}）` : '';
 
-/** 管理 AOS TAG 自动分配规则，所有修改均显式保存。 */
+/** 管理取机人 TAG 自动分配规则，所有修改均显式保存。 */
 export default function PaymentTagRulesModal({ onClose, onSaved }) {
   const [rules, setRules] = useState([]);
   const [tagOptions, setTagOptions] = useState([]);
@@ -96,8 +96,8 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
     );
   };
   const addTag = () => {
-    const tag = newTag.trim();
-    if (!tag || tag.length > 500) {
+    const tag = newTag;
+    if (!tag.trim() || tag.length > 500) {
       setError('请输入 1–500 个字符的完整 TAG');
       return;
     }
@@ -181,7 +181,8 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
               TAG 分配规则
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              AOS TAG 完整匹配；在指定账号中按负载分配，无人可接单时等待。
+              所有来源订单按当前取机人 TAG
+              完整匹配；在有对应访问范围的指定账号中按负载分配，无人可接单时等待。
             </p>
           </div>
           <button
@@ -252,7 +253,7 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
                   </p>
                   <TagMultiSelect
                     ariaLabel="选择规则 TAG"
-                    placeholder="选择 AOS TAG"
+                    placeholder="选择取机人 TAG"
                     options={tagOptions}
                     value={draft.recipientTags}
                     onChange={recipientTags => setDraft({ ...draft, recipientTags })}
@@ -286,7 +287,10 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
                         key={tag}
                         className="inline-flex max-w-full items-center gap-1 rounded bg-blue-50 px-2 py-1 text-sm text-primary"
                       >
-                        <span className="break-all">{tag}</span>
+                        <span className="break-all whitespace-pre-wrap">{tag}</span>
+                        {!tagOptions.includes(tag) && (
+                          <span className="text-xs text-amber-700">暂无对应档案 TAG</span>
+                        )}
                         <button
                           type="button"
                           aria-label={`移除 TAG ${tag}`}
@@ -303,7 +307,9 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
                     ))}
                   </div>
                   <p className="text-xs text-gray-500">
-                    区分大小写，去除首尾空格。同一 TAG 只能存在于一条启用规则中。
+                    区分大小写并保留空格，按完整字符串匹配。同一 TAG
+                    只能存在于一条启用规则中。未命中规则沿用普通分配，缺失 TAG
+                    仅全部范围账号可接单。
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -481,7 +487,14 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
                         <td className="px-3 py-3 max-w-40 break-words font-medium">{rule.name}</td>
                         <td className="px-3 py-3 max-w-56 break-all">
                           {rule.recipientTags.map(tag => (
-                            <div key={tag}>{tag}</div>
+                            <div key={tag} className="whitespace-pre-wrap">
+                              {tag}
+                              {!tagOptions.includes(tag) && (
+                                <span className="ml-1 text-xs text-amber-700">
+                                  暂无对应档案 TAG
+                                </span>
+                              )}
+                            </div>
                           ))}
                         </td>
                         <td className="px-3 py-3 max-w-56 break-words">

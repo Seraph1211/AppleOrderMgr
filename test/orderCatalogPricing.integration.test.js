@@ -12,7 +12,14 @@ const product = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A', qua
   let sequence = 7800000000;
   async function create(products = [product], values = {}) {
     try {
+      const recipient = await models.Recipient.create({
+        lastName: '合成',
+        firstName: '取机人',
+        idCardNumber: `11010119900101${String(sequence).slice(-4)}`,
+        tag: values.tag || 'A',
+      });
       return await models.Order.create({
+        recipientRef: recipient.id,
         orderNumber: `W${++sequence}`,
         appleId: 'pricing@example.test',
         products,
@@ -44,11 +51,12 @@ const product = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A', qua
     )
       throw new Error('仅允许独立订单金额测试库');
     models = require('../src/models');
-    await models.sequelize.query('TRUNCATE orders, users RESTART IDENTITY CASCADE');
+    await models.sequelize.query('TRUNCATE recipients, orders, users RESTART IDENTITY CASCADE');
     user = await models.User.create({
       username: 'pricing_owner',
       password: 'Synthetic-password-1!',
       role: 'operator',
+      orderAccess: { mode: 'tags', tags: ['A'] },
     });
     const express = require('express');
     const app = express();
@@ -173,7 +181,11 @@ const product = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A', qua
   });
 
   test('仪表板与渠道汇总映射且遵守 TAG 范围、缺失和付款分组', async () => {
-    await create([product], { paymentStatus: 'paid', status: 'picked_up' });
+    await create([product], {
+      paymentStatus: 'paid',
+      status: 'picked_up',
+      emailPaymentStatus: 'paid',
+    });
     await create([{ name: '未知', quantity: 1 }], { officialOrderAmount: 888 });
     await create([product], { tag: 'B' });
     const stats = await require('../src/services/dashboardService').getStats({
@@ -186,7 +198,7 @@ const product = { name: 'iPhone 18 Pro Max 黑色 256G', model: 'MJY64CH/A', qua
     expect(channels[0]).toMatchObject({
       totalAmount: 21998,
       paidAmount: 21998,
-      deliveredAmount: 21998,
+      deliveredAmount: null,
       missingAmountOrders: 1,
       amountSource: 'catalog',
     });

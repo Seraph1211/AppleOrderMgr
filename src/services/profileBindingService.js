@@ -5,6 +5,7 @@ const ApiError = require('../utils/ApiError');
 /** 同一事务内串行化基础档案变更，避免导入、手工换绑及分配互相覆盖。 */
 async function lockProfiles(transaction, actorId = null, initial = false) {
   try {
+    await sequelize.query('SELECT pg_advisory_xact_lock(742091)', { transaction });
     await sequelize.query('SELECT pg_advisory_xact_lock(17092026)', { transaction });
     await sequelize.query(
       "SELECT set_config('app.actor_id', :actor, true), set_config('app.binding_initial', :initial, true)",

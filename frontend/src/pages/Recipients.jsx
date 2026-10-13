@@ -44,7 +44,8 @@ import TagMultiSelect from '../components/TagMultiSelect';
 import RecipientImportInfoModal from '../components/RecipientImportInfoModal';
 
 export default function Recipients() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const canChangeOrderScope = user?.role === 'admin' || user?.orderAccess?.mode === 'all';
   const [recipients, setRecipients] = useState([]);
   const [showAssociations, setShowAssociations] = useState(false);
   const [detailItem, setDetailItem] = useState(null);
@@ -557,7 +558,7 @@ export default function Recipients() {
                 <Edit className="w-4 h-4 text-gray-400 hover:text-primary" />
               </button>
             )}
-            {can(PERMISSIONS.RECIPIENTS_DELETE) && (
+            {can(PERMISSIONS.RECIPIENTS_DELETE) && canChangeOrderScope && (
               <button
                 onClick={() => handleDelete(item)}
                 className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
@@ -586,11 +587,12 @@ export default function Recipients() {
           <p className="text-gray-500 mt-1">管理所有取机人信息</p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
-          {['orders.read', 'orders.edit', 'recipients.read', 'apple_ids.read'].every(can) && (
-            <button className="btn btn-secondary" onClick={() => setShowAssociations(true)}>
-              关联历史订单
-            </button>
-          )}
+          {canChangeOrderScope &&
+            ['orders.read', 'orders.edit', 'recipients.read', 'apple_ids.read'].every(can) && (
+              <button className="btn btn-secondary" onClick={() => setShowAssociations(true)}>
+                关联历史订单
+              </button>
+            )}
           {can(PERMISSIONS.RECIPIENTS_EXPORT) && (
             <button
               onClick={handleExport}

@@ -80,7 +80,8 @@ export default function BatchImportModal({ type, onClose, onImport }) {
           {type === 'recipients' && (
             <p className="text-sm text-blue-800 bg-blue-50 p-3 rounded">
               取机人与 Apple ID 独立管理。旧表中的账号、密码列会忽略，不会创建或修改 Apple
-              ID；账号请到 Apple ID 管理单独导入。
+              ID；账号请到 Apple ID 管理单独导入。覆盖已有取机人 TAG
+              需要全部订单数据范围，修改后历史订单实时跟随。
             </p>
           )}
           <div className="flex flex-wrap items-center gap-3">

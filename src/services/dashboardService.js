@@ -1,3 +1,4 @@
+const { getOrderTagBind } = require('./orderAccessService');
 const { Op, fn, col, literal } = require('sequelize');
 const { Order, Recipient, PickupStore } = require('../models');
 const { buildDashboardWhere, RECIPIENT_TAG_SQL } = require('./dashboardFilters');
@@ -19,6 +20,10 @@ async function getStats(filters = {}) {
     const where = buildDashboardWhere(filters);
     const recipientWhere = { status: { [Op.in]: ['使用中', '未使用'] } };
     if (filters.recipientTags?.length) recipientWhere.tag = { [Op.in]: filters.recipientTags };
+    if (filters.orderUser) {
+      const tags = getOrderTagBind(filters.orderUser);
+      if (tags !== null) recipientWhere[Op.and] = [{ tag: { [Op.in]: tags } }];
+    }
     const [
       totalOrders,
       paidOrders,

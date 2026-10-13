@@ -1,3 +1,4 @@
+const { assertCurrentOrderAccess } = require('./orderAccessService');
 const { AosRecord, Order, PaymentTask, PaymentTaskEvent, sequelize } = require('../models');
 const { parseAosLine } = require('./aosParser');
 const { getPaymentDeadline } = require('./paymentEligibility');
@@ -200,6 +201,7 @@ async function getTaskAlipayPaymentLink(taskId, actorUserId, own) {
       if (!task) {
         throw ApiError.notFound(own ? '付款任务不存在或已转派' : '付款任务不存在');
       }
+      await assertCurrentOrderAccess(actorUserId, [task.orderId], { transaction });
       const order = await Order.findByPk(task.orderId, { transaction });
       if (!order) throw ApiError.notFound('订单不存在');
       if (!isAlipayPayment(getSourcePaymentMethod(order))) {

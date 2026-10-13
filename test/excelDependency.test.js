@@ -205,15 +205,7 @@ describe('固定 SheetJS 制品与读写兼容', () => {
         channel: '渠'.repeat(101),
         status: 'bad',
       }).map(item => item.field)
-    ).toEqual([
-      'lastName',
-      'firstName',
-      'idCardNumber',
-      'phone',
-      'email',
-      'channel',
-      'status',
-    ]);
+    ).toEqual(['lastName', 'firstName', 'idCardNumber', 'phone', 'email', 'channel', 'status']);
   });
 
   test('Apple ID 必填和枚举校验保持不变', () => {
@@ -350,7 +342,8 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
         toJSON: () => ({
           orderNumber: 'W1234567890',
           appleId: 'sample@example.invalid',
-          tag: '=1+1',
+          tag: 'ORIGINAL',
+          recipient: { tag: '=1+1' },
           status: 'payment_received',
           paymentStatus: 'paid',
           orderAmount: '21998.00',

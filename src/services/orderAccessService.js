@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const { Op } = require('sequelize');
+const { recipientTagWhere, normalizeRecipientTag } = require('./recipientTagService');
 const ApiError = require('../utils/ApiError');
 
 /** 校验并规范化订单范围，不改写 TAG 原文。 */
@@ -24,15 +25,17 @@ function getOrderAccess(user) {
 }
 
 /** 生成订单范围条件，与业务条件相交，不能被请求筛选覆盖。 */
-function scopeOrderWhere(user, where = {}) {
+function scopeOrderWhere(user, where = {}, alias = 'Order') {
   const access = getOrderAccess(user);
-  return access.mode === 'all' ? where : { [Op.and]: [where, { tag: { [Op.in]: access.tags } }] };
+  return access.mode === 'all'
+    ? where
+    : { [Op.and]: [where, recipientTagWhere({ [Op.in]: access.tags }, alias)] };
 }
 
 /** 校验单个 TAG，不暴露范围外资源是否存在。 */
 function assertTagAccess(user, tag) {
   const access = getOrderAccess(user);
-  if (access.mode !== 'all' && !access.tags.includes(tag)) {
+  if (access.mode !== 'all' && (!normalizeRecipientTag(tag) || !access.tags.includes(tag))) {
     throw ApiError.notFound('订单或渠道不存在或不可访问');
   }
 }
@@ -59,7 +62,29 @@ function getOrderTagBind(user) {
   return access.mode === 'all' ? null : access.tags;
 }
 
+/** 拒绝通过基础资料修改扩大有限范围账号的订单访问。 */
+function assertAllOrderAccess(user) {
+  if (getOrderAccess(user).mode !== 'all')
+    throw new ApiError(403, 'FORBIDDEN', '此操作改变订单 TAG 范围，需要全部订单范围');
+}
+
+/** 加载实时账号并校验订单范围，付款任务不额外要求 orders.read。 */
+async function assertCurrentOrderAccess(userId, orderIds, options = {}) {
+  try {
+    const { User } = require('../models');
+    const user = await User.findByPk(userId, { transaction: options.transaction });
+    if (!user || user.status !== 'active') throw ApiError.notFound('订单不存在或不可访问');
+    await assertOrderIdsAccess(user, orderIds, options);
+    return user;
+  } catch (error) {
+    logger.warn('实时订单范围校验失败', { userId, errorType: error.name });
+    throw error;
+  }
+}
+
 module.exports = {
+  assertAllOrderAccess,
+  assertCurrentOrderAccess,
   validateOrderAccess,
   getOrderAccess,
   scopeOrderWhere,

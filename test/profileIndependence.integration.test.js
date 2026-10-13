@@ -117,17 +117,25 @@ integration('独立档案、迁移保护和订单权限 PostgreSQL 回归', () =
       lastName: '张',
       firstName: '三',
       idCardNumber: '110101199001019002',
+      tag: '可见',
     });
     const q = await models.Recipient.create({
       lastName: '李',
       firstName: '四',
       idCardNumber: '110101199001019003',
+      tag: '可见',
+    });
+    const hidden = await models.Recipient.create({
+      lastName: '隐',
+      firstName: '藏',
+      idCardNumber: '110101199001019010',
+      tag: '隐藏',
     });
     for (const [n, account, person, tag] of [
       [2, a, p, '可见'],
       [3, b, p, '可见'],
       [4, a, q, '可见'],
-      [5, a, p, '隐藏'],
+      [5, a, hidden, '隐藏'],
     ]) {
       await models.Order.create({
         orderNumber: `W812000000${n}`,

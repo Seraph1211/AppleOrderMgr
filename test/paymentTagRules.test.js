@@ -20,10 +20,10 @@ const candidate = (id, activeCount = 0, capacity = 10, lastAssignedAt = null) =>
   activeCount,
 });
 
-test('规则规范化只去首尾空格，保留 TAG 内部字符和大小写', () => {
+test('规则名称去首尾空格，非空 TAG 原文保留', () => {
   expect(
     normalizeRule({ ...input, name: '  渠道分配  ', recipientTags: [' A B ', 'A B', 'a b'] })
-  ).toMatchObject({ name: '渠道分配', recipientTags: ['A B', 'a b'] });
+  ).toMatchObject({ name: '渠道分配', recipientTags: [' A B ', 'A B', 'a b'] });
 });
 
 test.each([
@@ -47,30 +47,20 @@ test.each([
   expect(() => normalizeRule({ ...input, ...patch })).toThrow();
 });
 
-test('仅 AOS 来源完整匹配，不做前缀、包含或档案 TAG 匹配', () => {
+test('所有来源仅匹配当前档案完整 TAG，无来源回退', () => {
   const rule = { ...input, id: 7 };
-  const index = buildRuleIndex([rule, { ...input, id: 8, enabled: false }]);
-  expect(
-    matchRule({ ingestionSource: 'aos', sourceRecipientTag: ' 渠道A ', tag: 'OTHER' }, index)
-  ).toBe(rule);
-  expect(matchRule({ ingestionSource: 'aos', sourceRecipientTag: null, tag: '渠道B' }, index)).toBe(
-    rule
-  );
-  for (const order of [
-    { ingestionSource: 'email', tag: '渠道A' },
-    { ingestionSource: 'aos', tag: '渠道A-1' },
-    { ingestionSource: 'aos', tag: '' },
-    { ingestionSource: 'aos', sourceRecipientTag: 'OTHER', tag: '渠道A' },
-    null,
-  ]) {
-    expect(matchRule(order, index)).toBeNull();
+  const index = buildRuleIndex([rule]);
+  for (const ingestionSource of ['aos', 'email', 'unknown']) {
+    expect(matchRule({ ingestionSource, recipient: { tag: '渠道A' }, tag: 'OLD' }, index)).toBe(
+      rule
+    );
+    expect(
+      matchRule({ ingestionSource, sourceRecipientTag: '渠道A', tag: '渠道A' }, index)
+    ).toBeNull();
   }
-  expect(
-    matchRule(
-      { ingestionSource: 'aos', tag: 'a' },
-      buildRuleIndex([{ ...input, recipientTags: ['A'] }])
-    )
-  ).toBeNull();
+  for (const tag of [null, '', ' ', ' 渠道A ', '渠道A-1', '渠道a']) {
+    expect(matchRule({ recipient: { tag }, sourceRecipientTag: '渠道A' }, index)).toBeNull();
+  }
 });
 
 test('只在目标集合按负载比例选人，容量满时不回退；未命中保持默认算法', () => {
@@ -106,6 +96,7 @@ const overview = {
   staff: [
     {
       id: 1,
+      orderAccess: { mode: 'all', tags: [] },
       status: 'active',
       hasExecutionPermissions: true,
       autoAssignEnabled: true,

@@ -35,7 +35,7 @@ describe('仪表板输入与筛选契约', () => {
     expect(filters.recipientTags).toEqual([" O'Reilly,团队 "]);
     expect(filters.orderUser).toBe(user);
     expect(filters.status).toBe('ready_for_pickup');
-    expect(buildDashboardWhere(filters).tag[Op.in]).toEqual(['可见']);
+    expect(buildDashboardWhere(filters)[Op.and].at(-1).logic[Op.in]).toEqual(['可见']);
   });
 
   test('应接受邮件推定已取货状态', () => {

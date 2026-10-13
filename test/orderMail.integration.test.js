@@ -112,7 +112,7 @@ const enabled = process.env.RUN_ORDER_MAIL_INTEGRATION === 'true';
     await migration.down(qi);
     await migration.up(qi, models.Sequelize);
     await lifecycleMigration.up(qi, models.Sequelize);
-    await models.sequelize.query('TRUNCATE users, orders RESTART IDENTITY CASCADE');
+    await models.sequelize.query('TRUNCATE recipients, users, orders RESTART IDENTITY CASCADE');
     const sessions = [
       {
         id: key(),
@@ -143,11 +143,20 @@ const enabled = process.env.RUN_ORDER_MAIL_INTEGRATION === 'true';
         sessionId: sessions[0].id,
       })
     );
+    const tagProfiles = await models.Recipient.bulkCreate(
+      ['MAIL-A', 'MAIL-B'].map((tag, index) => ({
+        lastName: '合成',
+        firstName: '取机人',
+        idCardNumber: `1101011990010100${index + 10}`,
+        tag,
+      }))
+    );
     [order, otherOrder] = await Promise.all(
       ['W1234567890', 'W2234567890'].map((orderNumber, index) =>
         models.Order.create({
           orderNumber,
           tag: index ? 'MAIL-B' : 'MAIL-A',
+          recipientRef: tagProfiles[index].id,
           products: [{ name: '合成商品', quantity: 1 }],
           orderDate: new Date(),
           orderUrl: 'https://example.invalid/' + orderNumber,

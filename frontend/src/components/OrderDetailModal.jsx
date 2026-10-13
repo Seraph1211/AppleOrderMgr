@@ -1,3 +1,4 @@
+import RecipientTag from './RecipientTag';
 import OrderSerialEditor from './OrderSerialEditor';
 import AlertModal from './AlertModal';
 import OrderAmount from './OrderAmount';
@@ -34,6 +35,9 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
   const [detailExtras, setDetailExtras] = useState({
     orderId: null,
     recipientPhone: null,
+    recipientTag: null,
+    recipientTagState: null,
+    tagLoaded: false,
     applePassword: null,
     orderUrl: null,
     orderLinkError: null,
@@ -67,6 +71,9 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
     setDetailExtras({
       orderId: order.id,
       recipientPhone: null,
+      recipientTag: null,
+      recipientTagState: null,
+      tagLoaded: false,
       applePassword: null,
       orderUrl: null,
       orderLinkError: null,
@@ -77,6 +84,9 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
         setDetailExtras({
           orderId: order.id,
           recipientPhone: response.data?.recipient_phone || null,
+          recipientTag: response.data?.recipient_tag ?? null,
+          recipientTagState: response.data?.recipient_tag_state,
+          tagLoaded: true,
           applePassword: response.data?.apple_password || null,
           orderUrl: response.data?.order_url || null,
           orderLinkError: response.data?.order_link_error || null,
@@ -87,6 +97,9 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
         setDetailExtras({
           orderId: order.id,
           recipientPhone: null,
+          recipientTag: null,
+          recipientTagState: null,
+          tagLoaded: false,
           applePassword: null,
           orderUrl: null,
           orderLinkError: error.message || '订单详情加载失败',
@@ -98,7 +111,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
     return () => {
       active = false;
     };
-  }, [isOpen, order?.id]);
+  }, [isOpen, order?.id, order?.recipientTag, order?.recipientTagState]);
 
   if (!isOpen || !order) return null;
 
@@ -235,7 +248,23 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
               <div>
                 <p className="text-sm text-gray-600">取机人 / TAG</p>
                 <p className="mt-1 break-words text-sm">
-                  {order.recipientName || '-'} / {order.recipientTag || '-'}
+                  {order.recipientName || '-'} /{' '}
+                  {detailLoading || detailExtras.orderId !== order.id ? (
+                    '加载中…'
+                  ) : detailExtras.tagLoaded ? (
+                    <RecipientTag
+                      value={detailExtras.recipientTag}
+                      state={detailExtras.recipientTagState}
+                    />
+                  ) : (
+                    'TAG 读取失败'
+                  )}
+                </p>
+              </div>
+              <div>
+                <p className="text-sm text-gray-600">来源 TAG（历史记录）</p>
+                <p className="mt-1 break-words whitespace-pre-wrap text-sm">
+                  {order.sourceRecipientTag || '—'}
                 </p>
               </div>
               <div>

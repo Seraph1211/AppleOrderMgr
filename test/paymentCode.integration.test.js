@@ -30,6 +30,7 @@ const { buildAosLine } = require('./fixtures/aosRecords');
       username: 'code_other',
       password: 'synthetic-other-password',
       role: 'operator',
+      orderAccess: { mode: 'all', tags: [] },
     });
     device = await AosDevice.create({
       id: crypto.randomUUID(),
@@ -309,11 +310,11 @@ const { buildAosLine } = require('./fixtures/aosRecords');
     await expect(service.getPaymentCode(Number(task.id), actor.id)).rejects.toThrow(
       '付款任务不存在或已转派'
     );
-    await order.update({ status: 'cancelled' });
+    await order.update({ status: 'cancelled', emailOrderStatus: 'cancelled' });
     expect((await service.getPaymentCode(Number(task.id), actor.id, false)).availability).toBe(
       'available'
     );
-    expect((await service.getPaymentCode(Number(task.id), other.id)).officialOrderStatus).toBe(
+    expect((await service.getPaymentCode(Number(task.id), other.id)).emailOrderStatus).toBe(
       'cancelled'
     );
   });
@@ -326,7 +327,10 @@ const { buildAosLine } = require('./fixtures/aosRecords');
       message: `${paymentMethod}暂无法获取付款码`,
     });
     const own = await require('../src/services/paymentTaskService').listOwnTasks(other.id, {});
-    const dispatch = await require('../src/services/paymentDispatchService').listDispatchTasks({});
+    const dispatch = await require('../src/services/paymentDispatchService').listDispatchTasks(
+      {},
+      actor
+    );
     expect(own.items.find(item => item.id === task.id).paymentMethod).toBe(paymentMethod);
     expect(dispatch.items.find(item => item.id === task.id).paymentMethod).toBe(paymentMethod);
     const controller = require('../src/controllers/orderController');

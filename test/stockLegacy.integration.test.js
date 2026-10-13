@@ -38,6 +38,18 @@ if (
     params: { orderId, deviceId },
     body,
   });
+  // 业务 TAG 来自关联档案；保留不同的订单历史值以防回退重新进入权限路径。
+  async function createTaggedRecipient(tag) {
+    try {
+      const row = await db.Recipient.create({
+        lastName: '合成', firstName: '库存验收', tag,
+        idCardNumber: `11010119900101${String((await db.Recipient.count()) + 1000).padStart(4, '0')}`,
+      });
+      return row.id;
+    } catch (error) {
+      throw new Error(`库存TAG测试夹具失败: ${error.message}`);
+    }
+  }
   beforeAll(async () => {
     user = await db.User.create({
       username: `legacy_${suffix}`,
@@ -59,12 +71,14 @@ if (
     orderA = await db.Order.create({
       orderNumber: `W${Date.now().toString().slice(-9)}1`,
       products: [{ name: '合成手机', quantity: 1 }],
-      tag: `A${suffix}`,
+      recipientRef: await createTaggedRecipient(`A${suffix}`),
+      tag: 'legacy_snapshot',
     });
     orderB = await db.Order.create({
       orderNumber: `W${Date.now().toString().slice(-9)}2`,
       products: [{ name: '合成手机', quantity: 1 }],
-      tag: `B${suffix}`,
+      recipientRef: await createTaggedRecipient(`B${suffix}`),
+      tag: 'legacy_snapshot',
     });
     product = await db.StockProduct.create({
       modelKey: `legacy${suffix}`,

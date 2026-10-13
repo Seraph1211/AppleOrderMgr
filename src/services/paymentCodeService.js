@@ -1,3 +1,4 @@
+const { assertCurrentOrderAccess } = require('./orderAccessService');
 const { getSourcePaymentMethod, isWechatPayment } = require('../utils/paymentMethod');
 const { getPaymentDeadline } = require('./paymentEligibility');
 const crypto = require('crypto');
@@ -239,6 +240,7 @@ async function getPaymentCode(id, userId, own = true) {
           lock: transaction.LOCK.SHARE,
         });
         if (!task) throw ApiError.notFound('付款任务不存在或已转派');
+        await assertCurrentOrderAccess(userId, [task.orderId], { transaction });
         const order = await Order.findByPk(task.orderId, { transaction });
         if (!order) throw ApiError.notFound('订单不存在');
         await PaymentTaskEvent.create(

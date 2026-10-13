@@ -1,4 +1,4 @@
-const { scopeOrderWhere } = require('../services/orderAccessService');
+const { scopeOrderWhere, assertAllOrderAccess } = require('../services/orderAccessService');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 const { Op } = require('sequelize');
@@ -65,6 +65,7 @@ async function previewAssociations(req, res) {
 /** 执行选中候选，重验身份与档案，整批只补空外键。 */
 async function executeAssociations(req, res) {
   try {
+    assertAllOrderAccess(req.user);
     const session = sessions.get(req.body?.token);
     if (!session || session.userId !== req.user.id || session.expiresAt <= Date.now())
       throw ApiError.badRequest('预览失效，请重新预览');

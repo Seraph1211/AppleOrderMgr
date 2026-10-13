@@ -1,3 +1,4 @@
+import RecipientTag from '../components/RecipientTag';
 import OrderAmount from '../components/OrderAmount';
 import OrderSources from '../components/OrderSources';
 import OrderPickupPhotos from '../components/orderPickupPhotos';
@@ -224,7 +225,7 @@ export default function OrderDetail() {
                 </dd>
               </div>
               <div>
-                <dt className="text-gray-500">来源 TAG</dt>
+                <dt className="text-gray-500">来源 TAG（历史记录）</dt>
                 <dd>{order.source_recipient_tag || '—'}</dd>
               </div>
               <div>
@@ -275,7 +276,8 @@ export default function OrderDetail() {
               <div>
                 <dt className="text-gray-500">姓名 / TAG</dt>
                 <dd className="break-words text-gray-900">
-                  {order.recipient?.name || '-'} / {order.recipient_tag || '-'}
+                  {order.recipient?.name || '-'} /{' '}
+                  <RecipientTag value={order.recipient_tag} state={order.recipient_tag_state} />
                 </dd>
               </div>
               <div>

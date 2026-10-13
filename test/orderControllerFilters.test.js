@@ -176,7 +176,12 @@ test.each(['admin', 'operator', 'readOnly'])(
     );
     if (role !== 'admin') {
       expect(Order.findOne.mock.calls[0][0].where).toEqual({
-        [Op.and]: [{ id: 1 }, { tag: { [Op.in]: ['合成授权 TAG'] } }],
+        [Op.and]: [
+          { id: 1 },
+          require('../src/services/recipientTagService').recipientTagWhere({
+            [Op.in]: ['合成授权 TAG'],
+          }),
+        ],
       });
     }
   }
@@ -216,7 +221,10 @@ test('订单范围外查询不返回密码或详情', async () => {
     )
   ).rejects.toMatchObject({ statusCode: 404 });
   expect(Order.findOne.mock.calls[0][0].where).toEqual({
-    [Op.and]: [{ id: 1 }, { tag: { [Op.in]: [] } }],
+    [Op.and]: [
+      { id: 1 },
+      require('../src/services/recipientTagService').recipientTagWhere({ [Op.in]: [] }),
+    ],
   });
   expect(res.json).not.toHaveBeenCalled();
 });
@@ -361,7 +369,7 @@ test('官网候选来自受限订单，拆分归一、排除自身筛选并保�
     new Set(['READY_FOR_PICKUP', 'PICKED_UP', '__not_observed__', 'CANCELLED', 'NEW_STATUS'])
   );
   const query = Order.findAll.mock.calls[3][0];
-  expect(query.where[Op.and][1].tag[Op.in]).toEqual(['授权TAG']);
+  expect(query.where[Op.and][1].logic[Op.in]).toEqual(['授权TAG']);
   expect(query.where[Op.and][0][Op.and]).toHaveLength(1);
   expect(query.where[Op.and][0][Op.and][0].logic[Op.in]).toEqual(['processing']);
 });
@@ -383,7 +391,7 @@ test('列表和导出都保留官网状态条件及授权范围', async () => {
   await listOrders(req, { json: jest.fn() });
   await exportOrders(req, { setHeader: jest.fn(), send: jest.fn() });
   for (const query of [Order.findAndCountAll.mock.calls[0][0], Order.findAll.mock.calls[0][0]]) {
-    expect(query.where[Op.and][1].tag[Op.in]).toEqual(['授权TAG']);
+    expect(query.where[Op.and][1].logic[Op.in]).toEqual(['授权TAG']);
     expect(query.where[Op.and][0][Op.and][0].val).toContain("'PICKED_UP'");
   }
 });
@@ -462,7 +470,7 @@ test('付款人候选排除自身条件、保留商品和 TAG 权限且不取全
   const query = Order.findAll.mock.calls[4][0];
   expect(query.where[Op.and][0].payerName).toBeUndefined();
   expect(query.where[Op.and][0][Op.and][0].val).toContain('product_filter_items');
-  expect(query.where[Op.and][1].tag[Op.in]).toEqual(['授权TAG']);
+  expect(query.where[Op.and][1].logic[Op.in]).toEqual(['授权TAG']);
 });
 
 test('预约取货范围包含双边且独立组合实际取货日和旧单日条件', () => {

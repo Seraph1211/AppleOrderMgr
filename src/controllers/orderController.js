@@ -1,4 +1,9 @@
 const {
+  getRecipientTag,
+  getRecipientTagState,
+  recipientTagSql,
+} = require('../services/recipientTagService');
+const {
   collectOfficialStatusOptions,
   buildOfficialStatusCondition,
 } = require('../utils/officialStatusFilter');
@@ -53,7 +58,12 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
   },
   appleId: { label: 'Apple ID', value: item => item.apple_id || '' },
   recipientName: { label: '取机人', value: item => item.recipient_name || '' },
-  recipientTag: { label: '取机人 TAG', value: item => item.recipient_tag || '' },
+  recipientTag: {
+    label: '取机人 TAG',
+    value: item =>
+      item.recipient_tag ||
+      (item.recipient_tag_state === 'unlinked' ? '未关联取机人' : '未设置 TAG'),
+  },
   products: {
     label: '商品信息',
     value: item =>
@@ -115,7 +125,11 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
   },
   paymentMethod: { label: '付款方式', value: item => item.payment_method || '' },
   payerName: { label: '付款人', value: item => item.payer_name || '' },
-  tag: { label: '标签', value: item => item.tag || '' },
+  tag: {
+    label: '标签',
+    value: item =>
+      item.tag || (item.recipient_tag_state === 'unlinked' ? '未关联取机人' : '未设置 TAG'),
+  },
   notes: { label: '备注', value: item => item.notes || '' },
   orderDate: {
     label: '下单时间（北京时间，来源记录）',
@@ -190,10 +204,8 @@ function serializeOrderListItem(order, includeRecipientPhone = false, officialRe
     recipient_name: plain.recipient
       ? `${plain.recipient.lastName || ''}${plain.recipient.firstName || ''}` || plain.recipientName
       : plain.recipientName || null,
-    recipient_tag:
-      plain.ingestionSource === 'aos'
-        ? plain.sourceRecipientTag || plain.recipient?.tag || plain.tag || null
-        : plain.recipient?.tag || plain.tag || null,
+    recipient_tag: getRecipientTag(plain),
+    recipient_tag_state: getRecipientTagState(plain),
     products: serializePublicProducts(plain.products, plain.productFilterItems),
     ...serializeOrderPricingFields(plain),
     ...serializeEmailLifecycleFields(plain),
@@ -210,7 +222,7 @@ function serializeOrderListItem(order, includeRecipientPhone = false, officialRe
     payer_version: plain.payerVersion,
     payment_screenshot: plain.paymentScreenshot,
     order_date: plain.orderDate,
-    tag: plain.tag,
+    tag: getRecipientTag(plain),
     notes: plain.notes,
     created_at: plain.createdAt,
     updated_at: plain.updatedAt,
@@ -244,7 +256,7 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
         plain.recipientName ||
         null,
       id_card_last4: plain.recipient.idCardLast4,
-      tag: plain.recipient.tag || plain.tag || null,
+      tag: getRecipientTag(plain),
       phone: includeRecipientPhone ? plain.recipient.phone : maskPhone(plain.recipient.phone),
     };
   }
@@ -253,7 +265,7 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
       id: null,
       name: plain.recipientName,
       id_card_last4: null,
-      tag: plain.tag || null,
+      tag: null,
       phone: includeRecipientPhone ? plain.recipientPhone : maskPhone(plain.recipientPhone),
     };
   }
@@ -278,10 +290,8 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
     recipient_email: plain.recipientEmail,
     recipient_phone: plain.recipientPhone || null,
     recipient,
-    recipient_tag:
-      plain.ingestionSource === 'aos'
-        ? plain.sourceRecipientTag || plain.recipient?.tag || plain.tag || null
-        : plain.recipient?.tag || plain.tag || null,
+    recipient_tag: getRecipientTag(plain),
+    recipient_tag_state: getRecipientTagState(plain),
     products: serializePublicProducts(plain.products, plain.productFilterItems),
     ...serializeOrderPricingFields(plain),
     ...serializeEmailLifecycleFields(plain),
@@ -294,19 +304,14 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
     payment_screenshot: plain.paymentScreenshot,
     order_date: plain.orderDate,
     order_placed_date: plain.orderPlacedDate,
-    tag: plain.tag,
+    tag: getRecipientTag(plain),
     notes: plain.notes,
     created_at: plain.createdAt,
     updated_at: plain.updatedAt,
   };
 }
 
-// 与列表 recipient_tag 的来源回退顺序一致，保留非空 TAG 的原始值。
-const RECIPIENT_TAG_EXPRESSION = Sequelize.literal(`CASE
-  WHEN "Order"."ingestion_source" = 'aos'
-    THEN COALESCE(NULLIF("Order"."source_recipient_tag", ''), NULLIF("recipient"."tag", ''), NULLIF("Order"."tag", ''))
-  ELSE COALESCE(NULLIF("recipient"."tag", ''), NULLIF("Order"."tag", ''))
-END`);
+const RECIPIENT_TAG_EXPRESSION = Sequelize.literal(recipientTagSql());
 
 /** 构造商品完整名称多选条件。 */
 function buildProductNamesCondition(productNames) {

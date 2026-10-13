@@ -8,7 +8,8 @@ const axios = require('axios');
 const webhook = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=synthetic-key-1234';
 const order = {
   id: 335,
-  tag: '广州 刘炎',
+  recipientRef: 1,
+  recipientTag: '广州 刘炎',
   products: [{ name: 'iPhone 17 黑色 256G', quantity: 1 }],
   paymentMethod: '微信',
   orderDate: '2026-09-19T19:51:00.000Z',
@@ -29,6 +30,7 @@ test('多商品、重复合并、AOS TAG 优先与空值', () => {
   const text = content.buildNotificationText(
     {
       ...order,
+      recipientTag: '档案TAG',
       tag: '旧TAG',
       ingestionSource: 'aos',
       sourceRecipientTag: '新TAG',
@@ -37,8 +39,10 @@ test('多商品、重复合并、AOS TAG 优先与空值', () => {
     },
     'https://example.test'
   );
-  expect(text).toContain('335 || 新TAG || A x 5、B x 1 || 支付宝');
-  expect(content.buildNotificationText({ id: 1 }, 'link')).toBe('1 || - || - || - || - || link');
+  expect(text).toContain('335 || 档案TAG || A x 5、B x 1 || 支付宝');
+  expect(content.buildNotificationText({ id: 1 }, 'link')).toBe(
+    '1 || 未关联取机人 || - || - || - || link'
+  );
 });
 test('代抢消息在完整 TAG 后插入取机人姓名，其他字段保持顺序', () => {
   expect(
@@ -46,7 +50,7 @@ test('代抢消息在完整 TAG 后插入取机人姓名，其他字段保持顺
       {
         ...order,
         id: 717,
-        tag: '代抢 老钟',
+        recipientTag: '代抢 老钟',
         recipientName: ' 罗利 ',
         products: [{ name: 'iPhone 18 Pro Max 勃艮第酒红色 256G', quantity: 2 }],
         orderDate: '2026-09-21T12:39:00.000Z',
@@ -61,7 +65,10 @@ test.each(['代抢', '广州 代抢 老钟', '老钟代抢'])(
   'TAG %s 任意位置包含连续代抢关键词时增加姓名',
   tag => {
     const fields = content
-      .buildNotificationText({ ...order, tag, recipientName: '测试姓名' }, fixture.payload)
+      .buildNotificationText(
+        { ...order, recipientTag: tag, recipientName: '测试姓名' },
+        fixture.payload
+      )
       .split(' || ');
     expect(fields).toHaveLength(7);
     expect(fields.slice(1, 3)).toEqual([tag, '测试姓名']);
@@ -69,7 +76,7 @@ test.each(['代抢', '广州 代抢 老钟', '老钟代抢'])(
 );
 test.each(['广州 刘炎', '代 抢', '', null])('普通或空 TAG %s 不增加姓名', tag => {
   const text = content.buildNotificationText(
-    { ...order, tag, recipientName: '不应出现的姓名' },
+    { ...order, recipientTag: tag, recipientName: '不应出现的姓名' },
     fixture.payload
   );
   expect(text.split(' || ')).toHaveLength(6);
@@ -77,38 +84,36 @@ test.each(['广州 刘炎', '代 抢', '', null])('普通或空 TAG %s 不增加
 });
 test.each([undefined, null, '', ' \n\t '])('代抢姓名缺失或空白 %s 用短横线占位', recipientName => {
   const fields = content
-    .buildNotificationText({ ...order, tag: '代抢 老钟', recipientName }, fixture.payload)
+    .buildNotificationText({ ...order, recipientTag: '代抢 老钟', recipientName }, fixture.payload)
     .split(' || ');
   expect(fields).toHaveLength(7);
   expect(fields[2]).toBe('-');
 });
-test('代抢关键词按 AOS 实际推送 TAG 判断，沿用来源优先与空值回退', () => {
+test('代抢判断使用实时档案，来源关键词不影响消息', () => {
   const aosOrder = { ...order, ingestionSource: 'aos', recipientName: '测试姓名' };
   expect(
     content.buildNotificationText(
-      { ...aosOrder, tag: '普通TAG', sourceRecipientTag: '代抢 来源TAG' },
+      { ...aosOrder, sourceRecipientTag: '代抢 来源TAG' },
       fixture.payload
     )
-  ).toContain('335 || 代抢 来源TAG || 测试姓名 || ');
-  expect(
-    content
-      .buildNotificationText(
-        { ...aosOrder, tag: '代抢 旧TAG', sourceRecipientTag: '普通来源TAG' },
-        fixture.payload
-      )
-      .split(' || ')
-  ).toHaveLength(6);
+  ).not.toContain('测试姓名');
   expect(
     content.buildNotificationText(
-      { ...aosOrder, tag: '代抢 回退TAG', sourceRecipientTag: null },
+      { ...aosOrder, recipientTag: '代抢 档案', sourceRecipientTag: '普通' },
       fixture.payload
     )
-  ).toContain('335 || 代抢 回退TAG || 测试姓名 || ');
+  ).toContain('代抢 档案 || 测试姓名');
+  expect(
+    content.buildNotificationText(
+      { ...aosOrder, recipientTag: null, sourceRecipientTag: '代抢 来源TAG' },
+      fixture.payload
+    )
+  ).toContain('未设置 TAG');
 });
 test('取机人姓名清理控制字符与分隔符，保留付款链接完整', () => {
   const fields = content
     .buildNotificationText(
-      { ...order, tag: '代抢 老钟', recipientName: ' 罗\n利 || 测试\t' },
+      { ...order, recipientTag: '代抢 老钟', recipientName: ' 罗\n利 || 测试\t' },
       fixture.payload
     )
     .split(' || ');
@@ -124,13 +129,8 @@ test('服务器识读合成支付码、坏图与非支付码', () => {
 });
 test('邮件已付款跳过', () => {
   expect(
-    content.orderBlockReason(
-      { ...order, emailPaymentStatus: 'paid' },
-      new Date(order.orderDate)
-    )
-  ).toBe(
-    'ORDER_TERMINAL'
-  );
+    content.orderBlockReason({ ...order, emailPaymentStatus: 'paid' }, new Date(order.orderDate))
+  ).toBe('ORDER_TERMINAL');
 });
 test('历史付款限制跳过', () => {
   expect(

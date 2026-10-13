@@ -2,7 +2,7 @@ jest.mock('../src/models', () => ({
   sequelize: { escape: value => `'${String(value).replaceAll("'", "''")}'` },
   PaymentTask: { findAndCountAll: jest.fn(), findAll: jest.fn() },
   Order: {},
-  User: {},
+  User: { findByPk: jest.fn().mockResolvedValue({ role: 'admin', status: 'active' }) },
 }));
 jest.mock('../src/utils/logger', () => ({ error: jest.fn() }));
 const { PaymentTask } = require('../src/models');

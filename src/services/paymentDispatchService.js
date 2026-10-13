@@ -1,3 +1,9 @@
+const { recipientTagAttributes, getRecipientTag } = require('./recipientTagService');
+const {
+  assertCurrentOrderAccess,
+  getOrderAccess,
+  scopeOrderWhere,
+} = require('./orderAccessService');
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
 const logger = require('../utils/logger');
 const { Op, fn, col, Sequelize } = require('sequelize');
@@ -185,7 +191,7 @@ async function getDispatchOverview() {
   try {
     const settings = await getOrCreateSettings();
     const users = await User.findAll({
-      attributes: ['id', 'username', 'role', 'status', 'nickname'],
+      attributes: ['id', 'username', 'role', 'status', 'nickname', 'orderAccess'],
       include: [
         { model: UserPermission, as: 'permissionGrants', attributes: ['permissionCode'] },
         { model: PaymentStaffSetting, as: 'paymentStaffSetting', required: false },
@@ -223,6 +229,7 @@ async function getDispatchOverview() {
             .filter(rule => rule.assigneeUserIds.includes(user.id))
             .map(rule => ({ id: rule.id, name: rule.name })),
           id: user.id,
+          orderAccess: getOrderAccess(user),
           username: user.username,
           status: user.status,
           nickname: user.nickname || user.username,
@@ -463,6 +470,7 @@ async function previewAssignment(input) {
           model: Order,
           as: 'order',
           attributes: [
+            ...recipientTagAttributes(),
             'orderNumber',
             'orderUrl',
             'orderDate',
@@ -479,9 +487,11 @@ async function previewAssignment(input) {
     const byId = new Map(tasks.map(task => [Number(task.id), task]));
     let recipient = null;
     let recipientError = null;
+    let recipientAccess = null;
     if (userId) {
       try {
-        const { setting, activeCount } = await assertAssignableUser(userId);
+        const { user, setting, activeCount } = await assertAssignableUser(userId);
+        recipientAccess = getOrderAccess(user);
         recipient = {
           id: userId,
           activeCount,
@@ -504,6 +514,18 @@ async function previewAssignment(input) {
         ),
       };
       if (!item.eligible || !userId) return item;
+      if (
+        recipientAccess?.mode !== 'all' &&
+        (!getRecipientTag(task.order) ||
+          !recipientAccess?.tags.includes(getRecipientTag(task.order)))
+      )
+        return {
+          ...item,
+          eligible: false,
+          code: 'ORDER_TAG_FORBIDDEN',
+          reason: '接收人无此订单当前 TAG 范围',
+          solution: '选择拥有当前 TAG 范围的负责人',
+        };
       if (recipientError)
         return {
           ...item,
@@ -601,6 +623,15 @@ async function executeAssignment(input, actorUserId) {
       transaction,
     });
     if (replays.length > 0) {
+      const replayTasks = await PaymentTask.findAll({
+        where: { id: { [Op.in]: taskIds } },
+        transaction,
+      });
+      await assertCurrentOrderAccess(
+        actorUserId,
+        replayTasks.map(task => task.orderId),
+        { transaction }
+      );
       const replayMatches =
         replays.length === assignments.length &&
         replays.every(event => taskIds.includes(Number(event.paymentTaskId))) &&
@@ -618,6 +649,7 @@ async function executeAssignment(input, actorUserId) {
           model: Order,
           as: 'order',
           attributes: [
+            ...recipientTagAttributes(),
             'orderNumber',
             'orderUrl',
             'emailPaymentStatus',
@@ -652,6 +684,16 @@ async function executeAssignment(input, actorUserId) {
     if (hasTransfer && !input.handoffConfirmed) {
       throw ApiError.badRequest('批量转派必须确认原执行方已停止处理');
     }
+    await assertCurrentOrderAccess(
+      actorUserId,
+      tasks.map(task => task.orderId),
+      { transaction }
+    );
+    await assertCurrentOrderAccess(
+      assigneeUserId,
+      tasks.map(task => task.orderId),
+      { transaction }
+    );
     const { setting, activeCount } = await assertAssignableUser(assigneeUserId, transaction, false);
     const addedCount = tasks.filter(task => Number(task.assigneeUserId) !== assigneeUserId).length;
     if (activeCount + addedCount > setting.maxActiveTasks) {
@@ -714,6 +756,7 @@ async function executeAssignment(input, actorUserId) {
           'orderNumber',
           'ingestionSource',
           'sourceRecipientTag',
+          ...recipientTagAttributes(),
           'tag',
           'products',
           'officialRawStatus',
@@ -837,6 +880,7 @@ async function updateTaskNotes(taskId, input, actorUserId) {
           'orderNumber',
           'ingestionSource',
           'sourceRecipientTag',
+          ...recipientTagAttributes(),
           'tag',
           'products',
           'officialRawStatus',
@@ -913,10 +957,13 @@ async function reopenTask(taskId, input, actorUserId) {
 }
 
 /** 查询管理员付款队列，先筛选再按稳定顺序分页。 */
-async function listDispatchTasks(query = {}) {
+async function listDispatchTasks(query = {}, user) {
   try {
     const where = {};
-    const orderWhere = {};
+    const accessCondition = scopeOrderWhere(user, {}, 'order');
+    const orderWhere = Reflect.ownKeys(accessCondition).length
+      ? { [Op.or]: [accessCondition] }
+      : {};
     if (query.assignee === 'unassigned') where.assigneeUserId = null;
     else if (query.assignee) {
       const assigneeUserId = Number(query.assignee);
@@ -993,6 +1040,7 @@ async function listDispatchTasks(query = {}) {
               'orderUrl',
               'ingestionSource',
               'sourceRecipientTag',
+              ...recipientTagAttributes(),
               'tag',
               'products',
               'productFilterItems',
@@ -1078,6 +1126,7 @@ async function getPaymentLink(taskId, actorUserId) {
       include: [{ model: Order, as: 'order', attributes: ['orderUrl', 'orderDate'] }],
     });
     if (!task) throw ApiError.notFound('付款任务不存在');
+    await assertCurrentOrderAccess(actorUserId, [task.orderId]);
     if (!task.order?.orderUrl) throw ApiError.notFound('订单链接不存在');
     const now = new Date();
     await PaymentTaskEvent.create({
@@ -1219,6 +1268,7 @@ async function runDispatchScan(limit = 500) {
                   'orderUrl',
                   'ingestionSource',
                   'sourceRecipientTag',
+                  ...recipientTagAttributes(),
                   'tag',
                   'emailPaymentStatus',
                   'paymentAssignmentHoldReason',
@@ -1250,7 +1300,15 @@ async function runDispatchScan(limit = 500) {
               continue;
             }
             const rule = matchRule(task.order, ruleIndex);
-            const candidate = selectCandidate(candidates, rule, exclusiveUserIds);
+            const eligibleCandidates = candidates.filter(row => {
+              const access = getOrderAccess(row.setting.user);
+              return (
+                access.mode === 'all' ||
+                (getRecipientTag(task.order) !== null &&
+                  access.tags.includes(getRecipientTag(task.order)))
+              );
+            });
+            const candidate = selectCandidate(eligibleCandidates, rule, exclusiveUserIds);
             if (!candidate) continue;
             const now = new Date();
             task.deadlineAt = currentDeadline;

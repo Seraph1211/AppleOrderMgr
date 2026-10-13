@@ -2,7 +2,7 @@
 const RUN_INTEGRATION = process.env.RUN_TAG_RULE_INTEGRATION === 'true';
 const describeIntegration = RUN_INTEGRATION ? describe : describe.skip;
 
-describeIntegration('AOS TAG 自动分配隔离库验收', () => {
+describeIntegration('取机人 TAG 自动分配隔离库验收', () => {
   let m;
   let service;
   let dispatch;
@@ -18,9 +18,26 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     assigneeUserIds: ids,
     ...extra,
   });
+  async function listDispatch(query) {
+    try {
+      return await dispatch.listDispatchTasks(query, admin);
+    } catch (error) {
+      throw new Error(`调度测试查询失败: ${error.message}`);
+    }
+  }
   async function makeTask(tag, extra = {}) {
     const orderNumber = `W${String(++serial).padStart(10, '0')}`;
+    const recipient =
+      tag === null
+        ? null
+        : await m.Recipient.create({
+          lastName: '合成',
+          firstName: String(serial),
+          idCardNumber: `11010119900101${String(serial).padStart(4, '0')}`,
+          tag,
+        });
     const order = await m.Order.create({
+      recipientRef: recipient?.id || null,
       orderNumber,
       ingestionSource: 'aos',
       sourceRecipientTag: tag,
@@ -88,7 +105,7 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
   });
   beforeEach(async () => {
     await m.sequelize.query(
-      'TRUNCATE users, orders, payment_dispatch_settings, payment_tag_rules RESTART IDENTITY CASCADE'
+      'TRUNCATE users, orders, recipients, payment_dispatch_settings, payment_tag_rules RESTART IDENTITY CASCADE'
     );
     admin = await m.User.create({
       username: 'tag_admin',
@@ -101,6 +118,7 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
         username: `tag_staff_${id}`,
         password: 'synthetic-only',
         role: 'operator',
+        orderAccess: { mode: 'all', tags: [] },
         status: 'active',
       }))
     );
@@ -153,8 +171,7 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     const normal = await makeTask('OTHER');
     expect((await dispatch.runDispatchScan()).assigned).toBe(0);
     expect(
-      (await dispatch.listDispatchTasks({ assignee: 'unassigned' })).items[0].autoAssignment
-        .reasonCode
+      (await listDispatch({ assignee: 'unassigned' })).items[0].autoAssignment.reasonCode
     ).toBe('NO_ELIGIBLE_STAFF');
     await service.saveRule(a.id, { ...a.toJSON(), enabled: false, expectedVersion: 0 }, admin.id);
     expect((await dispatch.runDispatchScan()).assigned).toBe(0);
@@ -196,8 +213,8 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
       tasks.push(task);
     }
     const query = { emailOrderStatuses: '["confirmed","processing"]', limit: 2 };
-    const first = await dispatch.listDispatchTasks(query);
-    const second = await dispatch.listDispatchTasks({ ...query, page: 2 });
+    const first = await listDispatch(query);
+    const second = await listDispatch({ ...query, page: 2 });
     expect(first.pagination.total).toBe(6);
     expect(second.pagination.total).toBe(6);
     expect(new Set([...first.items, ...second.items].map(t => t.id)).size).toBe(4);
@@ -206,25 +223,18 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
         ['confirmed', 'processing'].includes(t.emailOrderStatus)
       )
     ).toBe(true);
-    expect(
-      (await dispatch.listDispatchTasks({ ...query, recipientTags: '["FILTER-A"]' })).pagination
-        .total
-    ).toBe(4);
+    expect((await listDispatch({ ...query, recipientTags: '["FILTER-A"]' })).pagination.total).toBe(
+      4
+    );
     const own = await require('../src/services/paymentTaskService').listOwnTasks(
       people[0].id,
       query
     );
     expect(own.pagination.total).toBe(3);
     expect(own.items.every(t => t.assignee.id === people[0].id)).toBe(true);
-    expect(
-      (await dispatch.listDispatchTasks({ emailOrderStatus: 'ready_for_pickup' })).pagination.total
-    ).toBe(3);
-    expect(
-      (await dispatch.listDispatchTasks({ emailOrderStatuses: '[]' })).pagination.total
-    ).toBe(9);
-    expect(
-      (await dispatch.listDispatchTasks({ emailOrderStatuses: '["picked_up"]' })).pagination.total
-    ).toBe(0);
+    expect((await listDispatch({ emailOrderStatus: 'ready_for_pickup' })).pagination.total).toBe(3);
+    expect((await listDispatch({ emailOrderStatuses: '[]' })).pagination.total).toBe(9);
+    expect((await listDispatch({ emailOrderStatuses: '["picked_up"]' })).pagination.total).toBe(0);
     const invalid = await request('GET', '/rules/tasks?emailOrderStatuses=bad');
     expect(invalid.status).toBe(400);
     await expect(
@@ -247,10 +257,10 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
       await task.update({ assigneeUserId: i === 2 ? people[1].id : people[0].id });
     }
     const query = { dateFrom: '2026-09-13', dateTo: '2026-09-13', limit: 1 };
-    const dispatchPage = await dispatch.listDispatchTasks(query);
+    const dispatchPage = await listDispatch(query);
     expect(dispatchPage.pagination.total).toBe(2);
     expect(dispatchPage.items).toHaveLength(1);
-    expect((await dispatch.listDispatchTasks({ ...query, page: 2 })).items[0].id).not.toBe(
+    expect((await listDispatch({ ...query, page: 2 })).items[0].id).not.toBe(
       dispatchPage.items[0].id
     );
     const own = await require('../src/services/paymentTaskService').listOwnTasks(
@@ -279,8 +289,7 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     await channel.getChannelStats({ params: { tag: 'DATE' }, query, user: admin }, res, next);
     expect(res.json.mock.calls[0][0].data.totalOrders).toBe(2);
     expect(
-      (await dispatch.listDispatchTasks({ ...query, dateFrom: '2026-09-20', dateTo: '' }))
-        .pagination.total
+      (await listDispatch({ ...query, dateFrom: '2026-09-20', dateTo: '' })).pagination.total
     ).toBe(0);
   });
   test('多 TAG 多账号仅在指定集合内按比例分配并记录规则快照', async () => {
@@ -315,14 +324,14 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     expect((await matched.reload()).assigneeUserId).toBe(people[1].id);
     expect((await fallback.reload()).assigneeUserId).toBe(people[2].id);
     expect((await blocked[0].reload()).assigneeUserId).toBeNull();
-    const page = await dispatch.listDispatchTasks({ assignee: 'unassigned' });
+    const page = await listDispatch({ assignee: 'unassigned' });
     expect(page.items).toHaveLength(5);
     expect(page.items[0].autoAssignment.reasonCode).toBe('RULE_CAPACITY_FULL');
     await m.PaymentStaffSetting.update({ maxActiveTasks: 10 }, { where: { userId: people[0].id } });
     expect((await dispatch.runDispatchScan(2)).assigned).toBe(5);
     expect((await blocked[4].reload()).assigneeUserId).toBe(people[0].id);
   });
-  test('完整匹配、来源限定、空 TAG 与 AOS 兼容回退', async () => {
+  test('完整匹配、所有来源统一、空 TAG 无来源回退', async () => {
     await createRule(['A'], [people[0].id]);
     await m.PaymentStaffSetting.update(
       { autoAssignEnabled: false },
@@ -336,8 +345,8 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
     const lower = await makeTask('a');
     expect((await dispatch.runDispatchScan()).assigned).toBe(4);
     expect((await exact.reload()).assigneeUserId).toBeNull();
-    expect((await old.reload()).assigneeUserId).toBeNull();
-    for (const task of [prefix, email, empty, lower])
+    expect((await email.reload()).assigneeUserId).toBeNull();
+    for (const task of [prefix, old, empty, lower])
       expect((await task.reload()).assigneeUserId).not.toBeNull();
     const options = await service.listRules();
     expect(options.tagOptions).toEqual(['A', 'A-more', 'a']);
@@ -357,7 +366,7 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
         );
       if (condition === 'deleted') await people[0].destroy();
       expect((await dispatch.runDispatchScan()).assigned).toBe(0);
-      expect((await dispatch.listDispatchTasks()).items[0].autoAssignment.reasonCode).toBe(
+      expect((await listDispatch()).items[0].autoAssignment.reasonCode).toBe(
         'RULE_NO_ELIGIBLE_STAFF'
       );
       expect((await task.reload()).assigneeUserId).toBeNull();
@@ -387,9 +396,7 @@ describeIntegration('AOS TAG 自动分配隔离库验收', () => {
       admin.id
     );
     expect((await assigned.reload()).assigneeUserId).toBe(people[2].id);
-    expect(
-      (await dispatch.listDispatchTasks()).items.every(row => row.autoAssignment === null)
-    ).toBe(true);
+    expect((await listDispatch()).items.every(row => row.autoAssignment === null)).toBe(true);
   });
   test('停用和删除规则恢复默认算法，审计保留完整前后快照', async () => {
     let rule = await createRule(['A'], [people[0].id]);

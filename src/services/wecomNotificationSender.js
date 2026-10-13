@@ -1,3 +1,4 @@
+const { recipientTagAttributes } = require('./recipientTagService');
 const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 const { randomUUID } = require('crypto');
 const { Op } = require('sequelize');
@@ -104,7 +105,9 @@ async function updateClaim(row, values) {
 async function prepare(row, now) {
   try {
     if (row.kind === 'test') return { text: TEST_MESSAGE };
-    const order = await Order.findByPk(row.orderId);
+    const order = await Order.findByPk(row.orderId, {
+      attributes: { include: recipientTagAttributes('Order').slice(1) },
+    });
     const reason = content.orderBlockReason(order, now);
     if (reason)
       return { status: reason === 'DEADLINE_MISSING' ? 'failed' : 'skipped', errorCode: reason };

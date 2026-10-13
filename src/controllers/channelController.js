@@ -1,8 +1,14 @@
+const {
+  recipientTagSql,
+  recipientTagWhere,
+  getRecipientTag,
+  getRecipientTagState,
+} = require('../services/recipientTagService');
 const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 /**
  * 渠道控制器
  * @module controllers/channelController
- * @description 基于 recipients.tag 和 orders.tag 实现渠道管理功能
+ * @description 基于订单关联的 recipients.tag 实现渠道管理功能
  */
 
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
@@ -33,7 +39,7 @@ exports.getChannels = async (req, res, next) => {
     // 从 orders 表聚合渠道数据
     const channels = await Order.findAll({
       attributes: [
-        'tag',
+        [literal(recipientTagSql()), 'tag'],
         [fn('COUNT', col('id')), 'totalOrders'],
         [fn('COUNT', literal("CASE WHEN email_payment_status = 'paid' THEN 1 END")), 'paidOrders'],
         [fn('COALESCE', fn('SUM', col('order_amount')), 0), 'totalAmount'],
@@ -50,8 +56,8 @@ exports.getChannels = async (req, res, next) => {
         ],
         [fn('COUNT', literal('CASE WHEN order_amount IS NULL THEN 1 END')), 'missingAmountOrders'],
       ],
-      where: scopeOrderWhere(req.user, { tag: { [Op.notIn]: [''] } }),
-      group: ['tag'],
+      where: scopeOrderWhere(req.user, recipientTagWhere({ [Op.ne]: null })),
+      group: [literal(recipientTagSql())],
       raw: true,
     });
 
@@ -115,7 +121,10 @@ exports.getChannelStats = async (req, res, next) => {
     logger.info('获取渠道详细统计', { tag });
 
     const orderDateCondition = buildOrderDateCondition(req.query);
-    const orderWhere = { tag, ...(orderDateCondition ? { orderDate: orderDateCondition } : {}) };
+    const orderWhere = {
+      [Op.and]: [recipientTagWhere(tag)],
+      ...(orderDateCondition ? { orderDate: orderDateCondition } : {}),
+    };
 
     // 查询渠道订单统计
     const stats = await Order.findOne({
@@ -223,7 +232,10 @@ exports.getChannelOrders = async (req, res, next) => {
 
     // 构建查询条件
     const orderDateCondition = buildOrderDateCondition(req.query);
-    const whereClause = { tag, ...(orderDateCondition ? { orderDate: orderDateCondition } : {}) };
+    const whereClause = {
+      [Op.and]: [recipientTagWhere(tag)],
+      ...(orderDateCondition ? { orderDate: orderDateCondition } : {}),
+    };
 
     // 状态筛选
     if (status) {
@@ -253,7 +265,7 @@ exports.getChannelOrders = async (req, res, next) => {
         {
           model: Recipient,
           as: 'recipient',
-          attributes: ['id', 'lastName', 'firstName', 'phone'],
+          attributes: ['id', 'lastName', 'firstName', 'phone', 'tag'],
         },
       ],
       order: [['orderDate', 'DESC']],
@@ -280,7 +292,8 @@ exports.getChannelOrders = async (req, res, next) => {
         orderUrl: null,
         paymentMethod: getSourcePaymentMethod(plain),
         orderDate: plain.orderDate,
-        tag: plain.tag,
+        tag: getRecipientTag(plain),
+        recipientTagState: getRecipientTagState(plain),
         createdAt: plain.createdAt,
       };
     });
@@ -327,7 +340,7 @@ exports.updateChannelName = async (req, res, next) => {
       return next(ApiError.badRequest('原渠道标签不能为空'));
     }
 
-    if (!newTag || newTag.trim() === '') {
+    if (typeof newTag !== 'string' || !newTag.trim() || newTag.length > 100) {
       await transaction.rollback();
       return next(ApiError.badRequest('新渠道标签不能为空'));
     }
@@ -341,7 +354,7 @@ exports.updateChannelName = async (req, res, next) => {
 
     // 检查原渠道是否存在
     const orderCount = await Order.count({
-      where: { tag },
+      where: recipientTagWhere(tag),
       transaction,
     });
 
@@ -351,7 +364,7 @@ exports.updateChannelName = async (req, res, next) => {
     }
 
     // 检查新渠道名称是否已存在
-    const existingOrderCount = await Order.count({
+    const existingOrderCount = await Recipient.count({
       where: { tag: newTag },
       transaction,
     });
@@ -363,14 +376,7 @@ exports.updateChannelName = async (req, res, next) => {
 
     await renameOrderAccessTags(tag, newTag, req.user.id, transaction);
 
-    // 级联更新 orders 表
-    const [ordersUpdated] = await Order.update(
-      { tag: newTag },
-      {
-        where: { tag },
-        transaction,
-      }
-    );
+    const ordersUpdated = orderCount; // 实时 JOIN 生效，不重写来源记录。
 
     // 级联更新 recipients 表
     const [recipientsUpdated] = await Recipient.update(

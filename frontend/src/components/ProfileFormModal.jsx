@@ -10,7 +10,8 @@ const clean = value => (value === '-' ? '' : value || '');
 /** 独立基础档案表单，账号与取机人分别维护。 */
 export default function ProfileFormModal({ kind, item, onClose, onSave }) {
   const account = kind === 'account';
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const canChangeTag = !item || user?.role === 'admin' || user?.orderAccess?.mode === 'all';
   const canQa = can('apple_ids.secrets.read');
   const [form, setForm] = useState(() => ({
     appleId: clean(account ? item?.appleId : ''),
@@ -126,6 +127,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
             'notes',
           ].map(key => [key, form[key]])
         );
+        if (!canChangeTag) delete payload.tag;
       }
       await onSave(payload);
       onClose();
@@ -178,7 +180,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
                 {field('city', '市')}
                 {field('district', '区')}
                 {field('streetAddress', '街道地址')}
-                {field('tag', 'TAG')}
+                {field('tag', 'TAG', false, 'text', !canChangeTag)}
                 {field('channel', '渠道')}
               </>
             )}
@@ -198,6 +200,13 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
               </ResponsiveSelect>
             </label>
           </div>
+          {!account && item && (
+            <p className="text-sm text-gray-500">
+              {canChangeTag
+                ? '修改 TAG 后，全部历史订单及访问范围实时跟随。'
+                : '修改取机人 TAG 需要全部订单数据范围；其他资料可按现有权限维护。'}
+            </p>
+          )}
           <label className="block text-sm text-gray-700">
             备注
             <textarea

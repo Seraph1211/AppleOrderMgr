@@ -1,3 +1,4 @@
+const { assertAllOrderAccess } = require('./orderAccessService');
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 const { AppleId, Recipient } = require('../models');
@@ -246,6 +247,7 @@ async function applyImportPlan(plan, req, transaction) {
       const { data, existing, changed } = write;
       if (existing && !changed.length) continue;
       assertPermission(req, existing ? PERMISSIONS.RECIPIENTS_EDIT : PERMISSIONS.RECIPIENTS_IMPORT);
+      if (existing && changed.includes('tag')) assertAllOrderAccess(req.user);
       const fields = data;
       let recipient;
       if (existing) {

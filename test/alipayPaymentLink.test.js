@@ -1,6 +1,7 @@
 jest.mock('../src/models', () => ({
   AosRecord: { findAll: jest.fn() },
-  Order: { findByPk: jest.fn() },
+  Order: { findByPk: jest.fn(), count: jest.fn().mockResolvedValue(1) },
+  User: { findByPk: jest.fn().mockResolvedValue({ role: 'admin', status: 'active' }) },
   PaymentTask: { findByPk: jest.fn(), findOne: jest.fn() },
   PaymentTaskEvent: { create: jest.fn() },
   sequelize: { transaction: jest.fn() },

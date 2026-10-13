@@ -77,6 +77,8 @@ function automaticEnabled() {
 /** 在当前权限和归属下读取付款任务；不存在与不可见统一返回404。 */
 async function accessibleTask(user, taskId, dispatch, transaction) {
   try {
+    user = await db.User.findByPk(user.id, { transaction });
+    if (!user) throw new ApiError(403, 'FORBIDDEN', '无付款刷新权限');
     const permissions = await getEffectivePermissions(user, { transaction });
     const permission = dispatch ? 'payment_dispatch.assign' : 'payment_tasks.handle_own';
     if (
@@ -92,7 +94,7 @@ async function accessibleTask(user, taskId, dispatch, transaction) {
           model: db.Order,
           as: 'order',
           required: true,
-          where: dispatch ? scopeOrderWhere(user) : {},
+          where: scopeOrderWhere(user, {}, 'order'),
           attributes: [
             'id',
             'orderNumber',

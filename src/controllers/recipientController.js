@@ -1,4 +1,4 @@
-const { scopeOrderWhere } = require('../services/orderAccessService');
+const { scopeOrderWhere, assertAllOrderAccess } = require('../services/orderAccessService');
 /* eslint-disable camelcase */
 /**
  * 收件人（取机人）控制器
@@ -378,6 +378,8 @@ async function updateRecipient(req, res) {
       await lockProfiles(transaction, req.user?.id);
       const row = await Recipient.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!row) throw ApiError.notFound('取机人不存在');
+      if (Object.prototype.hasOwnProperty.call(updates, 'tag') && updates.tag !== row.tag)
+        assertAllOrderAccess(req.user);
       if (updates.idCardNumber) {
         const duplicate = await Recipient.findOne({
           where: {
@@ -429,6 +431,7 @@ async function listBindings(req, res) {
  */
 async function deleteRecipient(req, res) {
   try {
+    assertAllOrderAccess(req.user);
     const id = parseInt(req.params.id, 10);
     if (Number.isNaN(id) || id <= 0) {
       throw ApiError.badRequest('收件人 ID 必须是正整数', { received: req.params.id });

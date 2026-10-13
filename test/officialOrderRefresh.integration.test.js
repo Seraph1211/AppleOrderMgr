@@ -27,7 +27,9 @@ suite('手动官网状态：持久队列、权限、全选及窄范围回写', (
       throw new Error('只允许独立官网测试库');
     models = require('../src/models');
     service = require('../src/services/officialOrderRefreshService');
-    await sql('TRUNCATE orders,official_order_refresh_batches,users RESTART IDENTITY CASCADE');
+    await sql(
+      'TRUNCATE recipients,orders,official_order_refresh_batches,users RESTART IDENTITY CASCADE'
+    );
     const name = `official_${Date.now()}`;
     [admin, staff, outsider] = await Promise.all(
       ['admin', 'staff', 'other'].map((role, index) =>
@@ -50,10 +52,19 @@ suite('手动官网状态：持久队列、权限、全选及窄范围回写', (
         grantedBy: admin.id,
       }))
     );
+    const tagProfiles = await models.Recipient.bulkCreate(
+      ['official-test-A', 'official-test-B'].map((tag, index) => ({
+        lastName: '合成',
+        firstName: '取机人',
+        idCardNumber: `1101011990010100${index + 10}`,
+        tag,
+      }))
+    );
     orders = await models.Order.bulkCreate(
       ['A', 'A', 'B', 'A'].map((tag, index) => ({
         orderNumber: `W991122330${index}`,
         tag: `official-test-${tag}`,
+        recipientRef: tagProfiles[tag === 'A' ? 0 : 1].id,
         sourceRecipientTag: `official-test-${tag}`,
         ingestionSource: 'aos',
         appleId: `account-${index}@example.test`,

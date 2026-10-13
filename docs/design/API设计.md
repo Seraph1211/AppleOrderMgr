@@ -283,7 +283,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 ## 付款任务与付款人姓名
 
 - 新增付款接口沿用项目现有 JavaScript API 的 camelCase 请求／响应，不对既有 snake_case 订单 DTO 做隐式全局转换。普通用户的列表、详情、状态、付款人、链接和刷新入口均同时校验权限和最新 assigneeUserId；转派后原负责人立即失去访问。
-- 本人任务列表支持 page、limit、orderNumber、productNames、recipientTags、officialOrderStatuses、processingStatus；官网多选与订单管理共用分项精确匹配、同义归一、未知原值和未观测项，空选不限制。返回完整范围的 `officialOrderStatuses` 候选，忽略当前官网选择但保留其余筛选和本人归属；`productNames` 是 JSON 数组，最多 100 项，每项去除首尾空格后按完整 `products[].name` 精确匹配且最长 500 字符，多个商品之间为 OR。筛选在分页前完成，与 TAG、订单号、状态和日期等其他维度之间为 AND。旧 `productModel`、`productKeyword` 继续兼容且与商品名称条件命中同一 products 元素。`recipientTags` 同样最多 100 项、每项最长 500 字符，多个 TAG 之间为 OR；兼容单值 `recipientTag`。AOS 订单使用来源 TAG，其他订单使用订单入库时保存的 `tag`。
+- 本人任务列表支持 page、limit、orderNumber、productNames、recipientTags、officialOrderStatuses、processingStatus；官网多选与订单管理共用分项精确匹配、同义归一、未知原值和未观测项，空选不限制。返回完整范围的 `officialOrderStatuses` 候选，忽略当前官网选择但保留其余筛选和本人归属；`productNames` 是 JSON 数组，最多 100 项，每项去除首尾空格后按完整 `products[].name` 精确匹配且最长 500 字符，多个商品之间为 OR。筛选在分页前完成，与 TAG、订单号、状态和日期等其他维度之间为 AND。旧 `productModel`、`productKeyword` 继续兼容且与商品名称条件命中同一 products 元素。`recipientTags` 同样最多 100 项、每项最长 500 字符，多个 TAG 之间为 OR；兼容单值 `recipientTag`。所有来源订单实时使用关联档案 TAG，缺失不回退来源。
 - `PUT /api/payment-tasks/:id` 是行级原子保存接口，body 可包含 `{ processingStatus?, processingNotes?, expectedVersion?, payerName?, expectedPayerVersion? }`，幂等键通过请求头传入。接口只更新实际提交且发生变化的字段；任务字段要求 `payment_tasks.handle_own`，付款人字段要求 `payment_tasks.payer.edit_own`，同时修改时在同一事务提交或全部回滚。四态为 pending、processing、completed、exception；官网状态、复制链接、登记付款人、到期和转派不自动改变处理状态。状态变更与备注填写、保存无关，备注可空。兼容的独立付款人接口仍保留。
 - 外部付款人姓名在四种状态、到期、官网已付／退款／取消后仍可维护。`PUT /api/payment-tasks/:id/payer` 使用 `{ payerName: string | null, expectedVersion, reason? }`；系统不提供付款人候选接口，不创建付款人账号或主数据。
 - 单项和当前页勾选批量复制订单信息均通过既有链接接口逐单校验 `payment_tasks.link.read_own` 和当前任务归属，接口直接返回该任务关联订单的 `orders.orderUrl`；前端结合本人任务 DTO 生成 `orders.id || 商品信息 || 支付方式 || 付款截止时间 || 订单链接`，批量结果按当前列表顺序每单一行。商品名称优先、型号兜底，每项按 `名称 x 数量` 展示，多商品使用 `、` 连接；`WECHAT`／`WECHAT PAY`／`微信支付` 显示为 `微信`，`ALIPAY` 显示为 `支付宝`，其他非空值保留原文，商品或支付方式缺失时使用 `-`，付款截止时间仅由任务 DTO 的来源下单时间 `orderDate + 30 分钟` 计算，固定北京时间 `YY/MM/DD HH:mm`；来源时间缺失、不含时分／时区或无效时使用 `-`，不回退官网时间；链接保持普通 URL。接口不按核实、截止时间、人工处理状态或官网支付／订单状态限制复制；链接为空时返回资源不存在，响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
@@ -308,7 +308,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 - [Excel 导入](Excel导入规范.md)：模板、上传预览、15 分钟用户绑定会话、单次消费令牌。
 - [渠道管理](渠道管理说明.md)：标签聚合、分页、newTag 事务改名。
 - [仪表板](仪表板说明.md)：图表与指标口径；stats 独立统计入口见[statsController.js](../../src/controllers/statsController.js)。
-- 仪表板 `GET /api/dashboard/stats` 返回 `availableRecipients`，统计状态为“使用中”或“未使用”的取机人数；按 `recipientTags` 精确筛选档案 TAG，不受下单日期、订单状态、商品筛选影响。
+- 仪表板 `GET /api/dashboard/stats` 返回 `availableRecipients`，统计状态为“使用中”或“未使用”的取机人数；按 `recipientTags` 与用户 TAG 范围精确筛选档案 TAG，不受下单日期、订单状态、商品筛选影响。
 - `GET /api/system/auto-refresh` 从持久化系统状态、任务和调度表返回 Worker 心跳、暂停原因、队列计数及新鲜度统计。
 - `POST /api/system/auto-refresh/resume` 仅 admin 可调用；清除持久化断路状态并返回当前状态，不重启 Worker、不改代理配置，也不把 API 进程状态冒充 Worker 状态。
 - `GET /api/system/proxy-provider` 新增 `workerReady` 与 `workerBlockedReason`，依据当前代理初始化结果及 20 秒心跳时效判断；暂停、代理禁用、恢复失败或心跳过期均不显示就绪。`activeProvider` 为最后确认的 Provider，只有 workerReady 才表示当前进程可处理任务。仅返回代理是否启用、`kdl_tunnel`、`kdl_private`、`fanproxy_tunnel`、`yiyou_http` 四个 Provider 是否已配置、环境默认值、管理员请求值、Worker 已确认值、切换状态、时间和脱敏错误；不返回主机鉴权、账号、用户名、密码、提取 API URL 或签名。
@@ -368,13 +368,13 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 以下端点均要求管理员及 `payment_dispatch.configure`，普通付款人员不能读取规则和目标账号集合。
 
-- `GET /api/payment-dispatch/tag-rules`：返回 `data: { items, tagOptions }`。规则字段为 `id, name, enabled, recipientTags, assigneeUserIds, version, updatedBy, createdAt, updatedAt`；TAG 候选取全部 AOS 来源订单的来源 TAG（缺失回退订单 tag），不限任务当前页。可手工输入尚未入库的 TAG。
-- `POST /api/payment-dispatch/tag-rules`：提交 `{ name, enabled, recipientTags, assigneeUserIds }`，返回 201 与新规则。名称去首尾空格后 1–100 字符；TAG 数组 1–100 项、每项 1–500 字符、去首尾空格及去重；账号数组 1–100 个互不重复的正整数。新增账号必须正常且具备完整付款执行权限，允许暂未开启接单／没有容量。
+- `GET /api/payment-dispatch/tag-rules`：返回 `data: { items, tagOptions }`。规则字段为 `id, name, enabled, recipientTags, assigneeUserIds, version, updatedBy, createdAt, updatedAt`；TAG 候选取系统取机人档案中的非空白 TAG 原值，不限任务当前页。可手工输入尚未入库的 TAG。
+- `POST /api/payment-dispatch/tag-rules`：提交 `{ name, enabled, recipientTags, assigneeUserIds }`，返回 201 与新规则。名称去首尾空格后 1–100 字符；TAG 数组 1–100 项、每项 1–500 字符、非空白原文及去重；账号数组 1–100 个互不重复的正整数。新增账号必须正常且具备完整付款执行权限，允许暂未开启接单／没有容量。
 - `PUT /api/payment-dispatch/tag-rules/:id`：提交完整规则字段及 `expectedVersion`（非负整数）；启停也使用此端点。允许保留该规则原有失效账号；新增账号仍按上述资格校验。
 - `DELETE /api/payment-dispatch/tag-rules/:id`：请求体 `{ expectedVersion }`，删除规则，返回 `data: { id }`。
 - 不存在返回 404；参数非法返回 400；同 TAG 在启用规则中重复返回 409 `TAG_RULE_CONFLICT`；过期版本返回 409 `CONCURRENT_MODIFICATION`。增改删与分配共用事务调度锁并原子记录审计。停用规则允许 TAG 重叠，重新启用必须检查。
 - `GET /api/payment-dispatch/tasks` 的任务增加 `autoAssignment: { ruleId, ruleName, reasonCode, reason }`（已分配为 null）；只显示当前规则名称和待分配原因，不向本人任务端点暴露账号规则。原因区分全局关闭、手动模式、非待处理、订单不可付款、时间未知／过期、入口缺失、规则内无人可接单、规则内容量已满和等待调度。展示按查询时状态派生，不把旧原因持久化到任务。
-- 自动分配只对 AOS TAG 完整匹配（区分大小写）；命中后只在规则账号内按现有负载算法分配，无合格账号时等待。非 AOS／空 TAG／未命中仅在未绑定启用 TAG 规则的普通账号中沿用默认算法。保存后下次调度生效；未分配存量参与，已分配保持负责人，人工转派不受 TAG 限制。停用／删除会让未分配订单重新走其他启用规则或默认分配。
+- 自动分配对所有来源订单的当前取机人 TAG 完整匹配（保留原文、区分大小写）；命中后只在规则账号内按现有负载算法分配，无合格账号时等待。空 TAG／未命中仅在未绑定启用 TAG 规则的普通账号中沿用默认算法。保存后下次调度生效；未分配存量参与，已分配保持负责人，人工转派不受规则专属账号限制，但接收人仍须拥有订单当前 TAG 范围。停用／删除会让未分配订单重新走其他启用规则或默认分配。
 
 ## AOS 文件入库与数据源切换契约（2026-09-10）
 
@@ -697,11 +697,11 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 ## 用户订单 TAG 授权（2026-09-18，已批准）
 
 - 用户权限 GET/PUT 增加 `orderAccess: {mode: 'all'|'tags', tags: string[]}`。PUT 与 permissions 原子保存，共用 expectedVersion、Idempotency-Key 及审计；旧客户端省略范围时保留当前配置，不能重置为全部。
-- `GET /api/users/order-tag-options` 仅 users.permissions.manage 可用，返回 `{tags: string[]}`，来源为 orders.tag 非空去重值。允许保留暂无订单的已授权 TAG。精确区分大小写和首尾空白，不拆分 TAG；最多 500 项，每项最多 500 字符，空白值拒绝。
+- `GET /api/users/order-tag-options` 仅 users.permissions.manage 可用，返回 `{tags: string[]}`，来源为 recipients.tag 非空白去重原值。允许保留暂无订单的已授权 TAG。精确区分大小写和首尾空白，不拆分 TAG；最多 500 项，每项最多 500 字符，空白值拒绝。
 - /auth/me 和登录用户信息返回 orderAccess。管理员固定全部；新普通用户默认指定 TAG 空集合，绑定 TAG 不授予读取或操作权限。
 - orders.read/edit/export/refresh/payer.edit 均受范围限制；列表、分页总数、筛选候选、导出、详情、批量动作、刷新 job/batch、渠道查询和订单统计采用同一限制。指定 ID 混合越权批次整体拒绝；不存在或不可见订单统一 404。刷新全部只提交当前范围，每位发起人复用自己的批次，撤权后不可读取超出范围的旧批次。
-- 本人付款任务展示、链接、刷新、付款人登记继续按既有任务权限与所有权执行，不受订单 TAG 限制；不能凭任务归属调用订单管理接口。
-- 渠道改名仅允许全部订单范围且有 channels.rename 权限者执行；在同一事务更新授权 TAG 与审计，目标 TAG 已存在订单或已有授权时拒绝。订单普通编辑不开放 tag 写入。
+- 本人付款任务展示、链接、刷新、付款人登记按既有任务权限、所有权与当前档案 TAG 范围取交集，不额外要求 orders.read；不能凭任务归属调用订单管理接口。
+- 渠道改名仅允许全部订单范围且有 channels.rename 权限者执行；在同一事务更新授权 TAG 与审计，目标 TAG 已存在档案或已有授权时拒绝。订单普通编辑不开放 tag 写入。
 - 仪表板、统计、基础档案内的订单聚合和历史订单关联入口均限制订单范围；基础档案自身的读取权限不改变。
 
 ## 稳定商品筛选（2026-09-20）
@@ -972,7 +972,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 - `GET /api/pickups/:orderId/devices`：需 pickups.read 与订单 TAG 范围，返回 `{success:true,data:{orderId,items:[{id,orderId,serialNumber,scannedBy,createdAt}]}}`，按创建时间升序，no-store。
 - `POST /api/pickups/:orderId/devices`：需 pickups.read、pickups.edit 与订单 TAG 范围；请求 `{serialBarcode:string}`，必填、最多 64 字符。Serial No. 为 10/12 位字母数字且包含字母，允许明确长度下的前导 S。201 返回 `{success:true,data:{device,alreadyBound:false}}`；相同订单和相同序列号重复提交返回 200、alreadyBound=true，不重复审计。序列号已绑定其他订单返回 409 DEVICE_ALREADY_BOUND，错误不带其他订单或设备信息。非法输入 400，越权订单 404，功能权限不足 403。记录与审计原子保存，数据库唯一约束兜底并发冲突。绑定不更新人工取货状态，不按姓名或后四位匹配订单。
 
-`/api/pickups` 的全部接口同时检查对应功能权限与 `orders.tag` 范围。管理员范围为全部；混合或越权订单不返回存在性信息。
+`/api/pickups` 的全部接口同时检查对应功能权限与 关联 `recipients.tag` 范围。管理员范围为全部；混合或越权订单不返回存在性信息。
 
 - `GET /api/pickups`：分页列表，支持 search、tags（JSON 字符串数组，最多 100 项，每项 1–500 字符；完整值精确 OR 匹配，保留原文）、兼容单值 tag 和 status；page/pageSize 为正整数，每页最多 100 条。列表使用原有筛选及授权交集。
 - `GET /api/pickups/:orderId/evidence/:evidenceId`：复验订单范围并返回 5 分钟私有读取地址，响应 no-store。
@@ -1008,7 +1008,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 - `/api/dashboard/stats`、`daily-trend`、`product-distribution`、新增 `city-distribution` 及兼容 `store-distribution` 统一接受 `startDate/endDate`（北京时间日期）、`emailOrderStatuses`、`productKeys`、`recipientTags`。多选为 JSON 数组，最多 100 项；TAG 每项最多 500 字符，保留原始空格；状态仅 unknown/confirmed/processing/ready_for_pickup/picked_up/partially_cancelled/cancelled/expired/partially_return_requested/return_requested，商品键复用订单筛选校验。非法参数返回 400。兼容旧 `status/productModel/store` 单值参数。
 - stats 新增 `paidOrders`，仅统计当前条件与 processing/ready_for_pickup/picked_up 的交集；保留 `pendingOrders` 兼容字段但也与当前筛选取交集。`totalOrders/totalAmount/missingAmountOrders/amountSource/orderGrowth/amountGrowth` 保留；无完整日期范围时增长率为 null。金额查询失败返回错误，不伪装成 0。
 - `filter-options` 接受相同参数，返回 `productOptions`、`recipientTags`，分别排除自身维度后从完整可见范围生成；保留 `productModels/stores` 兼容字段。候选和所有订单聚合必须叠加账号订单 TAG 访问范围。
-- `daily-trend` 返回 `{ date, count }`，date 为北京时间 `YYYY-MM-DD`；完整日范围补 0（超过 3660 天只返回实际日期点）。商品／城市分布返回 `{ name, value }` 数组，商品附稳定 `key`，value 为订单数；商品按每订单每身份去重，多商品订单可进入不同组。城市取门店字典、未知归“未知城市”，不截断前 10 项。可用取机人数是独立档案统计，只有 TAG 筛选生效。完整规则见[仪表板说明](仪表板说明.md)。
+- `daily-trend` 返回 `{ date, count }`，date 为北京时间 `YYYY-MM-DD`；完整日范围补 0（超过 3660 天只返回实际日期点）。商品／城市分布返回 `{ name, value }` 数组，商品附稳定 `key`，value 为订单数；商品按每订单每身份去重，多商品订单可进入不同组。城市取门店字典、未知归“未知城市”，不截断前 10 项。可用取机人数是独立档案统计，按 TAG 筛选与用户 TAG 范围取交集。完整规则见[仪表板说明](仪表板说明.md)。
 
 ## 代抢管理（2026-09-28 已生产发布）
 
@@ -1173,3 +1173,11 @@ API 进程每三分钟扫描付款任务关联订单；仅核对 `orders.created
 列表顶层返回 `officialOrderStatuses: string[]` 候选，按当前权限、任务归属及其他查询条件从数据库完整范围生成，忽略当前官网状态选择，独立于分页，供全选使用。服务端在分页和计数之前筛选，不允许按当页结果补过滤。旧邮件筛选参数继续作为 API 兼容能力，页面不再发送。
 
 日期继续使用与订单管理共用的来源 `orderDate` 范围与北京时间日边界；商品选择继续使用稳定 `productKeys`，界面只显示机型文字，不显示 SKU 编号。此次不修改数据库、自动刷新起点、权限或终态判断。
+
+## 订单取机人 TAG 统一契约（2026-10-14）
+
+本轮已批准并实施中，验收和发布状态见[统一方案](../planning/订单取机人TAG统一方案.md)。所有来源及历史订单的业务 TAG 唯一读取 `orders.recipient_ref` 关联的 `recipients.tag`，档案修改实时生效。NULL、空串、全空白为缺失；非空值保留原字符串并区分大小写精确匹配。未关联或缺失不回退来源。`orders.tag`、`source_recipient_tag` 及 AOS 快照仅保留原始记录，不覆盖。
+
+订单响应 `recipient_tag`、`tag` 为当前值或 null，新增 `recipient_tag_state`（unlinked／missing／present）；付款对应 `recipientTag` 和 `recipientTagState`。列表、详情、导出、筛选候选、仪表板、渠道聚合和用户 TAG 范围采用相同规则；缺失值不构成真实渠道或授权 TAG。本人付款任务所有权须与当前 TAG 范围相交，不要求额外的 orders.read。
+
+自动分配对所有来源按当前 TAG 匹配规则，候选人也必须具有当前 TAG 范围；缺失只允许全部范围账号接单。无匹配规则沿用普通账号集合，已分配历史任务不自动转派。新企微通知采用当前值，旧投递记录保留。渠道改名仅更新档案 TAG 和授权配置，不改来源快照。修改既有档案 TAG、删除、导入覆盖 TAG、补关联等影响订单范围的操作要求全部范围及原功能权限。

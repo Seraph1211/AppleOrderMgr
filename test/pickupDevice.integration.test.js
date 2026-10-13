@@ -70,29 +70,40 @@ suite('设备扫码真实数据库、HTTP 权限和事务', () => {
 
   beforeEach(async () => {
     await models.sequelize.query(
-      'TRUNCATE pickup_devices, pickup_record_events, pickup_evidence, pickup_records, orders, users RESTART IDENTITY CASCADE'
+      'TRUNCATE pickup_devices, pickup_record_events, pickup_evidence, pickup_records, recipients, orders, users RESTART IDENTITY CASCADE'
     );
     user = await models.User.create({
       username: 'scan_test',
       password: 'Synthetic-Scan-Password-1!',
       role: 'pickupStaff',
     });
+    const tagProfiles = await models.Recipient.bulkCreate(
+      ['SCAN-IN', 'SCAN-OUT'].map((tag, index) => ({
+        lastName: '合成',
+        firstName: '取机人',
+        idCardNumber: `1101011990010100${index + 10}`,
+        tag,
+      }))
+    );
     orders = await models.Order.bulkCreate([
       {
         orderNumber: 'W9701000672',
         tag: 'SCAN-IN',
+        recipientRef: tagProfiles[0].id,
         recipientName: '扫码合成甲',
         products: [{ name: '测试手机', quantity: 2 }],
       },
       {
         orderNumber: 'W9702000672',
         tag: 'SCAN-OUT',
+        recipientRef: tagProfiles[1].id,
         recipientName: '扫码合成乙',
         products: [{ name: '测试手机', quantity: 2 }],
       },
       {
         orderNumber: 'W9703000672',
         tag: 'SCAN-IN',
+        recipientRef: tagProfiles[0].id,
         recipientName: '扫码合成甲',
         products: [{ name: '测试手机', quantity: 1 }],
       },

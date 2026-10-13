@@ -50,7 +50,7 @@ async function getOverview(_req, res) {
 async function listTasks(req, res) {
   return res.json({
     success: true,
-    data: await paymentDispatchService.listDispatchTasks(req.query),
+    data: await paymentDispatchService.listDispatchTasks(req.query, req.user),
   });
 }
 

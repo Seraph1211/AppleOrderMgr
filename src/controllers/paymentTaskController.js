@@ -35,7 +35,7 @@ async function assignOwnTaskPayer(req, res) {
     task.orderId,
     { ...req.body, idempotencyKey: req.get('Idempotency-Key') || req.body.idempotencyKey },
     req.user.id,
-    { assigneeUserId: req.user.id }
+    { assigneeUserId: req.user.id, orderUser: req.user }
   );
   return res.json({ success: true, data });
 }

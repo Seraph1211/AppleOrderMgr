@@ -10,6 +10,11 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
   let admin;
   let staffOne;
   let staffTwo;
+  let recipients;
+
+  function listDispatch(query) {
+    return dispatchService.listDispatchTasks(query, admin);
+  }
 
   beforeAll(async () => {
     if (!/^apple_order_mgr_.+_test_\d+$/.test(process.env.DB_NAME || '')) {
@@ -39,6 +44,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         username: 'integration_staff_1',
         password: 'synthetic-password',
         role: 'operator',
+        orderAccess: { mode: 'all', tags: [] },
         status: 'active',
         // 存量强制改密标记不再影响接单。
         forcePasswordChange: true,
@@ -47,10 +53,19 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         username: 'integration_staff_2',
         password: 'synthetic-password',
         role: 'operator',
+        orderAccess: { mode: 'all', tags: [] },
         status: 'active',
         forcePasswordChange: false,
       }),
     ]);
+    recipients = await models.Recipient.bulkCreate(
+      ['PROFILE-SPECIAL', 'TAG-0', 'TAG-1', 'TAG-2', 'TAG-3', 'TAG-4'].map((tag, index) => ({
+        lastName: '合成',
+        firstName: String(index),
+        idCardNumber: `1101011990010100${index + 10}`,
+        tag,
+      }))
+    );
     const grants = [staffOne.id, staffTwo.id].flatMap(userId =>
       require('../src/constants/permissionCatalog').PAYMENT_EXECUTION_PERMISSIONS.map(
         permissionCode => ({ userId, permissionCode, grantedBy: admin.id })
@@ -80,7 +95,8 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         orderNumber: `W${String(index + 1).padStart(10, '0')}`,
         ingestionSource: index === 0 || index === 5 ? 'aos' : 'email',
         sourceRecipientTag: index === 0 ? 'AOS-来源-TAG' : null,
-        tag: `TAG-${index % 5}`,
+        tag: `SOURCE-${index % 5}`,
+        recipientRef: recipients[index === 0 ? 0 : (index % 5) + 1].id,
         products: [{ model: `MODEL-${index % 5}`, name: `测试商品 ${index % 7}`, quantity: 1 }],
         emailOrderStatus: 'confirmed',
         emailPaymentStatus: 'unknown',
@@ -120,7 +136,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     const pages = [];
     const orderTimes = [];
     for (let page = 1; page <= 8; page += 1) {
-      const result = await dispatchService.listDispatchTasks({ page, limit: 20 });
+      const result = await listDispatch({ page, limit: 20 });
       expect(result.pagination).toEqual({ page, limit: 20, total: 150, totalPages: 8 });
       expect(result.items).toHaveLength(page === 8 ? 10 : 20);
       expect(result.items.every(item => item.orderDate)).toBe(true);
@@ -130,32 +146,33 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     expect(new Set(pages).size).toBe(150);
     expect(orderTimes).toEqual([...orderTimes].sort((left, right) => right - left));
     expect(pages).toHaveLength(150);
-    const aosTag = await dispatchService.listDispatchTasks({ recipientTag: 'AOS-来源-TAG' });
+    expect((await listDispatch({ recipientTag: 'AOS-来源-TAG' })).pagination.total).toBe(0);
+    const aosTag = await listDispatch({ recipientTag: 'PROFILE-SPECIAL' });
     expect(aosTag.pagination.total).toBe(1);
-    expect(aosTag.items[0]).toMatchObject({ recipientTag: 'AOS-来源-TAG' });
+    expect(aosTag.items[0]).toMatchObject({ recipientTag: 'PROFILE-SPECIAL' });
     const ownAosTag = await paymentTaskService.listOwnTasks(aosTag.items[0].assignee.id, {
-      recipientTag: 'AOS-来源-TAG',
+      recipientTag: 'PROFILE-SPECIAL',
     });
     expect(ownAosTag.pagination.total).toBe(1);
-    expect(ownAosTag.items[0].recipientTag).toBe('AOS-来源-TAG');
-    const aosFallbackTag = await dispatchService.listDispatchTasks({
+    expect(ownAosTag.items[0].recipientTag).toBe('PROFILE-SPECIAL');
+    const aosProfileTag = await listDispatch({
       recipientTag: 'TAG-0',
       limit: 100,
     });
-    expect(aosFallbackTag.pagination.total).toBe(29);
-    expect(aosFallbackTag.items.some(item => item.orderNumber === 'W0000000006')).toBe(true);
-    const emailTag = await dispatchService.listDispatchTasks({ recipientTag: 'TAG-1' });
+    expect(aosProfileTag.pagination.total).toBe(29);
+    expect(aosProfileTag.items.some(item => item.orderNumber === 'W0000000006')).toBe(true);
+    const emailTag = await listDispatch({ recipientTag: 'TAG-1' });
     expect(emailTag.pagination.total).toBe(30);
     expect(emailTag.items.every(item => item.recipientTag === 'TAG-1')).toBe(true);
     expect(emailTag.recipientTagOptions).toEqual([
-      'AOS-来源-TAG',
+      'PROFILE-SPECIAL',
       'TAG-0',
       'TAG-1',
       'TAG-2',
       'TAG-3',
       'TAG-4',
     ]);
-    const multipleTags = await dispatchService.listDispatchTasks({
+    const multipleTags = await listDispatch({
       recipientTags: JSON.stringify(['TAG-1', 'TAG-2']),
       limit: 100,
     });
@@ -171,7 +188,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     expect(
       ownMultipleTags.items.every(item => ['TAG-1', 'TAG-2'].includes(item.recipientTag))
     ).toBe(true);
-    const multipleProducts = await dispatchService.listDispatchTasks({
+    const multipleProducts = await listDispatch({
       productNames: JSON.stringify(['测试商品 1', '测试商品 2']),
       limit: 100,
     });
@@ -185,7 +202,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     expect(multipleProducts.productNameOptions).toEqual(
       expect.arrayContaining(['测试商品 0', '测试商品 6'])
     );
-    const productAndTag = await dispatchService.listDispatchTasks({
+    const productAndTag = await listDispatch({
       productNames: JSON.stringify(['测试商品 1']),
       recipientTags: JSON.stringify(['TAG-1']),
       limit: 100,
@@ -206,11 +223,11 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     expect(ownProducts.productNameOptions).toEqual(
       expect.arrayContaining(['测试商品 0', '测试商品 6'])
     );
+    await expect(listDispatch({ recipientTag: 'T'.repeat(501) })).rejects.toMatchObject({
+      statusCode: 400,
+    });
     await expect(
-      dispatchService.listDispatchTasks({ recipientTag: 'T'.repeat(501) })
-    ).rejects.toMatchObject({ statusCode: 400 });
-    await expect(
-      dispatchService.listDispatchTasks({ recipientTags: JSON.stringify(Array(101).fill('TAG')) })
+      listDispatch({ recipientTags: JSON.stringify(Array(101).fill('TAG')) })
     ).rejects.toMatchObject({ statusCode: 400 });
     await expect(
       paymentTaskService.listOwnTasks(staffOne.id, { recipientTag: 'T'.repeat(501) })
@@ -221,20 +238,20 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       JSON.stringify([123]),
       JSON.stringify(['商'.repeat(501)]),
     ]) {
-      await expect(dispatchService.listDispatchTasks({ productNames })).rejects.toMatchObject({
+      await expect(listDispatch({ productNames })).rejects.toMatchObject({
         statusCode: 400,
       });
     }
     const filter = { productKeyword: 'MODEL-1', processingStatus: 'pending' };
-    const first = await dispatchService.listDispatchTasks({ ...filter, page: 1, limit: 20 });
-    const second = await dispatchService.listDispatchTasks({ ...filter, page: 2, limit: 20 });
+    const first = await listDispatch({ ...filter, page: 1, limit: 20 });
+    const second = await listDispatch({ ...filter, page: 2, limit: 20 });
     expect(first.pagination.total).toBe(30);
     expect(second.items).toHaveLength(10);
     expect(new Set([...first.items, ...second.items].map(item => item.id)).size).toBe(30);
-    const empty = await dispatchService.listDispatchTasks({ orderNumber: 'not-found' });
+    const empty = await listDispatch({ orderNumber: 'not-found' });
     expect(empty.pagination.total).toBe(0);
     expect(empty.items).toEqual([]);
-    const beyond = await dispatchService.listDispatchTasks({ page: 9, limit: 20 });
+    const beyond = await listDispatch({ page: 9, limit: 20 });
     expect(beyond.items).toEqual([]);
     for (const query of [
       { page: 0 },
@@ -245,17 +262,13 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       { limit: 0 },
       { limit: 201 },
     ]) {
-      await expect(dispatchService.listDispatchTasks(query)).rejects.toMatchObject({
+      await expect(listDispatch(query)).rejects.toMatchObject({
         statusCode: 400,
       });
     }
     const own = await paymentTaskService.listOwnTasks(staffOne.id, { page: 2, limit: 20 });
     expect(own.pagination).toEqual({ page: 2, limit: 20, total: 75, totalPages: 4 });
-    expect(
-      own.items.every(
-        item => item.assignee.id === staffOne.id && item.orderDate
-      )
-    ).toBe(true);
+    expect(own.items.every(item => item.assignee.id === staffOne.id && item.orderDate)).toBe(true);
     const ownTimes = own.items.map(item => new Date(item.orderDate).getTime());
     expect(ownTimes).toEqual([...ownTimes].sort((left, right) => right - left));
   });
@@ -730,7 +743,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     );
     for (const query of [
       q => paymentTaskService.listOwnTasks(staffTwo.id, q),
-      q => dispatchService.listDispatchTasks(q),
+      q => listDispatch(q),
     ]) {
       const result = await query({
         orderNumber: 'W711111111',
@@ -874,10 +887,10 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
       admin.id
     );
     expect(settings.mode).toBe('manual');
-    await expect(dispatchService.listDispatchTasks({ assignee: 'invalid' })).rejects.toMatchObject({
+    await expect(listDispatch({ assignee: 'invalid' })).rejects.toMatchObject({
       statusCode: 400,
     });
-    const queue = await dispatchService.listDispatchTasks({
+    const queue = await listDispatch({
       processingStatus: 'pending',
       orderNumber: 'W000000',
       productKeyword: '测试商品',
@@ -887,7 +900,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
     expect(queue.items.length).toBeLessThanOrEqual(5);
     expect(queue.items.every(item => item.orderDate)).toBe(true);
 
-    const staffQueue = await dispatchService.listDispatchTasks({
+    const staffQueue = await listDispatch({
       assignee: String(staffTwo.id),
       limit: 5,
     });
@@ -971,6 +984,7 @@ describeIntegration('权限与付款任务隔离库集成验收', () => {
         username: 'integration_new_staff',
         password: 'synthetic-password',
         role: 'operator',
+        orderAccess: { mode: 'all', tags: [] },
         status: 'active',
         forcePasswordChange: true,
       },

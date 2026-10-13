@@ -1,3 +1,4 @@
+const { getRecipientTag, normalizeRecipientTag } = require('./recipientTagService');
 const { Op, Sequelize } = require('sequelize');
 const {
   sequelize,
@@ -5,7 +6,7 @@ const {
   PaymentDispatchEvent,
   User,
   UserPermission,
-  Order,
+  Recipient,
 } = require('../models');
 const { PAYMENT_ASSIGNMENT_LOCK_ID } = require('./permissionService');
 const { PAYMENT_EXECUTION_PERMISSIONS } = require('../constants/permissionCatalog');
@@ -32,7 +33,7 @@ function normalizeRule(input) {
     !input.recipientTags.length ||
     input.recipientTags.length > 100 ||
     input.recipientTags.some(
-      tag => typeof tag !== 'string' || !tag.trim() || tag.trim().length > 500
+      tag => typeof tag !== 'string' || !tag.trim() || tag.length > 500
     )
   ) {
     throw ApiError.badRequest('请选择或填写 1–100 个 TAG，每项 1–500 个字符');
@@ -50,7 +51,7 @@ function normalizeRule(input) {
   return {
     name: input.name.trim(),
     enabled: input.enabled,
-    recipientTags: [...new Set(input.recipientTags.map(tag => tag.trim()))],
+    recipientTags: [...new Set(input.recipientTags)],
     assigneeUserIds: [...ids].sort((a, b) => a - b),
   };
 }
@@ -69,28 +70,26 @@ function buildRuleIndex(rules) {
 }
 
 /**
- * 只匹配 AOS 订单入库 TAG。
+ * 匹配所有来源订单当前档案 TAG。
  * @param {Object} order 订单
  * @param {Map} index 索引
  * @returns {Object|null} 规则
  */
 function matchRule(order, index) {
-  if (order?.ingestionSource !== 'aos') return null;
-  const tag = (order.sourceRecipientTag || order.tag || '').trim();
+  const tag = getRecipientTag(order);
   return tag ? index.get(tag) || null : null;
 }
 
 /**
- * 查询管理员规则及全部 AOS TAG 候选。
+ * 查询管理员规则及全部档案 TAG 候选。
  * @returns {Promise<Object>} 列表
  */
 async function listRules() {
   try {
-    const expression = Sequelize.literal('COALESCE(NULLIF("source_recipient_tag", \'\'), "tag")');
+    const expression = Sequelize.col('tag');
     const [items, tags] = await Promise.all([
       PaymentTagRule.findAll({ order: [['id', 'ASC']] }),
-      Order.findAll({
-        where: { ingestionSource: 'aos' },
+      Recipient.findAll({
         attributes: [[expression, 'value']],
         group: [expression],
         raw: true,
@@ -98,7 +97,9 @@ async function listRules() {
     ]);
     return {
       items,
-      tagOptions: [...new Set(tags.map(row => row.value?.trim()).filter(Boolean))].sort(),
+      tagOptions: [
+        ...new Set(tags.map(row => normalizeRecipientTag(row.value)).filter(Boolean)),
+      ].sort(),
     };
   } catch (error) {
     logger.error('查询 TAG 分配规则失败', { errorCode: error.code || 'TAG_RULE_READ_FAILED' });

@@ -1,3 +1,8 @@
+const {
+  recipientTagWhere,
+  getRecipientTag,
+  getRecipientTagState,
+} = require('../services/recipientTagService');
 const { Op } = require('sequelize');
 const { sequelize, Order, Recipient, PickupRecord, PickupEvidence, User } = require('../models');
 const { scopeOrderWhere } = require('../services/orderAccessService');
@@ -22,7 +27,7 @@ function parseOrderId(value) {
 
 function orderInclude() {
   return [
-    { model: Recipient, as: 'recipient', attributes: ['lastName', 'firstName'] },
+    { model: Recipient, as: 'recipient', attributes: ['lastName', 'firstName', 'tag'] },
     {
       model: PickupRecord,
       as: 'pickupRecord',
@@ -55,7 +60,8 @@ function serialize(order) {
   return {
     orderId: plain.id,
     orderNumber: plain.orderNumber,
-    tag: plain.tag || null,
+    tag: getRecipientTag(plain),
+    recipientTagState: getRecipientTagState(plain),
     recipientName: plain.recipient
       ? `${plain.recipient.lastName || ''}${plain.recipient.firstName || ''}` || plain.recipientName
       : plain.recipientName,
@@ -93,12 +99,12 @@ function filters(query) {
     ) {
       throw ApiError.badRequest('tags 最多 100 项，每项为 1-500 字符的非空字符串');
     }
-    if (tags.length) where.tag = { [Op.in]: [...new Set(tags)] };
+    if (tags.length) where[Op.and] = [recipientTagWhere({ [Op.in]: [...new Set(tags)] })];
   } else if (query.tag) {
     if (typeof query.tag !== 'string' || !query.tag.trim() || query.tag.length > 500) {
       throw ApiError.badRequest('tag 必须是 1-500 字符的非空字符串');
     }
-    where.tag = query.tag;
+    where[Op.and] = [recipientTagWhere(query.tag)];
   }
   if (query.search) {
     const search = String(query.search).trim().slice(0, 100);
@@ -119,6 +125,7 @@ function buildPickupQuery(query) {
     include[1].required = query.status !== 'pending';
     if (query.status === 'pending') {
       where[Op.and] = [
+        ...(where[Op.and] || []),
         { [Op.or]: [{ '$pickupRecord.id$': null }, { '$pickupRecord.status$': 'pending' }] },
       ];
     } else include[1].where = { status: query.status };

@@ -2,7 +2,7 @@
 const run = process.env.RUN_ORDER_TAG_INTEGRATION === 'true';
 const suite = run ? describe : describe.skip;
 
-suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => {
+suite('订单 TAG 范围与付款任务交集授权（隔离库 HTTP）', () => {
   let models;
   let permissions;
   let server;
@@ -53,19 +53,8 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
     models = require('../src/models');
     permissions = require('../src/services/permissionService');
     await models.sequelize.query(
-      'TRUNCATE order_refresh_batches, users, orders, recipients, apple_ids RESTART IDENTITY CASCADE'
+      'TRUNCATE users, orders, recipients, apple_ids RESTART IDENTITY CASCADE'
     );
-    const migration = require('../migrations/20260918000002-add-order-tag-access');
-    const qi = models.sequelize.getQueryInterface();
-    await migration.down(qi);
-    await models.sequelize.query(
-      "INSERT INTO users (username, password, role, created_at, updated_at) VALUES ('legacy_tag_user', 'synthetic-hash', 'operator', NOW(), NOW())"
-    );
-    await migration.up(qi, models.Sequelize);
-    const [legacy] = await models.sequelize.query(
-      "SELECT order_access FROM users WHERE username='legacy_tag_user'"
-    );
-    expect(legacy[0].order_access).toEqual({ mode: 'all', tags: [] });
     const sessions = [
       {
         id: 'synthetic-tag-session',
@@ -130,13 +119,15 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
         orderUrl: `https://example.invalid/order/${i}`,
       }))
     );
-    const recipient = await models.Recipient.create({
-      lastName: '合成',
-      firstName: '取机人',
-      idCardNumber: '110101199001010010',
-      tag: 'PROFILE-DIFFERENT',
-    });
-    await orders[0].update({ recipientRef: recipient.id });
+    for (const [i, order] of orders.entries()) {
+      const recipient = await models.Recipient.create({
+        lastName: '合成',
+        firstName: String(i),
+        idCardNumber: `1101011990010100${String(i + 10)}`,
+        tag: order.tag,
+      });
+      await order.update({ recipientRef: recipient.id });
+    }
     task = await models.PaymentTask.create({
       orderId: orders[1].id,
       assigneeUserId: staff.id,
@@ -172,7 +163,7 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
     if (models) await models.sequelize.close();
   });
 
-  test('精确匹配 orders.tag：不使用 AOS 来源、不匹配前缀/大小写/空白；分页不泄漏', async () => {
+  test('精确匹配关联 recipients.tag：不使用 AOS 来源、不匹配前缀/大小写/空白；分页不泄漏', async () => {
     const result = await request('/orders?limit=1');
     expect(result.status).toBe(200);
     expect(result.body.data.orders.map(row => row.id)).toEqual([orders[0].id]);
@@ -197,7 +188,7 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
       ['/payer', 'PUT', { payerName: 'synthetic', expectedVersion: 0, idempotencyKey: 'denied' }],
     ]) {
       expect((await request(`/orders/${orders[1].id}${suffix}`, { method, body })).status).toBe(
-        404
+        suffix === '/refresh' ? 410 : 404
       );
     }
     expect((await orders[1].reload()).paymentScreenshot).toEqual([]);
@@ -228,8 +219,8 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
     expect(rows).toHaveLength(1);
     expect(JSON.stringify(rows)).toContain(orders[0].orderNumber);
   });
-  test('展示 TAG 多选在分页和导出前过滤，来源与档案回退一致', async () => {
-    const tags = encodeURIComponent(JSON.stringify(['PROFILE-DIFFERENT', 'TAG-A']));
+  test('展示 TAG 多选在分页和导出前过滤，全部按档案值', async () => {
+    const tags = encodeURIComponent(JSON.stringify(['TAG-B', 'TAG-A']));
     const result = await request(`/orders?recipientTags=${tags}&limit=1`, { token: adminToken });
     expect(result.status).toBe(200);
     expect(result.body.data.total).toBe(2);
@@ -253,18 +244,18 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
 
   test('TAG 候选使用展示值，筛选仍受访问范围约束', async () => {
     const options = await request('/orders/filter-options');
-    expect(options.body.data.recipientTags).toEqual(['PROFILE-DIFFERENT']);
+    expect(options.body.data.recipientTags).toEqual(['TAG-A']);
     const visible = await request(
-      `/orders?recipientTags=${encodeURIComponent('["PROFILE-DIFFERENT","TAG-A"]')}`
+      `/orders?recipientTags=${encodeURIComponent('["TAG-B","TAG-A"]')}`
     );
     expect(visible.body.data.orders.map(row => row.id)).toEqual([orders[0].id]);
-    const hidden = await request(`/orders?recipientTags=${encodeURIComponent('["TAG-A"]')}`);
+    const hidden = await request(`/orders?recipientTags=${encodeURIComponent('["TAG-B"]')}`);
     expect(hidden.body.data.total).toBe(0);
     const all = await request('/orders/filter-options', { token: adminToken });
     expect(all.body.data.recipientTags).toEqual(
-      expect.arrayContaining(['PROFILE-DIFFERENT', 'TAG-A', 'TAG-A-1', 'tag-a', ' TAG-A '])
+      expect.arrayContaining(['TAG-B', 'TAG-A', 'TAG-A-1', 'tag-a', ' TAG-A '])
     );
-    expect(all.body.data.recipientTags).not.toContain('TAG-B');
+    expect(all.body.data.recipientTags).not.toContain('PROFILE-DIFFERENT');
   });
 
   test('已退休的批量刷新与页面刷新接口返回不存在', async () => {
@@ -306,46 +297,24 @@ suite('订单 TAG 范围与付款任务独立授权（隔离库 HTTP）', () => 
     await setScope([]);
     expect((await request('/dashboard/filter-options')).body.data.productModels).toEqual([]);
   });
-  test('本人跨 TAG 任务保留信息、链接、付款人登记和处理；订单接口仍拒绝', async () => {
-    const baseline = await request(`/payment-tasks/${task.id}`, { token: adminToken });
-    expect(baseline.status).toBe(404); // 管理员也不绕过本人任务归属
-    const detail = await request(`/payment-tasks/${task.id}`);
-    expect(detail.status).toBe(200);
-    expect(detail.body.data.orderNumber).toBe(orders[1].orderNumber);
-    await setScope([], 'all');
-    const unrestricted = await request(`/payment-tasks/${task.id}`);
-    const beforeFields = { ...unrestricted.body.data };
-    delete beforeFields.remainingSeconds;
-    const afterFields = { ...detail.body.data };
-    delete afterFields.remainingSeconds;
-    expect(afterFields).toEqual(beforeFields);
-    await setScope(['TAG-A']);
+  test('本人跨 TAG 任务拒绝读取与操作，全部范围保留任务归属约束', async () => {
+    expect((await request(`/payment-tasks/${task.id}`, { token: adminToken })).status).toBe(404);
+    expect((await request(`/payment-tasks/${task.id}`)).status).toBe(404);
+    expect((await request(`/payment-tasks/${task.id}/payment-link`)).status).toBe(404);
     expect(
       (
         await request(`/payment-tasks/${task.id}`, {
           method: 'PUT',
           body: {
-            processingNotes: '合成任务备注',
-            expectedVersion: detail.body.data.version,
-            idempotencyKey: 'own-task-note',
+            processingNotes: '越权',
+            expectedVersion: 0,
+            idempotencyKey: 'own-denied',
           },
         })
       ).status
-    ).toBe(200);
-
-    expect((await request(`/payment-tasks/${task.id}/payment-link`)).status).toBe(200);
-    expect(
-      (
-        await request(`/payment-tasks/${task.id}/payer`, {
-          method: 'PUT',
-          body: { payerName: '合成付款人', expectedVersion: 0, idempotencyKey: 'own-task-payer' },
-        })
-      ).status
-    ).toBe(200);
-    expect((await request(`/payment-tasks/${task.id}/refresh`, { method: 'POST' })).status).toBe(
-      410
-    );
-    expect((await request(`/orders/${orders[1].id}`)).status).toBe(404);
+    ).toBe(404);
+    await setScope([], 'all');
+    expect((await request(`/payment-tasks/${task.id}`)).status).toBe(200);
     expect((await request(`/payment-tasks/${task.id}`, { token: otherToken })).status).toBe(404);
   });
   test('管理员原子保存范围、审计、并发冲突、幂等内容冲突；旧 token 随即受限', async () => {
