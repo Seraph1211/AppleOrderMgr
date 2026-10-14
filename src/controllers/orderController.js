@@ -52,6 +52,7 @@ const MAX_ORDER_ID = 2147483647;
 const ORDER_EXPORT_FIELDS = Object.freeze({
   systemOrderId: { label: '系统订单 ID', value: item => item.id },
   orderNumber: { label: '官网订单号', value: item => item.order_number || '' },
+  serialNumbers: { label: '序列号', value: item => (item.serial_numbers || []).join('\n') },
   ingestionSource: {
     label: '入库来源',
     value: item => ({ aos: 'AOS 文件', email: '邮件' })[item.ingestion_source] || '来源未知',
@@ -585,26 +586,7 @@ async function listOrders(req, res) {
       distinct: true,
     });
 
-    // 批量读取当前页序列号，避免 hasMany JOIN 改变分页或产生 N+1。
-    let devices = [];
-    if (rows.length) {
-      devices = await PickupDevice.findAll({
-        where: { orderId: { [Op.in]: rows.map(order => order.id) } },
-        attributes: ['orderId', 'serialNumber'],
-        order: [
-          ['createdAt', 'ASC'],
-          ['id', 'ASC'],
-        ],
-        raw: true,
-      });
-    }
-    const serialNumbersByOrder = new Map();
-    for (const device of devices) {
-      if (!serialNumbersByOrder.has(device.orderId)) serialNumbersByOrder.set(device.orderId, []);
-      serialNumbersByOrder.get(device.orderId).push(device.serialNumber);
-    }
-    for (const order of rows)
-      order.setDataValue('serialNumbers', serialNumbersByOrder.get(order.id) || []);
+    await attachOrderSerialNumbers(rows);
 
     const includeRecipientPhone = canDisplayLocalSensitiveFields(
       req,
@@ -777,6 +759,34 @@ function createOrderExportRow(item, fields) {
   );
 }
 
+/** 批量装载已授权订单的当前绑定序列号，列表与导出共用稳定排序。 */
+async function attachOrderSerialNumbers(rows) {
+  try {
+    // 批量读取订单序列号，避免 hasMany JOIN 改变分页或产生 N+1。
+    let devices = [];
+    if (rows.length) {
+      devices = await PickupDevice.findAll({
+        where: { orderId: { [Op.in]: rows.map(order => order.id) } },
+        attributes: ['orderId', 'serialNumber'],
+        order: [
+          ['createdAt', 'ASC'],
+          ['id', 'ASC'],
+        ],
+        raw: true,
+      });
+    }
+    const serialNumbersByOrder = new Map();
+    for (const device of devices) {
+      if (!serialNumbersByOrder.has(device.orderId)) serialNumbersByOrder.set(device.orderId, []);
+      serialNumbersByOrder.get(device.orderId).push(device.serialNumber);
+    }
+    for (const order of rows)
+      order.setDataValue('serialNumbers', serialNumbersByOrder.get(order.id) || []);
+  } catch (error) {
+    throw ApiError.database('读取订单序列号失败', { reason: error.message });
+  }
+}
+
 /**
  * GET /api/orders/export
  * 按当前筛选条件或明确订单 ID 导出服务端白名单字段。
@@ -801,6 +811,7 @@ async function exportOrders(req, res) {
     if (orderIds && rows.length !== orderIds.length) {
       throw ApiError.notFound('订单不存在或不可访问');
     }
+    if (fields.includes('serialNumbers')) await attachOrderSerialNumbers(rows);
     const data = rows.map(order => createOrderExportRow(serializeOrderListItem(order), fields));
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();

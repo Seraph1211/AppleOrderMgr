@@ -57,3 +57,11 @@ test('前后端官网状态中文名称一致', async () => {
     assert.equal(backendLabels[status], label);
   }
 });
+
+test('序列号可导出且首次默认选择跟随列表可见性', () => {
+  assert.equal(orderExportFields.find(field => field.key === 'serialNumbers').label, '序列号');
+  assert.deepEqual(getDefaultOrderExportFields([{ key: 'serialNumbers', visible: true }]), [
+    'serialNumbers',
+  ]);
+  assert.deepEqual(getDefaultOrderExportFields([{ key: 'serialNumbers', visible: false }]), []);
+});

@@ -13,6 +13,7 @@ jest.mock('../src/models', () => ({
   AppleId: { findAll: jest.fn(), findOne: jest.fn(), create: jest.fn() },
   Recipient: { findAll: jest.fn() },
   Order: { findAll: jest.fn() },
+  PickupDevice: { findAll: jest.fn() },
   sequelize: { transaction: jest.fn(), query: jest.fn() },
 }));
 const {
@@ -24,7 +25,7 @@ const {
 const { previewImport, executeImport } = require('../src/controllers/importController');
 const { exportOrders } = require('../src/controllers/orderController');
 const { exportRecipients } = require('../src/controllers/recipientController');
-const { AppleId, Recipient, Order, sequelize } = require('../src/models');
+const { AppleId, Recipient, Order, PickupDevice, sequelize } = require('../src/models');
 const { verifyVendor } = require('../scripts/verifyVendor');
 
 let tempDir;
@@ -64,6 +65,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   AppleId.findAll.mockResolvedValue([]);
   Recipient.findAll.mockResolvedValue([]);
+  PickupDevice.findAll.mockResolvedValue([]);
   sequelize.query.mockResolvedValue([[]]);
 });
 
@@ -360,6 +362,8 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
     const sheet = book.Sheets['订单'];
     const data = XLSX.utils.sheet_to_json(sheet);
+    expect(PickupDevice.findAll).not.toHaveBeenCalled();
+    expect(data[0]).not.toHaveProperty('序列号');
     expect(data[0]['邮件订单状态']).toBe('待确认');
     expect(data[0]['标签']).toBe("'=1+1");
     expect(data[0]['订单金额']).toBe('21998.00');
@@ -407,6 +411,81 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     );
     const book = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' });
     expect(XLSX.utils.sheet_to_json(book.Sheets['订单'])).toEqual([{ 邮件订单状态: label }]);
+  });
+
+  test('序列号按授权订单批量导出，多设备换行、空值留空且保留文本', async () => {
+    const { Op } = require('sequelize');
+    const rows = [41, 42, 43].map(id => {
+      const data = { id, orderNumber: `W${id}`, products: [] };
+      return {
+        id,
+        toJSON: () => data,
+        setDataValue: (key, value) => {
+          data[key] = value;
+        },
+      };
+    });
+    Order.findAll.mockResolvedValue(rows);
+    PickupDevice.findAll.mockResolvedValue([
+      { orderId: 41, serialNumber: '0000123456' },
+      { orderId: 41, serialNumber: 'TESTSN0002' },
+      { orderId: 43, serialNumber: '=1+1' },
+    ]);
+    const res = response();
+    await exportOrders(
+      {
+        query: { orderIds: '[41,42,43]', fields: '["orderNumber","serialNumbers"]' },
+        user: { id: 1, role: 'operator', orderAccess: { mode: 'tags', tags: ['授权TAG'] } },
+      },
+      res
+    );
+    expect(Order.findAll.mock.calls[0][0].where[Op.and][1].logic[Op.in]).toEqual(['授权TAG']);
+    expect(PickupDevice.findAll).toHaveBeenCalledTimes(1);
+    expect(PickupDevice.findAll.mock.calls[0][0]).toEqual({
+      where: { orderId: { [Op.in]: [41, 42, 43] } },
+      attributes: ['orderId', 'serialNumber'],
+      order: [
+        ['createdAt', 'ASC'],
+        ['id', 'ASC'],
+      ],
+      raw: true,
+    });
+    const sheet = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' }).Sheets['订单'];
+    expect(XLSX.utils.sheet_to_json(sheet)).toEqual([
+      { 官网订单号: 'W41', 序列号: '0000123456\nTESTSN0002' },
+      { 官网订单号: 'W42', 序列号: '' },
+      { 官网订单号: 'W43', 序列号: "'=1+1" },
+    ]);
+    expect(sheet.B2.t).toBe('s');
+    expect(Object.values(sheet).filter(cell => cell?.f)).toHaveLength(0);
+  });
+
+  test('混合范围外订单整批拒绝且不查询序列号', async () => {
+    Order.findAll.mockResolvedValue([{ id: 41 }]);
+    const res = response();
+    await expect(
+      exportOrders(
+        {
+          query: { orderIds: '[41,42]', fields: '["serialNumbers"]' },
+          user: { id: 1, role: 'operator', orderAccess: { mode: 'tags', tags: ['授权TAG'] } },
+        },
+        res
+      )
+    ).rejects.toMatchObject({ statusCode: 404 });
+    expect(PickupDevice.findAll).not.toHaveBeenCalled();
+    expect(res.send).not.toHaveBeenCalled();
+  });
+
+  test('空导出不读取设备，设备读取失败不能返回缺失序列号的文件', async () => {
+    const req = { query: { fields: '["serialNumbers"]' }, user: { id: 1, role: 'admin' } };
+    Order.findAll.mockResolvedValue([]);
+    await exportOrders(req, response());
+    expect(PickupDevice.findAll).not.toHaveBeenCalled();
+    Order.findAll.mockResolvedValue([{ id: 41 }]);
+    PickupDevice.findAll.mockRejectedValueOnce(new Error('synthetic-device-query-error'));
+    const res = response();
+    await expect(exportOrders(req, res)).rejects.toMatchObject({ code: 'DATABASE_ERROR' });
+    expect(res.send).not.toHaveBeenCalled();
   });
 
   test('选中订单按字段白名单导出且不包含未选择或敏感字段', async () => {
