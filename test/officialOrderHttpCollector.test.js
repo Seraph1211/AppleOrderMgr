@@ -40,7 +40,7 @@ const ENTRY = `https://www.apple.com.cn/xc/cn/vieworder/${ORDER}/owner@example.t
 const GUEST = `${ORIGIN}/shop/order/guest/${ORDER}/${TOKEN}`;
 const ACTION = `${ORIGIN}/shop/orderx/guestx/${ORDER}/${TOKEN}?_a=fetchOrder&_m=guestOrderSpinner`;
 const RECEIPT = `${ORIGIN}/shop/order/print/invoice/syntheticInvoice/${TOKEN}`;
-const SHIELD_ROUTE = `${ORIGIN}/shop/shld/work/v1_2/q`;
+const SHIELD_ROUTE = `${ORIGIN}/shop/shld/work/v1_2/q?jr=255&jr_r=env`;
 const SHIELD_SCRIPT = '<script id="shldVerify" src="/shop/shld/v1_2/verify.js"></script>';
 const SECRET = 'synthetic-sensitive-model-token';
 let root;
@@ -288,7 +288,7 @@ describe('每一跳请求的只读边界', () => {
 
 describe('挑战与 Cookie 不构成订单成功', () => {
   test('只发现同源且唯一的版本化官方脚本地址，不执行脚本', () => {
-    expect(discoverShieldUrl(SHIELD_SCRIPT, GUEST)).toBe(SHIELD_ROUTE);
+    expect(discoverShieldUrl(SHIELD_SCRIPT, GUEST)).toBe(SHIELD_ROUTE.split('?')[0]);
     for (const html of [
       '<script>throw new Error("not executed")</script>',
       SHIELD_SCRIPT + SHIELD_SCRIPT,
@@ -307,6 +307,25 @@ describe('挑战与 Cookie 不构成订单成功', () => {
       )
     ).rejects.toMatchObject({ code: 'SHIELD_ROUTE_INVALID' });
     expect(transport.request).not.toHaveBeenCalled();
+  });
+
+  test.each(['GET', 'POST'])('挑战 %s 只允许当前无浏览器环境参数，不放宽其他动作', method => {
+    expect(validateReadUrl(SHIELD_ROUTE, method).href).toBe(SHIELD_ROUTE);
+    for (const suffix of [
+      '?jr=0',
+      '?jr=255',
+      '?jr=255&jr_r=env&jr=0',
+      '?jr=255&jr_r=env&_a=cancel',
+    ])
+      expect(() => validateReadUrl(SHIELD_ROUTE.split('?')[0] + suffix, method)).toThrow();
+    expect(() => validateReadUrl(`${ACTION}&jr=255&jr_r=env`, method)).toThrow();
+  });
+
+  test.each([404, 410])('挑战 HTTP %i 保留真实错误码且不继续详情或产生结果', async status => {
+    queue(response(guestPage()), response('Not Found', { status }));
+    await expect(collector.collect()).rejects.toMatchObject({ code: `SHIELD_HTTP_${status}` });
+    expect(transport.request).toHaveBeenCalledTimes(2);
+    expect(fs.existsSync(`${root}/private/results`)).toBe(false);
   });
 
   test('未求出解不能 POST，不能发送详情动作', async () => {
@@ -420,7 +439,11 @@ describe('挑战与 Cookie 不构成订单成功', () => {
       method: 'POST',
       headers: { 'Content-Type': contentType, Origin: ORIGIN, Referer: GUEST },
     });
-    expect(JSON.parse(submission.body)).toMatchObject({ number, took: expect.any(Number) });
+    expect(JSON.parse(submission.body)).toMatchObject({
+      number,
+      took: expect.any(Number),
+      jsa: { s: 255, f: [], r: 'env' },
+    });
     expect(transport.request).toHaveBeenCalledTimes(5);
   });
 

@@ -267,6 +267,12 @@ suite('手动官网状态：持久队列、权限、全选及窄范围回写', (
     'PROXY_CONNECTION_FAILED',
     'PROXY_COOLDOWN',
     'REQUEST_BUDGET',
+    'SHIELD_HTTP_404',
+    'SHIELD_HTTP_410',
+    'SHIELD_RESPONSE_INVALID',
+    'SHIELD_ALGORITHM_UNSUPPORTED',
+    'EGRESS_PROBE_TIMEOUT',
+    'RUNTIME_COMMAND_FAILED',
   ])('%s 暂停批次且保留心跳，重启领取不会重放积压', async outcome => {
     const created = await service.enqueue(admin, input([orders[0].id, orders[1].id]));
     const job = await service.claim();

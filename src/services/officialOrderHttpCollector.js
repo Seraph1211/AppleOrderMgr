@@ -16,6 +16,9 @@ const {
 const MAX_REDIRECTS = 8;
 const HTTP_OK = 200;
 const REDIRECT_STATUSES = [301, 302, 303, 307, 308];
+// 当前官方脚本的无浏览器环境分支；查询与提交保持一致，不伪造正常环境评分。
+const SHIELD_ENVIRONMENT = Object.freeze({ s: 255, f: Object.freeze([]), r: 'env' });
+const SHIELD_ENVIRONMENT_QUERY = 'jr=255&jr_r=env';
 
 /** 从本次页面的官方验证脚本定位挑战路由；不执行页面代码。 */
 function discoverShieldUrl(body, documentUrl) {
@@ -67,6 +70,9 @@ function validateReadUrl(value, method = 'GET', allowLoginBootstrap = false) {
       url.searchParams.get('_a') !== 'fetchOrder' ||
       url.searchParams.get('_m') !== 'guestOrderSpinner'
     )
+      throw fault('READ_DESTINATION_DENIED');
+  } else if (challenge.test(url.pathname)) {
+    if (url.search && url.search !== `?${SHIELD_ENVIRONMENT_QUERY}`)
       throw fault('READ_DESTINATION_DENIED');
   } else if (
     queryKeys.some(key => key !== 'e') ||
@@ -209,8 +215,9 @@ class OfficialOrderHttpCollector {
       if (permittedUrl(actionUrl).origin !== permittedUrl(document.url).origin)
         throw fault('SHIELD_ROUTE_INVALID');
       if (this.hasShieldCookie(actionUrl)) return;
-      const url = discoverShieldUrl(document.text, document.url);
+      const url = `${discoverShieldUrl(document.text, document.url)}?${SHIELD_ENVIRONMENT_QUERY}`;
       const challenge = await this.request(url, 'GET', { Referer: document.url });
+      if ([404, 410].includes(challenge.status)) throw fault(`SHIELD_HTTP_${challenge.status}`);
       if (challenge.status !== HTTP_OK) throw fault('SHIELD_RESPONSE_INVALID');
       const answer = solveShieldChallenge(challenge.text);
       if (!answer.found) throw fault('SHIELD_NOT_SOLVED');
@@ -219,7 +226,7 @@ class OfficialOrderHttpCollector {
       model.number = answer.number;
       model.took = answer.took;
       model.flagskv = { ...(model.flagskv || {}), patSkip: true };
-      model.jsa = { s: 30, f: ['P'] };
+      model.jsa = SHIELD_ENVIRONMENT;
       const contentType = Object.hasOwn(model, 'algorithm')
         ? 'text/plain;charset=UTF-8'
         : 'application/json; charset=UTF-8';
@@ -233,6 +240,7 @@ class OfficialOrderHttpCollector {
         },
         JSON.stringify(model)
       );
+      if ([404, 410].includes(submitted.status)) throw fault(`SHIELD_HTTP_${submitted.status}`);
       if (submitted.status !== HTTP_OK) throw fault('SHIELD_RESPONSE_INVALID');
       if (!this.hasShieldCookie(actionUrl)) throw fault('SHIELD_NOT_ACCEPTED');
     } catch (error) {

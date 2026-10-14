@@ -22,6 +22,28 @@ RUNTIME = os.environ.get('OFFICIAL_HTTP_RUNTIME', '/var/tmp/official-http-runtim
 STOPPING = False
 HTTP_MAX_CONCURRENCY = 10
 RETRYABLE = {'HTTP_541', 'PROXY_CONNECTION_FAILED', 'HTTP_TIMEOUT', 'HTTP_502', 'HTTP_503', 'HTTP_504'}
+PROBE_RETRYABLE = {'EGRESS_PROBE_TIMEOUT', 'EGRESS_PROBE_CONNECTION_FAILED'}
+
+
+def failure_code(error, stage):
+    """分类宿主失败，只使用固定阶段与数字退出码，不输出异常明文。"""
+    code = str(error) if isinstance(error, RuntimeError) else ''
+    if code != 'RUNTIME_COMMAND_FAILED' and re.fullmatch(r'[A-Z_0-9]{1,80}', code):
+        return code
+    if stage in ('probe-before', 'probe-after'):
+        exit_code = getattr(error, 'exit_code', None)
+        if isinstance(error, subprocess.TimeoutExpired) or exit_code == 28:
+            return 'EGRESS_PROBE_TIMEOUT'
+        if exit_code in (5, 6, 7, 52, 55, 56, 97):
+            return 'EGRESS_PROBE_CONNECTION_FAILED'
+        if exit_code == 22:
+            return 'EGRESS_PROBE_HTTP_FAILED'
+        if exit_code in (35, 51, 58, 60):
+            return 'EGRESS_PROBE_TLS_FAILED'
+        return 'EGRESS_PROBE_FAILED'
+    if isinstance(error, subprocess.TimeoutExpired):
+        return 'RUNTIME_COMMAND_TIMEOUT'
+    return code if re.fullmatch(r'[A-Z_0-9]{1,80}', code) else 'HTTP_COLLECTOR_FAILED'
 
 
 def command(action, payload=None):
@@ -63,6 +85,7 @@ def attempt(job, rejected):
              'startedAt': time.time(), 'outcome': 'HTTP_COLLECTOR_FAILED', 'cleanupVerified': True}
     created = False
     result = None
+    stage = 'input-read'
     try:
         if stopped():
             raise RuntimeError('REQUEST_STOPPED')
@@ -74,12 +97,15 @@ def attempt(job, rejected):
                 (job.get('accountKey') and sample['accountHash'] != job['accountKey'])):
             raise RuntimeError('LINK_IDENTITY_MISMATCH')
         # 账号摘要沿用研究 Gate 算法；系统队列另以 accountKey 在提交时再次核对。
+        stage = 'proxy-acquire'
         proxy = generate_proxy(read_private(ROOT / 'private/iproyal-api.json'))
+        stage = 'probe-before'
         before = probe(proxy)
         audit['egressBefore'] = before
         if before in rejected:
             raise RuntimeError('EGRESS_PREVIOUSLY_REJECTED')
         egress_state(before, attempt_id)
+        stage = 'configuration'
         settings = read_private(ROOT / 'private/httpConfig.json')
         writePrivate(ROOT / ('private/refresh-' + attempt_id + '.json'), {
             'capturedAt': data['capturedAt'], 'sample': sample, 'proxy': proxy, 'settings': settings})
@@ -87,6 +113,7 @@ def attempt(job, rejected):
             raise RuntimeError('REQUEST_STOPPED')
         created = True
         audit['cleanupVerified'] = False
+        stage = 'container-create'
         run(['docker', 'create', '--name', name, '--init', '--network', 'apple-account-research-internal',
              '--user', '1000:1000', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
              '--memory', '512m', '--cpus', '1', '--pids-limit', '64', '--tmpfs', '/tmp:rw,nosuid,size=67108864',
@@ -94,18 +121,22 @@ def attempt(job, rejected):
              '-v', str(ROOT) + ':/research:rw', '-v', str(ROOT / 'deps') + ':/research/node_modules:ro',
              '-v', RUNTIME + ':/runtime:ro', '--entrypoint', 'node', IMAGE,
              '/research/release/scripts/collectOfficialRefreshHttp.js', '/research', attempt_id], timeout=30)
+        stage = 'container-network'
         run(['docker', 'network', 'connect', 'apple-account-research-egress', name], timeout=15)
+        stage = 'collector'
         output = subprocess.run(['docker', 'start', '-a', name], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=210)
         summary = json.loads(output.stdout.decode().strip().splitlines()[-1])
         code = summary.get('outcome')
         if not isinstance(code, str) or not re.fullmatch(r'[A-Z_0-9]{1,80}', code):
             raise RuntimeError('COLLECTOR_OUTPUT_INVALID')
-        audit.update(outcome=code, runId=summary.get('runId'))
+        audit.update(outcome=code, collectorOutcome=code, runId=summary.get('runId'))
+        stage = 'probe-after'
         after = probe(proxy)
         audit['egressAfter'] = after
         if before != after:
             raise RuntimeError('EGRESS_CHANGED_OR_UNVERIFIED')
         if code == 'SUCCEEDED':
+            stage = 'result-read'
             run_id = summary.get('runId')
             expected = '/research/private/results/order-{}-run-{}.json'.format(job['orderId'], run_id)
             if (output.returncode or type(run_id) is not int or run_id < 1 or
@@ -113,8 +144,17 @@ def attempt(job, rejected):
                 raise RuntimeError('COLLECTOR_OUTPUT_INVALID')
             result = read_private(ROOT / 'private/results' / pathlib.Path(expected).name)
     except Exception as error:
-        code = str(error) if isinstance(error, RuntimeError) else ''
-        audit['outcome'] = code if re.fullmatch(r'[A-Z_0-9]{1,80}', code) else 'HTTP_COLLECTOR_FAILED'
+        code = failure_code(error, stage)
+        audit['failedStage'] = stage
+        if type(getattr(error, 'exit_code', None)) is int:
+            audit['commandExitCode'] = error.exit_code
+        if isinstance(error, subprocess.TimeoutExpired):
+            audit['commandTimedOut'] = True
+        if stage == 'probe-after':
+            audit['egressAfterError'] = code
+        # 后置探测错误不能掩盖已经取得的官网失败原因。
+        audit['outcome'] = (audit['collectorOutcome'] if stage == 'probe-after' and
+                            audit.get('collectorOutcome') not in (None, 'SUCCEEDED') else code)
         result = None
     finally:
         if created:
@@ -141,7 +181,9 @@ def collect(job):
             return dict(job, outcome='SUCCEEDED', result=result, transport='http')
         if audit.get('egressBefore'):
             rejected.add(audit['egressBefore'])
-        if stopped() or not audit['cleanupVerified'] or audit['outcome'] not in RETRYABLE:
+        retryable = (audit['outcome'] in RETRYABLE or
+                     (audit.get('failedStage') == 'probe-before' and audit['outcome'] in PROBE_RETRYABLE))
+        if stopped() or not audit['cleanupVerified'] or not retryable or audit.get('egressAfterError'):
             break
     return dict(job, outcome=audit['outcome'], transport='http')
 

@@ -10,12 +10,61 @@ from unittest.mock import patch, MagicMock
 
 sys.path.insert(0, str(Path('scripts/officialOrder').resolve()))
 import iproyalApi
+import runHttpSample
 spec = importlib.util.spec_from_file_location('httpQueue', 'scripts/runOfficialOrderHttpQueue.py')
 queue = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(queue)
 
 
 class HttpQueueTest(unittest.TestCase):
+    def test_command_failure_keeps_exit_code_without_secret_output(self):
+        result = MagicMock(returncode=28, stderr=b'https://secret:password@proxy', stdout=b'secret')
+        with patch.object(runHttpSample.subprocess, 'run', return_value=result):
+            with self.assertRaises(runHttpSample.RuntimeCommandError) as caught:
+                runHttpSample.run(['curl'])
+        self.assertEqual(caught.exception.exit_code, 28)
+        self.assertEqual(str(caught.exception), 'RUNTIME_COMMAND_FAILED')
+        self.assertNotIn('secret', repr(vars(caught.exception)))
+
+    def test_probe_failures_are_classified_by_exit_not_exception_text(self):
+        for exit_code, expected in [(28, 'TIMEOUT'), (7, 'CONNECTION_FAILED'), (22, 'HTTP_FAILED'), (60, 'TLS_FAILED')]:
+            self.assertEqual(queue.failure_code(runHttpSample.RuntimeCommandError(exit_code), 'probe-before'),
+                             'EGRESS_PROBE_' + expected)
+        self.assertEqual(queue.failure_code(RuntimeError('EGRESS_CHANGED_OR_UNVERIFIED'), 'probe-after'),
+                         'EGRESS_CHANGED_OR_UNVERIFIED')
+
+    def test_only_pre_collection_probe_network_failure_can_retry(self):
+        for stage, calls in [('probe-before', 3), ('probe-after', 1)]:
+            audit = {'outcome': 'EGRESS_PROBE_TIMEOUT', 'cleanupVerified': True, 'failedStage': stage}
+            with patch.object(queue, 'stopped', return_value=False), patch.object(queue, 'attempt', return_value=(audit, None)) as attempt:
+                queue.collect({'id': 'test', 'orderId': 1})
+            self.assertEqual(attempt.call_count, calls)
+
+    def test_post_probe_failure_preserves_site_failure_and_denies_success_write(self):
+        for code, expected in [('SHIELD_HTTP_404', 'SHIELD_HTTP_404'), ('SUCCEEDED', 'EGRESS_PROBE_TIMEOUT')]:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / 'private').mkdir()
+                source = root / 'release/scripts'
+                source.mkdir(parents=True)
+                (source / 'readOfficialOrderLinkInput.js').write_text('synthetic')
+                data = {'capturedAt': 'synthetic', 'samples': [{'id': 1, 'orderNumber': 'W1234567890'}]}
+                output = MagicMock(stdout=json.dumps({'outcome': code, 'runId': 12}).encode(), returncode=0)
+                with patch.object(queue, 'ROOT', root), patch.object(queue, 'stopped', return_value=False), \
+                        patch.object(queue, 'read_private', return_value={}), patch.object(queue, 'writePrivate'), \
+                        patch.object(queue, 'generate_proxy', return_value={}), patch.object(queue, 'egress_state'), \
+                        patch.object(queue, 'run', return_value=json.dumps(data).encode()), \
+                        patch.object(queue.subprocess, 'run', return_value=output), \
+                        patch.object(queue, 'probe', side_effect=['verified-before', runHttpSample.RuntimeCommandError(28)]):
+                    audit, result = queue.attempt({'id': 'job', 'orderId': 1, 'orderNumber': 'W1234567890'}, set())
+            self.assertIsNone(result)
+            self.assertEqual(audit['outcome'], expected)
+            self.assertEqual(audit['collectorOutcome'], code)
+            self.assertEqual(audit['egressAfterError'], 'EGRESS_PROBE_TIMEOUT')
+            self.assertEqual(audit['failedStage'], 'probe-after')
+            self.assertEqual(audit['commandExitCode'], 28)
+            self.assertTrue(audit['cleanupVerified'])
+
     def test_main_executes_ten_jobs_simultaneously(self):
         started = []
         finished = []

@@ -91,10 +91,18 @@ def preserveQuarantineInput(root, orderId):
         raise RuntimeError('QUARANTINE_INPUT_PRESERVATION_FAILED') from None
 
 
+class RuntimeCommandError(RuntimeError):
+    """只保留退出码，不携带命令、stdin 或可能含凭据的 stderr。"""
+
+    def __init__(self, exit_code):
+        super().__init__('RUNTIME_COMMAND_FAILED')
+        self.exit_code = exit_code
+
+
 def run(args, **kwargs):
     result = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
     if result.returncode:
-        raise RuntimeError('RUNTIME_COMMAND_FAILED')
+        raise RuntimeCommandError(result.returncode)
     return result.stdout
 
 

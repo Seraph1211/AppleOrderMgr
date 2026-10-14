@@ -30,7 +30,18 @@ const BATCH_PAUSE_ERRORS = new Set([
   'TIME_BUDGET',
   'ACCOUNT_COOLDOWN',
   'LOGIN_COOLDOWN',
+  'EGRESS_PROBE_TIMEOUT',
+  'EGRESS_PROBE_CONNECTION_FAILED',
+  'EGRESS_PROBE_HTTP_FAILED',
+  'EGRESS_PROBE_TLS_FAILED',
+  'EGRESS_PROBE_FAILED',
+  'RUNTIME_COMMAND_FAILED',
+  'RUNTIME_COMMAND_TIMEOUT',
 ]);
+
+function shouldPauseBatch(code) {
+  return BATCH_PAUSE_ERRORS.has(code) || (typeof code === 'string' && code.startsWith('SHIELD_'));
+}
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
 const INCLUDES = [
   { model: AppleId, as: 'appleAccount', attributes: [] },
@@ -666,7 +677,7 @@ async function finish(input) {
           },
           transaction
         );
-        if (!result && BATCH_PAUSE_ERRORS.has(errorCode)) {
+        if (!result && shouldPauseBatch(errorCode)) {
           await query(
             `UPDATE official_order_refresh_batches SET paused_at=now(),pause_reason=:reason
             WHERE id=:id AND paused_at IS NULL RETURNING id`,
@@ -811,7 +822,7 @@ async function finishGroup(input) {
           { results: JSON.stringify(results) },
           transaction
         );
-        const pause = results.find(result => BATCH_PAUSE_ERRORS.has(result.error));
+        const pause = results.find(result => shouldPauseBatch(result.error));
         if (pause)
           await query(
             `UPDATE official_order_refresh_batches SET paused_at=now(),pause_reason=:reason
