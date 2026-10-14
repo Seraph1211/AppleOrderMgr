@@ -22,7 +22,7 @@ RUNTIME = os.environ.get('OFFICIAL_HTTP_RUNTIME', '/var/tmp/official-http-runtim
 STOPPING = False
 HTTP_MAX_CONCURRENCY = 10
 RETRYABLE = {'HTTP_541', 'PROXY_CONNECTION_FAILED', 'HTTP_TIMEOUT', 'HTTP_502', 'HTTP_503', 'HTTP_504'}
-PROBE_RETRYABLE = {'EGRESS_PROBE_TIMEOUT', 'EGRESS_PROBE_CONNECTION_FAILED'}
+PROBE_RETRYABLE = {'EGRESS_PROBE_TIMEOUT', 'EGRESS_PROBE_CONNECTION_FAILED', 'EGRESS_PROBE_HTTP_FAILED'}
 
 
 def failure_code(error, stage):
@@ -58,6 +58,19 @@ def command(action, payload=None):
 
 def stopped():
     return STOPPING or (ROOT / 'private/STOP').exists() or (ROOT / 'private/http-cleanup-blocked.json').exists()
+
+
+def probe_with_retry(proxy, audit, key):
+    """仅重探自有健康接口一次，保持同一代理；不重放官网或放宽出口校验。"""
+    for index in range(2):
+        if stopped():
+            raise RuntimeError('REQUEST_STOPPED')
+        audit[key] = index + 1
+        try:
+            return probe(proxy)
+        except Exception as error:
+            if index or failure_code(error, 'probe-before') not in PROBE_RETRYABLE:
+                raise
 
 
 def egress_state(address, attempt_id, outcome=None):
@@ -100,7 +113,7 @@ def attempt(job, rejected):
         stage = 'proxy-acquire'
         proxy = generate_proxy(read_private(ROOT / 'private/iproyal-api.json'))
         stage = 'probe-before'
-        before = probe(proxy)
+        before = probe_with_retry(proxy, audit, 'probeBeforeAttempts')
         audit['egressBefore'] = before
         if before in rejected:
             raise RuntimeError('EGRESS_PREVIOUSLY_REJECTED')
@@ -131,7 +144,7 @@ def attempt(job, rejected):
             raise RuntimeError('COLLECTOR_OUTPUT_INVALID')
         audit.update(outcome=code, collectorOutcome=code, runId=summary.get('runId'))
         stage = 'probe-after'
-        after = probe(proxy)
+        after = probe_with_retry(proxy, audit, 'probeAfterAttempts')
         audit['egressAfter'] = after
         if before != after:
             raise RuntimeError('EGRESS_CHANGED_OR_UNVERIFIED')

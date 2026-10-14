@@ -34,11 +34,57 @@ class HttpQueueTest(unittest.TestCase):
                          'EGRESS_CHANGED_OR_UNVERIFIED')
 
     def test_only_pre_collection_probe_network_failure_can_retry(self):
-        for stage, calls in [('probe-before', 3), ('probe-after', 1)]:
-            audit = {'outcome': 'EGRESS_PROBE_TIMEOUT', 'cleanupVerified': True, 'failedStage': stage}
+        for code in ('EGRESS_PROBE_TIMEOUT', 'EGRESS_PROBE_CONNECTION_FAILED', 'EGRESS_PROBE_HTTP_FAILED'):
+            for stage, calls in [('probe-before', 3), ('probe-after', 1)]:
+                with self.subTest(code=code, stage=stage):
+                    audit = {'outcome': code, 'cleanupVerified': True, 'failedStage': stage}
+                    with patch.object(queue, 'stopped', return_value=False), patch.object(queue, 'attempt', return_value=(audit, None)) as attempt:
+                        queue.collect({'id': 'test', 'orderId': 1})
+                    self.assertEqual(attempt.call_count, calls)
+
+    def test_pre_probe_http_retry_stops_after_success(self):
+        failed = ({'outcome': 'EGRESS_PROBE_HTTP_FAILED', 'cleanupVerified': True, 'failedStage': 'probe-before'}, None)
+        succeeded = ({'outcome': 'SUCCEEDED', 'cleanupVerified': True}, {'verified': True})
+        with patch.object(queue, 'stopped', return_value=False), patch.object(queue, 'attempt', side_effect=[failed, succeeded]) as attempt:
+            result = queue.collect({'id': 'test', 'orderId': 1})
+        self.assertEqual(attempt.call_count, 2)
+        self.assertEqual(result['outcome'], 'SUCCEEDED')
+
+    def test_probe_tls_and_unverified_cleanup_do_not_retry(self):
+        for code, cleaned in [('EGRESS_PROBE_TLS_FAILED', True), ('EGRESS_PROBE_HTTP_FAILED', False)]:
+            audit = {'outcome': code, 'cleanupVerified': cleaned, 'failedStage': 'probe-before'}
             with patch.object(queue, 'stopped', return_value=False), patch.object(queue, 'attempt', return_value=(audit, None)) as attempt:
                 queue.collect({'id': 'test', 'orderId': 1})
-            self.assertEqual(attempt.call_count, calls)
+            self.assertEqual(attempt.call_count, 1)
+
+    def test_probe_retries_same_proxy_once_without_recollecting(self):
+        proxy = {'session': 'same'}
+        for key in ('probeBeforeAttempts', 'probeAfterAttempts'):
+            audit = {}
+            with patch.object(queue, 'stopped', return_value=False), \
+                    patch.object(queue, 'probe', side_effect=[runHttpSample.RuntimeCommandError(22), 'verified']) as probe:
+                self.assertEqual(queue.probe_with_retry(proxy, audit, key), 'verified')
+            self.assertEqual(audit[key], 2)
+            self.assertEqual([call.args for call in probe.call_args_list], [(proxy,), (proxy,)])
+
+    def test_probe_retry_does_not_accept_tls_or_unverified_egress(self):
+        for error in (runHttpSample.RuntimeCommandError(60), RuntimeError('EGRESS_LOG_UNAVAILABLE'), RuntimeError('API_HEALTH_FAILED')):
+            with patch.object(queue, 'stopped', return_value=False), patch.object(queue, 'probe', side_effect=error) as probe:
+                with self.assertRaises(RuntimeError):
+                    queue.probe_with_retry({}, {}, 'probeAfterAttempts')
+            self.assertEqual(probe.call_count, 1)
+
+    def test_probe_retry_is_bounded_and_obeys_stop(self):
+        with patch.object(queue, 'stopped', return_value=False), \
+                patch.object(queue, 'probe', side_effect=runHttpSample.RuntimeCommandError(28)) as probe:
+            with self.assertRaises(runHttpSample.RuntimeCommandError):
+                queue.probe_with_retry({}, {}, 'probeAfterAttempts')
+        self.assertEqual(probe.call_count, 2)
+        with patch.object(queue, 'stopped', side_effect=[False, True]), \
+                patch.object(queue, 'probe', side_effect=runHttpSample.RuntimeCommandError(22)) as probe:
+            with self.assertRaisesRegex(RuntimeError, 'REQUEST_STOPPED'):
+                queue.probe_with_retry({}, {}, 'probeAfterAttempts')
+        self.assertEqual(probe.call_count, 1)
 
     def test_post_probe_failure_preserves_site_failure_and_denies_success_write(self):
         for code, expected in [('SHIELD_HTTP_404', 'SHIELD_HTTP_404'), ('SUCCEEDED', 'EGRESS_PROBE_TIMEOUT')]:
@@ -55,7 +101,7 @@ class HttpQueueTest(unittest.TestCase):
                         patch.object(queue, 'generate_proxy', return_value={}), patch.object(queue, 'egress_state'), \
                         patch.object(queue, 'run', return_value=json.dumps(data).encode()), \
                         patch.object(queue.subprocess, 'run', return_value=output), \
-                        patch.object(queue, 'probe', side_effect=['verified-before', runHttpSample.RuntimeCommandError(28)]):
+                        patch.object(queue, 'probe', side_effect=['verified-before', runHttpSample.RuntimeCommandError(28), runHttpSample.RuntimeCommandError(28)]):
                     audit, result = queue.attempt({'id': 'job', 'orderId': 1, 'orderNumber': 'W1234567890'}, set())
             self.assertIsNone(result)
             self.assertEqual(audit['outcome'], expected)
