@@ -52,7 +52,7 @@ const MAX_ORDER_ID = 2147483647;
 const ORDER_EXPORT_FIELDS = Object.freeze({
   systemOrderId: { label: '系统订单 ID', value: item => item.id },
   orderNumber: { label: '官网订单号', value: item => item.order_number || '' },
-  serialNumbers: { label: '序列号', value: item => (item.serial_numbers || []).join('\n') },
+  serialNumbers: { label: '序列号' },
   ingestionSource: {
     label: '入库来源',
     value: item => ({ aos: 'AOS 文件', email: '邮件' })[item.ingestion_source] || '来源未知',
@@ -746,10 +746,25 @@ function parseOrderExportFields(rawValue) {
   return fields;
 }
 
-function createOrderExportRow(item, fields) {
+/** 按本批最大设备数展开独立序列号列，保持所选字段顺序和一单一行。 */
+function createOrderExportColumns(items, fields) {
+  const serialColumnCount = items.reduce(
+    (count, item) => Math.max(count, item.serial_numbers.length),
+    1
+  );
+  return fields.flatMap(field => {
+    if (field !== 'serialNumbers') return [ORDER_EXPORT_FIELDS[field]];
+    return Array.from({ length: serialColumnCount }, (_, index) => ({
+      label: `序列号 ${index + 1}`,
+      value: item => item.serial_numbers[index] || '',
+      width: 18,
+    }));
+  });
+}
+
+function createOrderExportRow(item, columns) {
   return Object.fromEntries(
-    fields.map(field => {
-      const definition = ORDER_EXPORT_FIELDS[field];
+    columns.map(definition => {
       const value = definition.value(item);
       return [
         definition.label,
@@ -812,8 +827,15 @@ async function exportOrders(req, res) {
       throw ApiError.notFound('订单不存在或不可访问');
     }
     if (fields.includes('serialNumbers')) await attachOrderSerialNumbers(rows);
-    const data = rows.map(order => createOrderExportRow(serializeOrderListItem(order), fields));
-    const worksheet = XLSX.utils.json_to_sheet(data);
+    const items = rows.map(order => serializeOrderListItem(order));
+    const columns = createOrderExportColumns(items, fields);
+    const data = items.map(item => createOrderExportRow(item, columns));
+    const worksheet = XLSX.utils.json_to_sheet(data, {
+      header: columns.map(column => column.label),
+    });
+    if (fields.includes('serialNumbers')) {
+      worksheet['!cols'] = columns.map(column => ({ wch: column.width || 10 }));
+    }
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, '订单');
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });

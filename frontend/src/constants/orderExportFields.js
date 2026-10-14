@@ -1,7 +1,7 @@
 export const orderExportFields = Object.freeze([
   { key: 'systemOrderId', label: '系统订单 ID', tableKeys: ['orderNumber'] },
   { key: 'orderNumber', label: '官网订单号', tableKeys: ['orderNumber'] },
-  { key: 'serialNumbers', label: '序列号', tableKeys: ['serialNumbers'] },
+  { key: 'serialNumbers', label: '序列号（分列）', tableKeys: ['serialNumbers'] },
   { key: 'ingestionSource', label: '入库来源', tableKeys: ['orderNumber'] },
   { key: 'appleId', label: 'Apple ID', tableKeys: [] },
   { key: 'recipientName', label: '取机人', tableKeys: ['recipientName'] },

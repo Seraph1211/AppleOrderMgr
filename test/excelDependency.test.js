@@ -413,9 +413,9 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     expect(XLSX.utils.sheet_to_json(book.Sheets['订单'])).toEqual([{ 邮件订单状态: label }]);
   });
 
-  test('序列号按授权订单批量导出，多设备换行、空值留空且保留文本', async () => {
+  test('序列号按授权订单批量分列，支持零至三台、字段顺序、空值和文本', async () => {
     const { Op } = require('sequelize');
-    const rows = [41, 42, 43].map(id => {
+    const rows = [42, 41, 43, 44].map(id => {
       const data = { id, orderNumber: `W${id}`, products: [] };
       return {
         id,
@@ -430,11 +430,14 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
       { orderId: 41, serialNumber: '0000123456' },
       { orderId: 41, serialNumber: 'TESTSN0002' },
       { orderId: 43, serialNumber: '=1+1' },
+      { orderId: 44, serialNumber: 'TESTSN0003' },
+      { orderId: 44, serialNumber: 'TESTSN0004' },
+      { orderId: 44, serialNumber: 'TESTSN0005' },
     ]);
     const res = response();
     await exportOrders(
       {
-        query: { orderIds: '[41,42,43]', fields: '["orderNumber","serialNumbers"]' },
+        query: { orderIds: '[42,41,43,44]', fields: '["orderNumber","serialNumbers","notes"]' },
         user: { id: 1, role: 'operator', orderAccess: { mode: 'tags', tags: ['授权TAG'] } },
       },
       res
@@ -442,7 +445,7 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
     expect(Order.findAll.mock.calls[0][0].where[Op.and][1].logic[Op.in]).toEqual(['授权TAG']);
     expect(PickupDevice.findAll).toHaveBeenCalledTimes(1);
     expect(PickupDevice.findAll.mock.calls[0][0]).toEqual({
-      where: { orderId: { [Op.in]: [41, 42, 43] } },
+      where: { orderId: { [Op.in]: [42, 41, 43, 44] } },
       attributes: ['orderId', 'serialNumber'],
       order: [
         ['createdAt', 'ASC'],
@@ -450,14 +453,64 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
       ],
       raw: true,
     });
-    const sheet = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' }).Sheets['订单'];
+    const sheet = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer', cellStyles: true }).Sheets[
+      '订单'
+    ];
     expect(XLSX.utils.sheet_to_json(sheet)).toEqual([
-      { 官网订单号: 'W41', 序列号: '0000123456\nTESTSN0002' },
-      { 官网订单号: 'W42', 序列号: '' },
-      { 官网订单号: 'W43', 序列号: "'=1+1" },
+      { 官网订单号: 'W42', '序列号 1': '', '序列号 2': '', '序列号 3': '', 备注: '' },
+      {
+        官网订单号: 'W41',
+        '序列号 1': '0000123456',
+        '序列号 2': 'TESTSN0002',
+        '序列号 3': '',
+        备注: '',
+      },
+      { 官网订单号: 'W43', '序列号 1': "'=1+1", '序列号 2': '', '序列号 3': '', 备注: '' },
+      {
+        官网订单号: 'W44',
+        '序列号 1': 'TESTSN0003',
+        '序列号 2': 'TESTSN0004',
+        '序列号 3': 'TESTSN0005',
+        备注: '',
+      },
     ]);
-    expect(sheet.B2.t).toBe('s');
+    expect([sheet.A1.v, sheet.B1.v, sheet.C1.v, sheet.D1.v, sheet.E1.v]).toEqual([
+      '官网订单号',
+      '序列号 1',
+      '序列号 2',
+      '序列号 3',
+      '备注',
+    ]);
+    expect(sheet.B3.t).toBe('s');
+    expect(sheet['!cols'].slice(1, 4).every(column => column.wch >= 18)).toBe(true);
+    expect(sheet['!cols'][0].wch).toBeGreaterThan(0);
+    expect(sheet['!cols'][4].wch).toBeGreaterThan(0);
     expect(Object.values(sheet).filter(cell => cell?.f)).toHaveLength(0);
+  });
+
+  test.each([[[]], [['0000123456']]])('零或一个序列号仍保留一列 %j', async serials => {
+    const data = { id: 41, products: [] };
+    Order.findAll.mockResolvedValue([
+      {
+        id: 41,
+        toJSON: () => data,
+        setDataValue: (key, value) => {
+          data[key] = value;
+        },
+      },
+    ]);
+    PickupDevice.findAll.mockResolvedValue(
+      serials.map(serialNumber => ({ orderId: 41, serialNumber }))
+    );
+    const res = response();
+    await exportOrders(
+      { query: { fields: '["serialNumbers"]' }, user: { id: 1, role: 'admin' } },
+      res
+    );
+    const sheet = XLSX.read(res.send.mock.calls[0][0], { type: 'buffer' }).Sheets['订单'];
+    expect(XLSX.utils.sheet_to_json(sheet)).toEqual([{ '序列号 1': serials[0] || '' }]);
+    expect(sheet.A2.t).toBe('s');
+    expect(sheet['!ref']).toBe('A1:A2');
   });
 
   test('混合范围外订单整批拒绝且不查询序列号', async () => {
