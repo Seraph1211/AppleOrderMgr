@@ -63,6 +63,16 @@ class HttpPreflightTests(unittest.TestCase):
         self.assertEqual(probes.call_count, 2)
         self.assertTrue(any(args[:2] == ['docker', 'start'] for args, _kwargs in self.case.calls))
 
+    def test_command_exit_metadata_does_not_change_backfill_reconciliation_contract(self):
+        sampler = http_fixture.sample
+        value, error, probes = self.case.execute(probes=[sampler.RuntimeCommandError(28)])
+        self.assertIsNone(error)
+        self.assertEqual(value['outcome'], 'RUNTIME_COMMAND_FAILED')
+        self.assertEqual(value['failedStage'], 'probe-before')
+        self.assertEqual(value['errorType'], 'RuntimeError')
+        self.assertEqual(set(value), batch.PROBE_FAILURE_KEYS)
+        self.assertEqual(probes.call_count, 1)
+
     def test_input_failure_and_stop_prevent_preflight_and_probe(self):
         self.case.inputFailure = True
         value, _error, probes = self.case.execute()

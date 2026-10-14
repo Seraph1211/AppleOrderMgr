@@ -330,7 +330,7 @@ def main():
     except Exception as error:
         # 不保留异常 str/repr 或子进程 stderr，避免包含请求、账号或代理凭据。
         summary.update(outcome=safeFailure(error), failedStage=stage,
-                       errorType=type(error).__name__)
+                       errorType='RuntimeError' if isinstance(error, RuntimeCommandError) else type(error).__name__)
     finally:
         try:
             if cleanupNeeded:
