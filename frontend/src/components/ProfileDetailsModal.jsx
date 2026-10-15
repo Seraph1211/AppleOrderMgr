@@ -172,7 +172,7 @@ export default function ProfileDetailsModal({ kind, item, onClose }) {
                           <tbody>
                             {[1, 2, 3].map(i => (
                               <tr className="border-b" key={i}>
-                                <th className="p-2 text-left">问题 {i}（编码 / 内容）</th>
+                                <th className="p-2 text-left">问题 {i}</th>
                                 <td>{formatAppleIdSecurityQuestion(qa[`question${i}`])}</td>
                                 <th className="p-2 text-left">答案</th>
                                 <td>{qa[`answer${i}`] || '—'}</td>

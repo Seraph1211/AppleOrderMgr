@@ -1,0 +1,7 @@
+{
+  "frontend": [
+    "frontend/src/components/AppleIdBatchEditModal.jsx",
+    "frontend/src/components/ProfileDetailsModal.jsx",
+    "frontend/src/utils/appleIdBatch.js"
+  ]
+}

@@ -1,0 +1,5 @@
+FROM apple-order-mgr-frontend:20261016-proxy-delete
+COPY --chown=node:node frontend/src/components/AppleIdBatchEditModal.jsx /app/src/components/AppleIdBatchEditModal.jsx
+COPY --chown=node:node frontend/src/components/ProfileDetailsModal.jsx /app/src/components/ProfileDetailsModal.jsx
+COPY --chown=node:node frontend/src/utils/appleIdBatch.js /app/src/utils/appleIdBatch.js
+RUN npm run lint && npm run build
