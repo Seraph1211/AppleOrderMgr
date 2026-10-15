@@ -4,17 +4,18 @@ const path = require('path');
 const { requirePermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
 const service = require('../services/identityVerificationService');
-const provider = require('../services/identityProviderService');
+const execution = require('../services/identityExecutionService');
+const apiService = require('../services/identityApiService');
 const { exportIdentityWorkbook } = require('../services/identityInputService');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
 
 const router = express.Router();
-router.use(requirePermission(PERMISSIONS.IDENTITY_READ));
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
 });
+router.use(requirePermission(PERMISSIONS.IDENTITY_READ));
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 0 },
@@ -40,7 +41,80 @@ function handle(fn) {
   };
 }
 
-router.get('/status', (_req, res) => res.json({ success: true, data: provider.getStatus() }));
+const apiPermission = requirePermission(PERMISSIONS.IDENTITY_API);
+router.get(
+  '/api-token',
+  apiPermission,
+  handle(async (req, res) => res.json({ success: true, data: await apiService.metadata(req.user) }))
+);
+router.post(
+  '/api-token',
+  apiPermission,
+  handle(async (req, res) =>
+    res.json({ success: true, data: await apiService.manageToken(req.user, 'create') })
+  )
+);
+router.post(
+  '/api-token/reset',
+  apiPermission,
+  handle(async (req, res) =>
+    res.json({ success: true, data: await apiService.manageToken(req.user, 'reset') })
+  )
+);
+router.delete(
+  '/api-token',
+  apiPermission,
+  handle(async (req, res) =>
+    res.json({ success: true, data: await apiService.manageToken(req.user, 'revoke') })
+  )
+);
+router.post(
+  '/api-token/reveal',
+  apiPermission,
+  handle(async (req, res) => res.json({ success: true, data: await apiService.reveal(req.user) }))
+);
+router.get(
+  '/api-admin',
+  apiPermission,
+  handle(async (req, res) =>
+    res.json({ success: true, data: await apiService.adminStatus(req.user) })
+  )
+);
+router.patch(
+  '/api-admin/service',
+  apiPermission,
+  handle(async (req, res) =>
+    res.json({
+      success: true,
+      data: await apiService.adminAction(req.user, 'service', req.body || {}),
+    })
+  )
+);
+router.post(
+  '/api-admin/unknown/:id/resolve',
+  apiPermission,
+  handle(async (req, res) =>
+    res.json({
+      success: true,
+      data: await apiService.adminAction(req.user, 'resolve', { ...req.body, id: req.params.id }),
+    })
+  )
+);
+router.delete(
+  '/api-admin/tokens/:id',
+  apiPermission,
+  handle(async (req, res) =>
+    res.json({
+      success: true,
+      data: await apiService.adminAction(req.user, 'revoke', { id: req.params.id }),
+    })
+  )
+);
+
+router.get(
+  '/status',
+  handle(async (_req, res) => res.json({ success: true, data: await execution.getState() }))
+);
 router.get('/template', requirePermission(PERMISSIONS.IDENTITY_BATCH), (_req, res, next) => {
   res.download(
     path.join(__dirname, '../../templates/identity_verification_template.xlsx'),

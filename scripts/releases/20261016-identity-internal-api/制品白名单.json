@@ -1,0 +1,26 @@
+{
+  "api": [
+    "src/app.js",
+    "src/constants/business.js",
+    "src/constants/permissionCatalog.js",
+    "src/models/IdentityVerificationBatch.js",
+    "src/routes/identityVerifications.js",
+    "src/routes/internalIdentity.js",
+    "src/services/identityProviderService.js",
+    "src/services/identityVerificationRunner.js",
+    "src/services/identityVerificationService.js",
+    "src/services/identityApiService.js",
+    "src/services/identityExecutionService.js"
+  ],
+  "frontend": [
+    "frontend/src/api/identityApi.js",
+    "frontend/src/constants/permissions.js",
+    "frontend/src/pages/IdentityVerifications.jsx",
+    "frontend/src/components/identityApiAdmin.jsx",
+    "frontend/src/components/identityApiConfirm.jsx",
+    "frontend/src/components/identityApiTab.jsx",
+    "frontend/src/utils/copyIdentityText.js",
+    "frontend/src/utils/identityApiGuide.js"
+  ],
+  "migrator": ["migrations/20261016000002-add-identity-internal-api.js"]
+}

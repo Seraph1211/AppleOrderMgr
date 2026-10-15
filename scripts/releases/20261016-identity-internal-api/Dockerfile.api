@@ -1,0 +1,13 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chown=node:node src/app.js /app/src/app.js
+COPY --chown=node:node src/constants/business.js /app/src/constants/business.js
+COPY --chown=node:node src/constants/permissionCatalog.js /app/src/constants/permissionCatalog.js
+COPY --chown=node:node src/models/IdentityVerificationBatch.js /app/src/models/IdentityVerificationBatch.js
+COPY --chown=node:node src/routes/identityVerifications.js /app/src/routes/identityVerifications.js
+COPY --chown=node:node src/routes/internalIdentity.js /app/src/routes/internalIdentity.js
+COPY --chown=node:node src/services/identityProviderService.js /app/src/services/identityProviderService.js
+COPY --chown=node:node src/services/identityVerificationRunner.js /app/src/services/identityVerificationRunner.js
+COPY --chown=node:node src/services/identityVerificationService.js /app/src/services/identityVerificationService.js
+COPY --chown=node:node src/services/identityApiService.js /app/src/services/identityApiService.js
+COPY --chown=node:node src/services/identityExecutionService.js /app/src/services/identityExecutionService.js

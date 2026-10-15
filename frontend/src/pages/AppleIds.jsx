@@ -2,7 +2,18 @@ import ResponsiveSelect from '../components/responsiveSelect';
 import ProfileDetailsModal from '../components/ProfileDetailsModal';
 import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, Mail, Package, Edit, Trash2, Settings, Upload, Copy } from 'lucide-react';
+import {
+  Search,
+  Plus,
+  Mail,
+  Package,
+  Edit,
+  Trash2,
+  Settings,
+  Upload,
+  Copy,
+  BarChart3,
+} from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAppleIds, createAppleId, updateAppleId, deleteAppleId } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
@@ -17,12 +28,22 @@ import { STATUS_OPTIONS } from '../constants/status';
 import AppleIdBatchEditModal from '../components/AppleIdBatchEditModal';
 import client from '../api/client';
 import { getAppleIdStatusBadge } from '../constants/appleIdStatus';
-import { togglePageSelection } from '../utils/appleIdBatch';
+import useAppleIdSelection from '../hooks/useAppleIdSelection';
+import AppleIdStatisticsModal from '../components/AppleIdStatisticsModal';
 import { PERMISSIONS } from '../constants/permissions';
 
 export default function AppleIds() {
   const { can } = useAuth();
-  const [selectedIds, setSelectedIds] = useState(new Set());
+  const {
+    selectedIds,
+    selecting,
+    selectionError,
+    clearSelection,
+    selectPage,
+    toggleIds,
+    selectFiltered,
+  } = useAppleIdSelection();
+  const [showStatistics, setShowStatistics] = useState(false);
   const [showBatchEdit, setShowBatchEdit] = useState(false);
   const [copying, setCopying] = useState(false);
   const [batchNotice, setBatchNotice] = useState('');
@@ -339,7 +360,7 @@ export default function AppleIds() {
               placeholder="搜索 Apple ID..."
               value={searchTerm}
               onChange={e => {
-                setSelectedIds(new Set());
+                clearSelection();
                 setBatchNotice('');
                 setSearchTerm(e.target.value);
                 setPagination(previous => ({ ...previous, currentPage: 1 }));
@@ -351,7 +372,7 @@ export default function AppleIds() {
             aria-label="状态筛选"
             value={filterStatus}
             onChange={e => {
-              setSelectedIds(new Set());
+              clearSelection();
               setBatchNotice('');
               setFilterStatus(e.target.value);
               setPagination(previous => ({ ...previous, currentPage: 1 }));
@@ -367,6 +388,13 @@ export default function AppleIds() {
             ))}
           </ResponsiveSelect>
           <button
+            onClick={() => setShowStatistics(true)}
+            className="btn btn-secondary flex items-center gap-2 flex-shrink-0 whitespace-nowrap"
+          >
+            <BarChart3 className="w-4 h-4" />
+            统计分析
+          </button>
+          <button
             onClick={() => setShowColumnConfig(true)}
             className="btn btn-secondary flex items-center space-x-2 flex-shrink-0 whitespace-nowrap"
           >
@@ -381,44 +409,84 @@ export default function AppleIds() {
           {batchNotice}
         </p>
       )}
-      {selectedIds.size > 0 && (
-        <div className="bg-primary-50 border border-blue-100 rounded-lg p-3 flex flex-wrap items-center gap-3">
-          <span className="text-sm">已选择 {selectedIds.size} 个账号（支持跨页）</span>
-          <button
-            className="btn btn-secondary"
-            disabled={copying}
-            onClick={() => {
-              setSelectedIds(new Set());
-              setBatchNotice('');
-            }}
-          >
-            清空选择
-          </button>
-          {can(PERMISSIONS.APPLE_IDS_EDIT) && (
-            <button
-              className="btn btn-primary"
-              disabled={loading || copying || selectedIds.size > 5000}
-              onClick={() => setShowBatchEdit(true)}
-            >
-              批量修改
-            </button>
-          )}
-          <button
-            className="btn btn-secondary flex items-center gap-2"
-            disabled={loading || copying || selectedIds.size > 5000}
-            onClick={copySelected}
-          >
-            <Copy className="w-4 h-4" />
-            {copying ? '正在复制…' : '批量复制'}
-          </button>
-          <span className="text-sm text-gray-500">
-            复制格式：AppleID,密码,（每行一个，最多 5000 个）
-          </span>
-        </div>
-      )}
-
       {/* Apple ID 列表 */}
-      <div className="card">
+      <div className="card min-w-0">
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <span className="text-sm text-gray-600">已选择 {selectedIds.size} 项（跨页保留）</span>
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <button
+              className="btn btn-secondary"
+              disabled={loading || copying || selecting || !appleIds.length}
+              onClick={() => {
+                selectPage(pageIds);
+                setBatchNotice('');
+              }}
+            >
+              全选本页
+            </button>
+            <button
+              className="btn btn-secondary"
+              disabled={
+                loading ||
+                copying ||
+                selecting ||
+                !pagination.totalItems ||
+                pagination.totalItems > 5000
+              }
+              title={pagination.totalItems > 5000 ? '最多选择 5000 个，请缩小筛选范围' : undefined}
+              onClick={() => {
+                setBatchNotice('');
+                selectFiltered({
+                  keyword: searchTerm || undefined,
+                  status: filterStatus || undefined,
+                });
+              }}
+            >
+              {selecting ? '正在选择…' : `全选筛选结果（${pagination.totalItems}）`}
+            </button>
+            {(selectedIds.size > 0 || selecting) && (
+              <button
+                className="btn btn-secondary"
+                disabled={copying}
+                onClick={() => {
+                  clearSelection();
+                  setBatchNotice('');
+                }}
+              >
+                取消选择
+              </button>
+            )}
+            {can(PERMISSIONS.APPLE_IDS_EDIT) && (
+              <button
+                className="btn btn-primary"
+                disabled={
+                  loading || copying || selecting || !selectedIds.size || selectedIds.size > 5000
+                }
+                onClick={() => setShowBatchEdit(true)}
+              >
+                批量修改
+              </button>
+            )}
+            {can(PERMISSIONS.APPLE_IDS_READ) && (
+              <button
+                className="btn btn-secondary flex items-center gap-2"
+                title="每行复制 AppleID,密码,；最多 5000 个"
+                disabled={
+                  loading || copying || selecting || !selectedIds.size || selectedIds.size > 5000
+                }
+                onClick={copySelected}
+              >
+                <Copy className="w-4 h-4" />
+                {copying ? '正在复制…' : '批量复制'}
+              </button>
+            )}
+          </div>
+        </div>
+        {selectionError && (
+          <p role="alert" className="text-sm text-red-700 mb-4">
+            {selectionError}
+          </p>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
@@ -435,18 +503,14 @@ export default function AppleIds() {
             <table className="w-full min-w-max">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
-                  <th className="py-3 px-4">
+                  <th className="py-3 px-3 w-10 text-left">
                     <input
                       ref={selectAllRef}
                       type="checkbox"
                       aria-label="选择当前页全部 Apple ID"
                       checked={appleIds.length > 0 && selectedOnPage === appleIds.length}
-                      disabled={copying}
-                      onChange={event =>
-                        setSelectedIds(previous =>
-                          togglePageSelection(previous, pageIds, event.target.checked)
-                        )
-                      }
+                      disabled={copying || selecting}
+                      onChange={event => toggleIds(pageIds, event.target.checked)}
                     />
                   </th>
                   {visibleColumns.map(col => (
@@ -472,19 +536,15 @@ export default function AppleIds() {
                 {appleIds.map(item => (
                   <tr
                     key={item.id}
-                    className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
+                    className={`border-b border-gray-200 transition-colors ${selectedIds.has(item.id) ? 'bg-primary-50 hover:bg-blue-100' : 'hover:bg-gray-50'}`}
                   >
-                    <td className="py-4 px-4">
+                    <td className="py-4 px-3 w-10">
                       <input
                         type="checkbox"
                         aria-label={`选择 Apple ID ${item.accountNumber ?? item.id}`}
                         checked={selectedIds.has(item.id)}
-                        disabled={copying}
-                        onChange={event =>
-                          setSelectedIds(previous =>
-                            togglePageSelection(previous, [item.id], event.target.checked)
-                          )
-                        }
+                        disabled={copying || selecting}
+                        onChange={event => toggleIds([item.id], event.target.checked)}
                       />
                     </td>
                     {visibleColumns.map(col => (
@@ -509,13 +569,15 @@ export default function AppleIds() {
         )}
       </div>
 
+      {showStatistics && <AppleIdStatisticsModal onClose={() => setShowStatistics(false)} />}
+
       {showBatchEdit && (
         <AppleIdBatchEditModal
           ids={[...selectedIds]}
           onClose={() => setShowBatchEdit(false)}
           onSaved={async updated => {
             setShowBatchEdit(false);
-            setSelectedIds(new Set());
+            clearSelection();
             setBatchNotice(`已更新 ${updated} 个 Apple ID`);
             await loadAppleIds();
           }}

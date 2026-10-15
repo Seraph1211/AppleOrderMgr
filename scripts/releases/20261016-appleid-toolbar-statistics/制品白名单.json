@@ -1,0 +1,12 @@
+{
+  "api": [
+    "src/controllers/appleIdController.js",
+    "src/routes/appleIds.js"
+  ],
+  "frontend": [
+    "frontend/src/pages/AppleIds.jsx",
+    "frontend/src/utils/appleIdBatch.js",
+    "frontend/src/hooks/useAppleIdSelection.js",
+    "frontend/src/components/AppleIdStatisticsModal.jsx"
+  ]
+}

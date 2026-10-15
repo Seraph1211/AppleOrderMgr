@@ -1,0 +1,3 @@
+FROM apple-order-mgr-frontend:20261016-appleid-toolbar-statistics
+COPY --chown=node:node frontend/src/pages/ProxyOrders.jsx /app/src/pages/ProxyOrders.jsx
+RUN npm run lint && npm run build

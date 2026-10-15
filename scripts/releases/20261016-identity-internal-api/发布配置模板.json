@@ -1,0 +1,45 @@
+{
+  "approved": false,
+  "backupInventoryApproved": false,
+  "release": "20261016-identity-internal-api",
+  "approvedCommit": null,
+  "baselineCommit": "1d9f975c9a814808f4157ed79163bf34d81af945",
+  "baselineRelease": "20261016-appleid-dialog-simplify",
+  "root": "/var/www/apple-order-mgr",
+  "backupRoot": "/var/backups/apple-order-mgr",
+  "database": "apple_order_mgr",
+  "host": "PP_CloudServer",
+  "origin": "https://apple.godp.me",
+  "nginxSite": "/etc/nginx/conf.d/apple-order-mgr.conf",
+  "serverName": "apple.godp.me",
+  "apiContainer": "apple-order-mgr-prod-api-1",
+  "apiReadyUrl": "http://127.0.0.1:3001/api/health/ready",
+  "restorePostgresImage": "postgres:15-bookworm",
+  "baselineImages": {
+    "api": {
+      "tag": "apple-order-mgr-api:20261016-proxy-delete-amd64",
+      "id": "sha256:97f15dbc3610c260e108dfaaa909ec218c281cbeb6f4bc8bf7f0959fa82d405a",
+      "localId": "sha256:dabf5ff4c79fa649850643033ce434a1b3a0b2e528942f91367f64d841330acf"
+    },
+    "migrator": {
+      "tag": "apple-order-mgr-migrator:20261016-proxy-delete-amd64",
+      "id": "sha256:2f312b57e869af28d047ba9c3d97665b447db91d4cdc07f2553a6bff6c540c81",
+      "localId": "sha256:1ce7258f4fcf1438e27723a18db792cf0a46f0976620c822925415d28ecda6ab"
+    },
+    "frontend": {
+      "tag": "apple-order-mgr-frontend:20261016-appleid-dialog-simplify",
+      "id": null,
+      "localId": "sha256:39b328d150c792838e7edf88f9ac6995c6b815afe7bfb3ecfbe7794a4a5e8fce"
+    }
+  },
+  "images": {
+    "api": "apple-order-mgr-api:20261016-identity-internal-api-amd64",
+    "migrator": "apple-order-mgr-migrator:20261016-identity-internal-api-amd64",
+    "frontend": "apple-order-mgr-frontend:20261016-identity-internal-api"
+  },
+  "businessPaths": [
+    "/var/www/apple-order-mgr/shared"
+  ],
+  "aosRawPaths": [],
+  "notes": "模板不可执行。主Agent须独立核准当时生产current、镜像ID、最新main/基线commit，以及shared内AOS原始日志路径。基线可更新，不固定旧生产版本。"
+}

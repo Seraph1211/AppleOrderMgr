@@ -7,6 +7,7 @@ module.exports = sequelize =>
     {
       id: { type: DataTypes.UUID, primaryKey: true },
       userId: { type: DataTypes.INTEGER, allowNull: false, field: 'user_id' },
+      apiTokenId: { type: DataTypes.UUID, field: 'api_token_id' },
       source: { type: DataTypes.STRING(10), allowNull: false },
       status: { type: DataTypes.STRING(20), allowNull: false },
       idempotencyKey: { type: DataTypes.UUID, field: 'idempotency_key' },

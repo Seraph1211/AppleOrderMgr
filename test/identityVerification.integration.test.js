@@ -118,8 +118,15 @@ describeIntegration('身份核验真实PostgreSQL与HTTP隔离验收', () => {
     root = `http://127.0.0.1:${server.address().port}/api/identity-verifications`;
   });
   beforeEach(async () => {
+    // 专用隔离库内清理新增外键，避免上一API套件的未知保护/全局暂停污染旧入口回归。
+    await models.sequelize.query(
+      'DELETE FROM identity_api_events; DELETE FROM identity_api_dedup; DELETE FROM identity_api_usage'
+    );
     await models.IdentityVerificationItem.destroy({ where: {} });
     await models.IdentityVerificationBatch.destroy({ where: {} });
+    await models.sequelize.query(
+      'DELETE FROM identity_api_tokens; UPDATE identity_service_state SET paused=FALSE,pause_reason=NULL WHERE id=1'
+    );
     await owner.update({ status: 'active' });
   });
   afterAll(async () => {
@@ -318,8 +325,29 @@ describeIntegration('身份核验真实PostgreSQL与HTTP隔离验收', () => {
     expect((await models.IdentityVerificationBatch.findByPk(otherBatch.batchId)).status).toBe(
       'paused'
     );
-    await service.control(owner, preview.batch.id, 'start');
+    await expect(service.control(owner, preview.batch.id, 'start')).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'SERVICE_PAUSED',
+    });
+    await expect(
+      service.createSingle(owner, { name: '暂停测试', idCardNumber: CARD }, crypto.randomUUID())
+    ).rejects.toMatchObject({
+      statusCode: 503,
+      code: 'SERVICE_PAUSED',
+    });
+    expect((await (await request('/status')).json()).data.paused).toBe(true);
     verify.mockResolvedValue({ status: 'matched', message: '一致' });
+    // 重新开始批次不会越过跨入口的供应商故障暂停；先验证阻断，再由管理员明确恢复。
+    expect(await tick(verify)).toBe(false);
+    expect(verify).toHaveBeenCalledTimes(1);
+    expect((await service.detail(owner, preview.batch.id)).rows.map(row => row.status)).toEqual([
+      'error',
+      'pending',
+    ]);
+    await require('../src/services/identityApiService').adminAction(admin, 'service', {
+      paused: false,
+    });
+    await service.control(owner, preview.batch.id, 'start');
     await tick(verify);
     const detail = await service.detail(owner, preview.batch.id);
     expect(detail.rows.map(row => row.status)).toEqual(['error', 'matched']);

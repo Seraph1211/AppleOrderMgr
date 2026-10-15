@@ -29,6 +29,8 @@ const {
 const MAX_BATCH_ACCOUNT_IDS = 5000;
 const MAX_POSTGRES_INTEGER = 2147483647;
 const MAX_ACCOUNT_NOTES_LENGTH = 10000;
+const MAX_ACCOUNT_KEYWORD_LENGTH = 255;
+const MAX_ACCOUNT_COUNTRY_LENGTH = 50;
 
 /**
  * 把 AppleId 实例序列化为对外对象
@@ -58,6 +60,100 @@ function serializeAppleId(appleId, stats = {}, includePassword = false) {
   return result;
 }
 
+/** 列表与筛选全选共用筛选校验及查询条件，不读取任何凭据。 */
+function buildAppleIdWhere(query = {}) {
+  rejectLegacyBindingFilters(query);
+  for (const [field, maxLength] of [
+    ['keyword', MAX_ACCOUNT_KEYWORD_LENGTH],
+    ['country', MAX_ACCOUNT_COUNTRY_LENGTH],
+  ]) {
+    if (
+      query[field] !== undefined &&
+      (typeof query[field] !== 'string' || query[field].length > maxLength)
+    ) {
+      throw ApiError.badRequest(`${field} 必须是有效长度的字符串`);
+    }
+  }
+  const where = {};
+  if (query.status !== undefined && typeof query.status !== 'string') {
+    throw ApiError.badRequest('status 必须是字符串');
+  }
+  if (query.status) {
+    if (!ACCOUNT_STATUSES.includes(query.status)) {
+      throw ApiError.badRequest(`Apple ID 状态非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`);
+    }
+    where.status = query.status;
+  }
+  if (query.country) where.country = query.country;
+  const keyword = query.keyword?.trim();
+  if (keyword) where.appleId = { [Op.iLike]: `%${keyword}%` };
+  return where;
+}
+
+/**
+ * 查询全库账号状态统计，已知状态补零并保留未知存量状态。
+ * @param {Object} req - Express 请求
+ * @param {Object} res - Express 响应
+ * @returns {Promise<void>} 全库总量及各状态数量
+ */
+async function getAppleIdStatistics(req, res) {
+  res.set('Cache-Control', 'no-store');
+  try {
+    assertPermission(req, PERMISSIONS.APPLE_IDS_READ);
+    const rows = await AppleId.findAll({
+      attributes: ['status', [sequelize.fn('COUNT', sequelize.col('id')), 'count']],
+      group: ['status'],
+      order: [['status', 'ASC']],
+      raw: true,
+    });
+    const counts = new Map(ACCOUNT_STATUSES.map(status => [status, 0]));
+    for (const row of rows) counts.set(row.status, Number(row.count));
+    const statuses = Array.from(counts, ([status, count]) => ({ status, count }));
+    const total = statuses.reduce((sum, item) => sum + item.count, 0);
+    res.json({ success: true, data: { total, statuses } });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    logger.error('查询 Apple ID 状态统计失败', { errorType: error.name });
+    throw ApiError.database('查询 Apple ID 状态统计失败');
+  }
+}
+
+/**
+ * 查询筛选结果的完整内部 ID 集合，超过批量操作上限时整批拒绝。
+ * @param {Object} req - Express 请求
+ * @param {Object} res - Express 响应
+ * @returns {Promise<void>} 按内部 ID 倒序的选择集合与数量
+ */
+async function getAppleIdSelectionIds(req, res) {
+  res.set('Cache-Control', 'no-store');
+  try {
+    assertPermission(req, PERMISSIONS.APPLE_IDS_READ);
+    const query = req.query || {};
+    if (Object.keys(query).some(key => !['keyword', 'status', 'country'].includes(key))) {
+      throw ApiError.badRequest('筛选全选仅支持 keyword、status、country 参数');
+    }
+    const rows = await AppleId.findAll({
+      attributes: ['id'],
+      where: buildAppleIdWhere(query),
+      order: [['id', 'DESC']],
+      limit: MAX_BATCH_ACCOUNT_IDS + 1,
+      raw: true,
+    });
+    if (rows.length > MAX_BATCH_ACCOUNT_IDS) {
+      throw ApiError.badRequest(
+        '筛选结果超过 5000 个账号，请缩小筛选范围后再全选',
+        undefined,
+        'APPLE_ID_SELECTION_LIMIT_EXCEEDED'
+      );
+    }
+    res.json({ success: true, data: { ids: rows.map(row => row.id), total: rows.length } });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    logger.error('查询 Apple ID 选择集合失败', { errorType: error.name });
+    throw ApiError.database('查询 Apple ID 选择集合失败');
+  }
+}
+
 /**
  * GET /api/apple-ids?page=1&limit=20&status=active&keyword=xxx
  */
@@ -66,25 +162,7 @@ async function listAppleIds(req, res) {
     const page = parsePositiveInt(req.query.page, { defaultValue: 1, min: 1, max: 100000 });
     const limit = parsePositiveInt(req.query.limit, { defaultValue: 20, min: 1, max: 100 });
 
-    const where = {};
-    rejectLegacyBindingFilters(req.query);
-    if (req.query.status) {
-      if (!ACCOUNT_STATUSES.includes(req.query.status)) {
-        throw ApiError.badRequest(`Apple ID 状态非法，可选值: ${ACCOUNT_STATUSES.join(', ')}`, {
-          received: req.query.status,
-        });
-      }
-      where.status = req.query.status;
-    }
-    if (req.query.country) {
-      where.country = req.query.country;
-    }
-    if (req.query.keyword) {
-      const kw = String(req.query.keyword).trim();
-      if (kw.length > 0) {
-        where.appleId = { [Op.iLike]: `%${kw}%` };
-      }
-    }
+    const where = buildAppleIdWhere(req.query);
 
     const { count, rows } = await AppleId.findAndCountAll({
       where,
@@ -506,6 +584,8 @@ async function copyImportAppleIds(req, res) {
 }
 
 module.exports = {
+  getAppleIdStatistics,
+  getAppleIdSelectionIds,
   batchUpdateAppleIds,
   copyImportAppleIds,
   listAppleIds,

@@ -16,13 +16,11 @@
 
 订单页取消独立“取件人”输入框，顶部关键词继续搜索取机人。订单状态、官网订单状态、商品、TAG、门店均提供全选／取消全选：针对当前下拉搜索匹配项操作，保留其他已选值；无关键词时操作所有候选（含已选项），空候选禁用。全选提交实际选项集合，清空才表示不限，因此明确排除未列为选项的空值。
 
-
 ## 官网实际取货日期（2026-10-07）
 
 列表、筛选选项、筛选全选和导出支持 actualPickupDateFrom / actualPickupDateTo（YYYY-MM-DD，可单边，双边均包含当天）。起止相同表示某一天；空日期不命中已设置的范围。非法日期、数组或起始晚于结束返回 400；与预约取货日期 pickupDate / pickupDateFrom / pickupDateTo 独立、可组合。
 
 订单列表、详情和导出增加只读 `actual_pickup_date`，值为 YYYY-MM-DD 或 null，沿用订单 TAG 读取权限；导出字段键为 actualPickupDate。该值来自完整官网详情中的实际已取货日期，不接受普通订单编辑写入，不用预约时间、邮件推定或采集时间代替。HTTP 手动官网刷新可在原两个官网字段外补齐此日期，仅补空值，非空日期及缺失／歧义结果保留原值。历史限定范围补录只写实际取货日期，不改变订单状态。
-
 
 > 状态：当前有效
 >
@@ -133,6 +131,8 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | GET    | /api/users/:id/permissions                          | users.permissions.manage（admin 保留）                                                 |
 | PUT    | /api/users/:id/permissions                          | users.permissions.manage（admin 保留）                                                 |
 | GET    | /api/apple-ids                                      | apple_ids.read                                                                         |
+| GET    | /api/apple-ids/statistics                           | apple_ids.read                                                                         |
+| GET    | /api/apple-ids/selection-ids                        | apple_ids.read                                                                         |
 | GET    | /api/apple-ids/:id                                  | apple_ids.read                                                                         |
 | POST   | /api/apple-ids                                      | apple_ids.create                                                                       |
 | PUT    | /api/apple-ids/:id                                  | apple_ids.edit                                                                         |
@@ -191,8 +191,8 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | PUT    | /api/payment-tasks/:id/payer                        | payment_tasks.payer.edit_own＋当前归属                                                 |
 | GET    | /api/payment-tasks/:id/payment-link                 | payment_tasks.link.read_own＋当前归属                                                  |
 | GET    | /api/payment-tasks/:id/alipay-payment-link          | payment_tasks.link.read_own＋当前归属；仅支付宝订单                                    |
-| POST   | /api/payment-tasks/:id/refresh                      | payment_tasks.handle_own＋当前归属                                                    |
-| GET    | /api/payment-tasks/:id/refresh/:jobId               | payment_tasks.handle_own＋当前归属；仅关联订单任务                                    |
+| POST   | /api/payment-tasks/:id/refresh                      | payment_tasks.handle_own＋当前归属                                                     |
+| GET    | /api/payment-tasks/:id/refresh/:jobId               | payment_tasks.handle_own＋当前归属；仅关联订单任务                                     |
 | GET    | /api/payment-dispatch/overview                      | payment_dispatch.read（admin 保留）                                                    |
 | GET    | /api/payment-dispatch/tasks                         | payment_dispatch.read（admin 保留）                                                    |
 | GET    | /api/payment-dispatch/tasks/:id/alipay-payment-link | payment_dispatch.read（admin 保留）；仅支付宝订单                                      |
@@ -203,7 +203,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | PUT    | /api/payment-dispatch/tasks/:id/notes               | payment_dispatch.correct（admin 保留）；修改处理备注                                   |
 | POST   | /api/payment-dispatch/tasks/:id/refresh             | payment_dispatch.assign（admin 保留）                                                  |
 | GET    | /api/payment-dispatch/tasks/:id/refresh/:jobId      | payment_dispatch.assign（admin 保留）；当前任务订单白名单进度                          |
-| POST   | /api/payment-dispatch/tasks/refresh                 | 已退役，返回410；当前页面只提供单笔刷新                                               |
+| POST   | /api/payment-dispatch/tasks/refresh                 | 已退役，返回410；当前页面只提供单笔刷新                                                |
 | POST   | /api/payment-dispatch/tasks/:id/reopen              | payment_dispatch.correct（admin 保留）                                                 |
 | POST   | /api/payment-dispatch/scan                          | payment_dispatch.assign（admin 保留）                                                  |
 
@@ -225,6 +225,32 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 
 批次：draft/queued/running/paused/completed/cancelled；行：pending/processing/matched/mismatched/error/unknown/invalid/duplicate/cancelled。只有 `error_code=0` 且布尔 `result.isok` 确定一致与否；超时、未知返回、进程中断标unknown，不自动重试。凭据或额度错误暂停队列。每次开始和领取锁用户复查权限、账号状态；全局PostgreSQL会话锁保证单请求在途、请求起点至少相隔500ms（上限2RPS），与Apple爬虫独立。见[身份核验接入方案](../planning/身份核验接入方案.md)。
 
+### 内部 API 与本人令牌管理（2026-10-16 已批准）
+
+独立权限 `identity.api` 只依赖 `identity.read`，与 verify/batch/export 独立，管理员默认拥有，普通账号显式授予。
+
+JWT 管理端统一响应 `{success:true,data:...}`，所有响应 no-store。本人端不接收 userId：
+
+| 端点（前缀 `/api/identity-verifications`） | 权限与返回                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------ |
+| GET /api-token                             | identity.api；返回 token 元数据或null、limits、usage、service                  |
+| POST /api-token                            | 创建本人90天令牌；已有active返回409；返回元数据                                |
+| POST /api-token/reset                      | 原子撤销旧令牌并创建新令牌；返回元数据                                         |
+| DELETE /api-token                          | 撤销本人令牌；返回元数据                                                       |
+| POST /api-token/reveal                     | 返回本人 `{token,expiresAt}` 明文，仅用于一键复制                              |
+| GET /api-admin                             | admin；服务状态、最多100个未知结果、最多100个令牌元数据                        |
+| PATCH /api-admin/service                   | admin；`{paused:boolean}` 跨进程暂停/恢复                                      |
+| POST /api-admin/unknown/:id/resolve        | admin；`{action:'release',reason}`，5..200字，保存审计，允许将来新请求重新核验 |
+| DELETE /api-admin/tokens/:id               | admin；撤销指定令牌，不返回明文                                                |
+
+元数据 `{token:null\|{id,status,expiresAt,createdAt,lastUsedAt},limits:{requestsPerMinute:50,dailyProviderCalls:100,dedupSeconds:600},usage:{date,providerCalls},service:{configured,enabled,paused,pauseReason}}`。限额是本地保护，不代表供应商实际余额。
+
+`GET /api/internal/v1/identity/verify` 使用独立令牌认证，在后台JWT之前；仅 name/idCardNumber/token 三个单值字符串，拒绝多余、重复及嵌套键。仅HTTPS（可信代理按现有TRUST_PROXY配置）；HEAD和其他方法405，不执行核验。首次请求同步取得结果；全局槽位忙/500ms间隔未到429，不排队。每员工固定自然分钟桶50次/分钟，API入口每天最多100次新调用，北京日期；相同员工+规范化输入确定结果600秒复用。未知结果409阻断，管理员release前不重发。
+
+200 `{success:true,requestId,data:{verificationId,status:'matched'\|'mismatched',matched:boolean,message,verifiedAt,reused}}`；不返回身份字段或供应商原文。错误 `{success:false,requestId,error:{code,message},verificationId?,status?,matched?,providerCalled?}`。400输入、401令牌、403撤权/停用、405方法、429限频/额度/忙、502异常响应、503关闭/暂停/供应商鉴权额度、504超时未知、409未处置未知。429带Retry-After；所有响应no-store/no-referrer，不支持JSONP或跨域。客户端必须关闭自动重试与预取。
+
+该前缀在请求体解析、CORS和后台JWT之前兜底404及错误，日志只记录固定路由、访问编号、用户编号、状态码及耗时。Nginx专用location关闭原URI错误日志，访问日志仅固定路径，不缓存、不上游重试；HTTP直接400，不跳转携带查询参数。仓库模板需发布时核对真实入口，不能视作生产已生效。
+
 ## 认证与用户规则
 
 - 登录提交 username、password，密码至少 8 位，返回 Token 与用户信息；账号/IP 限流与锁定分别生效。
@@ -239,9 +265,12 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 ### Apple ID 管理扩展（2026-10-16，已生产发布）
 
 - Apple ID 列表／详情新增只读 `account_number` 正整数，原 `id` 仍作为所有操作与关联的主键，外部请求不得指定或修改编号。
+- `GET /api/apple-ids/statistics`（本轮开发，待发布）：需 `apple_ids.read`，返回 `{ success: true, data: { total, statuses: [{ status, count }] } }`。统计全库账号，不使用当前页面的 keyword／status／country／分页条件；现行四个状态按规范顺序返回，缺失补 0，未知存量状态保留独立计数，各状态数量之和等于 total。单次数据库分组聚合，只读取状态和数量，不读取密码／密保。
+- `GET /api/apple-ids/selection-ids`（本轮开发，待发布）：需 `apple_ids.read`，仅接受与列表共用的 `keyword`（邮箱模糊查询，最长 255 字符）、`status`（现行四个状态之一）和 `country`（最长 50 字符）筛选，均须为字符串；空字符串视为未筛选，keyword 去除首尾空白。拒绝未知参数、数组／对象及已退役绑定筛选，不接受分页参数。返回 `{ success: true, data: { ids: [内部ID], total } }`，仅查询内部 ID，按 `id DESC` 排序。最多 5000 个；超出返回 400 `APPLE_ID_SELECTION_LIMIT_EXCEEDED`，不截断、不返回部分 ID。列表与本接口使用同一筛选构造逻辑。
+- 上述两个只读接口均设置 `Cache-Control: no-store`，路由位于 `/:id` 之前，不增加表结构或 Migration；统计未知状态不代表允许将其写入账号。
 - `POST /api/apple-ids/batch-update`：需 `apple_ids.edit`，请求仅允许 `{ ids, status?, notes? }`。`ids` 为 1—5000 个唯一正整数；status 必须是现行四个状态之一，notes 为最长 10000 字符的字符串或 null。status／notes 至少提供一个；未提供字段保持原值，null 备注显式清空。事务内取得档案及目标行锁，任一账号不存在则整批拒绝，不部分成功。成功 `{ success: true, data: { updated: 数量 } }`，不返回密码／密保。
 - `POST /api/apple-ids/copy-import`：需 `apple_ids.read`，请求仅允许 `{ ids }`，范围与上项一致。全部账号存在才返回 `{ success: true, data: { count, text } }`；text 按编号升序，每行严格为 `AppleID,密码,`，保留尾逗号、使用换行分隔、无表头／额外空行。账号或密码有逗号、CR／LF 时拒绝并提示资料格式问题，不静默改变凭据或输出歧义内容。响应 `Cache-Control: no-store`，不记录敏感值日志。
-- 多选跨页保留，改变搜索／状态筛选清空选择；页面只全选当前页。批量编辑显式选择状态及／或备注，保存前展示目标数量与变化，未勾选字段保持。复制结果仅写剪贴板，不在页面、日志或 localStorage 回显／持久化。
+- 多选跨页保留，改变搜索／状态筛选清空选择；本轮新增常驻工具栏的“全选本页”和“全选筛选结果”，后者使用上述 selection-ids 的完整集合与 5000 上限。全局状态统计弹窗独立于当前列表筛选。批量编辑打开即可修改状态及／或备注，点击“确认”一次保存；未编辑字段保持，编辑空白备注或点击清空后保存会清空备注。复制结果仅写剪贴板，不在页面、日志或 localStorage 回显／持久化。
 
 - Apple ID 列表 query 为 page、limit、status、country、keyword；keyword 只搜索账号，不搜索取机人。响应移除 recipient_count、recipient_names 与详情 recipients。新增接收 apple_id、password、notes、country、status、security_qa。持有 apple_ids.read 可在列表/详情读取完整password；普通请求不返回密保，详情includeSecrets=true另需apple_ids.secrets.read。Cache-Control: no-store，存储继续加密、日志不记录明文。
 - 取机人列表 query 包含 page、limit、tags、channels、status、keyword；tags/channels 接受数组或兼容逗号分隔值，维度内 OR、跨维度 AND，兼容 tag/channel。keyword 搜索姓名、证件完整盲索引或后四位；不搜索 Apple ID。GET /recipients/filter-options 保持。新增必须 lastName、firstName、idCardNumber；channel 单值最长100字符，独立于订单权限。响应移除 bound、apple_id、apple_id_ref、password。
@@ -793,7 +822,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 | 方法与路径               | 契约                                                                                                                                                                                                                                                 |
 | ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GET /ledger/catalog      | products、warehouses、people、enabled；管理员另有settingsVersion；可在当前表单新增规格和姓名                                                                                                                                                         |
-| GET /ledger              | view=registered/in_stock/sold/returned/all（默认在库）、q、productId、warehouseId、salespersonName、paymentStatus、soldFrom、soldTo、page、pageSize=20/50/100；返回items,total,page,pageSize,counts:{pending,inStock,sold,returned}                                                       |
+| GET /ledger              | view=registered/in_stock/sold/returned/all（默认在库）、q、productId、warehouseId、salespersonName、paymentStatus、soldFrom、soldTo、page、pageSize=20/50/100；返回items,total,page,pageSize,counts:{pending,inStock,sold,returned}                  |
 | GET /ledger/:id          | 单台DTO及审计摘要events，附件沿用units/:id与原附件接口                                                                                                                                                                                               |
 | POST /ledger/receive     | units:[{serialNumber,productId或product:{modelName,storageGb,colorName},warehouseId,receivedOn,orderNumber?,officialCostAmount?,acquiredOn?,extraExpenseAmount?,notes?}]                                                                             |
 | POST /ledger/sell        | units:[{id,expectedVersion,saleAmount,settlementAmount?,extraExpenseAmount?}],salespersonName,handlerName,soldOn,payment,notes?                                                                                                                      |
@@ -1073,7 +1102,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 | 方法/路径                | 请求与结果                                                                                                                  |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
 | GET /scope               | 已启用且支持的商品及已启用门店白名单、组合数、采集开关、汇总状态和最后成功时间；不含代理、预算、Webhook 或内部运行配置      |
-| GET /catalog             | 仅返回 iPhone 18 Pro／Pro Max／Duo 的 40 项商品及全部门店目录、启用与待确认状态；范围外旧商品不返回                                      |
+| GET /catalog             | 仅返回 iPhone 18 Pro／Pro Max／Duo 的 40 项商品及全部门店目录、启用与待确认状态；范围外旧商品不返回                         |
 | PUT /catalog             | `{kind:products或stores,ids:[],enabled:boolean}`，批量启停；范围外商品 ID 拒绝且整批不修改                                  |
 | POST /catalog/refresh    | 排队一次官网目录核对，不同步发起外部请求                                                                                    |
 | GET /settings            | 配置/version/hasWebhook/目标名称，不含密文                                                                                  |
@@ -1120,7 +1149,6 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 单台 DTO 的 `id` 是 `stock_units.id`（UUID），入库、售出和恢复库存沿用同一设备身份，新增只读 `deviceNumber`（正整数）供页面 ID 展示，从1递增且售前售后不变；`id` 保留UUID用于请求路径及内部关联，不能用销售ID或分页序号代替。`GET /api/stock/ledger` 的 `q` 同时对 SN、授权可见订单号和设备备注进行不区分大小写的字面包含匹配，最多100字符；百分号、下划线及反斜杠不作为通配符。备注保持加密存储，服务端在其他条件限定的台账范围内分批解密匹配，然后统一执行计数与分页；不搜索销售审计或不可见订单字段，不建立明文备注副本。搜索成本随候选备注数量增长。
 
-
 ### 订单详情手动维护序列号（2026-10-08）
 
 - GET `/api/orders/:orderId/devices` 需 orders.read，按订单 TAG 范围读取设备列表。
@@ -1129,11 +1157,9 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 - 修改只更正同一实物的序列号，同时更新 pickup_devices 和关联 stock_units，保持设备 ID、库存数量、销售、成本和取货状态；使用库存事务锁，唯一约束兜底。无变更不重复生成业务事件。
 - device_serial_updated 追加历史记录操作人、时间、设备 ID、修改前后序列号及原条码、原因、requestId 和 IP；库存事件同步保留修改前后主档。历史写入失败时整个事务回滚，操作记录页面显示目标订单及修改前后序列号、原因，失败请求亦由通用操作日志记录。
 
-
 ### 订单详情删除误录序列号（2026-10-08）
 
 DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit 与订单 TAG 范围，请求体 `{expectedSerialNumber,reason}`，原因必填 1–200 字。仅移除指定 UUID 的订单设备绑定，保留库存主档、库存数量、销售与历史；不能通过清空编辑框隐式删除。原值不一致 409，范围外订单 404，重复删除原 UUID 返回 removed=false，不影响新绑定。删除、取货版本递增、device_removed 事件（完整原设备绑定、原因、requestId、IP）及库存解绑审计在同一事务内完成；任一审计失败整体回滚。后台操作日志显示订单、被删除序列号和原因。前端提供明确删除入口、原因输入和确认删除步骤，失败保留输入。
-
 
 ## 官网电子收据批处理边界（2026-10-08）
 
@@ -1164,7 +1190,6 @@ DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit �
 
 订单页表头、筛选、详情、列设置与导出统一显示“邮件订单状态”，API 字段键保持兼容。`partially_return_requested` 显示“部分发起退货”，`return_requested` 显示“已发起退货”；两种状态均参与现有邮件和展示状态筛选。退货申请只改变邮件阶段和核对证据，不表示已退款，不修改官网/付款/库存结果。
 
-
 ## 付款官网状态刷新（2026-10-11 已批准）
 
 付款任务与调度 DTO 共用订单 `officialRawStatus`、`officialStatusObservedAt`，处理人沿用 `assignee`（id、username、nickname），`officialRefreshState` 为 queued／running／null。单笔 `POST /api/payment-tasks/:id/refresh` 与 `GET /api/payment-tasks/:id/refresh/:jobId` 要求 `payment_tasks.handle_own` 及当前归属；调度对应 `/api/payment-dispatch/tasks/:id/refresh` 和 `/:jobId` 要求 admin 与 `payment_dispatch.assign`。POST 接收 `{requestKey: UUID}`，返回 202 与 `{jobId,created,state}`；GET 返回白名单 `{jobId,orderId,state,errorCode,officialRawStatus,officialStatusObservedAt,workerOnline}`。进度每次复核当前归属，不返回租约、账号、链接或其他任务凭据。原订单管理员刷新接口权限不变。
@@ -1172,7 +1197,6 @@ DELETE `/api/orders/:orderId/devices/:deviceId` 需 orders.read、orders.edit �
 复用官网刷新持久队列、身份校验、限流和状态回写。正式 Migration 仅扩展 `official_order_refresh_batches.purpose` CHECK：`payment_manual` 必须有 requested_by，`payment_auto` 必须为空；不新增表。down 如已有付款刷新审计则拒绝，保留证据。
 
 API 进程每三分钟扫描付款任务关联订单；仅核对 `orders.created_at >= PAYMENT_OFFICIAL_REFRESH_FROM` 的新入库订单，起点为持久环境配置的完整 ISO 时间，首次启用时刻固定，不随重启推进；缺失或非法起点时自动核对关闭并只记录错误分类。`payment_auto` 在领取和回写时再次校验相同入库范围，手动历史单刷新不受此限制。`PAYMENT_OFFICIAL_REFRESH_ENABLED=true`、合法 `PAYMENT_OFFICIAL_REFRESH_FROM` 且 `NODE_ENV=production` 才自动运行，默认关闭。数据库共享队列锁去重，以上次任务建立时间约束每单三分钟间隔，保护暂停批次保留，自动核对至少延后30分钟；冷却到期仅当前可访问付款订单的旧暂停 queued 标记 cancelled／`REQUEUED_FOR_PAYMENT`，再创建付款目的任务，不恢复整个历史批次、不触碰 running。手动遇到冷却中的暂停 queued 返回409 `OFFICIAL_REFRESH_PAUSED`；更晚人工成功可解除该订单的历史暂停影响。每单24小时最多建立10次任务，`ORDER_ATTEMPT_LIMIT` 至少延后24小时，官网已有预算、冷却与限流继续生效。候选先排除完整终态，再按上次入队时间排序，避免历史终态或固定前500单挤占后续订单。仅邮件 paid 或完整官网状态集合全部属于已付款后阶段／明确过期取消终态时停止；未知、部分待付款、来源下单30分钟倒计时结束均继续核对。人工 processingStatus、付款人及付款备注不作停止判断或自动修改。刷新失败保留有效官网状态与时间。
-
 
 ## 付款页面官网状态筛选（2026-10-11 已批准）
 
