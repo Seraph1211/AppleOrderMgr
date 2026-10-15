@@ -1,3 +1,4 @@
+import { formatStorageCapacity } from '../utils/productStorage';
 import ResponsiveSelect from '../components/responsiveSelect';
 import {
   StockLifecycleInfo,
@@ -573,7 +574,7 @@ export default function Stock() {
                       [...(catalog.filterOptions?.storageGbs || []), ...filters.storageGbs].map(
                         value => [
                           String(value),
-                          value >= 1024 && value % 1024 === 0 ? `${value / 1024}TB` : `${value}GB`,
+                          formatStorageCapacity(value),
                         ]
                       )
                     )

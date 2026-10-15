@@ -1,3 +1,5 @@
+import { formatStorageCapacity } from '../../utils/productStorage';
+
 /** 以人民币分解析金额，避免二进制小数误差。 */
 export function moneyCents(value) {
   const text = String(value ?? '').trim();
@@ -28,7 +30,10 @@ export function dateText(value) {
 /** 规格名称。 */
 export function productLabel(product) {
   if (!product) return '规格待完善';
-  return `${product.modelName || product.modelKey || ''} ${product.storageGb ? `${product.storageGb}GB` : ''} ${product.colorName || product.colorKey || ''}`.trim();
+  const model = product.modelName || product.modelKey || '';
+  const capacity = product.storageGb ? formatStorageCapacity(product.storageGb) : '';
+  const color = product.colorName || product.colorKey || '';
+  return `${model} ${capacity} ${color}`.trim();
 }
 /** 从目录构建表单选项。 */
 export function stockOptions(items = [], label = item => item.name) {

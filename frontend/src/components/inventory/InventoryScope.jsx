@@ -1,3 +1,4 @@
+import { formatProductStorageText } from '../../utils/productStorage';
 import { timeText, STATUS } from './inventoryPresentation';
 
 const STATE_TEXT = {
@@ -45,7 +46,7 @@ export default function InventoryScope({ scope }) {
           {scope.products.map(row => (
             <li key={row.sku} className="py-2 text-sm">
               <span className="font-medium">
-                {row.model} · {row.capacity} · {row.color}
+                {row.model} · {formatProductStorageText(row.capacity)} · {row.color}
               </span>
               <span className="block text-xs text-gray-500 break-all">{row.sku}</span>
             </li>

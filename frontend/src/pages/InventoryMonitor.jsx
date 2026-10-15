@@ -1,3 +1,4 @@
+import { formatProductStorageText } from '../utils/productStorage';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { STATUS, timeText, failureText } from '../components/inventory/inventoryPresentation';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -625,7 +626,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
               <CompactRecord
                 key={row.id}
                 title={row.model}
-                subtitle={`${row.capacity} · ${row.color} / ${row.city} ${row.storeName}`}
+                subtitle={`${formatProductStorageText(row.capacity)} · ${row.color} / ${row.city} ${row.storeName}`}
                 status={<Status value={row.displayStatus} />}
                 selection={
                   <input
@@ -680,7 +681,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                 <td className="px-3 py-3 whitespace-nowrap">
                   <p className="font-medium text-gray-900">{row.model}</p>
                   <p className="text-gray-600">
-                    {row.capacity} · {row.color}
+                    {formatProductStorageText(row.capacity)} · {row.color}
                   </p>
                   <p className="text-xs text-gray-400">{row.sku}</p>
                 </td>
@@ -876,7 +877,9 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                         : `${row.city} · Apple ${row.storeName}`
                     }
                     subtitle={
-                      catalogKind === 'products' ? `${row.capacity} · ${row.color}` : row.id
+                      catalogKind === 'products'
+                        ? `${formatProductStorageText(row.capacity)} · ${row.color}`
+                        : row.id
                     }
                     status={<Status value={row.enabled ? 'normal' : 'disabled'} />}
                     selection={
@@ -921,7 +924,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
                       {catalogKind === 'products'
-                        ? `${row.model} · ${row.capacity} · ${row.color}`
+                        ? `${row.model} · ${formatProductStorageText(row.capacity)} · ${row.color}`
                         : `${row.city} · Apple ${row.storeName}`}
                       <p className="text-xs text-gray-400">{row.id}</p>
                     </td>
@@ -1031,7 +1034,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
               <CompactRecord
                 key={row.id}
                 title={row.model}
-                subtitle={`${row.capacity} · ${row.color} / ${row.city} ${row.storeName}`}
+                subtitle={`${formatProductStorageText(row.capacity)} · ${row.color} / ${row.city} ${row.storeName}`}
                 status={<Status value={row.kind || row.status} />}
                 meta={`${timeText(row.observedAt)} · ${STATUS[row.source]}`}
               >
@@ -1053,7 +1056,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                 <td className="px-3 py-3 whitespace-nowrap">
                   {row.model}
                   <p className="text-gray-500">
-                    {row.capacity} · {row.color}
+                    {formatProductStorageText(row.capacity)} · {row.color}
                   </p>
                 </td>
                 <td className="px-3 py-3">
@@ -1150,7 +1153,9 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                       label:
                         key === 'stores'
                           ? `${catalog.stores.find(s => s.storeCode === v)?.storeName} (${v})`
-                          : v,
+                          : key === 'capacities'
+                            ? formatProductStorageText(v)
+                            : v,
                     }))}
                     onChange={value =>
                       update('notificationFilters', { ...draft.notificationFilters, [key]: value })

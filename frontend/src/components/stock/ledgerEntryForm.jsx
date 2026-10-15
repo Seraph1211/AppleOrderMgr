@@ -1,3 +1,4 @@
+import { formatStorageCapacity } from '../../utils/productStorage';
 import ResponsiveSelect from '../responsiveSelect';
 import { useEffect, useRef, useState } from 'react';
 import { stockGet } from '../../api/stockApi';
@@ -174,7 +175,7 @@ export default function LedgerEntryForm({
         <option value="">请选择容量与颜色</option>
         {products.map(product => (
           <option key={product.id} value={product.id}>
-            {product.storageGb >= 1024 ? `${product.storageGb / 1024}TB` : `${product.storageGb}GB`}{' '}
+            {formatStorageCapacity(product.storageGb)}{' '}
             {product.colorName}
           </option>
         ))}

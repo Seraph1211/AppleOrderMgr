@@ -1,3 +1,4 @@
+import { formatProductStorageText } from '../utils/productStorage';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { useEffect, useRef, useState } from "react";
 import {
@@ -876,7 +877,7 @@ export default function ProxyOrders() {
                         <td className="p-3">
                           <p>{row.productModel}</p>
                           <p className="text-gray-500 mt-1">
-                            {row.color} / {row.storage} × {row.quantity}
+                            {row.color} / {formatProductStorageText(row.storage)} × {row.quantity}
                           </p>
                           <p className="text-xs text-gray-400">
                             {row.paymentMethod || "支付要求未填"}
@@ -1184,7 +1185,7 @@ export default function ProxyOrders() {
               {[
                 [
                   "抢购需求",
-                  `${current.productModel} / ${current.color} / ${current.storage} × ${current.quantity}`,
+                  `${current.productModel} / ${current.color} / ${formatProductStorageText(current.storage)} × ${current.quantity}`,
                 ],
                 ["支付要求", current.paymentMethod],
                 ["手机号", current.phone],

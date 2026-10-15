@@ -1,3 +1,4 @@
+import { formatProductStorageText } from '../../utils/productStorage';
 import { timeText } from './inventoryPresentation';
 import { useEffect, useState } from 'react';
 import { inventoryApi } from '../../api/inventoryApi';
@@ -66,7 +67,7 @@ export default function InventoryCoverageDialog({ id, onClose }) {
                     <CompactRecord
                       key={row.id}
                       title={row.model}
-                      subtitle={`${row.capacity} · ${row.color} / ${row.city} ${row.storeName}`}
+                      subtitle={`${formatProductStorageText(row.capacity)} · ${row.color} / ${row.city} ${row.storeName}`}
                       status={<Status value={row.stockStatus} />}
                     >
                       <RecordFields
@@ -84,7 +85,7 @@ export default function InventoryCoverageDialog({ id, onClose }) {
                       <td className="px-3 py-3 whitespace-nowrap">
                         {row.model}
                         <p className="text-xs text-gray-500">
-                          {row.capacity} · {row.color}
+                          {formatProductStorageText(row.capacity)} · {row.color}
                         </p>
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">

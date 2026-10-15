@@ -1,3 +1,4 @@
+import { formatStorageCapacity } from '../utils/productStorage';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Apple, Check, Copy, RefreshCw, Search } from 'lucide-react';
@@ -19,9 +20,6 @@ const formatTime = value =>
         hour12: false,
       })
     : '-';
-
-const storageLabel = value =>
-  value >= 1024 && value % 1024 === 0 ? `${value / 1024}TB` : `${value}GB`;
 
 /** 无需登录的 Apple 全系固定公开报价页。 */
 export default function PublicIphone18Quotes() {
@@ -165,7 +163,7 @@ export default function PublicIphone18Quotes() {
                   <option value="">全部容量</option>
                   {data.filters.storageGb.map(value => (
                     <option key={value} value={value}>
-                      {storageLabel(value)}
+                      {formatStorageCapacity(value)}
                     </option>
                   ))}
                 </ResponsiveSelect>
@@ -221,7 +219,7 @@ export default function PublicIphone18Quotes() {
                         <td className="col-span-2 min-w-0 px-4 pb-2 pt-4 sm:table-cell sm:min-w-[260px] sm:py-4">
                           <p className="font-medium text-gray-900">{item.productName}</p>
                           <p className="mt-1 text-xs text-gray-500">
-                            {storageLabel(item.storageGb)} · {item.color}
+                            {formatStorageCapacity(item.storageGb)} · {item.color}
                             <span className="sm:hidden">
                               {' '}
                               · 官网价 {formatCurrency(item.officialPrice)}

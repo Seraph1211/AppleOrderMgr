@@ -1,3 +1,4 @@
+import { formatProductStorageText } from '../utils/productStorage';
 import { useRef } from 'react';
 import TagMultiSelect from './TagMultiSelect';
 
@@ -35,11 +36,12 @@ export default function ProductFilter({
   for (const key of keys) {
     const option = current.get(key) || remembered.current.get(key);
     const label = option?.label || '已选商品';
+    const storageLabel = formatProductStorageText(label);
     const displayLabel = hideProductCode
-      ? label.replace(/\s*·\s*[a-z0-9]+\/[a-z0-9]+(?=\s*(?:·|$))/gi, '').trim()
-      : label;
+      ? storageLabel.replace(/\s*·\s*[a-z0-9]+\/[a-z0-9]+(?=\s*(?:·|$))/gi, '').trim()
+      : storageLabel;
     labels[key] = `${displayLabel}（${current.get(key)?.count || 0}）`;
-    searchLabels[key] = [label, ...(option?.aliases || [])].join(' ');
+    searchLabels[key] = [label, displayLabel, ...(option?.aliases || [])].join(' ');
   }
   return (
     <TagMultiSelect

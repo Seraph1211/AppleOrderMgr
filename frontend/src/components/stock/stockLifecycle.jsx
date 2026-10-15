@@ -1,3 +1,4 @@
+import { formatStorageCapacity } from '../../utils/productStorage';
 import StockStatisticsCharts from './stockStatisticsCharts';
 import { useState } from 'react';
 import TableHeaderHint from '../TableHeaderHint';
@@ -228,7 +229,7 @@ export function StockStatistics({ catalog, onClose }) {
                 {
                   key: 'storageGb',
                   title: '容量',
-                  render: row => (row.storageGb ? `${row.storageGb} GB` : '待补'),
+                  render: row => (row.storageGb ? formatStorageCapacity(row.storageGb) : '待补'),
                 },
                 { key: 'colorName', title: '颜色', render: row => row.colorName || '待补' },
                 { key: 'count', title: '数量（台）' },

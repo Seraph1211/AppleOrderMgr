@@ -1,3 +1,4 @@
+import { formatStorageCapacity } from '../utils/productStorage';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -38,9 +39,6 @@ const formatTime = value =>
         hour12: false,
       })
     : '-';
-
-const storageLabel = value =>
-  value >= 1024 && value % 1024 === 0 ? `${value / 1024}TB` : `${value}GB`;
 
 const colorOrder = ['黑色', '银色', '冰川蓝色', '勃艮第酒红色'];
 const compareColors = (left, right) => {
@@ -392,7 +390,7 @@ export default function Iphone18QuotePricing() {
                 <option value="">全部容量</option>
                 {filterOptions.storages.map(value => (
                   <option key={value} value={value}>
-                    {storageLabel(value)}
+                    {formatStorageCapacity(value)}
                   </option>
                 ))}
               </ResponsiveSelect>

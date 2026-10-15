@@ -1,3 +1,4 @@
+import { formatProductStorageText } from '../../utils/productStorage';
 import useModalScrollLock from '../useModalScrollLock';
 import MobilePickerDialog from '../mobilePickerDialog';
 import { useEffect, useId, useRef, useState } from 'react';
@@ -243,11 +244,14 @@ export function InventoryFilters({ catalog, filters, applied, onChange, onApply,
       .filter(s => !filters.cities?.length || filters.cities.includes(s.city))
       .map(s => ({ value: s.storeCode, label: `${s.city} · ${s.storeName}` })),
     models: uniq(catalog.products, 'model'),
-    capacities: uniq(catalog.products, 'capacity'),
+    capacities: uniq(catalog.products, 'capacity').map(option => ({
+      ...option,
+      label: formatProductStorageText(option.label),
+    })),
     colors: uniq(catalog.products, 'color'),
     skus: catalog.products.map(product => ({
       value: product.sku,
-      label: `${product.model} · ${product.capacity} · ${product.color} (${product.sku})`,
+      label: `${product.model} · ${formatProductStorageText(product.capacity)} · ${product.color} (${product.sku})`,
     })),
   };
   const count = Object.values(applied).reduce((sum, items) => sum + items.length, 0);

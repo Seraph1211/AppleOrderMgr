@@ -1,3 +1,4 @@
+import { formatProductStorageText } from '../utils/productStorage';
 import RecipientTag from '../components/RecipientTag';
 import OrderAmount from '../components/OrderAmount';
 import OrderSources from '../components/OrderSources';
@@ -159,9 +160,11 @@ export default function OrderDetail() {
                         key={`${product.model || product.name || 'product'}-${index}`}
                         className="border-b border-gray-200 last:border-0"
                       >
-                        <td className="px-4 py-4 text-sm text-gray-900">{product.name || '-'}</td>
+                        <td className="px-4 py-4 text-sm text-gray-900">
+                          {formatProductStorageText(product.name || '-')}
+                        </td>
                         <td className="px-4 py-4 font-mono text-sm text-gray-600">
-                          {product.model || product.modelId || '-'}
+                          {formatProductStorageText(product.model || product.modelId || '-')}
                         </td>
                         <td className="px-4 py-4 text-right text-sm text-gray-900">
                           {product.quantity ?? '-'}

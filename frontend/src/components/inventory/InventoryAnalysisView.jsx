@@ -1,3 +1,4 @@
+import { formatProductStorageText } from '../../utils/productStorage';
 import { timeText } from './inventoryPresentation';
 import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
@@ -106,7 +107,9 @@ export default function InventoryAnalysisView({ data, onDrill }) {
               <Table headers={[label, '次数', '明细']} empty={!data[key].length} label={label}>
                 {data[key].map(row => (
                   <tr key={row.key}>
-                    <td className="px-3 py-3">{row.key}</td>
+                    <td className="px-3 py-3">
+                      {key === 'configurations' ? formatProductStorageText(row.key) : row.key}
+                    </td>
                     <td className="px-3 py-3 font-medium text-primary">{row.count}</td>
                     <td className="px-3 py-3">
                       <button

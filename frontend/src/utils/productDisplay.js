@@ -1,3 +1,5 @@
+import { formatProductStorageText } from './productStorage.js';
+
 /**
  * 合并同名同型号商品的展示数量，不修改原始明细或推算未知数量。
  * @param {Array} products - 订单商品明细
@@ -17,7 +19,7 @@ export function groupDisplayProducts(products) {
     const existing = groups.get(key);
     if (!existing)
       groups.set(key, {
-        name,
+        name: formatProductStorageText(name),
         quantity,
         ...(product?.filterKeys
           ? {
