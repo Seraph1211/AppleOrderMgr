@@ -1,3 +1,4 @@
+import IdentityApiTab from '../components/identityApiTab';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -12,6 +13,7 @@ import {
   Square,
   RefreshCw,
   AlertCircle,
+  KeyRound,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
@@ -43,7 +45,13 @@ export default function IdentityVerifications() {
   const { user, can } = useAuth();
   const [params, setParams] = useSearchParams();
   const batchId = params.get('batch') || '';
-  const [tab, setTab] = useState('single');
+  const [tab, setTab] = useState(() =>
+    can(PERMISSIONS.IDENTITY_API) &&
+    !can(PERMISSIONS.IDENTITY_VERIFY) &&
+    !can(PERMISSIONS.IDENTITY_BATCH)
+      ? 'api'
+      : 'single'
+  );
   const [name, setName] = useState('');
   const [idCardNumber, setIdCardNumber] = useState('');
   const [file, setFile] = useState(null);
@@ -63,7 +71,8 @@ export default function IdentityVerifications() {
   const canRead = can(PERMISSIONS.IDENTITY_READ);
   const canVerify = can(PERMISSIONS.IDENTITY_VERIFY);
   const canBatch = can(PERMISSIONS.IDENTITY_BATCH);
-  const ready = service?.configured && service?.enabled;
+  const canApi = can(PERMISSIONS.IDENTITY_API);
+  const ready = service?.configured && service?.enabled && !service?.paused;
 
   const load = useCallback(async () => {
     const current = ++generation.current;
@@ -103,14 +112,15 @@ export default function IdentityVerifications() {
       setFile(null);
       return undefined;
     }
-    load();
+    const requestGeneration = generation;
+    if (tab !== 'api') load();
     return () => {
-      generation.current++;
+      requestGeneration.current++;
     };
-  }, [canRead, load]);
+  }, [canRead, load, tab]);
 
   useEffect(() => {
-    if (!canRead) return undefined;
+    if (!canRead || tab === 'api') return undefined;
     const active =
       detail?.rows.some(row => ['pending', 'processing'].includes(row.status)) &&
       ['queued', 'running', 'cancelled'].includes(detail?.batch.status);
@@ -118,12 +128,13 @@ export default function IdentityVerifications() {
       return undefined;
     const timer = setInterval(load, 2500);
     return () => clearInterval(timer);
-  }, [canRead, detail, history, load]);
+  }, [canRead, detail, history, load, tab]);
 
   useEffect(() => {
-    if (tab === 'single' && !canVerify) setTab(canBatch ? 'excel' : 'history');
-    if (tab === 'excel' && !canBatch) setTab(canVerify ? 'single' : 'history');
-  }, [tab, canVerify, canBatch]);
+    if (tab === 'single' && !canVerify) setTab(canBatch ? 'excel' : canApi ? 'api' : 'history');
+    if (tab === 'excel' && !canBatch) setTab(canVerify ? 'single' : canApi ? 'api' : 'history');
+    if (tab === 'api' && !canApi) setTab('history');
+  }, [tab, canVerify, canBatch, canApi]);
 
   const perform = async action => {
     if (busy) return;
@@ -169,7 +180,8 @@ export default function IdentityVerifications() {
       await load();
     });
   const rows = (detail?.rows || []).filter(row => !resultFilter || row.status === resultFilter);
-  const actionable = detail?.batch.source === 'single' ? canVerify : canBatch;
+  const actionable =
+    detail?.batch.source === 'single' ? canVerify : detail?.batch.source === 'excel' && canBatch;
   const pending =
     detail?.rows.filter(row => row.status === 'pending' && !row.duplicateOf).length || 0;
   const resolved =
@@ -185,23 +197,27 @@ export default function IdentityVerifications() {
             <ShieldCheck className="w-5 h-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">身份核验</h1>
-            <p className="text-gray-500 mt-1">核对姓名与身份证信息，支持单人和 Excel 批量核验</p>
+            <h1 className="text-2xl font-bold text-gray-900">身份核验</h1>
+            <p className="text-gray-500 mt-1">
+              核对姓名与身份证信息，支持单人、Excel 批量和 API 接入
+            </p>
           </div>
         </div>
-        <button
-          className="btn btn-secondary inline-flex items-center gap-2"
-          onClick={() => {
-            setError('');
-            load();
-          }}
-          disabled={loading}
-        >
-          <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          刷新
-        </button>
+        {tab !== 'api' && (
+          <button
+            className="btn btn-secondary inline-flex items-center gap-2"
+            onClick={() => {
+              setError('');
+              load();
+            }}
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            刷新
+          </button>
+        )}
       </div>
-      {error && (
+      {tab !== 'api' && error && (
         <div
           role="alert"
           className="rounded-lg border border-red-200 bg-red-50 p-4 text-red-700 flex gap-2"
@@ -210,7 +226,7 @@ export default function IdentityVerifications() {
           {error}
         </div>
       )}
-      {notice && (
+      {tab !== 'api' && notice && (
         <div
           role="status"
           className="rounded-lg border border-blue-200 bg-primary-50 p-4 text-primary"
@@ -218,9 +234,11 @@ export default function IdentityVerifications() {
           {notice}
         </div>
       )}
-      {service && !ready && (
+      {tab !== 'api' && service && !ready && (
         <div className="rounded-lg border border-yellow-200 bg-yellow-50 p-4 text-yellow-800">
-          核验服务尚未配置或未启用。可以预览 Excel 和查看已有记录，启用后才能正式核验。
+          {service.paused
+            ? '身份核验服务已暂停，请联系管理员核查并恢复后继续。仍可预览和查看记录。'
+            : '核验服务尚未配置或未启用。可以预览 Excel 和查看已有记录，启用后才能正式核验。'}
         </div>
       )}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
@@ -233,6 +251,7 @@ export default function IdentityVerifications() {
             ...(canVerify ? [['single', '单人核验', UserRound]] : []),
             ...(canBatch ? [['excel', 'Excel 批量核验', FileSpreadsheet]] : []),
             ['history', '核验记录', History],
+            ...(canApi ? [['api', 'API', KeyRound]] : []),
           ].map(([key, label, Icon]) => (
             <button
               key={key}
@@ -246,6 +265,7 @@ export default function IdentityVerifications() {
             </button>
           ))}
         </div>
+        {tab === 'api' && canRead && canApi && <IdentityApiTab />}
         {tab === 'single' && canVerify && (
           <form className="p-6 space-y-5" onSubmit={submitSingle}>
             <div className="flex flex-col lg:flex-row gap-4 lg:items-end">
@@ -392,7 +412,12 @@ export default function IdentityVerifications() {
                     <tr key={batch.id} className="border-b border-gray-200 hover:bg-gray-50">
                       <td className={td}>{time(batch.createdAt)}</td>
                       <td className={td}>
-                        {batch.source === 'single' ? '单人' : 'Excel'} · {batch.id.slice(0, 8)}
+                        {batch.source === 'single'
+                          ? '单人'
+                          : batch.source === 'api'
+                            ? 'API'
+                            : 'Excel'}{' '}
+                        · {batch.id.slice(0, 8)}
                       </td>
                       <td className={td}>U{String(batch.userId).padStart(4, '0')}</td>
                       <td className={td}>{batch.summary.total}</td>
@@ -444,10 +469,10 @@ export default function IdentityVerifications() {
           </div>
         )}
       </div>
-      {batchId && !detail && loading && (
+      {tab !== 'api' && batchId && !detail && loading && (
         <div className="py-12 text-center text-gray-500">正在加载核验明细…</div>
       )}
-      {detail && (
+      {tab !== 'api' && detail && (
         <section
           className="bg-white border border-gray-200 rounded-xl overflow-hidden"
           aria-label="核验结果"

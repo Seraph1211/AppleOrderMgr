@@ -37,16 +37,34 @@ function mapResponse(response) {
     return {
       status: 'error',
       fatal: true,
+      code: quota ? 'PROVIDER_QUOTA' : 'PROVIDER_AUTH',
+      httpStatus: 503,
       message: quota ? '套餐额度不足，已暂停队列' : '接口鉴权失败或服务不可用，已暂停队列',
     };
   }
   if (response.status === 429)
-    return { status: 'error', fatal: true, message: '供应商限流，已暂停队列，稍后手动继续' };
+    return {
+      status: 'error',
+      fatal: true,
+      code: 'PROVIDER_RATE_LIMIT',
+      httpStatus: 503,
+      message: '供应商限流，服务已暂停；请管理员核查恢复后继续未开始项目',
+    };
   if (response.status !== 200)
-    return { status: 'unknown', message: '供应商未返回正常结果，请核对调用记录后再处理' };
+    return {
+      status: 'unknown',
+      code: 'RESULT_UNKNOWN',
+      httpStatus: 502,
+      message: '供应商未返回正常结果，请核对调用记录后再处理',
+    };
   const body = response.data;
   if (!body || ![0, '0'].includes(body.error_code) || typeof body.result?.isok !== 'boolean')
-    return { status: 'unknown', message: '供应商返回异常或无法判断，未自动重试' };
+    return {
+      status: 'unknown',
+      code: 'RESULT_UNKNOWN',
+      httpStatus: 502,
+      message: '供应商返回异常或无法判断，未自动重试',
+    };
   const info = body.result.IdCardInfor || {};
   const resultData = {};
   for (const [key, value] of Object.entries({
@@ -71,7 +89,14 @@ function mapResponse(response) {
 async function verifyIdentity(name, idCardNumber) {
   try {
     const appCode = getAppCode();
-    if (!appCode) return { status: 'error', fatal: true, message: '身份核验服务尚未配置' };
+    if (!appCode)
+      return {
+        status: 'error',
+        fatal: true,
+        code: 'IDENTITY_NOT_READY',
+        httpStatus: 503,
+        message: '身份核验服务尚未配置',
+      };
     const response = await axios.post(
       ENDPOINT,
       new URLSearchParams({
@@ -92,7 +117,12 @@ async function verifyIdentity(name, idCardNumber) {
     );
     return mapResponse(response);
   } catch (_error) {
-    return { status: 'unknown', message: '请求超时或连接中断，结果未知；为避免重复扣次未自动重试' };
+    return {
+      status: 'unknown',
+      code: 'RESULT_UNKNOWN',
+      httpStatus: 504,
+      message: '请求超时或连接中断，结果未知；为避免重复扣次未自动重试',
+    };
   }
 }
 

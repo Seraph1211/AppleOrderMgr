@@ -103,6 +103,7 @@ const PERMISSIONS = Object.freeze({
   INGESTION_CONTENT_READ: 'ingestion.content.read',
   IDENTITY_READ: 'identity.read',
   IDENTITY_VERIFY: 'identity.verify',
+  IDENTITY_API: 'identity.api',
   IDENTITY_BATCH: 'identity.batch',
   IDENTITY_EXPORT: 'identity.export',
   DASHBOARD_READ: 'dashboard.read',

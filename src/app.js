@@ -63,6 +63,11 @@ validateEncryptionConfiguration();
 
 // ---------- 基础中间件 ----------
 app.disable('x-powered-by');
+app.use('/api/internal/v1/identity', require('./routes/internalIdentity'));
+app.use('/api/identity-verifications', (_req, res, next) => {
+  res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
+  next();
+});
 app.use('/api/aos-collector/v1', requestLogger(), require('./routes/aosCollector'));
 
 // 允许较大的请求体（支持上传 base64 图片，最多 10MB）
@@ -146,13 +151,7 @@ app.use('/api/inventory', require('./routes/inventory'));
 
 // ---------- 404 兜底 ----------
 app.use((req, _res, next) => {
-  next(
-    ApiError.notFound(
-      `路由不存在: ${req.method} ${req.originalUrl}`,
-      { method: req.method, url: req.originalUrl },
-      'NOT_FOUND'
-    )
-  );
+  next(ApiError.notFound('路由不存在', { method: req.method, url: '/unmatched' }, 'NOT_FOUND'));
 });
 
 // ---------- 统一错误处理（必须放在最后） ----------

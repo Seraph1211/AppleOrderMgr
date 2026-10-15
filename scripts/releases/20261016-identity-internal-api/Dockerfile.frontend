@@ -1,0 +1,11 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY frontend/src/api/identityApi.js /app/src/api/identityApi.js
+COPY frontend/src/constants/permissions.js /app/src/constants/permissions.js
+COPY frontend/src/pages/IdentityVerifications.jsx /app/src/pages/IdentityVerifications.jsx
+COPY frontend/src/components/identityApiAdmin.jsx /app/src/components/identityApiAdmin.jsx
+COPY frontend/src/components/identityApiConfirm.jsx /app/src/components/identityApiConfirm.jsx
+COPY frontend/src/components/identityApiTab.jsx /app/src/components/identityApiTab.jsx
+COPY frontend/src/utils/copyIdentityText.js /app/src/utils/copyIdentityText.js
+COPY frontend/src/utils/identityApiGuide.js /app/src/utils/identityApiGuide.js
+RUN npm run lint && npm run build
