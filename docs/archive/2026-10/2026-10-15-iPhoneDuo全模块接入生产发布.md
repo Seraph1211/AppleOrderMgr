@@ -26,7 +26,7 @@
 
 Main 审阅有效恢复／迁移证据与切换脚本后明确批准。正式迁移至第79项，生产商品／价格／监控目录从16／16／65变为24／24／73，所有旧ID行摘要保持，新增八监控项全部关闭；未创建测试订单、SN、销售或收款。
 
-依次重建 API 并等待回环 readiness、邮件／订单邮件／企微，再在库存自然轮次空闲时重建自身，最后原子切换前端指针到 `20261015-iphone-duo`。五服务 Env／Cmd／User／WorkingDir／ports／mounts／安全配置保持，其他八容器的ID／镜像／启动时间保持；共享环境、Nginx、官网队列脚本保持。切换窗口订单、用户、取机人、付款任务、取货及库存事实和库存设置保护摘要均无差异。
+依次重建 API 并等待回环 readiness、邮件／订单邮件／企微，再在库存自然轮次空闲时重建自身，最后原子切换前端指针到 `20261015-iphone-duo`。五服务 Env／Cmd／User／WorkingDir／ports／mounts／安全配置保持，其他八容器的ID／镜像／启动时间保持；共享环境、Nginx、官网队列脚本保持。切换窗口实际校验的9张表为 `orders`、`users`、`payment_tasks`、`pickup_records`、`pickup_devices`、`stock_units`、`stock_sales`、`stock_sale_lines`、`inventory_settings`，行数及完整摘要均无差异；未对不存在而被脚本跳过的 `recipient_profiles`、`stock_payments` 声称切换窗口核验。104表全等属于前述隔离恢复演练证据。
 
 公网11个静态文件摘要与制品一致；运行API331、邮件180、订单邮件203、企微180、库存249份源码逐文件与候选一致。库存心跳推进，原activeRound=null／leaseUntil=0／nextRoundAt保持。重启前已有 `PROXY_CONNECT_REJECTED`，重启后仍保留同一错误；本轮未调整代理，也未宣称实际库存采集恢复或门店有货。隔离演练容器及匿名卷已清理，服务器备份、旧发布和全部证据保留。
 
