@@ -1,6 +1,6 @@
 # IPRoyal 库存代理接入
 
-> 状态：已批准开发，尚未真实代理及生产验收。
+> 状态：已部署；真实中国出口与 Apple 库存请求已验证，长期稳定性另行观察。
 >
 > 日期：2026-10-16。现有生产 Worker 代码为接入基线。
 
@@ -25,6 +25,8 @@
   }
 }
 ```
+
+控制台只读凭据输入框可能返回掩码，不能直接把其 value 当作凭据。使用控制台可见集成示例中的真实用户名／密码，去除示例路由后缀后安全保存；先做受闸门约束的出口验证，再确认库存采集。
 
 用户名和基础密码使用 URL 百分号编码；密码不得预拼接路由参数。`expiresAt` 为空表示未配置套餐期限；仅当已知套餐实际截止时间时填写带时区 ISO 时间，届时停止请求。该期限与每个会话十分钟有效期独立。旧 `INVENTORY_BACKUP_PROXY_FILE` 和 `INVENTORY_PROXY_API_FILE` 不参与选路；配置缺失、非法、被停用或未验证时关闭请求。
 
@@ -52,3 +54,5 @@ CONNECT 状态仅作为代理供应商结果，不能解释为 Apple 风控或�
 - [高端池 streaming-1](https://docs.iproyal.com/proxies/residential/proxy/high-end-pool.md)。
 - [住宅代理响应码 500、503、504](https://docs.iproyal.com/proxies/residential/proxy/making-requests/response-codes.md)。
 - [中国备用入口能力差异](https://docs.iproyal.com/proxies/residential/proxy/making-requests/china-entry-nodes.md)。
+
+首次真实认证失败与纠正、生产出口和自然轮次证据见[主审与生产发布](../archive/2026-10/2026-10-16-库存监控IPRoyal主审与生产发布.md)。
