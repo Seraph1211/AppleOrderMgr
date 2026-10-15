@@ -1,0 +1,8 @@
+FROM apple-order-mgr-api:20261015-product-naming-amd64
+COPY --chown=node:node src/constants/permissionCatalog.js /app/src/constants/permissionCatalog.js
+COPY --chown=node:node src/models/ProxyOrder.js /app/src/models/ProxyOrder.js
+COPY --chown=node:node src/models/ProxyOrderLink.js /app/src/models/ProxyOrderLink.js
+COPY --chown=node:node src/models/index.js /app/src/models/index.js
+COPY --chown=node:node src/routes/proxyOrders.js /app/src/routes/proxyOrders.js
+COPY --chown=node:node src/services/proxyOrderService.js /app/src/services/proxyOrderService.js
+COPY --chown=node:node src/utils/proxyOrderInput.js /app/src/utils/proxyOrderInput.js

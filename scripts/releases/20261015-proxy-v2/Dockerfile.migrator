@@ -1,0 +1,2 @@
+FROM apple-order-mgr-migrator:20261015-product-naming-amd64
+COPY --chown=node:node migrations/20261015000003-proxy-orders-v2.js /app/migrations/20261015000003-proxy-orders-v2.js

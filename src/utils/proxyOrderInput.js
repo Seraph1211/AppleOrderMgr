@@ -40,9 +40,128 @@ const IPHONE_18_PRO_COLOR_ALIASES = {
   冰川蓝色: '冰川蓝色',
 };
 
+const PAYMENT_METHODS = Object.freeze({
+  微信: 'WECHAT',
+  支付宝: 'ALIPAY',
+  花呗12期: 'installments0001243254',
+  招行12期: 'installments0001321713-2',
+  招行24期: 'installments0001321713',
+  建行12期: 'installments0000882476-2',
+  建行24期: 'installments0000882476',
+  工行12期: 'installments0000833448-2',
+  工行24期: 'installments0000833448',
+});
+const STORE_SOFTWARE_NAMES = Object.freeze({
+  R448: '北京王府井',
+  R572: '郑州万象城',
+  R401: '上海环贸 iapm',
+  R683: '上海环球港',
+  R678: '上海静安',
+  R359: '上海南京东路',
+  R389: '上海浦东',
+  R705: '上海七宝',
+  R581: '上海五角场',
+  R390: '上海香港广场',
+  R574: '无锡恒隆广场',
+  R320: '北京三里屯',
+  R557: '青岛万象城',
+  R576: '沈阳万象城',
+  R534: '沈阳中街大悦城',
+  R580: '成都太古里',
+  R502: '成都万象城',
+  R577: '广州天环广场',
+  R648: '济南恒隆广场',
+  R645: '北京朝阳大悦城',
+  R479: '北京华贸购物中心',
+  R388: '北京西单大悦城',
+  R792: '北京荟聚',
+  R571: '南宁万象城',
+  R793: '深圳前海壹方城',
+  R761: '深圳万象城',
+  R484: '深圳益田假日广场',
+  R765: '合肥万象城',
+  R476: '重庆北城天街',
+  R480: '重庆解放碑',
+  R573: '重庆万象城',
+  R646: '福州泰禾广场',
+  R644: '厦门新生活广场',
+  R639: '广州珠江新城',
+  R575: '武汉',
+  R617: '长沙',
+  R643: '南京虹悦城',
+  R493: '南京新街口',
+  R703: '南京玄武湖',
+  R688: '苏州',
+  R609: '大连恒隆广场',
+  R637: '天津大悦城',
+  R579: '天津恒隆广场',
+  R638: '天津万象城',
+  R670: '昆明',
+  R532: '杭州万象城',
+  R471: '杭州西湖',
+  R531: '宁波天一广场',
+  R766: '温州万象城',
+});
+const PRODUCT_CANDIDATES = [];
+for (const [productModel, colors, sizes] of [
+  ['iPhone 18 Pro Max', ['银色', '勃艮第酒红色', '冰川蓝色', '黑色'], ['256GB', '512GB']],
+  ['iPhone 18 Pro Max', ['银色', '勃艮第酒红色'], ['1TB']],
+  ['iPhone 18 Pro', ['银色'], ['512GB']],
+  ['iPhone Duo', ['星光白色', '夜空色'], ['256GB', '512GB', '1TB', '2TB']],
+])
+  for (const color of colors)
+    for (const storage of sizes)
+      PRODUCT_CANDIDATES.push({
+        productModel,
+        color,
+        storage,
+        softwareName: `${productModel} ${color} ${storage.replace('GB', 'G').replace('TB', 'T')}`,
+      });
+function normalizeCandidate(value) {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    Array.isArray(value) ||
+    !['18pm', '18promax', 'iphone18promax', '18pro', 'iphone18pro', 'duo', 'iphoneduo'].includes(
+      compact(value.productModel)
+    )
+  )
+    throw ApiError.badRequest('商品型号尚未核实，请核对');
+  field(value.color, '颜色');
+  if (!/^\d+\s*(?:gb|g|tb|t)$/i.test(norm(value.storage)))
+    throw ApiError.badRequest('容量尚未核实，请核对');
+  field(value.productModel, '机型');
+  field(value.storage, '容量', 20);
+  const normalized = normalizeProxyProduct(value.productModel, value.color);
+  const storage = parseProduct(`18pm ${value.storage}`).storage;
+  const candidate = PRODUCT_CANDIDATES.find(
+    p =>
+      p.productModel === normalized.productModel &&
+      p.color === normalized.color &&
+      p.storage === storage
+  );
+  if (!candidate) throw ApiError.badRequest('商品组合尚未核实，请核对型号、颜色和容量');
+  return {
+    productModel: candidate.productModel,
+    color: candidate.color,
+    storage: candidate.storage,
+  };
+}
+
 /** 只对当前已核实的 iPhone 18 Pro 系列颜色应用别名。 @param {string} value 客户颜色 @param {string} model 规范机型 @returns {string} 颜色 */
 function normalizeColor(value, model) {
   const color = norm(value);
+  if (/Duo/i.test(model))
+    return (
+      {
+        白: '星光白色',
+        白色: '星光白色',
+        星光白: '星光白色',
+        星光白色: '星光白色',
+        夜空: '夜空色',
+        夜空色: '夜空色',
+      }[color] || color
+    );
   if (!/^iPhone 18 Pro(?: Max)?$/i.test(model)) return color;
   return IPHONE_18_PRO_COLOR_ALIASES[compact(color)] || color;
 }
@@ -60,7 +179,7 @@ function parseProduct(value) {
   const capacity = input.match(/\b(\d+)\s*(gb|g|tb|t)\b/i);
   const quantity = input.match(/(\d+)\s*(台|部|件)/);
   const color = input.match(
-    /勃艮第酒红色?|酒红色?|红色?|冰川蓝色?|深蓝色?|蓝色?|银色?|黑色?|白色?|沙漠色?|原色|星宇橙色?|橙色?|绿色?|粉色?|紫色?/
+    /星光白色?|夜空色?|勃艮第酒红色?|酒红色?|红色?|冰川蓝色?|深蓝色?|蓝色?|银色?|黑色?|白色?|沙漠色?|原色|星宇橙色?|橙色?|绿色?|粉色?|紫色?/
   );
   const suffix = model
     ? { pm: 'Pro Max', promax: 'Pro Max', pro: 'Pro', p: 'Pro', plus: 'Plus', air: 'Air' }[
@@ -68,10 +187,21 @@ function parseProduct(value) {
     ] || ''
     : '';
   return {
-    productModel: model ? `iPhone ${model[1]}${suffix ? ` ${suffix}` : ''}` : '',
+    productModel: /\bduo\b/i.test(input)
+      ? 'iPhone Duo'
+      : model
+        ? `iPhone ${model[1]}${suffix ? ` ${suffix}` : ''}`
+        : '',
     storage: capacity ? `${capacity[1]}${capacity[2].startsWith('t') ? 'TB' : 'GB'}` : '',
     color: color
-      ? normalizeColor(color[0], model ? `iPhone ${model[1]}${suffix ? ` ${suffix}` : ''}` : '')
+      ? normalizeColor(
+        color[0],
+        /\bduo\b/i.test(input)
+          ? 'iPhone Duo'
+          : model
+            ? `iPhone ${model[1]}${suffix ? ` ${suffix}` : ''}`
+            : ''
+      )
       : '',
     quantity: quantity ? Number(quantity[1]) : 1,
   };
@@ -82,14 +212,16 @@ function parseProxyText(text) {
   if (typeof text !== 'string' || !text.trim() || text.length > 10000)
     throw ApiError.badRequest('请粘贴一位客户的信息（最多 10000 字）');
   const fields = {};
-  for (const line of text.normalize('NFKC').split(/\r?\n/)) {
+  for (const line of text.split(/\r?\n/)) {
     const match = line
       .trim()
       .replace(/^\d+[、.．)）]\s*/, '')
       .match(/^([^:：]+)[:：]\s*(.*)$/);
     if (match) {
-      const key = match[1].trim();
+      const key = norm(match[1]);
       if (key === '姓名' && fields[key]) throw ApiError.badRequest('每次只能录入一位客户');
+      if (fields[key] != null && fields[key] !== match[2].trim())
+        throw ApiError.badRequest('同一字段出现多个值，请先核对');
       fields[key] = match[2].trim();
     }
   }
@@ -104,48 +236,101 @@ function parseProxyText(text) {
   if (fields['容量'] || fields['内存'])
     product.storage = parseProduct(`18pm ${fields['容量'] || fields['内存']}`).storage;
   if (fields['数量']) product.quantity = Number(fields['数量'].replace(/\s*(台|部|件)$/, ''));
-  const place = [
-    fields['取机城市苹果直营店'],
-    fields['取机城市'],
-    fields['苹果直营店'],
-    fields['门店'],
-  ]
-    .filter(Boolean)
-    .join(' ');
-  const cities = [...new Set(STORES.filter(s => place.includes(s.city)).map(s => s.city))];
-  const candidates = STORES.filter(
-    s =>
-      (!cities.length || cities.includes(s.city)) &&
-      (place.includes(s.code) ||
-        place.includes(s.name.replace(/^Apple\s*/, '')) ||
-        (cities.includes(s.city) &&
-          place.includes(s.name.replace(/^Apple\s*/, '').replace(s.city, ''))))
-  );
-  const warnings = ['请核对姓名拆分、商品及门店范围；特殊颜色/门店要求请填写备注'];
+  const cityText = fields['取机城市'] || fields['取机城市苹果直营店'] || '';
+  const cities = [...new Set(STORES.filter(s => cityText.includes(s.city)).map(s => s.city))];
+  const city = cities.length === 1 ? cities[0] : '';
+  const storeText = fields['取机门店'] || fields['苹果直营店'] || fields['门店'] || '';
+  const errors = [];
+  let storeCodes = STORES.filter(s => s.city === city).map(s => s.code);
+  if (storeText) {
+    storeCodes = [];
+    for (const token of storeText.split('|').map(norm)) {
+      const matches = STORES.filter(
+        s =>
+          s.city === city &&
+          [s.code, s.name, s.name.replace(/^Apple\s*/, ''), STORE_SOFTWARE_NAMES[s.code]].some(
+            name => compact(name) === compact(token)
+          )
+      );
+      if (matches.length !== 1) errors.push('门店未明确或与取机城市不符，请核对');
+      else storeCodes.push(matches[0].code);
+    }
+  } else if (fields['取机城市苹果直营店']) {
+    const matches = STORES.filter(
+      s => s.city === city && cityText.includes(s.name.replace(/^Apple\s*/, ''))
+    );
+    if (matches.length) storeCodes = matches.map(s => s.code);
+  }
+  const warnings = [];
   if (!fields['数量'] && !/\d+\s*(台|部|件)/.test(productText))
     warnings.push('未填写数量，已预填 1 台，请核对');
-  if (!candidates.length) warnings.push('门店未唯一确定，请选定门店或明确选择城市内任意门店');
-  if (!parts[1] || surname) warnings.push('姓名已尝试拆分为姓和名，请确认复姓或少数民族姓名');
-  return {
-    draft: {
-      lastName,
-      firstName,
-      phone: fields['手机号'] || fields['手机号码'] || '',
-      email: fields['邮箱'] || fields['Email'] || '',
-      idLast4: fields['身份证后四号'] || fields['身份证后四位'] || '',
-      ...product,
-      storeCodes: candidates.map(s => s.code),
-      storeMode: 'selected',
-      storeCity: cities.length === 1 ? cities[0] : '',
-      paymentMethod: fields['支付方式'] || '',
-      notes: fields['备注'] || '',
-      platformOrderNumber: /^\(选填\)$/.test(fields['平台订单号'] || '')
-        ? ''
-        : fields['平台订单号'] || '',
-      rawText: text,
-    },
-    warnings,
+  if (!fields['支付方式']) warnings.push('未填写支付方式，已预填微信');
+  const productCandidates = productText.split('|').map(text => {
+    const candidate = text === productText ? product : parseProduct(text);
+    try {
+      const normalizedText = norm(text);
+      if (
+        /\d+\s*(台|部|件)/.test(normalizedText) &&
+        parseProduct(text).quantity !== product.quantity
+      )
+        throw ApiError.badRequest('候选数量不一致，请核对统一数量');
+      const modelTokens =
+        normalizedText.match(
+          /(?:iphone\s*)?(?:\d{1,2}\s*(?:pro\s*max|pm|pro|plus|air|p)?\b|duo\b)/gi
+        ) || [];
+      const capacityTokens = normalizedText.match(/\b\d+\s*(?:gb|g|tb|t)\b/gi) || [];
+      const colorTokens =
+        normalizedText.match(
+          /星光白色?|夜空色?|勃艮第酒红色?|酒红色?|红色?|冰川蓝色?|深蓝色?|蓝色?|银色?|黑色?|白色?|沙漠色?|原色|星宇橙色?|橙色?|绿色?|粉色?|紫色?/g
+        ) || [];
+      if (
+        modelTokens.length !== 1 ||
+        capacityTokens.length > 1 ||
+        colorTokens.length > 1 ||
+        /任选|或者?|及|、|与|&|未知|待定/.test(normalizedText)
+      )
+        throw ApiError.badRequest('候选包含歧义，请使用 | 分隔完整商品');
+      let remainder = normalizedText;
+      for (const token of [...modelTokens, ...capacityTokens, ...colorTokens])
+        remainder = remainder.replace(token, '');
+      remainder = remainder
+        .replace(/\d+\s*(台|部|件)/g, '')
+        .replace(/型号|机型|颜色|内存|容量|数量/g, '');
+      if (/[\p{L}\p{N}]/u.test(remainder))
+        throw ApiError.badRequest('商品包含未识别要求，请核对后分隔完整候选');
+      return normalizeCandidate(candidate);
+    } catch (_error) {
+      errors.push('商品组合尚未核实，请核对型号、颜色和容量');
+      return candidate;
+    }
+  });
+  const draft = {
+    lastName,
+    firstName,
+    phone: fields['手机号'] || fields['手机号码'] || '',
+    email: fields['邮箱'] || fields['Email'] || '',
+    idLast4: fields['身份证后四号'] || fields['身份证后四位'] || '',
+    ...productCandidates[0],
+    productCandidates,
+    quantity: product.quantity,
+    storeCodes,
+    storeMode: storeText ? 'selected' : 'city_any',
+    storeCity: city,
+    billing: storeCodes.length ? generateProxyAddress(storeCodes[0]) : null,
+    paymentMethod: fields['支付方式'] || '微信',
+    orderSource: fields['订单来源'] || '',
+    notes: fields['备注'] || '',
+    platformOrderNumber: /^\(选填\)$/.test(norm(fields['平台订单号']))
+      ? ''
+      : fields['平台订单号'] || '',
+    rawText: text,
   };
+  try {
+    validateProxyInput(draft);
+  } catch (error) {
+    errors.push(error.message);
+  }
+  return { draft, warnings, errors: [...new Set(errors)], canSave: errors.length === 0 };
 }
 
 function field(value, label, max = 100, required = true) {
@@ -164,8 +349,8 @@ function field(value, label, max = 100, required = true) {
   return result;
 }
 
-/** 校验已确认资料，仅返回白名单字段。 @param {Object} input 输入 @returns {Object} 资料 */
-function validateProxyInput(input) {
+/** 校验已确认资料，仅返回白名单字段。 @param {Object} input 输入 @param {Object} [options] 历史资料兼容 @returns {Object} 资料 */
+function validateProxyInput(input, options = {}) {
   if (!input || typeof input !== 'object') throw ApiError.badRequest('资料格式不正确');
   const result = {};
   for (const [key, label, max] of [
@@ -178,45 +363,81 @@ function validateProxyInput(input) {
     ['color', '颜色', 100],
     ['storage', '容量', 20],
   ])
-    result[key] = field(input[key], label, max);
-  Object.assign(result, normalizeProxyProduct(result.productModel, result.color));
+    result[key] = field(input[key] ?? input.productCandidates?.[0]?.[key], label, max);
+  const candidates = input.productCandidates == null ? [result] : input.productCandidates;
+  if (!Array.isArray(candidates) || !candidates.length || candidates.length > 19)
+    throw ApiError.badRequest('请选择 1–19 个候选商品');
+  result.productCandidates = candidates.map(candidate => {
+    try {
+      return normalizeCandidate(candidate);
+    } catch (error) {
+      if (
+        options.existing &&
+        (options.existing.productCandidates || []).some(
+          old => JSON.stringify(old) === JSON.stringify(candidate)
+        )
+      )
+        return {
+          productModel: field(candidate.productModel, '机型'),
+          color: field(candidate.color, '颜色'),
+          storage: field(candidate.storage, '容量', 20),
+        };
+      throw error;
+    }
+  });
+  Object.assign(result, result.productCandidates[0]);
   if (!/^1[3-9]\d{9}$/.test(result.phone)) throw ApiError.badRequest('手机号须为 11 位大陆手机号');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result.email)) throw ApiError.badRequest('邮箱格式不正确');
   if (!/^\d{3}[\dXx]$/.test(result.idLast4))
     throw ApiError.badRequest('身份证后四位必须为四位文本');
   result.idLast4 = result.idLast4.toUpperCase();
-  result.quantity = input.quantity;
+  result.quantity = input.quantity == null ? 1 : input.quantity;
   if (!Number.isInteger(result.quantity) || result.quantity < 1 || result.quantity > 100)
     throw ApiError.badRequest('数量须为 1–100 的整数');
-  if (!['selected', 'city_any'].includes(input.storeMode))
+  if (input.storeMode != null && !['selected', 'city_any'].includes(input.storeMode))
     throw ApiError.badRequest('请选择门店范围');
-  result.storeMode = input.storeMode;
-  result.storeCity = field(input.storeCity || '', '城市', 100, false);
+  result.storeMode = input.storeMode || (input.storeCodes?.length ? 'selected' : 'city_any');
+  result.storeCity = field(input.storeCity || '', '城市', 100);
   result.storeCodes =
-    input.storeMode === 'city_any'
-      ? STORES.filter(s => s.city === result.storeCity).map(s => s.code)
-      : input.storeCodes;
+    Array.isArray(input.storeCodes) && input.storeCodes.length
+      ? input.storeCodes
+      : result.storeMode === 'city_any'
+        ? STORES.filter(s => s.city === result.storeCity).map(s => s.code)
+        : input.storeCodes;
   if (
     !Array.isArray(result.storeCodes) ||
     !result.storeCodes.length ||
     result.storeCodes.length > STORES.length ||
-    result.storeCodes.some(code => !STORES.some(s => s.code === code))
+    result.storeCodes.some(
+      code => !STORES.some(s => s.code === code && s.city === result.storeCity)
+    )
   )
     throw ApiError.badRequest('请确认有效直营店范围');
   result.storeCodes = [...new Set(result.storeCodes)];
-  if (!input.billing || !result.storeCodes.includes(input.billing.referenceStoreCode))
+  const billing = input.billing || generateProxyAddress(result.storeCodes[0]);
+  if (!result.storeCodes.includes(billing.referenceStoreCode))
     throw ApiError.badRequest('请选择范围内的账单参考门店并生成地址');
-  result.billing = { referenceStoreCode: input.billing.referenceStoreCode };
+  result.billing = { referenceStoreCode: billing.referenceStoreCode };
   for (const [key, label] of [
     ['province', '省'],
     ['city', '市'],
     ['district', '区'],
     ['streetAddress', '街道地址'],
   ])
-    result.billing[key] = field(input.billing[key], label, 200);
+    result.billing[key] = field(billing[key], label, 200);
   result.platformOrderNumber =
     field(input.platformOrderNumber || '', '平台订单号', 100, false) || null;
-  result.paymentMethod = field(input.paymentMethod || '', '支付要求', 50, false);
+  result.paymentMethod = field(input.paymentMethod || '微信', '支付要求', 50);
+  if (
+    !PAYMENT_METHODS[result.paymentMethod] &&
+    result.paymentMethod !== options.existing?.paymentMethod
+  )
+    throw ApiError.badRequest('支付方式没有已核实软件映射');
+  result.orderSource =
+    options.existing && !options.existing.orderSource && !input.orderSource
+      ? null
+      : field(input.orderSource, '订单来源', 100);
+  if (result.orderSource?.includes('|')) throw ApiError.badRequest('订单来源包含模板分隔符');
   for (const key of ['notes', 'rawText']) {
     if (input[key] != null && (typeof input[key] !== 'string' || input[key].length > 10000))
       throw ApiError.badRequest('原文或备注过长');
@@ -244,7 +465,21 @@ function buildProxyTemplate(order, account) {
   const login = field(account.appleId, '账号', 255);
   const password = field(account.password, '账号密码', 1000);
   const b = d.billing;
-  return `${login},${password},,,1,指定地址,${d.phone},${d.lastName},${d.firstName},,${d.email},${b.province},${b.city},${b.district},,,${b.streetAddress},,,,,,WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#,${d.idLast4},代抢 网店,,,`;
+  const products = d.productCandidates
+    .map(
+      c =>
+        PRODUCT_CANDIDATES.find(
+          p => p.productModel === c.productModel && p.color === c.color && p.storage === c.storage
+        ).softwareName
+    )
+    .join('|');
+  const stores = d.storeCodes
+    .map(code => {
+      if (!STORE_SOFTWARE_NAMES[code]) throw ApiError.badRequest('门店缺少软件映射');
+      return STORE_SOFTWARE_NAMES[code];
+    })
+    .join('|');
+  return `${login},${password},${stores},${products},${d.quantity},指定地址,${d.phone},${d.lastName},${d.firstName},,${d.email},${b.province},${b.city},${b.district},,,${b.streetAddress},,,,,,${PAYMENT_METHODS[d.paymentMethod]},0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#,${d.idLast4},代抢 ${d.orderSource},,,`;
 }
 
 /** 校验粘贴的账号密码列表，不回显密码。 @param {string} text 原文 @returns {Array} 账号 */
@@ -294,20 +529,28 @@ function isProxyMatch(request, order, assignments) {
     return false;
   for (const email of [order.sourceContactEmail, order.recipientEmail].filter(Boolean))
     if (compact(email) !== compact(request.email)) return false;
-  const desired = parseProduct(`${request.productModel} ${request.storage} ${request.color}`);
-  if (!desired.productModel || !desired.color || !desired.storage) return false;
-  return (order.products || []).some(p => {
-    const actual = parseProduct(p.name);
-    return (
-      compact(actual.productModel) === compact(desired.productModel) &&
-      compact(actual.storage) === compact(desired.storage) &&
-      compact(actual.color) === compact(desired.color) &&
-      p.quantity >= request.quantity
+  const candidates = request.productCandidates?.length ? request.productCandidates : [request];
+  return candidates.some(candidate => {
+    const desired = parseProduct(
+      `${candidate.productModel} ${candidate.storage} ${candidate.color}`
     );
+    if (!desired.productModel || !desired.color || !desired.storage) return false;
+    return (order.products || []).some(p => {
+      const actual = parseProduct(p.name);
+      return (
+        compact(actual.productModel) === compact(desired.productModel) &&
+        compact(actual.storage) === compact(desired.storage) &&
+        compact(actual.color) === compact(desired.color) &&
+        p.quantity >= request.quantity
+      );
+    });
   });
 }
 module.exports = {
   STORES,
+  PAYMENT_METHODS,
+  PRODUCT_CANDIDATES,
+  STORE_SOFTWARE_NAMES,
   parseProduct,
   normalizeProxyProduct,
   parseProxyText,

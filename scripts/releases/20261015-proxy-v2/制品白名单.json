@@ -1,0 +1,18 @@
+{
+  "api": [
+    "src/constants/permissionCatalog.js",
+    "src/models/ProxyOrder.js",
+    "src/models/ProxyOrderLink.js",
+    "src/models/index.js",
+    "src/routes/proxyOrders.js",
+    "src/services/proxyOrderService.js",
+    "src/utils/proxyOrderInput.js"
+  ],
+  "migrator": [
+    "migrations/20261015000003-proxy-orders-v2.js"
+  ],
+  "frontend": [
+    "frontend/src/constants/permissions.js",
+    "frontend/src/pages/ProxyOrders.jsx"
+  ]
+}

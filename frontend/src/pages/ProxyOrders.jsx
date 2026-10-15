@@ -1,62 +1,59 @@
-import ProductName from '../components/ProductName';
+import OfficialOrderStatus from '../components/OfficialOrderStatus';
 import { getProductDisplayName } from '../utils/productNaming';
 import ResponsiveSelect from '../components/responsiveSelect';
-import { useEffect, useRef, useState } from "react";
-import {
-  Plus,
-  Copy,
-  RefreshCw,
-  Search,
-  X,
-  Loader2,
-  AlertCircle,
-  Pencil,
-  Save,
-} from "lucide-react";
-import client from "../api/client";
-import { useAuth } from "../contexts/AuthContext";
-import { PERMISSIONS } from "../constants/permissions";
+import { useEffect, useRef, useState } from 'react';
+import { Plus, Copy, RefreshCw, Search, X, Loader2, AlertCircle, Pencil, Save } from 'lucide-react';
+import client from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
 
 const STATUS = {
-  pending: ["待处理", "badge-warning"],
-  rushing: ["抢购中", "badge-info"],
-  succeeded: ["抢购成功", "badge-success"],
-  cancelled: ["已取消", "badge-error"],
+  pending: ['待处理', 'badge-warning'],
+  rushing: ['抢购中', 'badge-info'],
+  succeeded: ['抢购成功', 'badge-success'],
+  cancelled: ['已取消', 'badge-error'],
 };
 const EMPTY = {
-  lastName: "",
-  firstName: "",
-  phone: "",
-  idLast4: "",
-  email: "",
-  productModel: "",
-  color: "",
-  storage: "",
+  lastName: '',
+  firstName: '',
+  phone: '',
+  idLast4: '',
+  email: '',
+  productCandidates: [],
+  orderSource: '',
+  productModel: '',
+  color: '',
+  storage: '',
   quantity: 1,
   storeCodes: [],
-  storeMode: "selected",
-  storeCity: "",
+  storeMode: 'city_any',
+  storeCity: '',
   billing: {},
-  paymentMethod: "",
-  notes: "",
-  platformOrderNumber: "",
-  rawText: "",
+  paymentMethod: '微信',
+  notes: '',
+  platformOrderNumber: '',
+  rawText: '',
 };
 const CUSTOMER_TEMPLATE =
-  "平台订单号：\n姓名：\n手机号：\n身份证后四位：\n邮箱：\n机型：\n颜色：\n容量：\n数量：1\n取机城市：\n苹果直营店：\n支付方式：\n备注：";
-const DATE = (value) =>
-  value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "—";
+  '姓名：\n身份证后四位：\n手机号：\n邮箱：\n机型：\n取机城市：\n支付方式：微信\n订单来源：\n备注：';
+const DATE = value => (value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '—');
 const ACTIONS = {
-  create: "登记委托",
-  edit: "修改资料",
-  status: "调整状态",
-  assign: "分配账号",
-  accounts: "追加账号",
-  release: "确认停抢并释放",
-  copy: "复制模板",
-  link: "人工关联/纠错",
-  auto_link: "自动匹配成功",
+  create: '登记委托',
+  edit: '修改资料',
+  status: '调整状态',
+  assign: '分配账号',
+  accounts: '追加账号',
+  release: '确认停抢并释放',
+  copy: '复制模板',
+  link: '人工关联/纠错',
+  auto_link: '自动匹配成功',
 };
+
+function candidateNames(order) {
+  return (order.productCandidates?.length ? order.productCandidates : [order])
+    .map(product => getProductDisplayName(product))
+    .join(' | ');
+}
 
 function Dialog({ title, children, close, busy }) {
   const dialogRef = useRef(null);
@@ -64,20 +61,22 @@ function Dialog({ title, children, close, busy }) {
   callbacks.current = { close, busy };
   useEffect(() => {
     const previous = document.activeElement;
-    const key = (event) => {
+    const key = event => {
       const dialogs = document.querySelectorAll('[role="dialog"]');
       if (dialogs[dialogs.length - 1] !== dialogRef.current) return;
-      if (event.key === "Escape" && !callbacks.current.busy)
-        callbacks.current.close();
-      if (event.key === "Tab") {
+      if (event.key === 'Escape' && !callbacks.current.busy) callbacks.current.close();
+      if (event.key === 'Tab') {
         const controls = Array.from(
           dialogRef.current.querySelectorAll(
-            "button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]",
-          ),
-        ).filter((node) => node.getClientRects().length);
+            'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), a[href]'
+          )
+        ).filter(node => node.getClientRects().length);
         const first = controls[0],
           last = controls[controls.length - 1];
-        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+        if (
+          event.shiftKey &&
+          (document.activeElement === first || document.activeElement === dialogRef.current)
+        ) {
           event.preventDefault();
           last?.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -86,17 +85,17 @@ function Dialog({ title, children, close, busy }) {
         }
       }
     };
-    document.addEventListener("keydown", key);
+    document.addEventListener('keydown', key);
     dialogRef.current?.focus({ preventScroll: true });
     return () => {
-      document.removeEventListener("keydown", key);
+      document.removeEventListener('keydown', key);
       previous?.focus?.();
     };
   }, []);
   return (
     <div
       className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-2 sm:p-6"
-      onClick={(event) => {
+      onClick={event => {
         if (event.target === event.currentTarget && !busy) close();
       }}
     >
@@ -110,12 +109,7 @@ function Dialog({ title, children, close, busy }) {
       >
         <header className="flex items-center justify-between p-4 border-b">
           <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
-          <button
-            className="btn btn-secondary"
-            aria-label="关闭"
-            disabled={busy}
-            onClick={close}
-          >
+          <button className="btn btn-secondary" aria-label="关闭" disabled={busy} onClick={close}>
             <X className="w-4 h-4" />
           </button>
         </header>
@@ -124,18 +118,16 @@ function Dialog({ title, children, close, busy }) {
     </div>
   );
 }
-function Field({ label, value, onChange, type = "text", disabled = false }) {
+function Field({ label, value, onChange, type = 'text', disabled = false }) {
   return (
     <label className="block text-sm text-gray-600">
       {label}
       <input
         className="input w-full mt-1"
         type={type}
-        value={value ?? ""}
-        onChange={(event) =>
-          onChange(
-            type === "number" ? Number(event.target.value) : event.target.value,
-          )
+        value={value ?? ''}
+        onChange={event =>
+          onChange(type === 'number' ? Number(event.target.value) : event.target.value)
         }
         disabled={disabled}
       />
@@ -143,74 +135,94 @@ function Field({ label, value, onChange, type = "text", disabled = false }) {
   );
 }
 function Badge({ status }) {
-  const item = STATUS[status] || [status, "badge-info"];
-  return (
-    <span className={`badge whitespace-nowrap ${item[1]}`}>{item[0]}</span>
-  );
+  const item = STATUS[status] || [status, 'badge-info'];
+  return <span className={`badge whitespace-nowrap ${item[1]}`}>{item[0]}</span>;
 }
 
 /** 独立代抢委托、软件模板及专用账号池。 */
 export default function ProxyOrders() {
   const { can } = useAuth();
-  const [tab, setTab] = useState("orders");
-  const [scope, setScope] = useState("pool");
-  const [keyword, setKeyword] = useState("");
-  const [status, setStatus] = useState("");
+  const [tab, setTab] = useState('orders');
+  const [scope, setScope] = useState('pool');
+  const [keyword, setKeyword] = useState('');
+  const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const [data, setData] = useState({ rows: [], count: 0 });
   const [stores, setStores] = useState([]);
+  const [catalog, setCatalog] = useState({ productCandidates: [], paymentMethods: {} });
+  const [parseErrors, setParseErrors] = useState([]);
+  const [duplicates, setDuplicates] = useState([]);
   const [selected, setSelected] = useState([]);
   const [revision, setRevision] = useState(0);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [modal, setModal] = useState(null);
   const [draft, setDraft] = useState(null);
   const [accountOriginalStatus, setAccountOriginalStatus] = useState(null);
   const [accountStopped, setAccountStopped] = useState(false);
-  const [batchAccountStatus, setBatchAccountStatus] = useState("");
+  const [batchAccountStatus, setBatchAccountStatus] = useState('');
   const [batchStopped, setBatchStopped] = useState(false);
-  const [text, setText] = useState("");
+  const [text, setText] = useState('');
   const [warnings, setWarnings] = useState([]);
   const [current, setCurrent] = useState(null);
   const [available, setAvailable] = useState([]);
   const [availableCount, setAvailableCount] = useState(null);
   const [noteEditor, setNoteEditor] = useState(null);
-  const [manualAccount, setManualAccount] = useState("");
+  const [manualAccount, setManualAccount] = useState('');
   const [count, setCount] = useState(1);
-  const [orderNumber, setOrderNumber] = useState("");
-  const [reason, setReason] = useState("");
-  const [copyFallback, setCopyFallback] = useState("");
+  const [orderNumber, setOrderNumber] = useState('');
+  const [reason, setReason] = useState('');
+  const [copyFallback, setCopyFallback] = useState('');
   const [confirmation, setConfirmation] = useState(null);
-  const [modalError, setModalError] = useState("");
-  const ended = ["succeeded", "cancelled"].includes(draft?.status);
-  const selectedAccounts = data.rows.filter((row) => selected.includes(row.id));
-  const cities = [...new Set(stores.map((s) => s.city))];
+  const [modalError, setModalError] = useState('');
+  const [statusTarget, setStatusTarget] = useState(null);
+  const [unlinkTarget, setUnlinkTarget] = useState(null);
+  const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
+  const selectedAccounts = data.rows.filter(row => selected.includes(row.id));
+  const cities = [...new Set(stores.map(s => s.city))];
   const refresh = () => {
     setSelected([]);
-    setRevision((value) => value + 1);
+    setRevision(value => value + 1);
   };
   const close = () => {
     setModal(null);
-    setModalError("");
-    setCopyFallback("");
-    setText("");
+    setModalError('');
+    setCopyFallback('');
+    setText('');
     setDraft(null);
+    setParseErrors([]);
+    setDuplicates([]);
+    setDuplicateConfirmed(false);
     setCurrent(null);
     setAccountOriginalStatus(null);
     setAccountStopped(false);
-    setBatchAccountStatus("");
+    setBatchAccountStatus('');
     setBatchStopped(false);
   };
   useEffect(() => {
     let active = true;
     client
-      .get("/proxy-orders/stores")
-      .then((response) => {
+      .get('/proxy-orders/stores')
+      .then(response => {
         if (active) setStores(response.data);
       })
-      .catch((failure) => {
+      .catch(failure => {
+        if (active) setError(failure.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+  useEffect(() => {
+    let active = true;
+    client
+      .get('/proxy-orders/catalog')
+      .then(response => {
+        if (active) setCatalog(response.data);
+      })
+      .catch(failure => {
         if (active) setError(failure.message);
       });
     return () => {
@@ -223,20 +235,20 @@ export default function ProxyOrders() {
     const timer = setTimeout(async () => {
       try {
         const response = await client.get(
-          tab === "orders" ? "/proxy-orders" : "/proxy-orders/accounts",
+          tab === 'orders' ? '/proxy-orders' : '/proxy-orders/accounts',
           {
             params: {
               keyword,
-              status: tab === "orders" ? status : undefined,
+              status: tab === 'orders' ? status : undefined,
               page,
               limit: 30,
               scope,
             },
-          },
+          }
         );
         if (active) {
           setData(response.data);
-          setError("");
+          setError('');
           setSelected([]);
         }
       } catch (failure) {
@@ -252,7 +264,7 @@ export default function ProxyOrders() {
   }, [tab, scope, keyword, status, page, revision]);
   useEffect(() => {
     const timer = setInterval(() => {
-      if (!modal && !busy && !noteEditor) setRevision((value) => value + 1);
+      if (!modal && !busy && !noteEditor) setRevision(value => value + 1);
     }, 20000);
     return () => clearInterval(timer);
   }, [modal, busy, noteEditor]);
@@ -260,14 +272,14 @@ export default function ProxyOrders() {
   async function run(work, success) {
     if (busy) return;
     setBusy(true);
-    setModalError("");
-    setError("");
-    setNotice("");
+    setModalError('');
+    setError('');
+    setNotice('');
     try {
       await work();
       if (success) setNotice(success);
     } catch (failure) {
-      if (modal) setModalError(failure.message);
+      if (modal || statusTarget) setModalError(failure.message);
       else setError(failure.message);
     } finally {
       setBusy(false);
@@ -282,47 +294,63 @@ export default function ProxyOrders() {
   }
   async function copyOrders(orderIds) {
     await run(async () => {
-      const response = await client.post("/proxy-orders/copy", {
+      const response = await client.post('/proxy-orders/copy', {
         ids: orderIds,
       });
       await clipboard(response.data.text);
-    }, "模板已生成，请在抢购软件中核对支付、商品和门店设置");
+    }, '模板已生成，请在抢购软件中核对支付、商品和门店设置');
   }
   async function loadDetail(row) {
     await run(async () => {
       const response = await client.get(`/proxy-orders/${row.id}`);
       setCurrent(response.data);
-      setDraft(response.data);
-      setModal("detail");
+      setDraft({
+        ...response.data,
+        productCandidates: response.data.productCandidates?.length
+          ? response.data.productCandidates
+          : [
+              {
+                productModel: response.data.productModel,
+                color: response.data.color,
+                storage: response.data.storage,
+              },
+            ],
+      });
+      setModal('detail');
     });
   }
-  async function parse() {
+  async function parse(quick = false) {
     await run(async () => {
-      const response = await client.post("/proxy-orders/parse", { text });
+      const response = await client.post('/proxy-orders/parse', { text });
       const next = { ...EMPTY, ...response.data.draft };
-      if (next.storeCodes.length) {
-        const generated = await client.post("/proxy-orders/address", {
+      if (next.storeCodes.length && !next.billing?.streetAddress) {
+        const generated = await client.post('/proxy-orders/address', {
           storeCode: next.storeCodes[0],
         });
         next.billing = generated.data;
       }
       setDraft(next);
-      setWarnings(response.data.warnings);
+      setWarnings(response.data.warnings || []);
+      setParseErrors(response.data.errors || []);
+      setDuplicates(response.data.duplicates || []);
+      setDuplicateConfirmed(false);
+      if (quick && response.data.canSave && !(response.data.duplicates || []).length) {
+        await persist(next);
+      }
     });
   }
-  const setField = (key, value) =>
-    setDraft((previous) => ({ ...previous, [key]: value }));
+  const setField = (key, value) => setDraft(previous => ({ ...previous, [key]: value }));
   async function changeStoreScope(updates) {
     await run(async () => {
       const next = { ...draft, ...updates };
-      if (next.storeMode === "city_any")
+      if (next.storeMode === 'city_any')
         next.storeCodes = stores
-          .filter((store) => store.city === next.storeCity)
-          .map((store) => store.code);
+          .filter(store => store.city === next.storeCity)
+          .map(store => store.code);
       if (!next.storeCodes.includes(next.billing?.referenceStoreCode)) {
         next.billing = next.storeCodes.length
           ? (
-              await client.post("/proxy-orders/address", {
+              await client.post('/proxy-orders/address', {
                 storeCode: next.storeCodes[0],
               })
             ).data
@@ -333,32 +361,42 @@ export default function ProxyOrders() {
   }
   async function address(code) {
     await run(async () => {
-      const response = await client.post("/proxy-orders/address", {
+      const response = await client.post('/proxy-orders/address', {
         storeCode: code,
       });
-      setField("billing", response.data);
+      setField('billing', response.data);
     });
   }
-  async function save() {
-    await run(async () => {
-      const payload = ended
-        ? { notes: draft.notes, expectedVersion: draft.version }
-        : { ...draft, expectedVersion: draft.version };
-      const response = draft.id
-        ? await client.put(`/proxy-orders/${draft.id}`, payload)
-        : await client.post("/proxy-orders", payload);
+  async function persist(value) {
+    try {
+      const payload = {
+        ...value,
+        expectedVersion: value.version,
+        confirmedDuplicate: duplicateConfirmed,
+      };
+      const response = value.id
+        ? await client.put(`/proxy-orders/${value.id}`, payload)
+        : await client.post('/proxy-orders', payload);
       setNotice(
-        !draft.id && !response.data.assigned
-          ? "已登记；账号池暂无可用账号，请导入后分配"
-          : "已保存",
+        !value.id && !response.data.assigned ? '已登记；账号池暂无可用账号，请导入后分配' : '已保存'
       );
       close();
       setData({ rows: [], count: 0 });
       setLoading(true);
-      setTab("orders");
+      setTab('orders');
       setPage(1);
       refresh();
-    });
+    } catch (failure) {
+      const details = failure.details || failure.response?.data?.error?.details;
+      if (details?.duplicateIds) {
+        setDuplicates(details.duplicateIds);
+        setDuplicateConfirmed(false);
+      }
+      throw failure;
+    }
+  }
+  async function save() {
+    await run(() => persist(draft));
   }
   async function change(action, body) {
     await run(async () => {
@@ -368,110 +406,245 @@ export default function ProxyOrders() {
       });
       const response = await client.get(`/proxy-orders/${current.id}`);
       setCurrent(response.data);
-      setDraft(response.data);
-      setModal("detail");
+      setDraft({
+        ...response.data,
+        productCandidates: response.data.productCandidates?.length
+          ? response.data.productCandidates
+          : [
+              {
+                productModel: response.data.productModel,
+                color: response.data.color,
+                storage: response.data.storage,
+              },
+            ],
+      });
+      setModal('detail');
       refresh();
-    }, "操作已保存");
+    }, '操作已保存');
   }
   async function changeFromList(row, action, body) {
-    await run(async () => {
-      await client.post(`/proxy-orders/${row.id}/${action}`, {
-        ...body,
-        expectedVersion: row.version,
-      });
-      if (action === "notes") setNoteEditor(null);
-      refresh();
-    }, action === "notes" ? "备注已保存" : "状态已更新");
+    await run(
+      async () => {
+        await client.post(`/proxy-orders/${row.id}/${action}`, {
+          ...body,
+          expectedVersion: row.version,
+        });
+        if (action === 'notes') setNoteEditor(null);
+        refresh();
+      },
+      action === 'notes' ? '备注已保存' : '状态已更新'
+    );
   }
   async function openAssignments(row = current) {
     await run(async () => {
-      const response = await client.get("/proxy-orders/accounts", {
+      const response = await client.get('/proxy-orders/accounts', {
         params: { limit: 100 },
       });
-      setAvailable(
-        response.data.rows.filter(
-          (a) => !a.assignment && a.status === "未使用",
-        ),
-      );
+      setAvailable(response.data.rows.filter(a => !a.assignment && a.status === '未使用'));
       setAvailableCount(response.data.availableCount);
       setCurrent(row);
-      setManualAccount("");
+      setManualAccount('');
       setCount(1);
-      setModal("assign");
+      setModal('assign');
     });
   }
-  const toggle = (id) =>
-    setSelected((values) =>
-      values.includes(id)
-        ? values.filter((value) => value !== id)
-        : [...values, id],
+  const toggle = id =>
+    setSelected(values =>
+      values.includes(id) ? values.filter(value => value !== id) : [...values, id]
     );
-  const switchTab = (value) => {
+  const switchTab = value => {
     setNoteEditor(null);
-    setNotice("");
+    setNotice('');
     setData({ rows: [], count: 0 });
     setLoading(true);
     setTab(value);
     setPage(1);
-    setKeyword("");
+    setKeyword('');
     setSelected([]);
   };
-  const storeNames = (codes) =>
-    (codes || [])
-      .map((code) => stores.find((s) => s.code === code)?.name || code)
-      .join("、");
+  const storeNames = codes =>
+    (codes || []).map(code => stores.find(s => s.code === code)?.name || code).join('、');
   const modalMessage = (
     <>
       {modalError && (
-        <div
-          role="alert"
-          className="bg-red-50 text-red-700 rounded-lg p-3 mb-3"
-        >
+        <div role="alert" className="bg-red-50 text-red-700 rounded-lg p-3 mb-3">
           {modalError}
         </div>
       )}
       {notice && (
-        <div
-          role="status"
-          className="bg-blue-50 text-blue-900 rounded-lg p-3 mb-3"
-        >
+        <div role="status" className="bg-blue-50 text-blue-900 rounded-lg p-3 mb-3">
           {notice}
         </div>
       )}
     </>
   );
-  const form = ["new", "edit"].includes(modal) && draft && (
+  const form = ['new', 'edit'].includes(modal) && draft && (
     <div className="space-y-4">
       {!!warnings.length && (
         <div className="rounded-lg bg-amber-50 text-amber-800 p-3 text-sm">
-          {warnings.map((w) => (
+          {warnings.map(w => (
             <p key={w}>{w}</p>
           ))}
         </div>
       )}
-      <fieldset disabled={ended || busy} className="space-y-4">
+      {!!parseErrors.length && (
+        <div role="alert" className="rounded-lg bg-red-50 text-red-700 p-3 text-sm">
+          {parseErrors.map((item, index) => (
+            <p key={index}>
+              {typeof item === 'string' ? item : item.message || JSON.stringify(item)}
+            </p>
+          ))}
+          <p>请核对原文并修改下方资料。</p>
+        </div>
+      )}
+      {!!duplicates.length && (
+        <div className="rounded-lg bg-amber-50 text-amber-900 p-3 text-sm">
+          <p>
+            疑似重复登记，请核对已有委托：
+            {duplicates.map(item => `#${typeof item === 'object' ? item.id : item}`).join('、')}。
+          </p>
+          <label className="flex items-center gap-2 mt-2">
+            <input
+              type="checkbox"
+              checked={duplicateConfirmed}
+              onChange={event => setDuplicateConfirmed(event.target.checked)}
+            />
+            已核对，继续另建独立代抢单
+          </label>
+        </div>
+      )}
+      <fieldset disabled={busy} className="space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           {[
-            ["platformOrderNumber", "平台订单号（选填）"],
-            ["lastName", "姓"],
-            ["firstName", "名"],
-            ["phone", "手机号"],
-            ["idLast4", "身份证后四位"],
-            ["email", "邮箱"],
-            ["productModel", "机型"],
-            ["color", "颜色"],
-            ["storage", "容量"],
-            ["quantity", "数量"],
-            ["paymentMethod", "客户支付要求"],
+            ['platformOrderNumber', '平台订单号（选填）'],
+            ['lastName', '姓'],
+            ['firstName', '名'],
+            ['phone', '手机号'],
+            ['idLast4', '身份证后四位'],
+            ['email', '邮箱'],
+            ['quantity', '数量'],
           ].map(([key, label]) => (
             <Field
               key={key}
               label={label}
-              type={key === "quantity" ? "number" : "text"}
+              type={key === 'quantity' ? 'number' : 'text'}
               value={draft[key]}
-              onChange={(value) => setField(key, value)}
+              onChange={value => setField(key, value)}
             />
           ))}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <label className="block text-sm text-gray-600">
+            支付方式
+            <ResponsiveSelect
+              aria-label="支付方式"
+              className="input w-full mt-1"
+              value={draft.paymentMethod || ''}
+              onChange={event => setField('paymentMethod', event.target.value)}
+            >
+              <option value="">请选择支付方式</option>
+              {draft.paymentMethod && !catalog.paymentMethods[draft.paymentMethod] && (
+                <option value={draft.paymentMethod}>{draft.paymentMethod}（待核对）</option>
+              )}
+              {Object.keys(catalog.paymentMethods).map(method => (
+                <option key={method}>{method}</option>
+              ))}
+            </ResponsiveSelect>
+          </label>
+          <label className="block text-sm text-gray-600">
+            订单来源（必填，可自定义）
+            <input
+              aria-label="订单来源"
+              className="input w-full mt-1"
+              list="proxy-sources"
+              value={draft.orderSource || ''}
+              onChange={event => setField('orderSource', event.target.value)}
+            />
+            <datalist id="proxy-sources">
+              {['闲鱼', '淘宝', '小红书'].map(source => (
+                <option key={source} value={source} />
+              ))}
+            </datalist>
+          </label>
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-medium text-gray-900">
+            候选商品（任选一项，分别需要请手动拆单）
+          </p>
+          {(draft.productCandidates || []).map((product, index) => {
+            const key = JSON.stringify([product.productModel, product.color, product.storage]);
+            const known = catalog.productCandidates.some(
+              item => JSON.stringify([item.productModel, item.color, item.storage]) === key
+            );
+            return (
+              <div className="flex gap-2" key={index}>
+                <ResponsiveSelect
+                  aria-label={`候选商品 ${index + 1}`}
+                  className="input flex-1 min-w-0"
+                  value={key}
+                  onChange={event => {
+                    const [productModel, color, storage] = JSON.parse(event.target.value);
+                    const candidates = draft.productCandidates.map((item, itemIndex) =>
+                      itemIndex === index ? { productModel, color, storage } : item
+                    );
+                    setDraft({ ...draft, productCandidates: candidates, ...candidates[0] });
+                  }}
+                >
+                  {!known && (
+                    <option value={key}>
+                      {[product.productModel, product.color, product.storage]
+                        .filter(Boolean)
+                        .join(' ')}
+                      （待核对）
+                    </option>
+                  )}
+                  {catalog.productCandidates.map(item => (
+                    <option
+                      key={item.softwareName}
+                      value={JSON.stringify([item.productModel, item.color, item.storage])}
+                    >
+                      {getProductDisplayName(item)}
+                    </option>
+                  ))}
+                </ResponsiveSelect>
+                <button
+                  className="btn btn-secondary"
+                  aria-label={`移除候选商品 ${index + 1}`}
+                  onClick={() => {
+                    const candidates = draft.productCandidates.filter(
+                      (_, itemIndex) => itemIndex !== index
+                    );
+                    setDraft({
+                      ...draft,
+                      productCandidates: candidates,
+                      productModel: candidates[0]?.productModel || '',
+                      color: candidates[0]?.color || '',
+                      storage: candidates[0]?.storage || '',
+                    });
+                  }}
+                >
+                  移除
+                </button>
+              </div>
+            );
+          })}
+          <button
+            className="btn btn-secondary"
+            disabled={!catalog.productCandidates.length}
+            onClick={() => {
+              const { productModel, color, storage } = catalog.productCandidates[0];
+              const candidates = [
+                ...(draft.productCandidates || []),
+                { productModel, color, storage },
+              ];
+              setDraft({ ...draft, productCandidates: candidates, ...candidates[0] });
+            }}
+          >
+            添加候选商品
+          </button>
+          <p className="text-xs text-gray-500">
+            候选完整型号、颜色、容量以 | 分隔导出；18PM 白等未知颜色请核对原文后选择。
+          </p>
         </div>
         <div className="rounded-lg bg-blue-50 p-3 space-y-3">
           <p className="font-medium text-gray-900">可接受的直营店范围</p>
@@ -482,7 +655,7 @@ export default function ProxyOrders() {
                 aria-label="选择方式"
                 className="input w-full mt-1"
                 value={draft.storeMode}
-                onChange={(event) =>
+                onChange={event =>
                   changeStoreScope({
                     storeMode: event.target.value,
                     storeCodes: [],
@@ -499,35 +672,34 @@ export default function ProxyOrders() {
                 aria-label="城市"
                 className="input w-full mt-1"
                 value={draft.storeCity}
-                onChange={(event) =>
-                  changeStoreScope({ storeCity: event.target.value })
+                onChange={event =>
+                  changeStoreScope({
+                    storeCity: event.target.value,
+                    storeCodes: [],
+                    storeMode: 'city_any',
+                  })
                 }
               >
                 <option value="">请选择城市</option>
-                {cities.map((city) => (
+                {cities.map(city => (
                   <option key={city}>{city}</option>
                 ))}
               </ResponsiveSelect>
             </label>
           </div>
-          {draft.storeMode === "selected" && (
+          {draft.storeMode === 'selected' && (
             <div className="max-h-40 overflow-auto space-y-2">
               {stores
-                .filter((s) => !draft.storeCity || s.city === draft.storeCity)
-                .map((store) => (
-                  <label
-                    key={store.code}
-                    className="flex items-center gap-2 text-sm"
-                  >
+                .filter(s => !draft.storeCity || s.city === draft.storeCity)
+                .map(store => (
+                  <label key={store.code} className="flex items-center gap-2 text-sm">
                     <input
                       type="checkbox"
                       checked={draft.storeCodes.includes(store.code)}
                       onChange={() =>
                         changeStoreScope({
                           storeCodes: draft.storeCodes.includes(store.code)
-                            ? draft.storeCodes.filter(
-                                (code) => code !== store.code,
-                              )
+                            ? draft.storeCodes.filter(code => code !== store.code)
                             : [...draft.storeCodes, store.code],
                         })
                       }
@@ -538,7 +710,7 @@ export default function ProxyOrders() {
             </div>
           )}
           <p className="text-sm text-gray-600">
-            已选：{storeNames(draft.storeCodes) || "尚未确认"}。任一家符合即可。
+            已选：{storeNames(draft.storeCodes) || '尚未确认'}。任一家符合即可。
           </p>
         </div>
         <div className="space-y-3">
@@ -547,13 +719,13 @@ export default function ProxyOrders() {
             <ResponsiveSelect
               aria-label="账单参考门店"
               className="input w-full mt-1"
-              value={draft.billing?.referenceStoreCode || ""}
-              onChange={(event) => {
+              value={draft.billing?.referenceStoreCode || ''}
+              onChange={event => {
                 if (event.target.value) address(event.target.value);
               }}
             >
               <option value="">选择门店并生成地址</option>
-              {draft.storeCodes.map((code) => (
+              {draft.storeCodes.map(code => (
                 <option value={code} key={code}>
                   {storeNames([code])}
                 </option>
@@ -562,50 +734,54 @@ export default function ProxyOrders() {
           </label>
           <div className="grid sm:grid-cols-3 gap-3">
             {[
-              ["province", "省"],
-              ["city", "市"],
-              ["district", "区"],
+              ['province', '省'],
+              ['city', '市'],
+              ['district', '区'],
             ].map(([key, label]) => (
               <Field
                 key={key}
                 label={label}
                 value={draft.billing?.[key]}
-                onChange={(value) =>
-                  setField("billing", { ...draft.billing, [key]: value })
-                }
+                onChange={value => setField('billing', { ...draft.billing, [key]: value })}
               />
             ))}
           </div>
           <Field
             label="街道地址（可修改）"
             value={draft.billing?.streetAddress}
-            onChange={(value) =>
-              setField("billing", { ...draft.billing, streetAddress: value })
-            }
+            onChange={value => setField('billing', { ...draft.billing, streetAddress: value })}
           />
         </div>
       </fieldset>
       <label className="block text-sm">
-        备注 / 其他可接受的颜色、门店
+        备注（仅供阅读，不参与抢购和匹配）
         <textarea
           aria-label="备注"
           className="input w-full mt-1"
           rows={3}
-          value={draft.notes || ""}
-          onChange={(event) => setField("notes", event.target.value)}
+          value={draft.notes || ''}
+          onChange={event => setField('notes', event.target.value)}
           disabled={busy}
         />
       </label>
       <p className="text-xs text-gray-500">
-        模板 TAG 固定为“代抢 网店”，支付配置暂用
-        WECHAT；复制后需在软件中调整，复制不改变处理状态。
+        模板按已核实的商品、门店和支付映射生成，TAG 为“代抢 + 订单来源”；复制不改变处理状态。
       </p>
       <div className="flex justify-end gap-2">
         <button className="btn btn-secondary" onClick={close} disabled={busy}>
           取消
         </button>
-        <button className="btn btn-primary" onClick={save} disabled={busy}>
-          {busy ? "保存中…" : "确认保存"}
+        <button
+          className="btn btn-primary"
+          onClick={save}
+          disabled={
+            busy ||
+            !draft.orderSource?.trim() ||
+            !draft.productCandidates?.length ||
+            (!!duplicates.length && !duplicateConfirmed)
+          }
+        >
+          {busy ? '保存中…' : '确认保存'}
         </button>
       </div>
     </div>
@@ -616,19 +792,18 @@ export default function ProxyOrders() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">代抢管理</h1>
-          <p className="text-gray-500 mt-1">
-            登记客户委托，分配专用账号并跟踪抢购结果
-          </p>
+          <p className="text-gray-500 mt-1">登记客户委托，分配专用账号并跟踪抢购结果</p>
         </div>
         <div className="flex gap-2">
-          {can(PERMISSIONS.PROXY_EDIT) && (
+          {can(PERMISSIONS.PROXY_READ) && (
             <button
               className="btn btn-primary flex gap-2 items-center"
               onClick={() => {
-                setText("");
+                setText('');
                 setDraft(null);
+                setDuplicateConfirmed(false);
                 setWarnings([]);
-                setModal("new");
+                setModal('new');
               }}
             >
               <Plus className="w-4 h-4" />
@@ -647,25 +822,22 @@ export default function ProxyOrders() {
       </div>
       <div className="flex gap-1 overflow-x-auto border-b border-gray-200">
         <button
-          className={`shrink-0 px-5 py-3 text-sm transition-colors ${tab === "orders" ? "border-b-2 border-primary font-medium text-primary" : "text-gray-500 hover:text-gray-900"}`}
-          onClick={() => switchTab("orders")}
+          className={`shrink-0 px-5 py-3 text-sm transition-colors ${tab === 'orders' ? 'border-b-2 border-primary font-medium text-primary' : 'text-gray-500 hover:text-gray-900'}`}
+          onClick={() => switchTab('orders')}
         >
           代抢订单
         </button>
-        {can(PERMISSIONS.PROXY_ACCOUNTS) && (
+        {can(PERMISSIONS.PROXY_READ) && (
           <button
-            className={`shrink-0 px-5 py-3 text-sm transition-colors ${tab === "accounts" ? "border-b-2 border-primary font-medium text-primary" : "text-gray-500 hover:text-gray-900"}`}
-            onClick={() => switchTab("accounts")}
+            className={`shrink-0 px-5 py-3 text-sm transition-colors ${tab === 'accounts' ? 'border-b-2 border-primary font-medium text-primary' : 'text-gray-500 hover:text-gray-900'}`}
+            onClick={() => switchTab('accounts')}
           >
             专用 AppleID 池
           </button>
         )}
       </div>
       {error && (
-        <div
-          role="alert"
-          className="p-3 rounded-lg bg-red-50 text-red-700 flex gap-2"
-        >
+        <div role="alert" className="p-3 rounded-lg bg-red-50 text-red-700 flex gap-2">
           <AlertCircle className="w-5 h-5 shrink-0" />
           {error}
         </div>
@@ -675,15 +847,26 @@ export default function ProxyOrders() {
           {notice}
         </div>
       )}
-      {tab === "orders" && !loading && data.rows.some((row) => !row.assignments.length) && can(PERMISSIONS.PROXY_ACCOUNTS) && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          <span>有代抢单待分配账号。只有专用池内“未使用”且未占用的账号可分配，分配后才能复制模板。</span>
-          <button className="font-medium underline underline-offset-2" onClick={() => switchTab("accounts")}>查看专用账号池</button>
-        </div>
-      )}
-      {tab === "accounts" && scope === "pool" && (
+      {tab === 'orders' &&
+        !loading &&
+        data.rows.some(row => !row.assignments.length) &&
+        can(PERMISSIONS.PROXY_READ) && (
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            <span>
+              有代抢单待分配账号。只有专用池内“未使用”且未占用的账号可分配，分配后才能复制模板。
+            </span>
+            <button
+              className="font-medium underline underline-offset-2"
+              onClick={() => switchTab('accounts')}
+            >
+              查看专用账号池
+            </button>
+          </div>
+        )}
+      {tab === 'accounts' && scope === 'pool' && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
-          当前可分配 {data.availableCount ?? "—"} 个账号。新导入账号默认为“未使用”；历史“使用中”账号需先确认抢购软件任务已停止，再修改为“未使用”。
+          当前可分配 {data.availableCount ?? '—'}{' '}
+          个账号。新导入账号默认为“未使用”；历史“使用中”账号需先确认抢购软件任务已停止，再修改为“未使用”。
         </div>
       )}
       <div className="flex flex-wrap gap-2 items-center">
@@ -692,24 +875,22 @@ export default function ProxyOrders() {
           <input
             aria-label="搜索"
             className="input w-full pl-9"
-            placeholder={
-              tab === "orders" ? "姓名、平台单号、代抢编号" : "搜索 AppleID"
-            }
+            placeholder={tab === 'orders' ? '姓名、平台单号、代抢编号' : '搜索 AppleID'}
             value={keyword}
-            onChange={(event) => {
+            onChange={event => {
               setNoteEditor(null);
               setKeyword(event.target.value);
               setPage(1);
             }}
           />
         </div>
-        {tab === "orders" ? (
+        {tab === 'orders' ? (
           <>
             <ResponsiveSelect
               aria-label="状态筛选"
               className="input w-auto"
               value={status}
-              onChange={(event) => {
+              onChange={event => {
                 setNoteEditor(null);
                 setStatus(event.target.value);
                 setPage(1);
@@ -722,7 +903,7 @@ export default function ProxyOrders() {
                 </option>
               ))}
             </ResponsiveSelect>
-            {can(PERMISSIONS.PROXY_COPY) && (
+            {can(PERMISSIONS.PROXY_READ) && (
               <button
                 className="btn btn-secondary flex gap-2 items-center"
                 disabled={!selected.length || busy}
@@ -739,7 +920,7 @@ export default function ProxyOrders() {
               aria-label="账号范围"
               className="input w-auto"
               value={scope}
-              onChange={(event) => {
+              onChange={event => {
                 setScope(event.target.value);
                 setPage(1);
                 setSelected([]);
@@ -751,28 +932,28 @@ export default function ProxyOrders() {
             <button
               className="btn btn-primary"
               onClick={() => {
-                setText("");
-                setModal("import");
+                setText('');
+                setModal('import');
               }}
             >
               粘贴导入
             </button>
-            {scope === "pool" && (
+            {scope === 'pool' && (
               <button
                 className="btn btn-secondary inline-flex items-center gap-2"
                 disabled={!selected.length || busy}
                 onClick={() => {
-                  setNotice("");
-                  setBatchAccountStatus("");
+                  setNotice('');
+                  setBatchAccountStatus('');
                   setBatchStopped(false);
-                  setModal("batchStatus");
+                  setModal('batchStatus');
                 }}
               >
                 <Pencil className="w-4 h-4" />
                 批量修改状态（{selected.length}）
               </button>
             )}
-            {scope === "candidates" && (
+            {scope === 'candidates' && (
               <button
                 className="btn btn-secondary"
                 disabled={!selected.length || busy}
@@ -781,11 +962,11 @@ export default function ProxyOrders() {
                     message: `将选中 ${selected.length} 个账号纳入代抢池？保留原状态和备注，有普通绑定的账号会拒绝。`,
                     execute: () =>
                       run(async () => {
-                        await client.post("/proxy-orders/accounts/adopt", {
+                        await client.post('/proxy-orders/accounts/adopt', {
                           ids: selected,
                         });
                         refresh();
-                      }, "已纳入专用池"),
+                      }, '已纳入专用池'),
                   });
                 }}
               >
@@ -804,10 +985,10 @@ export default function ProxyOrders() {
         ) : !data.rows.length ? (
           <div className="text-center py-16 text-gray-500">
             {keyword || status
-              ? "没有符合条件的记录"
-              : tab === "orders"
-                ? "暂无代抢订单，粘贴客户信息开始登记"
-                : "暂无账号，可粘贴导入或核对历史候选"}
+              ? '没有符合条件的记录'
+              : tab === 'orders'
+                ? '暂无代抢订单，粘贴客户信息开始登记'
+                : '暂无账号，可粘贴导入或核对历史候选'}
           </div>
         ) : (
           <div className="overflow-x-auto">
@@ -818,29 +999,25 @@ export default function ProxyOrders() {
                     <input
                       aria-label="全选当前页"
                       type="checkbox"
-                      checked={data.rows.every((r) => selected.includes(r.id))}
-                      onChange={(event) =>
-                        setSelected(
-                          event.target.checked
-                            ? data.rows.map((r) => r.id)
-                            : [],
-                        )
+                      checked={data.rows.every(r => selected.includes(r.id))}
+                      onChange={event =>
+                        setSelected(event.target.checked ? data.rows.map(r => r.id) : [])
                       }
                     />
                   </th>
-                  {(tab === "orders"
+                  {(tab === 'orders'
                     ? [
-                        "代抢单 / 客户",
-                        "抢购需求",
-                        "目标门店",
-                        "状态",
-                        "备注",
-                        "账号 / 官方订单",
-                        "登记时间",
-                        "操作",
+                        '代抢单 / 客户',
+                        '抢购需求',
+                        '目标门店',
+                        '状态',
+                        '备注',
+                        '账号 / 官方订单',
+                        '登记时间',
+                        '操作',
                       ]
-                    : ["AppleID", "账号状态", "占用委托", "备注", "操作"]
-                  ).map((label) => (
+                    : ['AppleID', '账号状态', '占用委托', '备注', '操作']
+                  ).map(label => (
                     <th key={label} className="text-left p-3 font-medium">
                       {label}
                     </th>
@@ -848,7 +1025,7 @@ export default function ProxyOrders() {
                 </tr>
               </thead>
               <tbody>
-                {data.rows.map((row) => (
+                {data.rows.map(row => (
                   <tr key={row.id} className="border-t hover:bg-gray-50">
                     <td className="p-3">
                       <input
@@ -858,7 +1035,7 @@ export default function ProxyOrders() {
                         onChange={() => toggle(row.id)}
                       />
                     </td>
-                    {tab === "orders" ? (
+                    {tab === 'orders' ? (
                       <>
                         <td className="p-3">
                           <button
@@ -870,42 +1047,42 @@ export default function ProxyOrders() {
                           </button>
                           <p className="text-gray-500 mt-1">{row.phone}</p>
                           {row.platformOrderNumber && (
-                            <p className="text-xs text-gray-400">
-                              平台：{row.platformOrderNumber}
-                            </p>
+                            <p className="text-xs text-gray-400">平台：{row.platformOrderNumber}</p>
                           )}
                         </td>
                         <td className="p-3">
-                          <p><ProductName product={row} /> × {row.quantity}</p>
+                          <p className="whitespace-normal min-w-56 max-w-80">
+                            {candidateNames(row)} × {row.quantity}
+                          </p>
                           <p className="text-xs text-gray-400">
-                            {row.paymentMethod || "支付要求未填"}
+                            {row.paymentMethod || '支付要求未填'}
                           </p>
                         </td>
                         <td className="p-3 min-w-48 max-w-64 whitespace-normal">
                           <p>{storeNames(row.storeCodes)}</p>
                         </td>
                         <td className="p-3 align-top">
-                          {can(PERMISSIONS.PROXY_STATUS) && ["pending", "rushing"].includes(row.status) ? (
+                          {can(PERMISSIONS.PROXY_READ) ? (
                             <ResponsiveSelect
                               aria-label={`代抢 #${row.id} 状态`}
-                              className={`input min-w-28 font-medium ${row.status === "pending" ? "border-amber-200 bg-amber-50 text-amber-900" : "border-blue-200 bg-blue-50 text-blue-900"}`}
+                              className={`input min-w-28 font-medium ${row.status === 'pending' ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-blue-200 bg-blue-50 text-blue-900'}`}
                               value={row.status}
                               disabled={busy}
-                              onChange={(event) => {
+                              onChange={event => {
                                 const next = event.target.value;
-                                if (next === "cancelled") {
-                                  setConfirmation({
-                                    message: `取消代抢 #${row.id}？请另行停止抢购软件任务，再确认释放账号。`,
-                                    execute: () => changeFromList(row, "status", { status: next }),
-                                  });
-                                } else changeFromList(row, "status", { status: next });
+                                setReason('');
+                                setStatusTarget({ row, status: next });
                               }}
                             >
-                              <option value="pending">待处理</option>
-                              <option value="rushing">抢购中</option>
-                              <option value="cancelled">已取消</option>
+                              {Object.entries(STATUS).map(([key, [label]]) => (
+                                <option key={key} value={key}>
+                                  {label}
+                                </option>
+                              ))}
                             </ResponsiveSelect>
-                          ) : <Badge status={row.status} />}
+                          ) : (
+                            <Badge status={row.status} />
+                          )}
                           {row.anomaly && (
                             <p className="text-xs text-red-600 whitespace-normal max-w-48 mt-2">
                               {row.anomaly}
@@ -921,27 +1098,51 @@ export default function ProxyOrders() {
                                 value={noteEditor.notes}
                                 maxLength={10000}
                                 disabled={busy}
-                                onChange={(event) => setNoteEditor({ id: row.id, notes: event.target.value })}
-                                onKeyDown={(event) => {
-                                  if ((event.ctrlKey || event.metaKey) && event.key === "Enter") changeFromList(row, "notes", { notes: noteEditor.notes });
+                                onChange={event =>
+                                  setNoteEditor({ id: row.id, notes: event.target.value })
+                                }
+                                onKeyDown={event => {
+                                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter')
+                                    changeFromList(row, 'notes', { notes: noteEditor.notes });
                                 }}
                               />
                               <div className="flex gap-2">
-                                <button className="btn btn-primary inline-flex items-center gap-1" disabled={busy} onClick={() => changeFromList(row, "notes", { notes: noteEditor.notes })}><Save className="w-4 h-4" />保存</button>
-                                <button className="btn btn-secondary" disabled={busy} onClick={() => setNoteEditor(null)}>取消</button>
+                                <button
+                                  className="btn btn-primary inline-flex items-center gap-1"
+                                  disabled={busy}
+                                  onClick={() =>
+                                    changeFromList(row, 'notes', { notes: noteEditor.notes })
+                                  }
+                                >
+                                  <Save className="w-4 h-4" />
+                                  保存
+                                </button>
+                                <button
+                                  className="btn btn-secondary"
+                                  disabled={busy}
+                                  onClick={() => setNoteEditor(null)}
+                                >
+                                  取消
+                                </button>
                               </div>
                             </div>
                           ) : (
                             <div className="group flex items-start gap-2">
-                              <p className="flex-1 min-w-0 break-words text-gray-700 whitespace-pre-wrap">{row.notes || <span className="text-gray-400">暂无备注</span>}</p>
-                              {can(PERMISSIONS.PROXY_EDIT) && (
+                              <p className="flex-1 min-w-0 break-words text-gray-700 whitespace-pre-wrap">
+                                {row.notes || <span className="text-gray-400">暂无备注</span>}
+                              </p>
+                              {can(PERMISSIONS.PROXY_READ) && (
                                 <button
                                   className="shrink-0 rounded-md p-1.5 text-primary hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-primary"
                                   aria-label={`编辑代抢 #${row.id} 备注`}
                                   title="编辑备注"
                                   disabled={busy}
-                                  onClick={() => setNoteEditor({ id: row.id, notes: row.notes || "" })}
-                                ><Pencil className="w-4 h-4" /></button>
+                                  onClick={() =>
+                                    setNoteEditor({ id: row.id, notes: row.notes || '' })
+                                  }
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                </button>
                               )}
                             </div>
                           )}
@@ -950,22 +1151,25 @@ export default function ProxyOrders() {
                           <p>
                             {row.assignments.length
                               ? `${row.assignments.length} 个账号占用中`
-                              : "待分配账号"}
+                              : '待分配账号'}
                           </p>
-                          {can(PERMISSIONS.PROXY_ACCOUNTS) && ["pending", "rushing"].includes(row.status) && (
-                            <button className="mt-1 text-primary text-xs font-medium underline underline-offset-2" disabled={busy} onClick={() => openAssignments(row)}>
-                              {row.assignments.length ? "追加账号" : "分配账号"}
-                            </button>
-                          )}
-                          {row.officialOrder && (
-                            <p className="font-mono text-primary mt-1">
-                              {row.officialOrder.orderNumber}
+                          {can(PERMISSIONS.PROXY_READ) &&
+                            ['pending', 'rushing'].includes(row.status) && (
+                              <button
+                                className="mt-1 text-primary text-xs font-medium underline underline-offset-2"
+                                disabled={busy}
+                                onClick={() => openAssignments(row)}
+                              >
+                                {row.assignments.length ? '追加账号' : '分配账号'}
+                              </button>
+                            )}
+                          {(row.officialOrders || []).map(order => (
+                            <p key={order.id} className="font-mono text-primary mt-1">
+                              {order.orderNumber}
                             </p>
-                          )}
+                          ))}
                         </td>
-                        <td className="p-3 text-gray-500">
-                          {DATE(row.createdAt)}
-                        </td>
+                        <td className="p-3 text-gray-500">{DATE(row.createdAt)}</td>
                         <td className="p-3">
                           <div className="flex gap-2">
                             <button
@@ -975,8 +1179,8 @@ export default function ProxyOrders() {
                             >
                               详情
                             </button>
-                            {can(PERMISSIONS.PROXY_COPY) &&
-                              ["pending", "rushing"].includes(row.status) && (
+                            {can(PERMISSIONS.PROXY_READ) &&
+                              ['pending', 'rushing'].includes(row.status) && (
                                 <button
                                   className="btn btn-secondary"
                                   disabled={busy || !row.assignments.length}
@@ -993,21 +1197,19 @@ export default function ProxyOrders() {
                         <td className="p-3 font-mono">{row.appleId}</td>
                         <td className="p-3">{row.status}</td>
                         <td className="p-3">
-                          {row.assignment ? `代抢 #${row.assignment.proxyOrderId}` : "未占用"}
+                          {row.assignment ? `代抢 #${row.assignment.proxyOrderId}` : '未占用'}
                         </td>
-                        <td className="p-3 max-w-80 whitespace-normal">
-                          {row.notes || "—"}
-                        </td>
+                        <td className="p-3 max-w-80 whitespace-normal">{row.notes || '—'}</td>
                         <td className="p-3">
                           {row.isProxyPool && (
                             <button
                               className="btn btn-secondary"
                               onClick={() => {
-                                setNotice("");
+                                setNotice('');
                                 setDraft(row);
                                 setAccountOriginalStatus(row.status);
                                 setAccountStopped(false);
-                                setModal("account");
+                                setModal('account');
                               }}
                             >
                               编辑
@@ -1030,44 +1232,42 @@ export default function ProxyOrders() {
             <button
               className="btn btn-secondary"
               disabled={page === 1 || loading}
-              onClick={() => { setNoteEditor(null); setPage(page - 1); }}
+              onClick={() => {
+                setNoteEditor(null);
+                setPage(page - 1);
+              }}
             >
               上一页
             </button>
             <button
               className="btn btn-secondary"
               disabled={page * 30 >= data.count || loading}
-              onClick={() => { setNoteEditor(null); setPage(page + 1); }}
+              onClick={() => {
+                setNoteEditor(null);
+                setPage(page + 1);
+              }}
             >
               下一页
             </button>
           </div>
         </div>
       </div>
-      {(modal === "new" || modal === "edit") && (
+      {(modal === 'new' || modal === 'edit') && (
         <Dialog
-          title={modal === "new" ? "登记代抢订单" : `编辑代抢 #${draft.id}`}
+          title={modal === 'new' ? '登记代抢订单' : `编辑代抢 #${draft.id}`}
           close={close}
           busy={busy}
         >
           {modalMessage}
-          {modal === "new" && (
+          {modal === 'new' && (
             <div className="mb-4 space-y-3">
               <div className="flex justify-between items-center">
-                <label
-                  htmlFor="proxy-source"
-                  className="font-medium text-gray-900"
-                >
+                <label htmlFor="proxy-source" className="font-medium text-gray-900">
                   客户抢购信息
                 </label>
                 <button
                   className="text-primary text-sm"
-                  onClick={() =>
-                    run(
-                      () => clipboard(CUSTOMER_TEMPLATE),
-                      "客户填写格式已生成",
-                    )
-                  }
+                  onClick={() => run(() => clipboard(CUSTOMER_TEMPLATE), '客户填写格式已生成')}
                 >
                   复制客户填写格式
                 </button>
@@ -1078,15 +1278,26 @@ export default function ProxyOrders() {
                 rows={8}
                 placeholder={CUSTOMER_TEMPLATE}
                 value={text}
-                onChange={(event) => setText(event.target.value)}
+                onChange={event => setText(event.target.value)}
               />
-              <div className="flex gap-2">
+              <p className="text-xs text-gray-500">
+                选填取机门店、数量和平台订单号，可在末尾另起一行填写。未填数量默认
+                1；未指定门店默认所选城市全部门店。
+              </p>
+              <div className="flex flex-wrap gap-2">
                 <button
                   className="btn btn-primary"
                   disabled={busy || !text.trim()}
-                  onClick={parse}
+                  onClick={() => parse(false)}
                 >
                   识别并预览
+                </button>
+                <button
+                  className="btn btn-primary"
+                  disabled={busy || !text.trim()}
+                  onClick={() => parse(true)}
+                >
+                  一键登记
                 </button>
                 <button
                   className="btn btn-secondary"
@@ -1104,7 +1315,7 @@ export default function ProxyOrders() {
           {form}
         </Dialog>
       )}
-      {modal === "detail" && current && (
+      {modal === 'detail' && current && (
         <Dialog
           title={`代抢 #${current.id} · ${current.lastName}${current.firstName}`}
           close={close}
@@ -1114,120 +1325,92 @@ export default function ProxyOrders() {
           <div className="space-y-4">
             <div className="flex flex-wrap gap-2 items-center">
               <Badge status={current.status} />
-              {can(PERMISSIONS.PROXY_EDIT) && (
+              {can(PERMISSIONS.PROXY_READ) && (
                 <button
                   className="btn btn-secondary"
                   onClick={() => {
                     setWarnings([]);
-                    setModal("edit");
+                    setModal('edit');
                   }}
                 >
-                  编辑
-                  {["succeeded", "cancelled"].includes(current.status)
-                    ? "备注"
-                    : "资料"}
+                  编辑资料
                 </button>
               )}
-              {can(PERMISSIONS.PROXY_COPY) &&
-                ["pending", "rushing"].includes(current.status) && (
-                  <button
-                    className="btn btn-secondary"
-                    onClick={() => copyOrders([current.id])}
-                    disabled={busy || !current.assignments.some((assignment) => !assignment.endedAt)}
-                  >
-                    复制模板
-                  </button>
-                )}
-              {can(PERMISSIONS.PROXY_STATUS) &&
-                ["pending", "rushing"].includes(current.status) && (
-                  <>
-                    <button
-                      className="btn btn-primary"
-                      disabled={busy}
-                      onClick={() =>
-                        change("status", {
-                          status:
-                            current.status === "pending"
-                              ? "rushing"
-                              : "pending",
-                        })
-                      }
-                    >
-                      {current.status === "pending"
-                        ? "标记抢购中"
-                        : "退回待处理"}
-                    </button>
-                    <button
-                      className="btn btn-secondary text-red-600"
-                      disabled={busy}
-                      onClick={() => {
-                        setConfirmation({
-                          message:
-                            "取消此代抢单？请另行停止抢购软件任务，账号需人工释放。",
-                          execute: () =>
-                            change("status", { status: "cancelled" }),
-                        });
-                      }}
-                    >
-                      取消代抢
-                    </button>
-                  </>
-                )}
+              {can(PERMISSIONS.PROXY_READ) && ['pending', 'rushing'].includes(current.status) && (
+                <button
+                  className="btn btn-secondary"
+                  onClick={() => copyOrders([current.id])}
+                  disabled={busy || !current.assignments.some(assignment => !assignment.endedAt)}
+                >
+                  复制模板
+                </button>
+              )}
+              <ResponsiveSelect
+                aria-label="调整代抢状态"
+                className="input w-auto"
+                value={current.status}
+                disabled={busy}
+                onChange={event => {
+                  setReason('');
+                  setStatusTarget({ row: current, status: event.target.value });
+                }}
+              >
+                {Object.entries(STATUS).map(([key, [label]]) => (
+                  <option key={key} value={key}>
+                    {label}
+                  </option>
+                ))}
+              </ResponsiveSelect>
             </div>
             {current.anomaly && (
-              <p className="bg-red-50 text-red-700 p-3 rounded-lg">
-                {current.anomaly}
-              </p>
+              <p className="bg-red-50 text-red-700 p-3 rounded-lg">{current.anomaly}</p>
             )}
             <dl className="grid sm:grid-cols-2 gap-3 text-sm">
               {[
+                ['抢购需求', `${candidateNames(current)} × ${current.quantity}`],
+                ['支付要求', current.paymentMethod],
+                ['订单来源', current.orderSource],
+                ['手机号', current.phone],
+                ['邮箱', current.email],
+                ['身份证后四位', current.idLast4],
+                ['平台订单号', current.platformOrderNumber],
+                ['门店范围', storeNames(current.storeCodes)],
                 [
-                  "抢购需求",
-                  `${getProductDisplayName(current)} × ${current.quantity}`,
-                ],
-                ["支付要求", current.paymentMethod],
-                ["手机号", current.phone],
-                ["邮箱", current.email],
-                ["身份证后四位", current.idLast4],
-                ["平台订单号", current.platformOrderNumber],
-                ["门店范围", storeNames(current.storeCodes)],
-                [
-                  "账单地址",
+                  '账单地址',
                   [
                     current.billing.province,
                     current.billing.city,
                     current.billing.district,
                     current.billing.streetAddress,
-                  ].join(" "),
+                  ].join(' '),
                 ],
               ].map(([label, value]) => (
                 <div key={label}>
                   <dt className="text-gray-500">{label}</dt>
-                  <dd className="mt-1 break-words text-gray-900">
-                    {value || "—"}
-                  </dd>
+                  <dd className="mt-1 break-words text-gray-900">{value || '—'}</dd>
                 </div>
               ))}
             </dl>
             <div className="bg-amber-50 p-3 rounded-lg text-amber-900 whitespace-pre-wrap">
-              备注：{current.notes || "无"}
+              备注：{current.notes || '无'}
             </div>
             <div className="border rounded-lg p-3 space-y-3">
               <div className="flex justify-between gap-2 items-center">
                 <h3 className="font-semibold">账号分配历史</h3>
-                {can(PERMISSIONS.PROXY_ACCOUNTS) &&
-                  ["pending", "rushing"].includes(current.status) && (
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => openAssignments()}
-                      disabled={busy}
-                    >
-                      {current.assignments.some((assignment) => !assignment.endedAt) ? "追加账号" : "分配账号"}
-                    </button>
-                  )}
+                {can(PERMISSIONS.PROXY_READ) && ['pending', 'rushing'].includes(current.status) && (
+                  <button
+                    className="btn btn-secondary"
+                    onClick={() => openAssignments()}
+                    disabled={busy}
+                  >
+                    {current.assignments.some(assignment => !assignment.endedAt)
+                      ? '追加账号'
+                      : '分配账号'}
+                  </button>
+                )}
               </div>
               {current.assignments.length ? (
-                current.assignments.map((a) => (
+                current.assignments.map(a => (
                   <div
                     key={a.id}
                     className="flex flex-wrap gap-2 justify-between border-t pt-2 text-sm"
@@ -1235,20 +1418,19 @@ export default function ProxyOrders() {
                     <div>
                       <p className="break-all">{a.accountEmail}</p>
                       <p className="text-gray-500">
-                        {DATE(a.startedAt)} →{" "}
-                        {a.endedAt ? DATE(a.endedAt) : "占用中"}
+                        {DATE(a.startedAt)} → {a.endedAt ? DATE(a.endedAt) : '占用中'}
                       </p>
                     </div>
-                    {!a.endedAt && can(PERMISSIONS.PROXY_ACCOUNTS) && (
+                    {!a.endedAt && can(PERMISSIONS.PROXY_READ) && (
                       <button
                         className="btn btn-secondary"
                         disabled={busy}
                         onClick={() => {
                           setConfirmation({
                             message:
-                              "确认此账号在抢购软件中的对应任务已经停止？释放后可分配给其他客户。",
+                              '确认此账号在抢购软件中的对应任务已经停止？释放后可分配给其他客户。',
                             execute: () =>
-                              change("release", {
+                              change('release', {
                                 assignmentIds: [a.id],
                                 confirmedStopped: true,
                               }),
@@ -1264,68 +1446,109 @@ export default function ProxyOrders() {
                 <p className="text-gray-500 text-sm">未分配账号</p>
               )}
             </div>
-            <div className="border rounded-lg p-3 space-y-2">
-              <div className="flex justify-between">
-                <h3 className="font-semibold">关联官方订单</h3>
-                {can(PERMISSIONS.PROXY_LINK) && (
-                  <button
-                    className="text-primary text-sm"
-                    onClick={() => {
-                      setReason("");
-                      setOrderNumber("");
-                      setModal("link");
-                    }}
-                  >
-                    {current.orderId ? "纠正误关联" : "人工核对关联"}
-                  </button>
-                )}
+            <div className="border rounded-lg p-3 space-y-3">
+              <div className="flex flex-wrap justify-between gap-2">
+                <h3 className="font-semibold">关联 Apple 订单</h3>
+                <button
+                  className="btn btn-secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setReason('');
+                    setOrderNumber('');
+                    setUnlinkTarget(null);
+                    setModal('link');
+                  }}
+                >
+                  人工核对关联
+                </button>
               </div>
-              {current.officialOrder ? (
-                <div className="text-sm">
-                  <p className="font-mono text-primary">
-                    {current.officialOrder.orderNumber}
-                  </p>
-                  <p>
-                    {current.officialOrder.products
-                      .map((p) => `${getProductDisplayName(p)} × ${p.quantity}`)
-                      .join("；")}
-                  </p>
-                  <p>
-                    {current.officialOrder.pickupStore} ·{" "}
-                    {current.officialOrder.status}
-                  </p>
-                  {can(PERMISSIONS.ORDERS_READ) && (
-                    <a
-                      className="text-primary"
-                      href={`/orders/${current.orderId}`}
-                    >
-                      打开订单管理详情
-                    </a>
-                  )}
+              {(current.officialOrders || []).length ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left min-w-[680px]">
+                    <thead className="bg-gray-50 text-gray-500">
+                      <tr>
+                        {[
+                          '系统订单 ID',
+                          'Apple 订单号',
+                          '官网采集状态',
+                          '商品',
+                          '门店 / 观测时间',
+                          '操作',
+                        ].map(label => (
+                          <th className="p-2 font-medium" key={label}>
+                            {label}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {current.officialOrders.map(order => (
+                        <tr className="border-t" key={order.id}>
+                          <td className="p-2">{order.id}</td>
+                          <td className="p-2 font-mono">
+                            {can(PERMISSIONS.ORDERS_READ) ? (
+                              <a className="text-primary" href={`/orders/${order.id}`}>
+                                {order.orderNumber}
+                              </a>
+                            ) : (
+                              order.orderNumber
+                            )}
+                          </td>
+                          <td className="p-2">
+                            {order.status ? (
+                              <OfficialOrderStatus status={order.status} />
+                            ) : (
+                              <span className="text-gray-400">未获取</span>
+                            )}
+                          </td>
+                          <td className="p-2">
+                            {(order.products || [])
+                              .map(
+                                product =>
+                                  `${getProductDisplayName(product)} × ${product.quantity || 1}`
+                              )
+                              .join('；') || '未获取'}
+                          </td>
+                          <td className="p-2">
+                            {order.pickupStore || '—'}
+                            <p className="text-gray-500">{DATE(order.officialStatusObservedAt)}</p>
+                          </td>
+                          <td className="p-2">
+                            <button
+                              className="btn btn-secondary"
+                              disabled={busy}
+                              onClick={() => {
+                                setUnlinkTarget(order);
+                                setReason('');
+                                setModal('link');
+                              }}
+                            >
+                              解除误关联
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
-                <p className="text-gray-500 text-sm">
-                  等待系统自动匹配；资料不足或特殊需求可人工核对。
-                </p>
+                <p className="text-gray-500 text-sm">暂无关联，等待自动匹配或人工核对。</p>
               )}
             </div>
             <details>
-              <summary className="cursor-pointer text-gray-600">
-                客户原始信息
-              </summary>
+              <summary className="cursor-pointer text-gray-600">客户原始信息</summary>
               <pre className="text-sm whitespace-pre-wrap break-words bg-gray-50 p-3 mt-2">
-                {current.rawText || "手工录入"}
+                {current.rawText || '手工录入'}
               </pre>
             </details>
             <details>
-              <summary className="cursor-pointer text-gray-600">
-                操作记录（最近 100 条）
-              </summary>
+              <summary className="cursor-pointer text-gray-600">操作记录（最近 100 条）</summary>
               <ul className="mt-2 space-y-2 text-sm text-gray-600">
-                {current.events.map((e) => (
+                {current.events.map(e => (
                   <li key={e.id}>
-                    {DATE(e.createdAt)} · {ACTIONS[e.action] || e.action} ·{" "}
-                    {e.actorId ? `员工 #${e.actorId}` : "系统"}
+                    {DATE(e.createdAt)} · {ACTIONS[e.action] || e.action} ·{' '}
+                    {e.actorId ? `员工 #${e.actorId}` : '系统'}
+                    {e.detail?.reason && <span> · {e.detail.reason}</span>}
                     {e.detail?.from &&
                       `：${STATUS[e.detail.from]?.[0]} → ${STATUS[e.detail.to]?.[0]}`}
                   </li>
@@ -1335,17 +1558,85 @@ export default function ProxyOrders() {
           </div>
         </Dialog>
       )}
-      {modal === "assign" && (
-        <Dialog title={current?.assignments?.length ? "追加抢购账号" : "分配抢购账号"} close={close} busy={busy}>
+      {statusTarget && (
+        <Dialog
+          title={`调整代抢 #${statusTarget.row.id} 为${STATUS[statusTarget.status][0]}`}
+          close={() => setStatusTarget(null)}
+          busy={busy}
+        >
+          {modalMessage}
+          <p className="text-sm text-gray-600 mb-3">
+            状态可按实际情况人工调整。账号仍需确认外部软件停抢后释放。
+          </p>
+          <Field label="操作说明（选填，保留客户原备注）" value={reason} onChange={setReason} />
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              className="btn btn-secondary"
+              disabled={busy}
+              onClick={() => setStatusTarget(null)}
+            >
+              取消
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={busy}
+              onClick={() =>
+                run(async () => {
+                  await client.post(`/proxy-orders/${statusTarget.row.id}/status`, {
+                    expectedVersion: statusTarget.row.version,
+                    status: statusTarget.status,
+                    reason,
+                  });
+                  if (current?.id === statusTarget.row.id) {
+                    const response = await client.get(`/proxy-orders/${current.id}`);
+                    setCurrent(response.data);
+                    setDraft({
+                      ...response.data,
+                      productCandidates: response.data.productCandidates?.length
+                        ? response.data.productCandidates
+                        : [
+                            {
+                              productModel: response.data.productModel,
+                              color: response.data.color,
+                              storage: response.data.storage,
+                            },
+                          ],
+                    });
+                  }
+                  setStatusTarget(null);
+                  refresh();
+                }, '状态已更新')
+              }
+            >
+              确认修改
+            </button>
+          </div>
+        </Dialog>
+      )}
+      {modal === 'assign' && (
+        <Dialog
+          title={current?.assignments?.length ? '追加抢购账号' : '分配抢购账号'}
+          close={close}
+          busy={busy}
+        >
           {modalMessage}
           <div className="space-y-4">
             <p className="text-sm text-gray-500">
               每个账号生成一行导入模板；同时只能由一笔代抢单占用。
             </p>
             <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
-              专用池当前可分配 {availableCount ?? "—"} 个账号。历史账号如仍标为“使用中”，请先核实抢购软件已停抢，再到专用池改为“未使用”；也可以导入新账号。
+              专用池当前可分配 {availableCount ?? '—'}{' '}
+              个账号。历史账号如仍标为“使用中”，请先核实抢购软件已停抢，再到专用池改为“未使用”；也可以导入新账号。
               {availableCount === 0 && (
-                <button className="ml-2 font-medium underline underline-offset-2" onClick={() => { close(); switchTab("accounts"); }}>前往账号池</button>
+                <button
+                  className="ml-2 font-medium underline underline-offset-2"
+                  onClick={() => {
+                    close();
+                    switchTab('accounts');
+                  }}
+                >
+                  前往账号池
+                </button>
               )}
             </div>
             <label className="block text-sm">
@@ -1353,10 +1644,10 @@ export default function ProxyOrders() {
               <ResponsiveSelect
                 className="input w-full mt-1"
                 value={manualAccount}
-                onChange={(event) => setManualAccount(event.target.value)}
+                onChange={event => setManualAccount(event.target.value)}
               >
                 <option value="">自动分配可用账号</option>
-                {available.map((a) => (
+                {available.map(a => (
                   <option value={a.id} key={a.id}>
                     {a.appleId}
                   </option>
@@ -1364,22 +1655,15 @@ export default function ProxyOrders() {
               </ResponsiveSelect>
             </label>
             {!manualAccount && (
-              <Field
-                label="追加数量（1–20）"
-                type="number"
-                value={count}
-                onChange={setCount}
-              />
+              <Field label="追加数量（1–20）" type="number" value={count} onChange={setCount} />
             )}
             <button
               className="btn btn-primary"
               disabled={busy || availableCount === 0}
               onClick={() =>
                 change(
-                  "accounts",
-                  manualAccount
-                    ? { accountIds: [Number(manualAccount)] }
-                    : { count },
+                  'accounts',
+                  manualAccount ? { accountIds: [Number(manualAccount)] } : { count }
                 )
               }
             >
@@ -1388,47 +1672,36 @@ export default function ProxyOrders() {
           </div>
         </Dialog>
       )}
-      {modal === "link" && (
-        <Dialog
-          title={current.orderId ? "解除误关联" : "人工核对官方订单"}
-          close={close}
-          busy={busy}
-        >
+      {modal === 'link' && (
+        <Dialog title={unlinkTarget ? '解除误关联' : '人工核对官方订单'} close={close} busy={busy}>
           {modalMessage}
           <div className="space-y-4">
             <p className="text-sm text-gray-600">
-              {current.orderId
-                ? "解除后保留历史，该官方订单不再自动关联回来。成功状态恢复待处理，已取消保持。"
-                : "请核对客户、账号、下单时间、商品数量及可接受门店。关联后即视为抢购成功，已取消单保留取消并提示异常。"}
+              {unlinkTarget
+                ? '解除后保留历史及原因，该订单不再自动关联回来；请按实际情况自行调整委托状态。'
+                : '请核对客户、账号及下单时间。符合需求的新关联可自动成功；抢错商品保留状态。已取消单仅补记录，工作人员可按实际情况手动调整状态。'}
             </p>
-            {!current.orderId && (
-              <Field
-                label="Apple 订单号"
-                value={orderNumber}
-                onChange={setOrderNumber}
-              />
+            {!unlinkTarget && (
+              <Field label="Apple 订单号" value={orderNumber} onChange={setOrderNumber} />
             )}
-            <Field
-              label="核对 / 纠错原因"
-              value={reason}
-              onChange={setReason}
-            />
+            <Field label="核对 / 纠错原因" value={reason} onChange={setReason} />
             <button
               className="btn btn-primary"
               disabled={busy || !reason.trim()}
               onClick={() =>
-                change("link", {
-                  orderNumber: current.orderId ? null : orderNumber.trim(),
+                change('link', {
+                  orderNumber: unlinkTarget ? null : orderNumber.trim(),
+                  orderId: unlinkTarget?.id,
                   reason,
                 })
               }
             >
-              确认{current.orderId ? "解除" : "关联"}
+              确认{unlinkTarget ? '解除' : '关联'}
             </button>
           </div>
         </Dialog>
       )}
-      {modal === "import" && (
+      {modal === 'import' && (
         <Dialog title="导入代抢 AppleID" close={close} busy={busy}>
           {modalMessage}
           <div className="space-y-3">
@@ -1442,7 +1715,7 @@ export default function ProxyOrders() {
               rows={10}
               autoComplete="off"
               value={text}
-              onChange={(event) => setText(event.target.value)}
+              onChange={event => setText(event.target.value)}
               placeholder="account@example.com password"
             />
             <button
@@ -1450,11 +1723,11 @@ export default function ProxyOrders() {
               disabled={busy || !text.trim()}
               onClick={() =>
                 run(async () => {
-                  await client.post("/proxy-orders/accounts/import", { text });
+                  await client.post('/proxy-orders/accounts/import', { text });
                   close();
-                  setScope("pool");
+                  setScope('pool');
                   refresh();
-                }, "账号导入完成")
+                }, '账号导入完成')
               }
             >
               校验并导入
@@ -1462,7 +1735,7 @@ export default function ProxyOrders() {
           </div>
         </Dialog>
       )}
-      {modal === "account" && (
+      {modal === 'account' && (
         <Dialog title="编辑代抢账号" close={close} busy={busy}>
           {modalMessage}
           <div className="space-y-3">
@@ -1472,48 +1745,52 @@ export default function ProxyOrders() {
               <ResponsiveSelect
                 className="input w-full"
                 value={draft.status}
-                onChange={(event) => setField("status", event.target.value)}
+                onChange={event => setField('status', event.target.value)}
               >
-                {["未使用", "使用中", "已下架", "异常"].map((value) => (
+                {['未使用', '使用中', '已下架', '异常'].map(value => (
                   <option key={value}>{value}</option>
                 ))}
               </ResponsiveSelect>
             </label>
-            <Field
-              label="备注"
-              value={draft.notes}
-              onChange={(value) => setField("notes", value)}
-            />
+            <Field label="备注" value={draft.notes} onChange={value => setField('notes', value)} />
             <p className="text-xs text-gray-500">
               修改状态不会解除占用，释放账号请进入对应代抢单。
             </p>
-            {draft.status === "未使用" && accountOriginalStatus !== "未使用" && (
+            {draft.status === '未使用' && accountOriginalStatus !== '未使用' && (
               <label className="flex items-start gap-2 text-sm text-gray-700">
                 <input
                   type="checkbox"
                   checked={accountStopped}
-                  onChange={(event) => setAccountStopped(event.target.checked)}
+                  onChange={event => setAccountStopped(event.target.checked)}
                 />
                 已确认此账号的抢购软件任务已停止
               </label>
             )}
-            {draft.status === "未使用" && draft.assignment && (
-              <p className="text-sm text-red-700">账号仍被代抢单占用，请先在对应代抢单确认停抢并释放。</p>
+            {draft.status === '未使用' && draft.assignment && (
+              <p className="text-sm text-red-700">
+                账号仍被代抢单占用，请先在对应代抢单确认停抢并释放。
+              </p>
             )}
             <button
               className="btn btn-primary"
-              disabled={busy || (draft.status === "未使用" && accountOriginalStatus !== "未使用" && !accountStopped) || (draft.status === "未使用" && !!draft.assignment)}
+              disabled={
+                busy ||
+                (draft.status === '未使用' &&
+                  accountOriginalStatus !== '未使用' &&
+                  !accountStopped) ||
+                (draft.status === '未使用' && !!draft.assignment)
+              }
               onClick={() =>
                 run(async () => {
                   await client.put(`/proxy-orders/accounts/${draft.id}`, {
                     status: draft.status,
-                    notes: draft.notes || "",
+                    notes: draft.notes || '',
                     expectedUpdatedAt: draft.updatedAt,
                     confirmedStopped: accountStopped,
                   });
                   close();
                   refresh();
-                }, "账号已更新")
+                }, '账号已更新')
               }
             >
               保存
@@ -1521,16 +1798,21 @@ export default function ProxyOrders() {
           </div>
         </Dialog>
       )}
-      {modal === "batchStatus" && (
+      {modal === 'batchStatus' && (
         <Dialog title={`批量修改账号状态（${selectedAccounts.length}）`} close={close} busy={busy}>
           {modalMessage}
           <div className="space-y-4">
-            <p className="text-sm text-gray-600">仅修改下列专用池账号的状态，保留备注、密码和占用记录；任一账号资料已变化时整批不保存。</p>
+            <p className="text-sm text-gray-600">
+              仅修改下列专用池账号的状态，保留备注、密码和占用记录；任一账号资料已变化时整批不保存。
+            </p>
             <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 divide-y divide-gray-100 text-sm">
-              {selectedAccounts.map((account) => (
+              {selectedAccounts.map(account => (
                 <div key={account.id} className="flex flex-wrap justify-between gap-2 px-3 py-2">
                   <span className="font-mono break-all">{account.appleId}</span>
-                  <span className="text-gray-500">{account.status}{account.assignment ? " · 占用中" : ""}</span>
+                  <span className="text-gray-500">
+                    {account.status}
+                    {account.assignment ? ' · 占用中' : ''}
+                  </span>
                 </div>
               ))}
             </div>
@@ -1540,60 +1822,78 @@ export default function ProxyOrders() {
                 aria-label="批量目标状态"
                 className="input w-full mt-1"
                 value={batchAccountStatus}
-                onChange={(event) => setBatchAccountStatus(event.target.value)}
+                onChange={event => setBatchAccountStatus(event.target.value)}
               >
                 <option value="">请选择目标状态</option>
-                {["未使用", "使用中", "已下架", "异常"].map((value) => (
-                  <option key={value} value={value}>{value}</option>
+                {['未使用', '使用中', '已下架', '异常'].map(value => (
+                  <option key={value} value={value}>
+                    {value}
+                  </option>
                 ))}
               </ResponsiveSelect>
             </label>
-            {batchAccountStatus === "未使用" && (
+            {batchAccountStatus === '未使用' && (
               <>
                 <label className="flex items-start gap-2 text-sm text-gray-700">
-                  <input type="checkbox" checked={batchStopped} onChange={(event) => setBatchStopped(event.target.checked)} />
+                  <input
+                    type="checkbox"
+                    checked={batchStopped}
+                    onChange={event => setBatchStopped(event.target.checked)}
+                  />
                   已逐一确认所选账号的抢购软件任务已停止
                 </label>
-                {selectedAccounts.some((account) => account.assignment) && (
-                  <p className="text-sm text-red-700">所选账号仍有代抢占用，请先在对应代抢单确认停抢并释放。</p>
+                {selectedAccounts.some(account => account.assignment) && (
+                  <p className="text-sm text-red-700">
+                    所选账号仍有代抢占用，请先在对应代抢单确认停抢并释放。
+                  </p>
                 )}
               </>
             )}
-            {["已下架", "异常"].includes(batchAccountStatus) && (
-              <p className="text-sm text-amber-800">此状态会阻止已分配账号生成新模板，但不会自动释放占用。</p>
+            {['已下架', '异常'].includes(batchAccountStatus) && (
+              <p className="text-sm text-amber-800">
+                此状态会阻止已分配账号生成新模板，但不会自动释放占用。
+              </p>
             )}
             <div className="flex justify-end gap-2">
-              <button className="btn btn-secondary" disabled={busy} onClick={close}>取消</button>
+              <button className="btn btn-secondary" disabled={busy} onClick={close}>
+                取消
+              </button>
               <button
                 className="btn btn-primary"
-                disabled={busy || !selectedAccounts.length || !batchAccountStatus || (batchAccountStatus === "未使用" && (!batchStopped || selectedAccounts.some((account) => account.assignment)))}
-                onClick={() => run(async () => {
-                  const response = await client.post("/proxy-orders/accounts/status", {
-                    accounts: selectedAccounts.map((account) => ({ id: account.id, expectedUpdatedAt: account.updatedAt })),
-                    status: batchAccountStatus,
-                    confirmedStopped: batchStopped,
-                  });
-                  close();
-                  refresh();
-                  return response.data;
-                }, `已更新 ${selectedAccounts.length} 个账号的状态`)}
-              >确认修改</button>
+                disabled={
+                  busy ||
+                  !selectedAccounts.length ||
+                  !batchAccountStatus ||
+                  (batchAccountStatus === '未使用' &&
+                    (!batchStopped || selectedAccounts.some(account => account.assignment)))
+                }
+                onClick={() =>
+                  run(async () => {
+                    const response = await client.post('/proxy-orders/accounts/status', {
+                      accounts: selectedAccounts.map(account => ({
+                        id: account.id,
+                        expectedUpdatedAt: account.updatedAt,
+                      })),
+                      status: batchAccountStatus,
+                      confirmedStopped: batchStopped,
+                    });
+                    close();
+                    refresh();
+                    return response.data;
+                  }, `已更新 ${selectedAccounts.length} 个账号的状态`)
+                }
+              >
+                确认修改
+              </button>
             </div>
           </div>
         </Dialog>
       )}
       {confirmation && (
-        <Dialog
-          title="确认操作"
-          close={() => setConfirmation(null)}
-          busy={busy}
-        >
+        <Dialog title="确认操作" close={() => setConfirmation(null)} busy={busy}>
           <p className="text-gray-700 mb-4">{confirmation.message}</p>
           <div className="flex justify-end gap-2">
-            <button
-              className="btn btn-secondary"
-              onClick={() => setConfirmation(null)}
-            >
+            <button className="btn btn-secondary" onClick={() => setConfirmation(null)}>
               返回
             </button>
             <button
@@ -1611,11 +1911,7 @@ export default function ProxyOrders() {
         </Dialog>
       )}
       {copyFallback && (
-        <Dialog
-          title="请手动复制"
-          close={() => setCopyFallback("")}
-          busy={false}
-        >
+        <Dialog title="请手动复制" close={() => setCopyFallback('')} busy={false}>
           <p className="text-sm text-gray-600 mb-3">
             浏览器未允许自动写入剪贴板，请全选下方内容复制。
           </p>
@@ -1625,7 +1921,7 @@ export default function ProxyOrders() {
             rows={8}
             readOnly
             value={copyFallback}
-            onFocus={(event) => event.target.select()}
+            onFocus={event => event.target.select()}
           />
           <p className="text-xs text-gray-500 mt-2">关闭后清除本页临时模板。</p>
         </Dialog>

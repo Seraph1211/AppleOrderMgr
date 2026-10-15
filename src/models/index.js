@@ -58,6 +58,7 @@ const models = {
   InventoryDelivery: require('./InventoryDelivery')(sequelize),
 
   ProxyOrder: require('./ProxyOrder')(sequelize),
+  ProxyOrderLink: require('./ProxyOrderLink')(sequelize),
   ProxyAssignment: require('./ProxyAssignment')(sequelize),
   ProxyEvent: require('./ProxyEvent')(sequelize),
   MailContact: require('./MailContact')(sequelize),

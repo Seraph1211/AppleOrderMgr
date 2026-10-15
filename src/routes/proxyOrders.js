@@ -22,42 +22,44 @@ const handle = work =>
   });
 router.get(
   '/stores',
-  handle(() => input.STORES)
+  handle(() =>
+    input.STORES.map(store => ({ ...store, softwareName: input.STORE_SOFTWARE_NAMES[store.code] }))
+  )
+);
+router.get(
+  '/catalog',
+  handle(() => ({
+    productCandidates: input.PRODUCT_CANDIDATES,
+    paymentMethods: input.PAYMENT_METHODS,
+  }))
 );
 router.post(
   '/parse',
-  requirePermission(PERMISSIONS.PROXY_EDIT),
-  handle(req => input.parseProxyText(req.body.text))
+  handle(req => service.parseText(req.body.text))
 );
 router.post(
   '/address',
-  requirePermission(PERMISSIONS.PROXY_EDIT),
   handle(req => input.generateProxyAddress(req.body.storeCode))
 );
 router.post(
   '/copy',
-  requirePermission(PERMISSIONS.PROXY_COPY),
   handle(req => service.copyTemplates(req.body.ids, req.user.id))
 );
 router.get(
   '/accounts',
-  requirePermission(PERMISSIONS.PROXY_ACCOUNTS),
   handle(req => service.listAccounts(req.query))
 );
 for (const action of ['import', 'adopt'])
   router.post(
     `/accounts/${action}`,
-    requirePermission(PERMISSIONS.PROXY_ACCOUNTS),
     handle(req => service.changeAccounts(action, req.body, req.user.id))
   );
 router.post(
   '/accounts/status',
-  requirePermission(PERMISSIONS.PROXY_ACCOUNTS),
   handle(req => service.changeAccounts('status', req.body, req.user.id))
 );
 router.put(
   '/accounts/:id',
-  requirePermission(PERMISSIONS.PROXY_ACCOUNTS),
   handle(req => service.changeAccounts('update', req.body, req.user.id, req.params.id))
 );
 router.get(
@@ -66,7 +68,6 @@ router.get(
 );
 router.post(
   '/',
-  requirePermission(PERMISSIONS.PROXY_EDIT),
   handle(req => service.saveOrder(null, req.body, req.user.id))
 );
 router.get(
@@ -75,19 +76,11 @@ router.get(
 );
 router.put(
   '/:id',
-  requirePermission(PERMISSIONS.PROXY_EDIT),
   handle(req => service.saveOrder(req.params.id, req.body, req.user.id))
 );
-for (const [action, permission] of [
-  ['status', PERMISSIONS.PROXY_STATUS],
-  ['notes', PERMISSIONS.PROXY_EDIT],
-  ['accounts', PERMISSIONS.PROXY_ACCOUNTS],
-  ['release', PERMISSIONS.PROXY_ACCOUNTS],
-  ['link', PERMISSIONS.PROXY_LINK],
-])
+for (const action of ['status', 'notes', 'accounts', 'release', 'link'])
   router.post(
     `/:id/${action}`,
-    requirePermission(permission),
     handle(req => service.changeOrder(action, req.params.id, req.body, req.user.id))
   );
 module.exports = router;

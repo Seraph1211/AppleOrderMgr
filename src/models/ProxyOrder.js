@@ -13,6 +13,8 @@ module.exports = sequelize =>
       phone: DataTypes.STRING(20),
       email: DataTypes.STRING(255),
       idLast4: DataTypes.STRING(4),
+      orderSource: DataTypes.STRING(100),
+      productCandidates: DataTypes.JSONB,
       productModel: DataTypes.STRING(100),
       color: DataTypes.STRING(100),
       storage: DataTypes.STRING(20),

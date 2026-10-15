@@ -21,6 +21,8 @@ const draft = (extra = {}) => ({
   quantity: 1,
   storeCodes: ['R572'],
   storeMode: 'selected',
+  storeCity: '郑州',
+  orderSource: '闲鱼',
   billing: {
     province: '河南',
     city: '郑州',
@@ -50,12 +52,12 @@ describe('代抢文本与软件模板', () => {
       });
     }
   );
-  test('未填数量提示核对；城市不推定任意店', () => {
+  test('未填数量提示核对；城市默认全选门店', () => {
     const value = parseProxyText(source('18pm 银色 512G', '成都'));
     expect(value.draft).toMatchObject({
       quantity: 1,
-      storeCodes: [],
-      storeMode: 'selected',
+      storeCodes: expect.arrayContaining(['R502', 'R580']),
+      storeMode: 'city_any',
       storeCity: '成都',
     });
     expect(value.warnings.join(' ')).toContain('未填写数量');
@@ -93,6 +95,25 @@ describe('代抢文本与软件模板', () => {
     expect(normalizeProxyProduct('iPhone 17 Pro', '红色').color).toBe('红色');
     expect(normalizeProxyProduct('18PM', '未知新颜色').color).toBe('未知新颜色');
   });
+  test.each([
+    '18PM 银 白 256G',
+    '18PM 银 256G 512G',
+    'Duo 白 256G 或夜空色',
+    '18PM 银 太空灰 256G',
+    '18PM 白 256G',
+  ])('歧义或未核实组合仅预览 %s', value => {
+    const preview = parseProxyText(`${source(value)}\n订单来源：闲鱼`);
+    expect(preview.canSave).toBe(false);
+    expect(preview.errors.length).toBeGreaterThan(0);
+  });
+  test('候选格式错误不产生服务端异常', () => {
+    expect(() => validateProxyInput(draft({ productCandidates: [null] }))).toThrow('型号');
+    expect(() =>
+      validateProxyInput(
+        draft({ productCandidates: [{ productModel: '18PM 未知', color: '银', storage: '256GB' }] })
+      )
+    ).toThrow('型号');
+  });
   test('拒绝多位客户和过长原文', () => {
     expect(() => parseProxyText('姓名：张三\n姓名：李四')).toThrow('一位');
     expect(() => parseProxyText('x'.repeat(10001))).toThrow();
@@ -107,16 +128,32 @@ describe('代抢文本与软件模板', () => {
       draft({
         storeMode: 'city_any',
         storeCity: '成都',
+        storeCodes: [],
         billing: { ...draft().billing, referenceStoreCode: 'R502' },
       })
     );
     expect(value.storeCodes).toEqual(expect.arrayContaining(['R502', 'R580']));
-    expect(validateProxyInput(draft({ storeCodes: ['R572', 'R502'] })).storeCodes).toHaveLength(2);
+    expect(() => validateProxyInput(draft({ storeCodes: ['R572', 'R502'] }))).toThrow('直营店');
+  });
+  test('城市任选保存后导出使用固定门店集合', () => {
+    const value = draft({ storeMode: 'city_any', storeCodes: ['R572'] });
+    STORES.push({ code: 'RTEST', city: '郑州', name: '测试新增门店' });
+    try {
+      const template = buildProxyTemplate(value, {
+        appleId: 'pool@example.com',
+        password: 'synthetic',
+      });
+      expect(template.split(',')[2]).toBe('郑州万象城');
+      expect(validateProxyInput(value).storeCodes).toEqual(['R572']);
+    } finally {
+      STORES.pop();
+    }
   });
   test.each([
     { idLast4: 20 },
     { idLast4: '20' },
     { storeCodes: [] },
+    { billing: {} },
     { quantity: 0 },
     { phone: '123' },
     { email: 'bad' },
@@ -131,7 +168,7 @@ describe('代抢文本与软件模板', () => {
       password: 'synthetic-pass',
     });
     expect(value).toBe(
-      'pool@example.com,synthetic-pass,,,1,指定地址,13800000000,张,三,,customer@example.com,河南,郑州,二七区,,,建设路1号,,,,,,WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#,0020,代抢 网店,,,'
+      'pool@example.com,synthetic-pass,郑州万象城,iPhone 18 Pro Max 勃艮第酒红色 256G,1,指定地址,13800000000,张,三,,customer@example.com,河南,郑州,二七区,,,建设路1号,,,,,,WECHAT,0,,,,否##0#7-1-8-9-2-0#0#0#否#否#否#否#否#5000#0#0#否#0#0#0#0#否#否##否##否#,0020,代抢 闲鱼,,,'
     );
     expect(() =>
       buildProxyTemplate(draft(), { appleId: 'a@example.com', password: 'bad,pass' })
