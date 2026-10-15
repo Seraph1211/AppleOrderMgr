@@ -68,6 +68,7 @@ function serializeRecipient(
     masked_address: maskAddress(recipient),
     tag: recipient.tag,
     channel: recipient.channel,
+    credit_rating: recipient.creditRating ?? null,
     status: recipient.status,
     notes: recipient.notes,
     order_count: stats.orderCount || 0,

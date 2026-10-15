@@ -84,6 +84,11 @@ function recipientInput(payload, creating = false) {
   }
   if (out.email && !/^[^\s@]+@vvv8\.net$/i.test(out.email))
     throw ApiError.badRequest('下单邮箱必须使用 @vvv8.net');
+  if (payload.creditRating !== undefined) {
+    if (![null, '', 'A', 'B', 'C'].includes(payload.creditRating))
+      throw ApiError.badRequest('信用评级必须是 A、B、C 或留空');
+    out.creditRating = payload.creditRating || null;
+  }
   if (payload.status !== undefined) {
     if (!ACCOUNT_STATUSES.includes(payload.status)) throw ApiError.badRequest('使用状态无效');
     out.status = payload.status;

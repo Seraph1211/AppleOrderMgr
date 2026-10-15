@@ -30,7 +30,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
     district: clean(item?.district),
     streetAddress: clean(item?.streetAddress),
     tag: clean(item?.tag),
-    channel: clean(item?.channel),
+    creditRating: clean(item?.creditRating),
     question1: '',
     answer1: '',
     question2: '',
@@ -49,7 +49,10 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
       getAppleIdDetail(item.id, { includeSecrets: true })
         .then(response => {
           if (active) {
-            setForm(previous => ({ ...previous, ...response.data.security_qa }));
+            setForm(previous => ({
+              ...previous,
+              ...response.data.security_qa,
+            }));
             setQaReady(true);
           }
         })
@@ -81,7 +84,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
         required={required}
         disabled={disabled}
         autoComplete="off"
-        maxLength={key === 'idCardNumber' ? 18 : key === 'channel' ? 100 : 1000}
+        maxLength={key === 'idCardNumber' ? 18 : 1000}
       />
     </label>
   );
@@ -122,7 +125,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
             'district',
             'streetAddress',
             'tag',
-            'channel',
+            'creditRating',
             'status',
             'notes',
           ].map(key => [key, form[key]])
@@ -181,7 +184,22 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
                 {field('district', '区')}
                 {field('streetAddress', '街道地址')}
                 {field('tag', 'TAG', false, 'text', !canChangeTag)}
-                {field('channel', '渠道')}
+                <label className="block text-sm text-gray-700">
+                  信用评级
+                  <ResponsiveSelect
+                    aria-label="信用评级"
+                    className="input w-full mt-1"
+                    value={form.creditRating}
+                    onChange={event => change('creditRating', event.target.value)}
+                  >
+                    <option value="">未评级</option>
+                    {['A', 'B', 'C'].map(rating => (
+                      <option key={rating} value={rating}>
+                        {rating}
+                      </option>
+                    ))}
+                  </ResponsiveSelect>
+                </label>
               </>
             )}
             <label className="block text-sm text-gray-700">
