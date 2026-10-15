@@ -1,0 +1,21 @@
+{
+  "api": [
+    "src/models/AppleId.js",
+    "src/controllers/appleIdController.js",
+    "src/routes/appleIds.js"
+  ],
+  "frontend": [
+    "frontend/src/components/ProfileDetailsModal.jsx",
+    "frontend/src/components/AppleIdBatchEditModal.jsx",
+    "frontend/src/constants/tableColumns.js",
+    "frontend/src/constants/appleIdStatus.js",
+    "frontend/src/hooks/useColumnConfig.js",
+    "frontend/src/pages/AppleIds.jsx",
+    "frontend/src/utils/columnConfig.js",
+    "frontend/src/utils/appleIdBatch.js",
+    "frontend/src/utils/appleIdSecurityQa.js"
+  ],
+  "migrator": [
+    "migrations/20261016000001-add-apple-id-account-number.js"
+  ]
+}

@@ -4,6 +4,8 @@ import { Link } from 'react-router-dom';
 import client from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { formatOrderTime } from '../utils/orderTime';
+import { getAppleIdStatusBadge } from '../constants/appleIdStatus';
+import { formatAppleIdSecurityQuestion } from '../utils/appleIdSecurityQa';
 import { getDisplayOrderStatusBadge } from '../constants/orderStatus';
 
 /** 展示独立档案及按订单自身外键关联、授权 TAG 范围内的订单。 */
@@ -95,6 +97,7 @@ export default function ProfileDetailsModal({ kind, item, onClose }) {
       if (requestId === qaRequest.current) setQaLoading(false);
     }
   };
+  const accountBadge = getAppleIdStatusBadge(detail?.status);
   const time = value => (value ? formatOrderTime(value) : '—');
   return (
     <div className="!m-0 fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
@@ -135,7 +138,14 @@ export default function ProfileDetailsModal({ kind, item, onClose }) {
           ) : (
             !error && (
               <>
-                <p className="text-sm text-gray-700">使用状态：{detail?.status || '—'}</p>
+                <p className="text-sm text-gray-700">
+                  使用状态：
+                  {account ? (
+                    <span className={`badge ${accountBadge.class}`}>{accountBadge.text}</span>
+                  ) : (
+                    detail?.status || '—'
+                  )}
+                </p>
                 {!account && (
                   <p className="text-sm text-gray-700">
                     TAG：{detail?.tag || '—'} · 渠道：{detail?.channel || '—'}
@@ -162,10 +172,10 @@ export default function ProfileDetailsModal({ kind, item, onClose }) {
                           <tbody>
                             {[1, 2, 3].map(i => (
                               <tr className="border-b" key={i}>
-                                <th className="p-2 text-left">问题 {i}</th>
-                                <td>{qa[`question${i}`]}</td>
+                                <th className="p-2 text-left">问题 {i}（编码 / 内容）</th>
+                                <td>{formatAppleIdSecurityQuestion(qa[`question${i}`])}</td>
                                 <th className="p-2 text-left">答案</th>
-                                <td>{qa[`answer${i}`]}</td>
+                                <td>{qa[`answer${i}`] || '—'}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -176,7 +186,9 @@ export default function ProfileDetailsModal({ kind, item, onClose }) {
                 )}
                 {canOrders && (
                   <div>
-                    <h3 className="font-semibold mb-2">名下订单（{total}）</h3>
+                    <h3 className="font-semibold mb-2">
+                      {account ? '关联订单' : '名下订单'}（{total}）
+                    </h3>
                     <p className="text-sm text-gray-500 mb-3">
                       按订单关联的{account ? 'Apple ID' : '取机人'}
                       展示，仅包含当前有权限查看的订单。

@@ -193,100 +193,18 @@ export const ordersColumns = [
 ];
 
 export const appleIdsColumns = [
-  // 基础信息
-  {
-    key: 'appleId',
-    label: 'Apple ID',
-    width: '250px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  {
-    key: 'password',
-    label: '密码',
-    width: '150px',
-    defaultVisible: true,
-    sortable: false,
-    pinned: false,
-  },
-  {
-    key: 'notes',
-    label: '备注',
-    width: '150px',
-    defaultVisible: false,
-    sortable: true,
-    pinned: false,
-  },
-  // 安全信息
-  {
-    key: 'securityQa',
-    label: '密保问答',
-    width: '300px',
-    defaultVisible: false,
-    sortable: false,
-    pinned: false,
-  },
-  // 账号属性
-  {
-    key: 'status',
-    label: '状态',
-    width: '100px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  {
-    key: 'country',
-    label: '国家地区',
-    width: '120px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  // 统计信息
-  {
-    key: 'orderCount',
-    label: '名下订单',
-    width: '100px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  {
-    key: 'lastOrderDate',
-    label: '最后下单',
-    width: '160px',
-    defaultVisible: true,
-    sortable: true,
-    pinned: false,
-  },
-  // 时间戳
-  {
-    key: 'createdAt',
-    label: '创建时间',
-    width: '160px',
-    defaultVisible: false,
-    sortable: true,
-    pinned: false,
-  },
-  {
-    key: 'updatedAt',
-    label: '更新时间',
-    width: '160px',
-    defaultVisible: false,
-    sortable: true,
-    pinned: false,
-  },
-  // 操作
-  {
-    key: 'actions',
-    label: '操作',
-    width: '100px',
-    defaultVisible: true,
-    sortable: false,
-    pinned: true,
-  },
+  { key: 'accountNumber', label: '编号', width: '80px', defaultVisible: true },
+  { key: 'appleId', label: 'Apple ID', width: '250px', defaultVisible: true },
+  { key: 'password', label: '密码', width: '150px', defaultVisible: true },
+  { key: 'country', label: '国家地区', width: '120px', defaultVisible: true },
+  { key: 'status', label: '状态', width: '100px', defaultVisible: true },
+  { key: 'orderCount', label: '关联订单', width: '100px', defaultVisible: true },
+  { key: 'lastOrderDate', label: '最后下单时间', width: '180px', defaultVisible: true },
+  { key: 'notes', label: '备注', width: '150px', defaultVisible: true },
+  { key: 'securityQa', label: '密保问答', width: '120px', defaultVisible: false },
+  { key: 'createdAt', label: '创建时间', width: '160px', defaultVisible: false },
+  { key: 'updatedAt', label: '更新时间', width: '160px', defaultVisible: false },
+  { key: 'actions', label: '操作', width: '100px', defaultVisible: true, pinned: true },
 ];
 
 export const recipientsColumns = [

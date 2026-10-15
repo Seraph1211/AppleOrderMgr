@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import {
   mergeColumnConfig,
+  resolveAppleIdColumnConfig,
   restoreOfficialStatusColumn,
   restoreActualPickupDateColumn,
 } from '../utils/columnConfig';
@@ -18,6 +19,21 @@ export default function useColumnConfig(tableName, defaultColumns) {
     if (saved) {
       try {
         const config = JSON.parse(saved);
+        if (tableName === 'appleIds' && config.layoutVersion !== 1) {
+          const migrated = resolveAppleIdColumnConfig(defaultColumns, config);
+          localStorage.setItem(
+            storageKey,
+            JSON.stringify({
+              layoutVersion: 1,
+              columns: migrated.map((column, order) => ({
+                key: column.key,
+                visible: column.visible,
+                order,
+              })),
+            })
+          );
+          return migrated;
+        }
         const merged = mergeColumnConfig(defaultColumns, config.columns);
         if (
           tableName === 'orders' &&
@@ -58,6 +74,7 @@ export default function useColumnConfig(tableName, defaultColumns) {
   const saveConfig = newColumns => {
     const config = {
       version: '1.0',
+      ...(tableName === 'appleIds' ? { layoutVersion: 1 } : {}),
       ...(tableName === 'orders' ? { officialStatusVersion: 1, actualPickupDateVersion: 2 } : {}),
       columns: newColumns.map((col, index) => ({
         key: col.key,

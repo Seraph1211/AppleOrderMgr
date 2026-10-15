@@ -2,7 +2,7 @@ import ResponsiveSelect from '../components/responsiveSelect';
 import ProfileDetailsModal from '../components/ProfileDetailsModal';
 import { formatOrderTime } from '../utils/orderTime';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Plus, Mail, Package, Edit, Trash2, Settings, Upload } from 'lucide-react';
+import { Search, Plus, Mail, Package, Edit, Trash2, Settings, Upload, Copy } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { getAppleIds, createAppleId, updateAppleId, deleteAppleId } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
@@ -13,11 +13,21 @@ import BatchImportModal from '../components/BatchImportModal';
 import EditAppleIdModal from '../components/EditAppleIdModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { appleIdsColumns } from '../constants/tableColumns';
-import { STATUS_OPTIONS, STATUS_BADGE_MAP } from '../constants/status';
+import { STATUS_OPTIONS } from '../constants/status';
+import AppleIdBatchEditModal from '../components/AppleIdBatchEditModal';
+import client from '../api/client';
+import { getAppleIdStatusBadge } from '../constants/appleIdStatus';
+import { togglePageSelection } from '../utils/appleIdBatch';
 import { PERMISSIONS } from '../constants/permissions';
 
 export default function AppleIds() {
   const { can } = useAuth();
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showBatchEdit, setShowBatchEdit] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [batchNotice, setBatchNotice] = useState('');
+  const copyRequest = useRef(false);
+  const selectAllRef = useRef(null);
   const [appleIds, setAppleIds] = useState([]);
   const [detailItem, setDetailItem] = useState(null);
   const [pageError, setPageError] = useState('');
@@ -60,6 +70,7 @@ export default function AppleIds() {
         setAppleIds(
           res.data.apple_ids.map(item => ({
             id: item.id,
+            accountNumber: item.account_number,
             appleId: item.apple_id,
             password: item.password || '-',
             notes: item.notes || '',
@@ -67,9 +78,7 @@ export default function AppleIds() {
             country: item.country || '-',
             status: item.status,
             orderCount: item.order_count || 0,
-            lastOrderDate: item.last_order_date
-              ? formatOrderTime(item.last_order_date).slice(0, 10)
-              : '-',
+            lastOrderDate: item.last_order_date ? formatOrderTime(item.last_order_date) : '-',
             createdAt: item.created_at,
             updatedAt: item.updated_at,
           }))
@@ -164,12 +173,37 @@ export default function AppleIds() {
   );
   const visibleColumns = availableColumns.filter(col => col.visible);
 
-  const getStatusBadge = status => {
-    return STATUS_BADGE_MAP[status] || { text: status, class: 'badge-secondary' };
+  const pageIds = appleIds.map(item => item.id);
+  const selectedOnPage = pageIds.filter(id => selectedIds.has(id)).length;
+  useEffect(() => {
+    if (selectAllRef.current)
+      selectAllRef.current.indeterminate = selectedOnPage > 0 && selectedOnPage < appleIds.length;
+  }, [selectedOnPage, appleIds.length, loading]);
+
+  const copySelected = async () => {
+    if (copyRequest.current) return;
+    copyRequest.current = true;
+    setCopying(true);
+    setBatchNotice('');
+    try {
+      if (!navigator.clipboard?.writeText)
+        throw new Error('当前浏览器不支持剪贴板，请使用安全连接后重试');
+      const response = await client.post('/apple-ids/copy-import', { ids: [...selectedIds] });
+      if (!response.success) throw new Error('读取复制内容失败');
+      await navigator.clipboard.writeText(response.data.text);
+      setBatchNotice(`已复制 ${response.data.count} 个 Apple ID`);
+    } catch (error) {
+      setBatchNotice(`复制失败：${error.message || '请检查剪贴板权限后重试'}`);
+    } finally {
+      copyRequest.current = false;
+      setCopying(false);
+    }
   };
 
   const renderCell = (item, column) => {
     switch (column.key) {
+      case 'accountNumber':
+        return <span className="text-sm text-gray-600">{item.accountNumber ?? '—'}</span>;
       case 'appleId':
         return (
           <div className="flex flex-wrap gap-3 items-center">
@@ -203,7 +237,7 @@ export default function AppleIds() {
       case 'country':
         return <span className="text-sm text-gray-600">{item.country}</span>;
       case 'status': {
-        const badge = getStatusBadge(item.status);
+        const badge = getAppleIdStatusBadge(item.status);
         return <span className={`badge ${badge.class}`}>{badge.text}</span>;
       }
       case 'orderCount':
@@ -236,14 +270,6 @@ export default function AppleIds() {
       case 'actions':
         return (
           <div className="flex items-center justify-end space-x-2">
-            {can(PERMISSIONS.ORDERS_READ) && (
-              <button
-                className="btn btn-secondary whitespace-nowrap"
-                onClick={() => setDetailItem(item)}
-              >
-                名下订单
-              </button>
-            )}
             {can(PERMISSIONS.APPLE_IDS_EDIT) && (
               <button
                 aria-label={`编辑 Apple ID ${item.id}`}
@@ -313,6 +339,8 @@ export default function AppleIds() {
               placeholder="搜索 Apple ID..."
               value={searchTerm}
               onChange={e => {
+                setSelectedIds(new Set());
+                setBatchNotice('');
                 setSearchTerm(e.target.value);
                 setPagination(previous => ({ ...previous, currentPage: 1 }));
               }}
@@ -323,6 +351,8 @@ export default function AppleIds() {
             aria-label="状态筛选"
             value={filterStatus}
             onChange={e => {
+              setSelectedIds(new Set());
+              setBatchNotice('');
               setFilterStatus(e.target.value);
               setPagination(previous => ({ ...previous, currentPage: 1 }));
             }}
@@ -346,6 +376,47 @@ export default function AppleIds() {
         </div>
       </div>
 
+      {batchNotice && (
+        <p role="status" className="text-sm text-gray-700">
+          {batchNotice}
+        </p>
+      )}
+      {selectedIds.size > 0 && (
+        <div className="bg-primary-50 border border-blue-100 rounded-lg p-3 flex flex-wrap items-center gap-3">
+          <span className="text-sm">已选择 {selectedIds.size} 个账号（支持跨页）</span>
+          <button
+            className="btn btn-secondary"
+            disabled={copying}
+            onClick={() => {
+              setSelectedIds(new Set());
+              setBatchNotice('');
+            }}
+          >
+            清空选择
+          </button>
+          {can(PERMISSIONS.APPLE_IDS_EDIT) && (
+            <button
+              className="btn btn-primary"
+              disabled={loading || copying || selectedIds.size > 5000}
+              onClick={() => setShowBatchEdit(true)}
+            >
+              批量修改
+            </button>
+          )}
+          <button
+            className="btn btn-secondary flex items-center gap-2"
+            disabled={loading || copying || selectedIds.size > 5000}
+            onClick={copySelected}
+          >
+            <Copy className="w-4 h-4" />
+            {copying ? '正在复制…' : '批量复制'}
+          </button>
+          <span className="text-sm text-gray-500">
+            复制格式：AppleID,密码,（每行一个，最多 5000 个）
+          </span>
+        </div>
+      )}
+
       {/* Apple ID 列表 */}
       <div className="card">
         {loading ? (
@@ -364,6 +435,20 @@ export default function AppleIds() {
             <table className="w-full min-w-max">
               <thead>
                 <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="py-3 px-4">
+                    <input
+                      ref={selectAllRef}
+                      type="checkbox"
+                      aria-label="选择当前页全部 Apple ID"
+                      checked={appleIds.length > 0 && selectedOnPage === appleIds.length}
+                      disabled={copying}
+                      onChange={event =>
+                        setSelectedIds(previous =>
+                          togglePageSelection(previous, pageIds, event.target.checked)
+                        )
+                      }
+                    />
+                  </th>
                   {visibleColumns.map(col => (
                     <th
                       key={col.key}
@@ -389,6 +474,19 @@ export default function AppleIds() {
                     key={item.id}
                     className="border-b border-gray-200 hover:bg-gray-50 transition-colors"
                   >
+                    <td className="py-4 px-4">
+                      <input
+                        type="checkbox"
+                        aria-label={`选择 Apple ID ${item.accountNumber ?? item.id}`}
+                        checked={selectedIds.has(item.id)}
+                        disabled={copying}
+                        onChange={event =>
+                          setSelectedIds(previous =>
+                            togglePageSelection(previous, [item.id], event.target.checked)
+                          )
+                        }
+                      />
+                    </td>
                     {visibleColumns.map(col => (
                       <td
                         key={col.key}
@@ -410,6 +508,19 @@ export default function AppleIds() {
           </div>
         )}
       </div>
+
+      {showBatchEdit && (
+        <AppleIdBatchEditModal
+          ids={[...selectedIds]}
+          onClose={() => setShowBatchEdit(false)}
+          onSaved={async updated => {
+            setShowBatchEdit(false);
+            setSelectedIds(new Set());
+            setBatchNotice(`已更新 ${updated} 个 Apple ID`);
+            await loadAppleIds();
+          }}
+        />
+      )}
 
       {detailItem && (
         <ProfileDetailsModal

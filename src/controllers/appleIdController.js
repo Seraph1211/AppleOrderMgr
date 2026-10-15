@@ -26,6 +26,10 @@ const {
   rejectLegacyBindingFields,
 } = require('../services/profileIndependence');
 
+const MAX_BATCH_ACCOUNT_IDS = 5000;
+const MAX_POSTGRES_INTEGER = 2147483647;
+const MAX_ACCOUNT_NOTES_LENGTH = 10000;
+
 /**
  * 把 AppleId 实例序列化为对外对象
  * @param {Object} appleId - Sequelize AppleId JSON 形态
@@ -36,6 +40,7 @@ const {
 function serializeAppleId(appleId, stats = {}, includePassword = false) {
   const result = {
     id: appleId.id,
+    account_number: appleId.accountNumber,
     apple_id: appleId.appleId,
     notes: appleId.notes,
     country: appleId.country,
@@ -134,7 +139,13 @@ async function getOrderStatsByAppleIds(ids, user) {
     attributes: [
       'appleIdRef',
       [sequelize.fn('COUNT', sequelize.col('id')), 'count'],
-      [sequelize.fn('MAX', sequelize.col('created_at')), 'lastOrderDate'],
+      [
+        sequelize.fn(
+          'MAX',
+          sequelize.fn('COALESCE', sequelize.col('order_date'), sequelize.col('created_at'))
+        ),
+        'lastOrderDate',
+      ],
     ],
     where: scopeOrderWhere(user, { appleIdRef: { [Op.in]: ids } }),
     group: ['appleIdRef'],
@@ -204,6 +215,7 @@ async function getAppleIdDetail(req, res) {
  */
 async function createAppleId(req, res) {
   try {
+    rejectAccountNumberInput(req.body);
     rejectLegacyBindingFields(req.body || {}, true);
     const { apple_id, password, notes, country, status, security_qa } = req.body || {};
 
@@ -273,6 +285,7 @@ async function updateAppleId(req, res) {
       throw ApiError.badRequest('Apple ID 必须是正整数', { received: req.params.id });
     }
 
+    rejectAccountNumberInput(req.body);
     rejectLegacyBindingFields(req.body || {}, true);
     const { password, notes, country, status, security_qa } = req.body || {};
 
@@ -294,7 +307,7 @@ async function updateAppleId(req, res) {
     const updates = {};
     if (password !== undefined) updates.password = password;
     if (notes !== undefined) {
-      if (notes !== null && (typeof notes !== 'string' || notes.length > 10000))
+      if (notes !== null && (typeof notes !== 'string' || notes.length > MAX_ACCOUNT_NOTES_LENGTH))
         throw ApiError.badRequest('备注长度无效');
       updates.notes = notes;
     }
@@ -363,7 +376,138 @@ async function deleteAppleId(req, res) {
   }
 }
 
+/** 账号编号是只读字段，拒绝手动创建或修改。 */
+function rejectAccountNumberInput(body) {
+  if (body && ['account_number', 'accountNumber'].some(key => Object.hasOwn(body, key))) {
+    throw ApiError.badRequest('账号编号由系统自动分配，不允许手动设置或修改');
+  }
+}
+
+/** 验证批量请求的字段和数据库 ID，不接受字符串、重复值或额外字段。 */
+function validateBatchInput(body, allowedFields) {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    throw ApiError.badRequest('请求必须是对象');
+  }
+  if (Object.keys(body).some(key => !allowedFields.includes(key))) {
+    throw ApiError.badRequest('请求包含不允许的字段');
+  }
+  if (
+    !Array.isArray(body.ids) ||
+    body.ids.length < 1 ||
+    body.ids.length > MAX_BATCH_ACCOUNT_IDS ||
+    body.ids.some(id => !Number.isInteger(id) || id <= 0 || id > MAX_POSTGRES_INTEGER) ||
+    new Set(body.ids).size !== body.ids.length
+  ) {
+    throw ApiError.badRequest('ids 必须包含 1 至 5000 个不重复的正整数 ID');
+  }
+  return body.ids;
+}
+
+/**
+ * 原子更新选中账号的状态和备注，只修改显式提交的字段。
+ * @param {Object} req - Express 请求
+ * @param {Object} res - Express 响应
+ * @returns {Promise<void>} 更新数量
+ */
+async function batchUpdateAppleIds(req, res) {
+  try {
+    assertPermission(req, PERMISSIONS.APPLE_IDS_EDIT);
+    const ids = validateBatchInput(req.body, ['ids', 'status', 'notes']);
+    const updates = {};
+    if (Object.hasOwn(req.body, 'status')) {
+      if (!ACCOUNT_STATUSES.includes(req.body.status)) {
+        throw ApiError.badRequest('status 必须是：未使用、使用中、已下架或异常');
+      }
+      updates.status = req.body.status;
+    }
+    if (Object.hasOwn(req.body, 'notes')) {
+      if (
+        req.body.notes !== null &&
+        (typeof req.body.notes !== 'string' || req.body.notes.length > MAX_ACCOUNT_NOTES_LENGTH)
+      ) {
+        throw ApiError.badRequest('notes 必须是字符串或 null，长度不能超过 10000');
+      }
+      updates.notes = req.body.notes;
+    }
+    if (!Object.keys(updates).length) {
+      throw ApiError.badRequest('必须提供 status 或 notes');
+    }
+    await sequelize.transaction(async transaction => {
+      await lockProfiles(transaction, req.user?.id);
+      const rows = await AppleId.findAll({
+        attributes: ['id'],
+        where: { id: { [Op.in]: ids } },
+        order: [['id', 'ASC']],
+        transaction,
+        lock: transaction.LOCK.UPDATE,
+      });
+      if (rows.length !== ids.length) {
+        throw ApiError.notFound('部分 Apple ID 不存在，未更新任何账号');
+      }
+      await AppleId.update(updates, {
+        where: { id: { [Op.in]: ids } },
+        fields: Object.keys(updates),
+        transaction,
+      });
+    });
+    logger.info('批量更新 Apple ID 成功', {
+      actorId: req.user?.id,
+      count: ids.length,
+      fields: Object.keys(updates),
+    });
+    res.json({ success: true, data: { updated: ids.length } });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    logger.error('批量更新 Apple ID 失败', { errorType: error.name, actorId: req.user?.id });
+    throw ApiError.database('批量更新 Apple ID 失败');
+  }
+}
+
+/**
+ * 按账号编号生成外部导入文本，逗号或换行无法无歧义表示时整批拒绝。
+ * @param {Object} req - Express 请求
+ * @param {Object} res - Express 响应
+ * @returns {Promise<void>} 账号数量及导入文本
+ */
+async function copyImportAppleIds(req, res) {
+  res.set('Cache-Control', 'no-store');
+  try {
+    assertPermission(req, PERMISSIONS.APPLE_IDS_READ);
+    const ids = validateBatchInput(req.body, ['ids']);
+    const rows = await AppleId.findAll({
+      attributes: ['id', 'accountNumber', 'appleId', 'password'],
+      where: { id: { [Op.in]: ids } },
+      order: [['accountNumber', 'ASC']],
+    });
+    if (rows.length !== ids.length) {
+      throw ApiError.notFound('部分 Apple ID 不存在，未生成导入文本');
+    }
+    const lines = rows.map(row => {
+      const { appleId, password } = row;
+      if (
+        typeof appleId !== 'string' ||
+        typeof password !== 'string' ||
+        /[,\r\n]/.test(appleId) ||
+        /[,\r\n]/.test(password)
+      ) {
+        throw ApiError.badRequest('账号或密码包含逗号或换行等不支持的格式，无法复制导入');
+      }
+      return `${appleId},${password},`;
+    });
+    res.json({ success: true, data: { count: rows.length, text: lines.join('\n') } });
+  } catch (error) {
+    if (error instanceof ApiError) throw error;
+    logger.error('生成 Apple ID 导入文本失败', {
+      errorType: error.name,
+      actorId: req.user?.id,
+    });
+    throw ApiError.database('生成 Apple ID 导入文本失败');
+  }
+}
+
 module.exports = {
+  batchUpdateAppleIds,
+  copyImportAppleIds,
   listAppleIds,
   getAppleIdDetail,
   createAppleId,
