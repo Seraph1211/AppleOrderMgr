@@ -1,0 +1,12 @@
+*
+!src
+!src/**
+!frontend
+!frontend/src
+!frontend/src/**
+!migrations
+!migrations/20261016000003-add-recipient-credit-rating.js
+!scripts
+!scripts/releases
+!scripts/releases/20261016-recipient-credit-rating
+!scripts/releases/20261016-recipient-credit-rating/**
