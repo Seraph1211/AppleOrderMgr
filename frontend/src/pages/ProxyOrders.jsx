@@ -1,3 +1,11 @@
+import { createPortal } from 'react-dom';
+import './proxyOrders/proxyOrders.css';
+import {
+  normalizeAvailableCount,
+  assignmentBlockReason,
+  tryClipboard,
+} from './proxyOrders/feedback';
+import useModalScrollLock from '../components/useModalScrollLock';
 import OfficialOrderStatus from '../components/OfficialOrderStatus';
 import { getProductDisplayName } from '../utils/productNaming';
 import ResponsiveSelect from '../components/responsiveSelect';
@@ -56,6 +64,7 @@ function candidateNames(order) {
 }
 
 function Dialog({ title, children, close, busy }) {
+  useModalScrollLock();
   const dialogRef = useRef(null);
   const callbacks = useRef({ close, busy });
   callbacks.current = { close, busy };
@@ -85,16 +94,42 @@ function Dialog({ title, children, close, busy }) {
         }
       }
     };
+    const viewport = window.visualViewport;
+    const updateViewport = () => {
+      const panel = dialogRef.current;
+      if (!panel) return;
+      const overlay = panel.parentElement;
+      if (!window.matchMedia('(max-width: 767px)').matches) {
+        panel.style.height = '';
+        panel.style.maxHeight = '';
+        overlay.style.height = '';
+        overlay.style.top = '';
+        return;
+      }
+      const height = `${viewport?.height || window.innerHeight}px`;
+      panel.style.height = height;
+      panel.style.maxHeight = height;
+      overlay.style.height = height;
+      overlay.style.top = `${viewport?.offsetTop || 0}px`;
+    };
+    updateViewport();
+    viewport?.addEventListener('resize', updateViewport);
+    viewport?.addEventListener('scroll', updateViewport);
+    window.addEventListener('resize', updateViewport);
     document.addEventListener('keydown', key);
     dialogRef.current?.focus({ preventScroll: true });
     return () => {
       document.removeEventListener('keydown', key);
-      previous?.focus?.();
+      viewport?.removeEventListener('resize', updateViewport);
+      viewport?.removeEventListener('scroll', updateViewport);
+      window.removeEventListener('resize', updateViewport);
+      if (previous?.isConnected && !previous.matches('input, textarea, select'))
+        previous.focus?.({ preventScroll: true });
     };
   }, []);
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-2 sm:p-6"
+      className="proxy-dialog fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-2 sm:p-6"
       onClick={event => {
         if (event.target === event.currentTarget && !busy) close();
       }}
@@ -105,26 +140,37 @@ function Dialog({ title, children, close, busy }) {
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className="bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[94dvh] flex flex-col"
+        className="proxy-dialog-panel bg-white rounded-xl shadow-xl w-full max-w-4xl max-h-[94dvh] flex flex-col"
       >
-        <header className="flex items-center justify-between p-4 border-b">
-          <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+        <header className="shrink-0 flex items-center justify-between gap-3 p-4 border-b">
+          <div className="min-w-0">
+            <h2 className="text-xl font-semibold text-gray-900">{title}</h2>
+            {busy && (
+              <p role="status" className="text-sm text-primary flex items-center gap-2 mt-1">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                正在处理，请稍候…
+              </p>
+            )}
+          </div>
           <button className="btn btn-secondary" aria-label="关闭" disabled={busy} onClick={close}>
             <X className="w-4 h-4" />
           </button>
         </header>
-        <div className="p-4 overflow-y-auto min-h-0">{children}</div>
+        <div className="proxy-dialog-body p-4 overflow-y-auto min-h-0 flex-1">{children}</div>
       </section>
-    </div>
+    </div>,
+    document.body
   );
 }
-function Field({ label, value, onChange, type = 'text', disabled = false }) {
+function Field({ label, value, onChange, type = 'text', disabled = false, maxLength, inputMode }) {
   return (
     <label className="block text-sm text-gray-600">
       {label}
       <input
         className="input w-full mt-1"
         type={type}
+        maxLength={maxLength}
+        inputMode={inputMode}
         value={value ?? ''}
         onChange={event =>
           onChange(type === 'number' ? Number(event.target.value) : event.target.value)
@@ -182,6 +228,7 @@ export default function ProxyOrders() {
   const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
   const selectedAccounts = data.rows.filter(row => selected.includes(row.id));
   const cities = [...new Set(stores.map(s => s.city))];
+  const assignmentError = assignmentBlockReason(availableCount, count, manualAccount);
   const refresh = () => {
     setSelected([]);
     setRevision(value => value + 1);
@@ -279,26 +326,34 @@ export default function ProxyOrders() {
       await work();
       if (success) setNotice(success);
     } catch (failure) {
-      if (modal || statusTarget) setModalError(failure.message);
-      else setError(failure.message);
+      setNotice('');
+      setModalError(failure.message);
+      setError(failure.message);
     } finally {
       setBusy(false);
     }
   }
   async function clipboard(value) {
     try {
-      await navigator.clipboard.writeText(value);
+      const copied = await tryClipboard(value, navigator.clipboard);
+      if (!copied) setCopyFallback(value);
+      return copied;
     } catch {
       setCopyFallback(value);
+      return false;
     }
   }
   async function copyOrders(orderIds) {
     await run(async () => {
-      const response = await client.post('/proxy-orders/copy', {
-        ids: orderIds,
-      });
-      await clipboard(response.data.text);
-    }, '模板已生成，请在抢购软件中核对支付、商品和门店设置');
+      setNotice('正在生成并复制模板…');
+      const response = await client.post('/proxy-orders/copy', { ids: orderIds });
+      const copied = await clipboard(response.data.text);
+      setNotice(
+        copied
+          ? '模板已复制，请在抢购软件中核对商品、门店和支付。'
+          : '模板已生成，浏览器未完成自动复制，请在复制窗口中手动复制。'
+      );
+    });
   }
   async function loadDetail(row) {
     await run(async () => {
@@ -378,7 +433,10 @@ export default function ProxyOrders() {
         ? await client.put(`/proxy-orders/${value.id}`, payload)
         : await client.post('/proxy-orders', payload);
       setNotice(
-        !value.id && !response.data.assigned ? '已登记；账号池暂无可用账号，请导入后分配' : '已保存'
+        response.data.assignmentMessage ||
+          (!value.id && !response.data.assigned
+            ? '已登记；账号池暂无可用账号，请导入后分配'
+            : '已保存')
       );
       close();
       setData({ rows: [], count: 0 });
@@ -400,11 +458,19 @@ export default function ProxyOrders() {
   }
   async function change(action, body) {
     await run(async () => {
-      await client.post(`/proxy-orders/${current.id}/${action}`, {
+      const mutation = await client.post(`/proxy-orders/${current.id}/${action}`, {
         ...body,
         expectedVersion: current.version,
       });
-      const response = await client.get(`/proxy-orders/${current.id}`);
+      let response;
+      try {
+        response = await client.get(`/proxy-orders/${current.id}`);
+      } catch (failure) {
+        refresh();
+        throw new Error(
+          `${action === 'accounts' ? '账号已分配' : '操作已保存'}，详情刷新失败，请刷新核对后再操作：${failure.message}`
+        );
+      }
       setCurrent(response.data);
       setDraft({
         ...response.data,
@@ -420,7 +486,12 @@ export default function ProxyOrders() {
       });
       setModal('detail');
       refresh();
-    }, '操作已保存');
+      setNotice(
+        action === 'accounts'
+          ? `已分配 ${mutation.data?.assigned ?? (body.accountIds?.length || body.count || 1)} 个账号，可在详情复制模板。`
+          : '操作已保存'
+      );
+    });
   }
   async function changeFromList(row, action, body) {
     await run(
@@ -438,10 +509,12 @@ export default function ProxyOrders() {
   async function openAssignments(row = current) {
     await run(async () => {
       const response = await client.get('/proxy-orders/accounts', {
-        params: { limit: 100 },
+        params: { limit: 100, availableOnly: true },
       });
-      setAvailable(response.data.rows.filter(a => !a.assignment && a.status === '未使用'));
-      setAvailableCount(response.data.availableCount);
+      setAvailable(
+        response.data.rows.filter(a => !a.assignment && ['未使用', '使用中'].includes(a.status))
+      );
+      setAvailableCount(normalizeAvailableCount(response.data.availableCount));
       setCurrent(row);
       setManualAccount('');
       setCount(1);
@@ -465,7 +538,7 @@ export default function ProxyOrders() {
   const storeNames = codes =>
     (codes || []).map(code => stores.find(s => s.code === code)?.name || code).join('、');
   const modalMessage = (
-    <>
+    <div className="proxy-dialog-feedback">
       {modalError && (
         <div role="alert" className="bg-red-50 text-red-700 rounded-lg p-3 mb-3">
           {modalError}
@@ -476,7 +549,7 @@ export default function ProxyOrders() {
           {notice}
         </div>
       )}
-    </>
+    </div>
   );
   const form = ['new', 'edit'].includes(modal) && draft && (
     <div className="space-y-4">
@@ -520,7 +593,7 @@ export default function ProxyOrders() {
             ['lastName', '姓'],
             ['firstName', '名'],
             ['phone', '手机号'],
-            ['idLast4', '身份证后四位'],
+            ['idLast4', '身份证（完整号码或后四位）'],
             ['email', '邮箱'],
             ['quantity', '数量'],
           ].map(([key, label]) => (
@@ -528,11 +601,16 @@ export default function ProxyOrders() {
               key={key}
               label={label}
               type={key === 'quantity' ? 'number' : 'text'}
+              maxLength={key === 'idLast4' ? 18 : undefined}
+              inputMode={key === 'phone' ? 'tel' : undefined}
               value={draft[key]}
               onChange={value => setField(key, value)}
             />
           ))}
         </div>
+        <p className="text-xs text-gray-500">
+          可粘贴完整身份证号，登记字段和软件模板仅使用后四位；前导零及末尾 X 会保留。
+        </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <label className="block text-sm text-gray-600">
             支付方式
@@ -577,7 +655,7 @@ export default function ProxyOrders() {
               item => JSON.stringify([item.productModel, item.color, item.storage]) === key
             );
             return (
-              <div className="flex gap-2" key={index}>
+              <div className="proxy-candidate-row flex gap-2" key={index}>
                 <ResponsiveSelect
                   aria-label={`候选商品 ${index + 1}`}
                   className="input flex-1 min-w-0"
@@ -767,7 +845,7 @@ export default function ProxyOrders() {
       <p className="text-xs text-gray-500">
         模板按已核实的商品、门店和支付映射生成，TAG 为“代抢 + 订单来源”；复制不改变处理状态。
       </p>
-      <div className="flex justify-end gap-2">
+      <div className="proxy-dialog-footer flex justify-end gap-2">
         <button className="btn btn-secondary" onClick={close} disabled={busy}>
           取消
         </button>
@@ -788,7 +866,7 @@ export default function ProxyOrders() {
   );
 
   return (
-    <div className="space-y-4">
+    <div className="proxy-orders-page space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">代抢管理</h1>
@@ -836,7 +914,13 @@ export default function ProxyOrders() {
           </button>
         )}
       </div>
-      {error && (
+      {busy && !modal && !statusTarget && !copyFallback && (
+        <p role="status" className="flex items-center gap-2 text-sm text-primary">
+          <Loader2 className="w-4 h-4 animate-spin" />
+          正在处理，请稍候…
+        </p>
+      )}
+      {error && !modal && !statusTarget && !confirmation && !copyFallback && (
         <div role="alert" className="p-3 rounded-lg bg-red-50 text-red-700 flex gap-2">
           <AlertCircle className="w-5 h-5 shrink-0" />
           {error}
@@ -853,7 +937,7 @@ export default function ProxyOrders() {
         can(PERMISSIONS.PROXY_READ) && (
           <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
             <span>
-              有代抢单待分配账号。只有专用池内“未使用”且未占用的账号可分配，分配后才能复制模板。
+              有代抢单待分配账号。专用池内“未使用”或“使用中”且未被委托占用的账号可分配，分配后才能复制模板。
             </span>
             <button
               className="font-medium underline underline-offset-2"
@@ -866,7 +950,7 @@ export default function ProxyOrders() {
       {tab === 'accounts' && scope === 'pool' && (
         <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
           当前可分配 {data.availableCount ?? '—'}{' '}
-          个账号。新导入账号默认为“未使用”；历史“使用中”账号需先确认抢购软件任务已停止，再修改为“未使用”。
+          个账号。“未使用”和“使用中”均可分配，但不能被其他委托占用；“已下架”和“异常”不能分配。
         </div>
       )}
       <div className="flex flex-wrap gap-2 items-center">
@@ -992,7 +1076,7 @@ export default function ProxyOrders() {
           </div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-sm whitespace-nowrap">
+            <table className="proxy-orders-table w-full text-sm whitespace-nowrap">
               <thead className="bg-gray-50 text-gray-500">
                 <tr>
                   <th className="p-3">
@@ -1045,20 +1129,20 @@ export default function ProxyOrders() {
                             #{row.id} · {row.lastName}
                             {row.firstName}
                           </button>
-                          <p className="text-gray-500 mt-1">{row.phone}</p>
+                          <p className="text-gray-500 mt-1 whitespace-nowrap">{row.phone}</p>
                           {row.platformOrderNumber && (
                             <p className="text-xs text-gray-400">平台：{row.platformOrderNumber}</p>
                           )}
                         </td>
                         <td className="p-3">
-                          <p className="whitespace-normal min-w-56 max-w-80">
+                          <p className="whitespace-normal min-w-40 max-w-64">
                             {candidateNames(row)} × {row.quantity}
                           </p>
                           <p className="text-xs text-gray-400">
                             {row.paymentMethod || '支付要求未填'}
                           </p>
                         </td>
-                        <td className="p-3 min-w-48 max-w-64 whitespace-normal">
+                        <td className="p-3 min-w-36 max-w-48 whitespace-normal">
                           <p>{storeNames(row.storeCodes)}</p>
                         </td>
                         <td className="p-3 align-top">
@@ -1089,7 +1173,7 @@ export default function ProxyOrders() {
                             </p>
                           )}
                         </td>
-                        <td className="p-3 align-top min-w-56 max-w-80 whitespace-normal">
+                        <td className="p-3 align-top min-w-40 max-w-64 whitespace-normal">
                           {noteEditor?.id === row.id ? (
                             <div className="space-y-2">
                               <textarea
@@ -1170,8 +1254,8 @@ export default function ProxyOrders() {
                           ))}
                         </td>
                         <td className="p-3 text-gray-500">{DATE(row.createdAt)}</td>
-                        <td className="p-3">
-                          <div className="flex gap-2">
+                        <td className="proxy-row-actions p-3">
+                          <div className="flex flex-col gap-2">
                             <button
                               className="btn btn-secondary"
                               onClick={() => loadDetail(row)}
@@ -1188,6 +1272,12 @@ export default function ProxyOrders() {
                                 >
                                   复制模板
                                 </button>
+                              )}
+                            {!row.assignments.length &&
+                              ['pending', 'rushing'].includes(row.status) && (
+                                <p className="text-xs text-gray-500 whitespace-normal max-w-28">
+                                  先分配账号后复制
+                                </p>
                               )}
                           </div>
                         </td>
@@ -1345,6 +1435,10 @@ export default function ProxyOrders() {
                   复制模板
                 </button>
               )}
+              {['pending', 'rushing'].includes(current.status) &&
+                !current.assignments.some(assignment => !assignment.endedAt) && (
+                  <p className="text-sm text-amber-800">尚未分配账号，分配后才能复制模板。</p>
+                )}
               <ResponsiveSelect
                 aria-label="调整代抢状态"
                 className="input w-auto"
@@ -1626,10 +1720,10 @@ export default function ProxyOrders() {
             </p>
             <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-900">
               专用池当前可分配 {availableCount ?? '—'}{' '}
-              个账号。历史账号如仍标为“使用中”，请先核实抢购软件已停抢，再到专用池改为“未使用”；也可以导入新账号。
+              个账号。“未使用”和“使用中”均可分配，无需先修改状态；已被委托占用、已下架或异常的账号不可分配。
               {availableCount === 0 && (
                 <button
-                  className="ml-2 font-medium underline underline-offset-2"
+                  className="btn btn-secondary mt-3"
                   onClick={() => {
                     close();
                     switchTab('accounts');
@@ -1642,7 +1736,9 @@ export default function ProxyOrders() {
             <label className="block text-sm">
               账号选择
               <ResponsiveSelect
+                aria-label="分配账号选择"
                 className="input w-full mt-1"
+                disabled={busy || availableCount === 0}
                 value={manualAccount}
                 onChange={event => setManualAccount(event.target.value)}
               >
@@ -1655,11 +1751,24 @@ export default function ProxyOrders() {
               </ResponsiveSelect>
             </label>
             {!manualAccount && (
-              <Field label="追加数量（1–20）" type="number" value={count} onChange={setCount} />
+              <Field
+                label="追加数量（1–20）"
+                type="number"
+                value={count}
+                onChange={setCount}
+                disabled={busy || availableCount === 0}
+              />
+            )}
+            {assignmentError && (
+              <p id="proxy-assignment-reason" role="status" className="text-sm text-amber-800">
+                {assignmentError}
+              </p>
             )}
             <button
               className="btn btn-primary"
-              disabled={busy || availableCount === 0}
+              disabled={busy || !!assignmentError}
+              aria-describedby={assignmentError ? 'proxy-assignment-reason' : undefined}
+              title={assignmentError || '分配所选账号'}
               onClick={() =>
                 change(
                   'accounts',
@@ -1667,7 +1776,7 @@ export default function ProxyOrders() {
                 )
               }
             >
-              确认分配
+              {busy ? '正在分配…' : '确认分配'}
             </button>
           </div>
         </Dialog>
@@ -1891,6 +2000,7 @@ export default function ProxyOrders() {
       )}
       {confirmation && (
         <Dialog title="确认操作" close={() => setConfirmation(null)} busy={busy}>
+          {modalMessage}
           <p className="text-gray-700 mb-4">{confirmation.message}</p>
           <div className="flex justify-end gap-2">
             <button className="btn btn-secondary" onClick={() => setConfirmation(null)}>
@@ -1911,7 +2021,22 @@ export default function ProxyOrders() {
         </Dialog>
       )}
       {copyFallback && (
-        <Dialog title="请手动复制" close={() => setCopyFallback('')} busy={false}>
+        <Dialog title="请手动复制" close={() => setCopyFallback('')} busy={busy}>
+          {modalMessage}
+          <button
+            className="btn btn-primary mb-3"
+            disabled={busy}
+            onClick={() =>
+              run(async () => {
+                const copied = await clipboard(copyFallback);
+                setNotice(
+                  copied ? '已复制到剪贴板。' : '仍无法自动复制，请长按下方文本全选并复制。'
+                );
+              })
+            }
+          >
+            复制到剪贴板
+          </button>
           <p className="text-sm text-gray-600 mb-3">
             浏览器未允许自动写入剪贴板，请全选下方内容复制。
           </p>

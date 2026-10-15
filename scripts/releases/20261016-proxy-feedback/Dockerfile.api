@@ -1,0 +1,3 @@
+FROM apple-order-mgr-api:20261015-proxy-v2-amd64
+COPY --chown=node:node src/services/proxyOrderService.js /app/src/services/proxyOrderService.js
+COPY --chown=node:node src/utils/proxyOrderInput.js /app/src/utils/proxyOrderInput.js

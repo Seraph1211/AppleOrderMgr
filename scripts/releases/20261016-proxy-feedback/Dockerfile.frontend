@@ -1,0 +1,4 @@
+FROM apple-order-mgr-frontend:20261015-proxy-v2
+COPY frontend/src/pages/ProxyOrders.jsx /app/src/pages/ProxyOrders.jsx
+COPY frontend/src/pages/proxyOrders /app/src/pages/proxyOrders
+RUN npm run lint && npm run build

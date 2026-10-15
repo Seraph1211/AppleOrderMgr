@@ -1,5 +1,6 @@
 const {
   parseProxyText,
+  extractProxyIdLast4,
   parseProduct,
   normalizeProxyProduct,
   validateProxyInput,
@@ -61,6 +62,56 @@ describe('代抢文本与软件模板', () => {
       storeCity: '成都',
     });
     expect(value.warnings.join(' ')).toContain('未填写数量');
+  });
+  test.each([
+    ['11010519491231002X', '002X'],
+    ['11010519491231002x', '002X'],
+    ['130503670401001', '1001'],
+    ['000X', '000X'],
+    ['0123', '0123'],
+  ])('身份证合法完整号或尾号仅提取末四位', (identity, expected) => {
+    expect(extractProxyIdLast4(identity)).toBe(expected);
+    expect(validateProxyInput(draft({ idLast4: identity })).idLast4).toBe(expected);
+    for (const label of [
+      '身份证',
+      '身份证号',
+      '身份证号码',
+      '身份证后四位',
+      '身份证后四号',
+      '后四位',
+      '身份证后4位',
+    ]) {
+      const preview = parseProxyText(
+        `${source('18PM 银 256G').replace('身份证后四号：0020', `${label}：${identity}`)}\n订单来源：闲鱼`
+      );
+      expect(preview.draft.idLast4).toBe(expected);
+      expect(preview.canSave).toBe(true);
+      expect(
+        buildProxyTemplate(preview.draft, { appleId: 'pool@example.com', password: 'synthetic' })
+      ).not.toContain(identity.length > 4 ? identity : 'not-a-real-value');
+    }
+  });
+  test.each([
+    '110105194912310021',
+    '130503671301001',
+    '130503670431001',
+    '123456789012345678',
+    '号码0123',
+    '1234567',
+    110105194912310020,
+  ])('无效身份证不截断、不在结构化草稿或错误中回显', identity => {
+    expect(() => extractProxyIdLast4(identity)).toThrow();
+    const preview = parseProxyText(
+      `${source('18PM 银 256G').replace('身份证后四号：0020', `身份证：${identity}`)}\n订单来源：闲鱼`
+    );
+    expect(preview.canSave).toBe(false);
+    expect(preview.draft.idLast4).toBe('');
+    expect(preview.errors.join(' ')).not.toContain(String(identity));
+  });
+  test('多个证件标签冲突不推定尾号', () => {
+    const preview = parseProxyText(`${source('18PM 银 256G')}\n身份证：11010519491231002X`);
+    expect(preview.draft.idLast4).toBe('');
+    expect(preview.errors.join(' ')).toContain('冲突');
   });
   test('新格式、复姓和前导零', () => {
     const value = parseProxyText(

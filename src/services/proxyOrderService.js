@@ -104,11 +104,17 @@ async function assign(row, values, transaction, actorId) {
     let accountIds;
     if (values.accountIds) accountIds = ids(values.accountIds, 20);
     else {
-      const count = values.count == null ? 1 : id(values.count);
+      const requestedCount = values.count == null ? 1 : values.count;
+      if (
+        typeof requestedCount !== 'number' &&
+        (typeof requestedCount !== 'string' || !/^[1-9]\d*$/.test(requestedCount))
+      )
+        throw ApiError.badRequest('分配数量须为正整数');
+      const count = id(requestedCount);
       if (count > 20) throw ApiError.badRequest('每次最多追加 20 个账号');
       const [available] = await sequelize.query(
         `SELECT a.id FROM apple_ids a
-        WHERE a.is_proxy_pool=true AND a.status='未使用'
+        WHERE a.is_proxy_pool=true AND a.status IN ('未使用','使用中')
         AND NOT EXISTS(SELECT 1 FROM proxy_assignments p WHERE p.apple_id_ref=a.id AND p.ended_at IS NULL)
         ORDER BY random() LIMIT :count FOR UPDATE SKIP LOCKED`,
         { replacements: { count }, transaction }
@@ -130,7 +136,7 @@ async function assign(row, values, transaction, actorId) {
     if (
       occupied ||
       accounts.length !== accountIds.length ||
-      accounts.some(a => !a.isProxyPool || a.status !== '未使用')
+      accounts.some(a => !a.isProxyPool || !['未使用', '使用中'].includes(a.status))
     )
       throw ApiError.conflict('选中账号不在可用代抢池或已被占用');
     const assignments = await ProxyAssignment.bulkCreate(
@@ -274,7 +280,15 @@ async function saveOrder(orderId, body, actorId) {
           const row = await ProxyOrder.create({ ...values, createdBy: actorId }, { transaction });
           await event('create', row.id, actorId, {}, transaction);
           const assigned = await assign(row, { allowEmpty: true }, transaction, actorId);
-          return { id: row.id, version: row.version, assigned: assigned.length };
+          return {
+            id: row.id,
+            version: row.version,
+            assigned: assigned.length,
+            assignmentStatus: assigned.length ? 'assigned' : 'awaiting_account',
+            assignmentMessage: assigned.length
+              ? '已自动分配1个专用账号'
+              : '订单已保存，暂无可用专用账号，待分配',
+          };
         }
         const row = await lockedOrder(orderId, body.expectedVersion, transaction);
         const values = input.validateProxyInput(
@@ -302,6 +316,7 @@ async function changeOrder(action, orderId, body, actorId) {
       try {
         const row = await lockedOrder(orderId, body.expectedVersion, transaction);
         let audit = {};
+        let assigned;
         const previousStatus = row.status;
         if (action === 'notes') {
           if (typeof body.notes !== 'string' || body.notes.length > 10000)
@@ -322,6 +337,7 @@ async function changeOrder(action, orderId, body, actorId) {
           row.status = body.status;
         } else if (action === 'accounts') {
           const added = await assign(row, body, transaction, actorId);
+          assigned = added.length;
           audit = { assignmentIds: added.map(a => a.id) };
         } else if (action === 'release') {
           if (body.confirmedStopped !== true)
@@ -422,7 +438,7 @@ async function changeOrder(action, orderId, body, actorId) {
         row.version += 1;
         await row.save({ transaction });
         await event(action, row.id, actorId, audit, transaction);
-        return { id: row.id, version: row.version };
+        return { id: row.id, version: row.version, ...(assigned == null ? {} : { assigned }) };
       } catch (error) {
         logger.debug('代抢事务未完成', { errorType: error.name });
         throw error;
@@ -438,6 +454,17 @@ async function changeOrder(action, orderId, body, actorId) {
 async function listAccounts(query) {
   try {
     const where = { isProxyPool: query.scope !== 'candidates' };
+    if (query.availableOnly != null && !['true', 'false'].includes(String(query.availableOnly)))
+      throw ApiError.badRequest('可用账号筛选格式不正确');
+    if (String(query.availableOnly) === 'true') {
+      if (query.scope === 'candidates') throw ApiError.badRequest('仅专用池支持可用账号筛选');
+      where.status = { [Op.in]: ['未使用', '使用中'] };
+      where[Op.and] = sequelize.literal(`NOT EXISTS (
+        SELECT 1 FROM proxy_assignments active_assignment
+        WHERE active_assignment.apple_id_ref="AppleId"."id"
+          AND active_assignment.ended_at IS NULL
+      )`);
+    }
     if (query.scope === 'candidates') where.notes = { [Op.iLike]: '%代抢%' };
     if (query.keyword) where.appleId = { [Op.iLike]: `%${String(query.keyword).slice(0, 100)}%` };
     const result = await AppleId.findAndCountAll({
@@ -455,13 +482,13 @@ async function listAccounts(query) {
       : [];
     const [[availability]] = await sequelize.query(
       `SELECT COUNT(*)::integer AS count FROM apple_ids a
-       WHERE a.is_proxy_pool=true AND a.status='未使用'
+       WHERE a.is_proxy_pool=true AND a.status IN ('未使用','使用中')
        AND NOT EXISTS(SELECT 1 FROM proxy_assignments p WHERE p.apple_id_ref=a.id AND p.ended_at IS NULL)
        `
     );
     return {
       count: result.count,
-      availableCount: availability.count,
+      availableCount: Number(availability.count),
       rows: result.rows.map(a => ({
         ...a.toJSON(),
         assignment: assignments.find(s => s.appleIdRef === a.id) || null,

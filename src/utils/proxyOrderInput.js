@@ -207,6 +207,34 @@ function parseProduct(value) {
   };
 }
 
+/**
+ * 从尾号或合法完整身份证提取后四位，异常不回显证件原值。
+ * @param {string} value 证件文本
+ * @returns {string} 大写尾号
+ */
+function extractProxyIdLast4(value) {
+  if (typeof value !== 'string') throw ApiError.badRequest('身份证后四位或完整号码必须为文本');
+  const card = norm(value).toUpperCase();
+  if (/^\d{3}[\dX]$/.test(card)) return card;
+  if (/^[1-9]\d{16}[\dX]$/.test(card)) {
+    const { validateIdentity } = require('../services/identityInputService');
+    if (!validateIdentity('客户', card)) return card.slice(-4);
+  } else if (/^[1-9]\d{14}$/.test(card)) {
+    const year = 1900 + Number(card.slice(6, 8));
+    const month = Number(card.slice(8, 10));
+    const day = Number(card.slice(10, 12));
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (
+      date.getUTCFullYear() === year &&
+      date.getUTCMonth() === month - 1 &&
+      date.getUTCDate() === day &&
+      date <= new Date()
+    )
+      return card.slice(-4);
+  }
+  throw ApiError.badRequest('身份证须为四位尾号或有效的15/18位完整号码，请核对');
+}
+
 /** 解析一位客户的固定文本，返回待核对草稿而不写库。 @param {string} text 原文 @returns {Object} 草稿 */
 function parseProxyText(text) {
   if (typeof text !== 'string' || !text.trim() || text.length > 10000)
@@ -241,6 +269,25 @@ function parseProxyText(text) {
   const city = cities.length === 1 ? cities[0] : '';
   const storeText = fields['取机门店'] || fields['苹果直营店'] || fields['门店'] || '';
   const errors = [];
+  let idLast4 = '';
+  const identityValues = [
+    '身份证后四号',
+    '身份证后四位',
+    '后四位',
+    '身份证后4位',
+    '身份证',
+    '身份证号',
+    '身份证号码',
+  ]
+    .filter(key => fields[key])
+    .map(key => fields[key]);
+  try {
+    const tails = identityValues.map(extractProxyIdLast4);
+    if (new Set(tails).size > 1) throw ApiError.badRequest('身份证信息存在冲突，请核对后四位');
+    idLast4 = tails[0] || '';
+  } catch (error) {
+    errors.push(error.message);
+  }
   let storeCodes = STORES.filter(s => s.city === city).map(s => s.code);
   if (storeText) {
     storeCodes = [];
@@ -262,6 +309,8 @@ function parseProxyText(text) {
     if (matches.length) storeCodes = matches.map(s => s.code);
   }
   const warnings = [];
+  if (idLast4 && identityValues.some(value => norm(value).length > 4))
+    warnings.push('完整身份证已校验格式并仅提取后四位，请核对尾号');
   if (!fields['数量'] && !/\d+\s*(台|部|件)/.test(productText))
     warnings.push('未填写数量，已预填 1 台，请核对');
   if (!fields['支付方式']) warnings.push('未填写支付方式，已预填微信');
@@ -309,7 +358,7 @@ function parseProxyText(text) {
     firstName,
     phone: fields['手机号'] || fields['手机号码'] || '',
     email: fields['邮箱'] || fields['Email'] || '',
-    idLast4: fields['身份证后四号'] || fields['身份证后四位'] || '',
+    idLast4,
     ...productCandidates[0],
     productCandidates,
     quantity: product.quantity,
@@ -358,7 +407,7 @@ function validateProxyInput(input, options = {}) {
     ['firstName', '名', 50],
     ['phone', '手机号', 20],
     ['email', '邮箱', 255],
-    ['idLast4', '身份证后四位', 4],
+    ['idLast4', '身份证后四位', 18],
     ['productModel', '机型', 100],
     ['color', '颜色', 100],
     ['storage', '容量', 20],
@@ -388,9 +437,7 @@ function validateProxyInput(input, options = {}) {
   Object.assign(result, result.productCandidates[0]);
   if (!/^1[3-9]\d{9}$/.test(result.phone)) throw ApiError.badRequest('手机号须为 11 位大陆手机号');
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(result.email)) throw ApiError.badRequest('邮箱格式不正确');
-  if (!/^\d{3}[\dXx]$/.test(result.idLast4))
-    throw ApiError.badRequest('身份证后四位必须为四位文本');
-  result.idLast4 = result.idLast4.toUpperCase();
+  result.idLast4 = extractProxyIdLast4(result.idLast4);
   result.quantity = input.quantity == null ? 1 : input.quantity;
   if (!Number.isInteger(result.quantity) || result.quantity < 1 || result.quantity > 100)
     throw ApiError.badRequest('数量须为 1–100 的整数');
@@ -554,6 +601,7 @@ module.exports = {
   parseProduct,
   normalizeProxyProduct,
   parseProxyText,
+  extractProxyIdLast4,
   validateProxyInput,
   generateProxyAddress,
   buildProxyTemplate,

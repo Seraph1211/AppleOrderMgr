@@ -162,6 +162,92 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
       )
     ).rejects.toMatchObject({ statusCode: 409 });
   });
+  test('足池创建自动分配，空池仍保存并明确返回待分配；数量数字/字符串均有回执', async () => {
+    await pool(3);
+    const created = await service.saveOrder(null, payload(), actor.id);
+    expect(created).toMatchObject({ assigned: 1, assignmentStatus: 'assigned' });
+    expect(typeof (await service.listAccounts({})).availableCount).toBe('number');
+    const appended = await service.changeOrder(
+      'accounts',
+      created.id,
+      { expectedVersion: created.version, count: '2' },
+      actor.id
+    );
+    expect(appended.assigned).toBe(2);
+    const waiting = await service.saveOrder(null, payload(), actor.id);
+    expect(waiting).toMatchObject({ assigned: 0, assignmentStatus: 'awaiting_account' });
+    expect(waiting.assignmentMessage).toContain('待分配');
+    expect((await service.listAccounts({})).availableCount).toBe(0);
+    await expect(
+      service.changeOrder(
+        'accounts',
+        waiting.id,
+        { expectedVersion: waiting.version, count: 1 },
+        actor.id
+      )
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+  test('可用账号数据库分页过滤不被前页历史占用状态遮挡，不改变普通池或使用中账号', async () => {
+    const unavailable = await pool(3, { status: '已下架' });
+    const ordinary = (await pool(1, { isProxyPool: false }))[0];
+    const available = await pool(2);
+    const selected = await service.listAccounts({ availableOnly: 'true', limit: 1 });
+    expect(selected.count).toBe(2);
+    expect(selected.availableCount).toBe(2);
+    expect(selected.rows[0].id).toBe(available[0].id);
+    const page2 = await service.listAccounts({ availableOnly: 'true', limit: 1, page: 2 });
+    expect(page2.rows[0].id).toBe(available[1].id);
+    await create();
+    expect((await service.listAccounts({ availableOnly: 'true' })).count).toBe(1);
+    for (const account of unavailable) expect((await account.reload()).status).toBe('已下架');
+    expect((await ordinary.reload()).isProxyPool).toBe(false);
+    expect(ordinary.status).toBe('未使用');
+    await expect(
+      service.listAccounts({ availableOnly: 'true', scope: 'candidates' })
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+  test('使用中且无活跃占用的专用账号可自动分配及手选，禁用或普通池仍拒绝', async () => {
+    const [busy] = await pool(1, { status: '使用中' });
+    expect((await service.listAccounts({ availableOnly: 'true' })).availableCount).toBe(1);
+    const created = await service.saveOrder(null, payload(), actor.id);
+    expect(created.assigned).toBe(1);
+    expect((await m.ProxyAssignment.findOne()).appleIdRef).toBe(busy.id);
+    expect((await busy.reload()).status).toBe('使用中');
+    expect((await service.listAccounts({ availableOnly: 'true' })).count).toBe(0);
+    const waiting = await create();
+    const [manual] = await pool(1, { status: '使用中' });
+    const assigned = await service.changeOrder(
+      'accounts',
+      waiting.id,
+      { expectedVersion: waiting.version, accountIds: [manual.id] },
+      actor.id
+    );
+    expect(assigned.assigned).toBe(1);
+    await waiting.reload();
+    for (const extra of [{ status: '已下架' }, { status: '异常' }, { isProxyPool: false }]) {
+      const [invalid] = await pool(1, extra);
+      await expect(
+        service.changeOrder(
+          'accounts',
+          waiting.id,
+          { expectedVersion: waiting.version, accountIds: [invalid.id] },
+          actor.id
+        )
+      ).rejects.toMatchObject({ statusCode: 409 });
+    }
+    expect((await service.listAccounts({})).availableCount).toBe(0);
+  });
+  test.each([true, [], {}, '', 'no', '1.5', 0, -1, 1.5, 21])(
+    '无效分配数量拒绝且不占账号',
+    async count => {
+      const row = await create();
+      await pool(2);
+      await expect(
+        service.changeOrder('accounts', row.id, { expectedVersion: row.version, count }, actor.id)
+      ).rejects.toMatchObject({ statusCode: 400 });
+      expect(await m.ProxyAssignment.count()).toBe(0);
+    }
+  );
   test('默认占用、自动追加、多行模板且复制不改状态；池状态不覆盖历史', async () => {
     await pool(3);
     const row = await create();

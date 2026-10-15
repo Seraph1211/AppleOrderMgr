@@ -1017,16 +1017,16 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 全部 `/api/proxy-orders` 接口仅需 `proxy_orders.read`，包含编辑、状态、模板密码、账号池、关联纠错。旧细分权限保留退役标记，迁移一次性为历史持有人补 read，之后退役值不补授有效权限、不阻止撤销 read，不授其他页面。全部响应 no-store；普通列表、详情无密码。
 
 - GET `/stores` 返回门店及 softwareName；GET `/catalog` 返回 productCandidates（productModel/color/storage/softwareName）与 paymentMethods（名称到软件值映射）。
-- POST `/parse` 输入 text，返回 draft/warnings/errors/canSave/duplicates；draft 含 productCandidates、orderSource、paymentMethod（默认微信）、quantity（默认1）、storeCity、storeCodes、storeMode、billing（自动草稿）和旧单商品字段。未知组合进入 errors，备注不解析为规则。duplicates 为疑似重复编号摘要。
+- POST `/parse` 输入 text，返回 draft/warnings/errors/canSave/duplicates；draft 含 productCandidates、orderSource、paymentMethod（默认微信）、quantity（默认1）、storeCity、storeCodes、storeMode、billing（自动草稿）和旧单商品字段。未知组合进入 errors，备注不解析为规则。duplicates 为疑似重复编号摘要。身份证兼容身份证、身份证号、身份证号码、身份证后四号、身份证后四位、身份证后4位及后四位标签；四位尾号直接保留，合法18位（校验位及日期）或15位（日期）完整号码仅提取后四位，无效或冲突提示核对，不截取任意字符串。结构化 idLast4 和软件模板始终仅含尾四位；原文继续 AES-GCM 加密保存，只在现有获授权解析/详情的原文核对路径展示，不记录日志或审计明文。PUT/POST 手工 idLast4 也可接受合法完整号码并提取尾号。
 - POST `/address` 输入 storeCode，返回可编辑地址；GET `/` 支持 page/limit/keyword/status 返回 rows/count。
-- POST `/`、PUT `/:id` 保存完整资料，编辑带 expectedVersion；新增必填 orderSource，productCandidates 完整任选数组，旧 productModel/color/storage 兼容。城市必填，未指定门店默认城市集合并固定保存；门店须同城市。平台订单号允许重复。新建疑似重复返回409并附 duplicateIds，明确继续时传 confirmedDuplicate=true；无可用账号仍建单。
+- POST `/`、PUT `/:id` 保存完整资料，编辑带 expectedVersion；新增必填 orderSource，productCandidates 完整任选数组，旧 productModel/color/storage 兼容。城市必填，未指定门店默认城市集合并固定保存；门店须同城市。平台订单号允许重复。新建疑似重复返回409并附 duplicateIds，明确继续时传 confirmedDuplicate=true；无可用账号仍建单。创建返回 assigned（数字）、assignmentStatus=assigned|awaiting_account、assignmentMessage，空池明确提示待分配。分配只允许专用池中状态未使用或使用中、且无活跃占用的账号；自动与手选共用规则，不纳入普通池或重置账号状态。
 - GET `/:id` 返回详情、assignments、events、officialOrders 活跃关联数组、links 历史及兼容 officialOrder 首项。官网摘要含 officialRawStatus/officialStatusObservedAt，status 仅官网原始状态，无观测显示 null；不使用邮件状态。
 - POST `/:id/status` 输入 expectedVersion,status（pending/rushing/succeeded/cancelled）；四态自由修改，人工成功优先使用 reason、notes 或已有备注作为原因，无说明时记录人工确认事件；加密记录并保留原客户备注。notes 可选仅用于本次原因，不覆盖客户备注。
 - POST `/:id/notes` 输入 expectedVersion,notes，只修改备注。
-- POST `/:id/accounts` 输入 expectedVersion,accountIds 或 count，随机分配；POST `/:id/release` 输入 expectedVersion,assignmentIds,confirmedStopped=true，释放保留历史。
+- POST `/:id/accounts` 输入 expectedVersion,accountIds 或 count，随机分配，返回 assigned 数字计数；POST `/:id/release` 输入 expectedVersion,assignmentIds,confirmedStopped=true，释放保留历史。
 - POST `/:id/link` 输入 expectedVersion,orderNumber,reason，幂等追加关联；解除传 orderNumber=null、orderId（多关联时必填），保留历史及原因，不改状态。人工关联核对账号和客户身份；仅符合完整商品等自动匹配条件的新关联可自动成功，抢错商品仅留关联记录；取消后关联仅补记录。人工恢复后旧关联不再触发成功，新关联可触发。
 - POST `/copy` 输入 ids（1–100），原子生成 text/count。每活跃账号一行，商品、门店、数量、支付、来源 TAG 精确映射；未知映射拒绝，终态拒绝复制。
-- GET `/accounts` 输入 page/limit/keyword/scope=pool|candidates，返回 rows/count/availableCount 无密码。
+- GET `/accounts` 输入 page/limit/keyword/scope=pool|candidates，可选 availableOnly=true（仅pool，将未使用或使用中、且未占用的专用账号在数据库内筛选分页），返回 rows/count/availableCount 无密码，availableCount 为非负整数，空池为数字0。
 - POST `/accounts/import` 输入 text，支持邮箱密码列表，冲突整批拒绝；POST `/accounts/adopt` 输入 ids 纳入已有账号。
 - PUT `/accounts/:id` 输入 status,notes,expectedUpdatedAt；POST `/accounts/status` 输入 accounts=[{id,expectedUpdatedAt}],status；改未使用须 confirmedStopped=true，无活跃占用，整批事务。
 

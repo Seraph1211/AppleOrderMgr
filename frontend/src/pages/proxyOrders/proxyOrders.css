@@ -1,0 +1,128 @@
+.proxy-dialog-panel {
+  height: auto;
+}
+.proxy-dialog-feedback {
+  position: sticky;
+  top: -1rem;
+  z-index: 5;
+  background: white;
+}
+.proxy-dialog-footer {
+  position: sticky;
+  bottom: -1rem;
+  z-index: 4;
+  background: white;
+  border-top: 1px solid #e5e7eb;
+  padding: 1rem 0 max(1rem, env(safe-area-inset-bottom));
+}
+.proxy-orders-table td {
+  vertical-align: top;
+}
+.proxy-orders-table .proxy-row-actions {
+  position: sticky;
+  right: 0;
+  background: white;
+  box-shadow: -4px 0 6px -5px #9ca3af;
+}
+.proxy-orders-table tr:hover .proxy-row-actions {
+  background: #f9fafb;
+}
+.proxy-orders-table th:last-child {
+  position: sticky;
+  right: 0;
+  z-index: 2;
+  background: #f9fafb;
+}
+.proxy-orders-table .proxy-row-actions .btn {
+  padding: 0.4rem 0.65rem;
+}
+@media (max-width: 767px) {
+  .proxy-orders-page .input,
+  .proxy-dialog .input,
+  .proxy-dialog input,
+  .proxy-dialog textarea,
+  .proxy-dialog select {
+    font-size: 16px;
+  }
+  .proxy-orders-page .input,
+  .proxy-orders-page .btn,
+  .proxy-dialog .input,
+  .proxy-dialog input:not([type='checkbox']):not([type='radio']),
+  .proxy-dialog button,
+  .proxy-dialog .responsive-select-trigger {
+    min-height: 44px;
+  }
+  .proxy-dialog.proxy-dialog {
+    margin: 0;
+    padding: 0;
+    align-items: stretch;
+  }
+  .proxy-dialog .proxy-dialog-panel {
+    border-radius: 0;
+    height: 100dvh;
+    max-height: 100dvh;
+    width: 100%;
+  }
+  .proxy-dialog-body {
+    padding: 1rem;
+    overscroll-behavior: contain;
+    scroll-padding-bottom: 6rem;
+  }
+  .proxy-dialog header {
+    padding: 0.75rem 1rem;
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+  }
+  .proxy-dialog header h2 {
+    font-size: 18px;
+  }
+  .proxy-dialog .proxy-candidate-row {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+  }
+  .proxy-dialog .proxy-candidate-row > .btn {
+    align-self: flex-end;
+  }
+  .proxy-dialog label:has(input[type='checkbox']) {
+    min-height: 44px;
+  }
+  .proxy-dialog input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+  .proxy-dialog-footer {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+  }
+  .proxy-dialog-feedback {
+    top: -1rem;
+  }
+  .proxy-orders-table .proxy-row-actions,
+  .proxy-orders-table th:last-child {
+    position: static;
+    box-shadow: none;
+  }
+}
+
+.proxy-dialog .btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.proxy-orders-table td:nth-child(2) {
+  max-width: 10rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.proxy-orders-table td:nth-child(7) {
+  max-width: 11rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.proxy-orders-table td:nth-child(8) {
+  max-width: 8rem;
+  white-space: normal;
+}
