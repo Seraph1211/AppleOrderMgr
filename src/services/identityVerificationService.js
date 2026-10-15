@@ -11,6 +11,7 @@ const { getEffectivePermissions } = require('./permissionService');
 const { blindIndex } = require('../utils/fieldEncryption');
 const ApiError = require('../utils/ApiError');
 const provider = require('./identityProviderService');
+const execution = require('./identityExecutionService');
 const { validateIdentity, parseIdentityWorkbook } = require('./identityInputService');
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[1-5][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i;
@@ -30,11 +31,17 @@ async function authorize(actor, permission, transaction) {
   }
 }
 
-/** 检查服务已配置且启用。 @returns {void} */
-function assertReady() {
-  const status = provider.getStatus();
-  if (!status.configured || !status.enabled)
-    throw new ApiError(503, 'IDENTITY_NOT_READY', '身份核验服务未配置或未启用，请联系管理员');
+/** 检查服务配置与跨进程暂停；预览/历史不受暂停影响。 @returns {Promise<void>} 完成 */
+async function assertReady(transaction) {
+  try {
+    const status = provider.getStatus();
+    if (!status.configured || !status.enabled)
+      throw new ApiError(503, 'IDENTITY_NOT_READY', '身份核验服务未配置或未启用，请联系管理员');
+    if ((await execution.getState(transaction)).paused)
+      throw new ApiError(503, 'SERVICE_PAUSED', '服务已暂停，请管理员核查恢复后再继续未开始项目');
+  } catch (error) {
+    throw error instanceof Error ? error : new Error('身份核验操作失败');
+  }
 }
 
 async function findBatch(actor, id, transaction) {
@@ -77,6 +84,7 @@ async function createSingle(actor, input, key) {
     );
     return await sequelize.transaction(async transaction => {
       const user = await authorize(actor, PERMISSIONS.IDENTITY_VERIFY, transaction);
+      await assertReady(transaction);
       const existing = await Batch.findOne({
         where: { userId: user.id, idempotencyKey: key },
         transaction,
@@ -86,7 +94,6 @@ async function createSingle(actor, input, key) {
           throw ApiError.conflict('同一提交编号的姓名或身份证内容已改变，请重新提交');
         return { batchId: existing.id };
       }
-      assertReady();
       await checkCapacity(user.id, transaction);
       const batch = await Batch.create(
         {
@@ -155,7 +162,13 @@ async function control(actor, id, action) {
       const user = await authorize(actor, PERMISSIONS.IDENTITY_READ, transaction);
       const batch = await findBatch(user, id, transaction);
       const required =
-        batch.source === 'single' ? PERMISSIONS.IDENTITY_VERIFY : PERMISSIONS.IDENTITY_BATCH;
+        batch.source === 'api'
+          ? PERMISSIONS.IDENTITY_API
+          : batch.source === 'single'
+            ? PERMISSIONS.IDENTITY_VERIFY
+            : PERMISSIONS.IDENTITY_BATCH;
+      if (batch.source === 'api')
+        throw ApiError.conflict('API核验由同步接口执行，请通过管理员处置未知结果');
       if (!(await getEffectivePermissions(user, { transaction })).includes(required))
         throw new ApiError(403, 'FORBIDDEN', '没有此批次的操作权限');
       if (action === 'stop') {
@@ -170,11 +183,11 @@ async function control(actor, id, action) {
         );
         return;
       }
+      await assertReady(transaction);
       if (ACTIVE.includes(batch.status)) return;
       if (!['draft', 'paused'].includes(batch.status)) throw ApiError.conflict('此批次已结束');
       if (batch.status === 'draft' && batch.expiresAt <= new Date())
         throw ApiError.conflict('预览已过期，请停止此草稿后重新上传');
-      assertReady();
       const pending = await Item.count({ where: { batchId: id, status: 'pending' }, transaction });
       if (!pending) throw ApiError.conflict('没有待核验的有效项目');
       await batch.update({ status: 'queued', message: null }, { transaction });
@@ -243,7 +256,8 @@ async function list(actor, query) {
       const user = await authorize(actor, PERMISSIONS.IDENTITY_READ, transaction);
       const where = user.role === 'admin' ? {} : { userId: user.id };
       if (query.source) {
-        if (!['single', 'excel'].includes(query.source)) throw ApiError.badRequest('来源无效');
+        if (!['single', 'excel', 'api'].includes(query.source))
+          throw ApiError.badRequest('来源无效');
         where.source = query.source;
       }
       for (const [key, op] of [

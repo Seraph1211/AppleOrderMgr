@@ -3,6 +3,16 @@ import client from './client';
 const root = '/identity-verifications';
 export const identityApi = {
   status: () => client.get(`${root}/status`),
+  apiAdmin: () => client.get(`${root}/api-admin`),
+  setApiPaused: paused => client.patch(`${root}/api-admin/service`, { paused }),
+  resolveApiUnknown: (id, reason) =>
+    client.post(`${root}/api-admin/unknown/${id}/resolve`, { action: 'release', reason }),
+  revokeUserApiToken: id => client.delete(`${root}/api-admin/tokens/${id}`),
+  apiToken: () => client.get(`${root}/api-token`),
+  createApiToken: () => client.post(`${root}/api-token`),
+  resetApiToken: () => client.post(`${root}/api-token/reset`),
+  revokeApiToken: () => client.delete(`${root}/api-token`),
+  revealApiToken: () => client.post(`${root}/api-token/reveal`),
   list: params => client.get(`${root}/batches`, { params }),
   detail: id => client.get(`${root}/batches/${id}`),
   single: (data, key) =>

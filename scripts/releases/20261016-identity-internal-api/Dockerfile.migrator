@@ -1,0 +1,3 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+COPY --chown=node:node migrations/20261016000002-add-identity-internal-api.js /app/migrations/20261016000002-add-identity-internal-api.js

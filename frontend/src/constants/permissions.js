@@ -32,6 +32,7 @@ export const PERMISSIONS = Object.freeze({
   INGESTION_RECORDS_PROCESS: 'ingestion.records.process',
   INGESTION_CONTENT_READ: 'ingestion.content.read',
   IDENTITY_READ: 'identity.read',
+  IDENTITY_API: 'identity.api',
   IDENTITY_VERIFY: 'identity.verify',
   IDENTITY_BATCH: 'identity.batch',
   IDENTITY_EXPORT: 'identity.export',
