@@ -4,21 +4,22 @@ import { STATUS_OPTIONS } from '../constants/status';
 import { buildAppleIdBatchPayload } from '../utils/appleIdBatch';
 import client from '../api/client';
 
-/** 明确选择字段并确认后，批量修改 Apple ID 状态和备注。 */
+/** 直接编辑并保存 Apple ID 状态和备注，未修改字段保留原值。 */
 export default function AppleIdBatchEditModal({ ids, onClose, onSaved }) {
   const [changes, setChanges] = useState({
-    changeStatus: false,
-    changeNotes: false,
-    status: '未使用',
+    notesEdited: false,
+    status: '',
     notes: '',
   });
-  const [confirming, setConfirming] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const submittingRef = useRef(false);
   const update = (key, value) => {
-    setChanges(previous => ({ ...previous, [key]: value }));
-    setConfirming(false);
+    setChanges(previous => ({
+      ...previous,
+      [key]: value,
+      ...(key === 'notes' ? { notesEdited: true } : {}),
+    }));
     setError('');
   };
   const save = async () => {
@@ -49,24 +50,20 @@ export default function AppleIdBatchEditModal({ ids, onClose, onSaved }) {
         className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6 space-y-4"
       >
         <h2 className="text-xl font-semibold">批量修改 Apple ID（{ids.length} 个）</h2>
-        <p className="text-sm text-gray-500">仅修改勾选字段，未勾选字段保留原值。</p>
-        <fieldset disabled={submitting || confirming} className="space-y-4">
+        <p className="text-sm text-gray-500">未修改的字段保留原值。</p>
+        <fieldset disabled={submitting} className="space-y-4">
           <div className="space-y-2">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={changes.changeStatus}
-                onChange={event => update('changeStatus', event.target.checked)}
-              />
-              修改状态
+            <label htmlFor="apple-id-batch-status" className="block text-sm text-gray-700">
+              状态
             </label>
             <ResponsiveSelect
+              id="apple-id-batch-status"
               aria-label="批量新状态"
               className="input w-full"
-              disabled={!changes.changeStatus}
               value={changes.status}
               onChange={event => update('status', event.target.value)}
             >
+              <option value="">保持原状态</option>
               {STATUS_OPTIONS.map(option => (
                 <option key={option.value} value={option.value}>
                   {option.label}
@@ -75,38 +72,30 @@ export default function AppleIdBatchEditModal({ ids, onClose, onSaved }) {
             </ResponsiveSelect>
           </div>
           <div className="space-y-2">
-            <label className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                checked={changes.changeNotes}
-                onChange={event => update('changeNotes', event.target.checked)}
-              />
-              修改备注
-            </label>
+            <div className="flex justify-between items-center gap-3">
+              <label htmlFor="apple-id-batch-notes" className="text-sm text-gray-700">
+                备注
+              </label>
+              <button
+                type="button"
+                className="text-sm text-primary hover:underline"
+                onClick={() => update('notes', '')}
+              >
+                清空备注
+              </button>
+            </div>
             <textarea
+              id="apple-id-batch-notes"
               aria-label="批量新备注"
               className="input w-full"
-              disabled={!changes.changeNotes}
               value={changes.notes}
               onChange={event => update('notes', event.target.value)}
             />
-            <p className="text-sm text-gray-500">勾选修改备注并留空，将清空所选账号备注。</p>
+            {changes.notesEdited && changes.notes.trim() === '' && (
+              <p className="text-sm text-gray-500">确认后将清空所选账号备注。</p>
+            )}
           </div>
         </fieldset>
-        {confirming && (
-          <div className="bg-primary-50 p-3 rounded-lg text-sm space-y-2">
-            <p>确认修改 {ids.length} 个 Apple ID？</p>
-            <p>新状态：{changes.changeStatus ? changes.status : '保留原值'}</p>
-            <p className="whitespace-pre-wrap break-words">
-              备注：
-              {changes.changeNotes
-                ? changes.notes.trim() === ''
-                  ? '清空备注'
-                  : changes.notes
-                : '保留原值'}
-            </p>
-          </div>
-        )}
         {error && (
           <p role="alert" className="text-red-700">
             {error}
@@ -116,28 +105,13 @@ export default function AppleIdBatchEditModal({ ids, onClose, onSaved }) {
           <button className="btn btn-secondary" disabled={submitting} onClick={onClose}>
             取消
           </button>
-          {confirming ? (
-            <>
-              <button
-                className="btn btn-secondary"
-                disabled={submitting}
-                onClick={() => setConfirming(false)}
-              >
-                返回修改
-              </button>
-              <button className="btn btn-primary" disabled={submitting} onClick={save}>
-                {submitting ? '正在保存…' : '确认保存'}
-              </button>
-            </>
-          ) : (
-            <button
-              className="btn btn-primary"
-              disabled={!changes.changeStatus && !changes.changeNotes}
-              onClick={() => setConfirming(true)}
-            >
-              核对修改
-            </button>
-          )}
+          <button
+            className="btn btn-primary"
+            disabled={submitting || (!changes.status && !changes.notesEdited)}
+            onClick={save}
+          >
+            {submitting ? '正在保存…' : '确认'}
+          </button>
         </div>
       </div>
     </div>

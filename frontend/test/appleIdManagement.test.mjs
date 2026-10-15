@@ -11,20 +11,41 @@ test('跨页选择与当前页取消保留其他页 ID', () => {
   assert.deepEqual([...first], [1, 2, 3]);
   assert.deepEqual([...togglePageSelection(first, [2, 3], false)], [1]);
 });
-test('仅发送勾选字段，空备注明确清空', () => {
-  assert.deepEqual(buildAppleIdBatchPayload([1], { changeStatus: true, status: '异常' }), {
-    ids: [1],
-    status: '异常',
-  });
-  assert.deepEqual(buildAppleIdBatchPayload([1], { changeNotes: true, notes: '' }), {
-    ids: [1],
-    notes: null,
-  });
-  assert.deepEqual(buildAppleIdBatchPayload([1], { changeNotes: true, notes: '新备注' }), {
-    ids: [1],
-    notes: '新备注',
-  });
-  assert.throws(() => buildAppleIdBatchPayload([1], {}), /请勾选/);
+test('仅提交选定状态或编辑过的备注，未编辑备注保持原值', () => {
+  assert.deepEqual(
+    buildAppleIdBatchPayload([1], { status: '异常', notes: '', notesEdited: false }),
+    {
+      ids: [1],
+      status: '异常',
+    }
+  );
+  assert.deepEqual(
+    buildAppleIdBatchPayload([1], { status: '', notesEdited: true, notes: '新备注' }),
+    {
+      ids: [1],
+      notes: '新备注',
+    }
+  );
+  assert.deepEqual(
+    buildAppleIdBatchPayload([1], { status: '使用中', notesEdited: true, notes: '新备注' }),
+    {
+      ids: [1],
+      status: '使用中',
+      notes: '新备注',
+    }
+  );
+  assert.throws(
+    () => buildAppleIdBatchPayload([1], { status: '', notesEdited: false, notes: '' }),
+    /请修改/
+  );
+});
+test('编辑后空白或点击清空备注明确提交 null，状态改回保持时不提交状态', () => {
+  for (const notes of ['', '  ', '\t\n']) {
+    assert.deepEqual(buildAppleIdBatchPayload([1], { status: '', notesEdited: true, notes }), {
+      ids: [1],
+      notes: null,
+    });
+  }
 });
 test('Apple ID 四种状态配色及未知灰色', () => {
   assert.deepEqual(

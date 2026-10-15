@@ -5,12 +5,12 @@ export function togglePageSelection(selected, pageIds, checked) {
   return next;
 }
 
-/** 仅构造明确勾选的字段；备注空字符串表示清空。 */
+/** 仅提交选定的新状态或编辑过的备注；备注空白表示清空。 */
 export function buildAppleIdBatchPayload(ids, changes) {
-  if (!changes.changeStatus && !changes.changeNotes) throw new Error('请勾选要修改的字段');
+  if (!changes.status && !changes.notesEdited) throw new Error('请修改状态或备注');
   return {
     ids: [...ids],
-    ...(changes.changeStatus ? { status: changes.status } : {}),
-    ...(changes.changeNotes ? { notes: changes.notes.trim() === '' ? null : changes.notes } : {}),
+    ...(changes.status ? { status: changes.status } : {}),
+    ...(changes.notesEdited ? { notes: changes.notes.trim() === '' ? null : changes.notes } : {}),
   };
 }
