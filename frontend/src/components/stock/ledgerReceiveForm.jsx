@@ -122,7 +122,7 @@ export default function LedgerReceiveForm({
     try {
       if (busy || !ready) return;
       if (!confirmed) throw new Error('请核对并确认 SN、规格和入库信息');
-      if (!eligibleProduct) throw new Error('请选择本期支持的 iPhone 18 Pro Max 规格');
+      if (!eligibleProduct) throw new Error('请选择本期支持的 iPhone 18 Pro Max / iPhone Duo 规格');
       if (productConflict) throw new Error('设备规格与已有记录不一致，请核对后再入库');
       const unit = {
         serialNumber: preview.serialNumber,

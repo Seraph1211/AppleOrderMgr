@@ -1,0 +1,98 @@
+[
+  {
+    "sku": "MK2M4CH/A",
+    "title": "iPhone Duo 256GB 星光白色",
+    "model": "iPhone Duo",
+    "family": "iphone_duo",
+    "locator": "iphoneduo",
+    "capacity": "256GB",
+    "color": "星光白色",
+    "colorKey": "starwhite",
+    "amount": "15999.00",
+    "priceVersion": "cn-iphone-duo-20261015"
+  },
+  {
+    "sku": "MK2N4CH/A",
+    "title": "iPhone Duo 256GB 夜空色",
+    "model": "iPhone Duo",
+    "family": "iphone_duo",
+    "locator": "iphoneduo",
+    "capacity": "256GB",
+    "color": "夜空色",
+    "colorKey": "nightsky",
+    "amount": "15999.00",
+    "priceVersion": "cn-iphone-duo-20261015"
+  },
+  {
+    "sku": "MK2P4CH/A",
+    "title": "iPhone Duo 512GB 星光白色",
+    "model": "iPhone Duo",
+    "family": "iphone_duo",
+    "locator": "iphoneduo",
+    "capacity": "512GB",
+    "color": "星光白色",
+    "colorKey": "starwhite",
+    "amount": "17999.00",
+    "priceVersion": "cn-iphone-duo-20261015"
+  },
+  {
+    "sku": "MK2Q4CH/A",
+    "title": "iPhone Duo 512GB 夜空色",
+    "model": "iPhone Duo",
+    "family": "iphone_duo",
+    "locator": "iphoneduo",
+    "capacity": "512GB",
+    "color": "夜空色",
+    "colorKey": "nightsky",
+    "amount": "17999.00",
+    "priceVersion": "cn-iphone-duo-20261015"
+  },
+  {
+    "sku": "MK2T4CH/A",
+    "title": "iPhone Duo 1TB 星光白色",
+    "model": "iPhone Duo",
+    "family": "iphone_duo",
+    "locator": "iphoneduo",
+    "capacity": "1TB",
+    "color": "星光白色",
+    "colorKey": "starwhite",
+    "amount": "21499.00",
+    "priceVersion": "cn-iphone-duo-20261015"
+  },
+  {
+    "sku": "MK2U4CH/A",
+    "title": "iPhone Duo 1TB 夜空色",
+    "model": "iPhone Duo",
+    "family": "iphone_duo",
+    "locator": "iphoneduo",
+    "capacity": "1TB",
+    "color": "夜空色",
+    "colorKey": "nightsky",
+    "amount": "21499.00",
+    "priceVersion": "cn-iphone-duo-20261015"
+  },
+  {
+    "sku": "MK2V4CH/A",
+    "title": "iPhone Duo 2TB 星光白色",
+    "model": "iPhone Duo",
+    "family": "iphone_duo",
+    "locator": "iphoneduo",
+    "capacity": "2TB",
+    "color": "星光白色",
+    "colorKey": "starwhite",
+    "amount": "26499.00",
+    "priceVersion": "cn-iphone-duo-20261015"
+  },
+  {
+    "sku": "MK2W4CH/A",
+    "title": "iPhone Duo 2TB 夜空色",
+    "model": "iPhone Duo",
+    "family": "iphone_duo",
+    "locator": "iphoneduo",
+    "capacity": "2TB",
+    "color": "夜空色",
+    "colorKey": "nightsky",
+    "amount": "26499.00",
+    "priceVersion": "cn-iphone-duo-20261015"
+  }
+]

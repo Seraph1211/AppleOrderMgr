@@ -2,6 +2,8 @@ const { CATALOG } = require('./stockFixedCatalog');
 const { normalizeOcrSerial, extractSerialCandidates } = require('./pickupOcrRules');
 
 const COLORS = [
+  ['星光白色', /\bstar\s*white\b|星光白色?/i],
+  ['夜空色', /\bnight\s*sky\b|夜空色?/i],
   ['黑色', /\bblack\b|黑色/i],
   ['银色', /\bsilver\b|银色/i],
   ['冰川蓝色', /\bglacier(?:\s+blue)?\b|冰川蓝色?/i],
@@ -24,9 +26,11 @@ function parseBlock(text, barcodes = []) {
   const colors = COLORS.filter(([, re]) => re.test(text)).map(([name]) => name);
   const models = [
     ...new Set(
-      (text.match(/iphone\s*\d+\s*(?:pro\s*max|pro|air)?/gi) || []).map(value =>
-        value.replace(/\s/g, '').toLowerCase()
-      )
+      (
+        text.match(
+          /iphone\s*(?:duo(?:\s*(?:pro|max|air|plus|mini|ultra))?|\d+\s*(?:pro\s*max|pro|air)?)/gi
+        ) || []
+      ).map(value => value.replace(/\s/g, '').toLowerCase())
     ),
   ];
   const bySku = skus.length === 1 ? CATALOG.find(item => item.skuCode === skus[0]) : null;
@@ -35,7 +39,8 @@ function parseBlock(text, barcodes = []) {
     reasons.push('描述含多种规格，请核对对应关系');
   if (
     bySku &&
-    ((models.length && models.some(model => model !== 'iphone18promax')) ||
+    ((models.length &&
+      models.some(model => model !== bySku.modelName.replace(/\s/g, '').toLowerCase())) ||
       capacities.some(capacity => capacity !== bySku.storageGb) ||
       colors.some(color => color !== bySku.colorName))
   )
@@ -43,10 +48,15 @@ function parseBlock(text, barcodes = []) {
   const byText =
     !skus.length &&
     models.length === 1 &&
-    models[0] === 'iphone18promax' &&
+    ['iphone18promax', 'iphoneduo'].includes(models[0]) &&
     capacities.length === 1 &&
     colors.length === 1
-      ? CATALOG.find(item => item.storageGb === capacities[0] && item.colorName === colors[0])
+      ? CATALOG.find(
+        item =>
+          item.modelName.replace(/\s/g, '').toLowerCase() === models[0] &&
+            item.storageGb === capacities[0] &&
+            item.colorName === colors[0]
+      )
       : null;
   const spec = reasons.length ? null : bySku || byText;
   if (!spec && !reasons.length) reasons.push('规格不完整或不支持，请手工选择');
@@ -95,7 +105,12 @@ function parseBlock(text, barcodes = []) {
     },
   };
 }
-/** 合并同图 OCR 拆段；当前多盒空间关系无法可靠证明时始终要求人工对应。 */
+/**
+ * 合并同图 OCR 拆段；多盒空间关系无法可靠证明时始终要求人工对应。
+ * @param {Object} data OCR content/prism_wordsInfo 文本，不按 SN 推测规格
+ * @param {Array<string>} barcodes 同图条码候选，参与 SN 交叉核对
+ * @returns {Array<Object>} 单图候选及 reviewReasons；不写入任何业务记录
+ */
 function parseBoxData(data, barcodes = []) {
   const words = (Array.isArray(data.prism_wordsInfo) ? data.prism_wordsInfo : []).filter(
     item => typeof item.word === 'string'

@@ -4,7 +4,7 @@ const ApiError = require('../utils/ApiError');
 const { createReadContext, requirePermissions } = require('./stockCommandService');
 const ocr = require('./pickupOcrService');
 const { parseBoxData } = require('./stockBoxRules');
-const { specification, PRICE_VERSION } = require('./stockFixedCatalog');
+const { specification } = require('./stockFixedCatalog');
 /** 在计费前校验库存权限；仅返回人工核对候选，不写业务记录。 */
 async function recognizeBox(user, file, rawBarcodes) {
   try {
@@ -63,7 +63,7 @@ async function recognizeBox(user, file, rawBarcodes) {
           ...(candidate.matchBasis && !product ? ['规格目录不可用，请核对'] : []),
         ],
         ...(spec && ctx.permissions.has('stock.cost.read')
-          ? { fixedCostAmount: spec.amount, priceVersion: PRICE_VERSION }
+          ? { fixedCostAmount: spec.amount, priceVersion: spec.priceVersion }
           : {}),
       };
     });

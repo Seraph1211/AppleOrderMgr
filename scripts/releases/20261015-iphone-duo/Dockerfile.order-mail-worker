@@ -1,0 +1,5 @@
+ARG BASE_IMAGE=apple-order-mgr-order-mail-worker:20261014-recipient-tag-amd64
+FROM ${BASE_IMAGE}
+COPY --chown=node:node src/utils/orderCatalogPricing.js /app/src/utils/orderCatalogPricing.js
+COPY --chown=node:node src/data/stockCatalogV20261015.json /app/src/data/stockCatalogV20261015.json
+RUN node -e "const fs=require('fs');const p='/app/src/models/Order.js';const s=fs.readFileSync(p,'utf8');const old='../utils/orderCatalogPricingV1';if(s.split(old).length!==2)throw Error('PRICING_IMPORT_MISMATCH');fs.writeFileSync(p,s.replace(old,'../utils/orderCatalogPricing'));"

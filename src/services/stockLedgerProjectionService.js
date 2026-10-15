@@ -7,7 +7,7 @@ const {
 } = require('./stockLifecycleRules');
 const { Op } = require('sequelize');
 const { parseStockProductFilters } = require('../utils/stockProductFilters');
-const { specification, PRICE_VERSION } = require('./stockFixedCatalog');
+const { specification } = require('./stockFixedCatalog');
 const db = require('../models');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
@@ -70,7 +70,7 @@ async function catalog(ctx) {
           ...product,
           entryEligible: Boolean(spec),
           ...(spec && has(ctx, 'stock.cost.read')
-            ? { fixedCostAmount: spec.amount, priceVersion: PRICE_VERSION }
+            ? { fixedCostAmount: spec.amount, priceVersion: spec.priceVersion }
             : {}),
         };
       }),

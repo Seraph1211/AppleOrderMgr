@@ -260,7 +260,7 @@ export default function LedgerEntryForm({
             ? '直接登记过去已经卖出的机器，保存后进入已售，不增减当前现货。姓名或货款情况不清楚时可明确待补。'
             : '支持多张盒标和混合规格；每台分别核对。保存时按已确认固定目录生成成本，未知拿货日期保持为空。'}
         </p>
-        <p className="font-medium">iPhone 18 Pro Max · 每台独立规格</p>
+        <p className="font-medium">iPhone 18 Pro Max / iPhone Duo · 每台独立规格</p>
         {productSelect(
           value.productId,
           productId => setValue({ ...value, productId }),

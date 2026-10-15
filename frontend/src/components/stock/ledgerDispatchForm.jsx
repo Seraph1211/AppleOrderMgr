@@ -84,7 +84,7 @@ export default function LedgerDispatchForm({ catalog, onClose, onSaved }) {
         throw new Error('盒标规格与库存记录不一致，请核对盒标或先更正库存资料');
       const productId = existing?.product?.id || candidate?.productId || '';
       if (productId && !products.some(product => product.id === productId))
-        throw new Error('本期只支持预置 iPhone 18 Pro Max 规格');
+        throw new Error('本期只支持预置 iPhone 18 Pro Max / iPhone Duo 规格');
       const product = products.find(product => product.id === productId);
       setPreview({ ...result, serialNumber });
       setValue(current => ({

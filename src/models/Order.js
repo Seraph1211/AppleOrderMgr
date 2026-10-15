@@ -1,4 +1,4 @@
-const { calculateCatalogAmount } = require('../utils/orderCatalogPricingV1');
+const { calculateCatalogAmount } = require('../utils/orderCatalogPricing');
 const { buildProductFilterItems } = require('../utils/productFilter');
 const { DataTypes } = require('sequelize');
 const { encrypt, decrypt } = require('../utils/fieldEncryption');

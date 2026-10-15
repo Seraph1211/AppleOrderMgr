@@ -1,0 +1,11 @@
+ARG BASE_IMAGE=apple-order-mgr-api:20261014-order-serial-columns-amd64
+FROM ${BASE_IMAGE}
+COPY --chown=node:node src/models/Order.js /app/src/models/Order.js
+COPY --chown=node:node src/services/stockFixedCatalog.js /app/src/services/stockFixedCatalog.js
+COPY --chown=node:node src/services/stockBoxRules.js /app/src/services/stockBoxRules.js
+COPY --chown=node:node src/services/stockBoxService.js /app/src/services/stockBoxService.js
+COPY --chown=node:node src/services/stockLedgerProjectionService.js /app/src/services/stockLedgerProjectionService.js
+COPY --chown=node:node src/services/stockLedgerService.js /app/src/services/stockLedgerService.js
+COPY --chown=node:node src/services/inventoryPolicy.js /app/src/services/inventoryPolicy.js
+COPY --chown=node:node src/utils/orderCatalogPricing.js /app/src/utils/orderCatalogPricing.js
+COPY --chown=node:node src/data/stockCatalogV20261015.json /app/src/data/stockCatalogV20261015.json

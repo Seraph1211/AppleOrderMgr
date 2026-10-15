@@ -808,7 +808,7 @@ async function dispatchUnit(ctx, input) {
       throw ApiError.conflict('设备入库状态已变化，请重新查询核对', undefined, 'VERSION_CONFLICT');
     const product = await activeRow(ctx, 'StockProduct', item.productId);
     if (!specification(product))
-      throw ApiError.badRequest('本期出库登记仅支持预置 iPhone 18 Pro Max 规格');
+      throw ApiError.badRequest('本期出库登记仅支持预置 iPhone 18 Pro Max / iPhone Duo 规格');
     if (unit?.productId && unit.productId !== product.id)
       throw ApiError.conflict('盒标规格与设备记录不一致，请核对后更正');
     if (needsReceive) {

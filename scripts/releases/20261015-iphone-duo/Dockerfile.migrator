@@ -1,0 +1,5 @@
+FROM apple-order-mgr-api:20261015-iphone-duo-amd64
+COPY --chown=node:node migrations /app/migrations
+COPY --chown=node:node .sequelizerc /app/.sequelizerc
+COPY --chown=node:node config /app/config
+CMD ["npm", "run", "db:migrate"]

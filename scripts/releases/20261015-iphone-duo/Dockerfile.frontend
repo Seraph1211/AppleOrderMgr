@@ -1,0 +1,6 @@
+FROM apple-order-mgr-frontend-builder:20261015-order-filter-export
+COPY frontend/src/components/stock/ledgerEntryForm.jsx /app/src/components/stock/ledgerEntryForm.jsx
+COPY frontend/src/components/stock/ledgerReceiveForm.jsx /app/src/components/stock/ledgerReceiveForm.jsx
+COPY frontend/src/components/stock/ledgerDispatchForm.jsx /app/src/components/stock/ledgerDispatchForm.jsx
+COPY frontend/src/pages/InventoryMonitor.jsx /app/src/pages/InventoryMonitor.jsx
+RUN npm run lint && npm run build

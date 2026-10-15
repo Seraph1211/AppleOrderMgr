@@ -16,11 +16,14 @@ describe('盒标结构化解析（合成文本，非阿里云实测）', () => {
       reviewReasons: [],
     });
   });
-  test('冻结 16 规格和固定价格版本', () => {
-    expect(CATALOG).toHaveLength(16);
+  test('保留冻结16旧规格及版本并增量支持8个Duo规格', () => {
+    expect(CATALOG).toHaveLength(24);
+    expect(CATALOG.filter(item => item.modelName === 'iPhone 18 Pro Max')).toHaveLength(16);
     expect(PRICE_VERSION).toBe('cn-iphone18-20260921');
     expect(
-      CATALOG.filter(item => item.storageGb === 2048).every(item => item.amount === '21499.00')
+      CATALOG.filter(
+        item => item.modelName === 'iPhone 18 Pro Max' && item.storageGb === 2048
+      ).every(item => item.amount === '21499.00')
     ).toBe(true);
   });
   test.each([

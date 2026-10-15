@@ -296,7 +296,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
             </h1>
             <p className="text-xs sm:text-sm text-gray-500 mt-1">
               大陆 Apple 直营店{' '}
-              <span className="hidden sm:inline">· iPhone 18 Pro 系列 · 北京时间</span>
+              <span className="hidden sm:inline">· iPhone 18 Pro 系列 / iPhone Duo · 北京时间</span>
             </p>
           </div>
         </div>

@@ -1,6 +1,6 @@
 const ApiError = require('../utils/ApiError');
 
-const MONITORED_MODELS = Object.freeze(['iPhone 18 Pro', 'iPhone 18 Pro Max']);
+const MONITORED_MODELS = Object.freeze(['iPhone 18 Pro', 'iPhone 18 Pro Max', 'iPhone Duo']);
 
 const DEFAULT_CONFIG = Object.freeze({
   enabled: false,
@@ -28,6 +28,8 @@ const FILTER_FIELDS = {
   skus: 'sku',
 };
 const COLORS = {
+  'Star White': '星光白色',
+  'Night Sky': '夜空色',
   'Space Black': '深空黑色',
   'Cloud White': '云白色',
   'Light Gold': '浅金色',
