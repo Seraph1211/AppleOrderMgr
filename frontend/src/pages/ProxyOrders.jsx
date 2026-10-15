@@ -232,6 +232,7 @@ function StatusButton({ row, disabled, onClick }) {
 export default function ProxyOrders() {
   const { can } = useAuth();
   const [tab, setTab] = useState('orders');
+  const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
   const [scope, setScope] = useState('pool');
   const [keyword, setKeyword] = useState('');
   const [status, setStatus] = useState('');
@@ -295,6 +296,12 @@ export default function ProxyOrders() {
     setBatchAccountStatus('');
     setBatchStopped(false);
   };
+  useEffect(() => {
+    const query = window.matchMedia('(max-width: 767px)');
+    const change = () => setMobile(query.matches);
+    query.addEventListener('change', change);
+    return () => query.removeEventListener('change', change);
+  }, []);
   useEffect(() => {
     let active = true;
     client
@@ -968,9 +975,241 @@ export default function ProxyOrders() {
     </div>
   );
 
+  const renderNotes = row => (
+    <div className="proxy-note-content">
+      {noteEditor?.id === row.id ? (
+        <div className="space-y-2">
+          <textarea
+            aria-label={`代抢 #${row.id} 备注`}
+            className="input w-full min-h-24"
+            value={noteEditor.notes}
+            maxLength={10000}
+            disabled={busy}
+            onChange={event => setNoteEditor({ id: row.id, notes: event.target.value })}
+            onKeyDown={event => {
+              if ((event.ctrlKey || event.metaKey) && event.key === 'Enter')
+                changeFromList(row, 'notes', { notes: noteEditor.notes });
+            }}
+          />
+          <div className="flex gap-2">
+            <button
+              className="btn btn-primary inline-flex items-center gap-1"
+              disabled={busy}
+              onClick={() => changeFromList(row, 'notes', { notes: noteEditor.notes })}
+            >
+              <Save className="w-4 h-4" />
+              保存
+            </button>
+            <button
+              className="btn btn-secondary"
+              disabled={busy}
+              onClick={() => setNoteEditor(null)}
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="group flex items-start gap-2">
+          <p className="flex-1 min-w-0 break-words text-gray-700 whitespace-pre-wrap">
+            {row.notes || <span className="text-gray-400">暂无备注</span>}
+          </p>
+          {can(PERMISSIONS.PROXY_READ) && (
+            <button
+              className="shrink-0 rounded-md p-1.5 text-primary hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-primary"
+              aria-label={`编辑代抢 #${row.id} 备注`}
+              title="编辑备注"
+              disabled={busy}
+              onClick={() => setNoteEditor({ id: row.id, notes: row.notes || '' })}
+            >
+              <Pencil className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+  const renderAccountEdit = row => (
+    <>
+      {row.isProxyPool && (
+        <button
+          className="btn btn-secondary"
+          onClick={() => {
+            setNotice('');
+            setDraft(row);
+            setAccountOriginalStatus(row.status);
+            setAccountStopped(false);
+            setModal('account');
+          }}
+        >
+          编辑
+        </button>
+      )}
+    </>
+  );
+  const renderMobileOrders = () => (
+    <div className="proxy-mobile-list" aria-label="代抢订单列表">
+      {data.rows.map(row => {
+        const active = can(PERMISSIONS.PROXY_READ) && ['pending', 'rushing'].includes(row.status);
+        const assigned = row.assignments.some(assignment => !assignment.endedAt);
+        return (
+          <article
+            key={row.id}
+            data-proxy-order-id={row.id}
+            aria-label={`代抢订单 #${row.id}`}
+            className="proxy-mobile-summary"
+          >
+            <header className="proxy-mobile-summary-heading">
+              <label className="proxy-mobile-selection">
+                <input
+                  type="checkbox"
+                  aria-label={`选择 ${row.id}`}
+                  checked={selected.includes(row.id)}
+                  onChange={() => toggle(row.id)}
+                />
+                <span className="sr-only">选择订单</span>
+              </label>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-gray-900">
+                  #{row.id} · {`${row.lastName || ''}${row.firstName || ''}` || '—'}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  证件尾号 {String(row.idLast4 ?? '').slice(-4) || '—'}
+                </p>
+              </div>
+              <StatusButton row={row} disabled={busy} onClick={() => openStatus(row)} />
+            </header>
+            <p className="proxy-mobile-product mt-2 text-sm font-medium text-gray-900">
+              {candidateNames(row) || '—'} × {row.quantity || 1}
+            </p>
+            <p className="proxy-mobile-meta mt-2 text-xs text-gray-600">
+              <span>取机城市：{pickupCity(row)}</span>
+              <span>支付：{row.paymentMethod || '—'}</span>
+              <span>来源：{row.orderSource || '—'}</span>
+            </p>
+            <p className="mt-2 text-sm text-gray-600">手机号：{row.phone || '—'}</p>
+            <div className="proxy-mobile-notes mt-2">
+              <p className="mb-1 text-xs text-gray-500">备注（全文见详情）</p>
+              {renderNotes(row)}
+            </div>
+            <div className="proxy-mobile-primary mt-3">
+              <button className="btn btn-secondary" disabled={busy} onClick={() => loadDetail(row)}>
+                详情 / 完整资料
+              </button>
+              {active &&
+                (assigned ? (
+                  <button
+                    className="btn btn-primary"
+                    disabled={busy}
+                    onClick={() => copyOrders([row.id])}
+                  >
+                    <Copy className="w-4 h-4" />
+                    复制模板
+                  </button>
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    disabled={busy}
+                    onClick={() => openAssignments(row)}
+                  >
+                    分配账号
+                  </button>
+                ))}
+            </div>
+            {can(PERMISSIONS.PROXY_READ) && (
+              <details className="proxy-mobile-more mt-2">
+                <summary className="btn btn-secondary">
+                  更多操作
+                  <ChevronDown className="w-4 h-4" aria-hidden="true" />
+                </summary>
+                <div className="proxy-mobile-more-actions mt-2">
+                  {active && assigned && (
+                    <button
+                      className="btn btn-secondary"
+                      disabled={busy}
+                      onClick={() => openAssignments(row)}
+                    >
+                      追加账号
+                    </button>
+                  )}
+                  {active && !assigned && (
+                    <div>
+                      <button
+                        className="btn btn-secondary w-full"
+                        disabled
+                        title="先分配账号后复制"
+                      >
+                        复制模板
+                      </button>
+                      <p className="mt-1 text-xs text-gray-500">先分配账号后复制</p>
+                    </div>
+                  )}
+                  <button
+                    className="btn btn-secondary text-red-700"
+                    disabled={busy}
+                    aria-label={`删除代抢 #${row.id}`}
+                    onClick={() => openDelete(row)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    删除
+                  </button>
+                </div>
+              </details>
+            )}
+          </article>
+        );
+      })}
+    </div>
+  );
+  const renderMobileAccounts = () => (
+    <div className="proxy-mobile-list" aria-label="账号列表">
+      {data.rows.map(row => (
+        <article
+          key={row.id}
+          data-proxy-account-id={row.id}
+          aria-label={`账号 ${row.appleId}`}
+          className="proxy-mobile-summary"
+        >
+          <header className="proxy-mobile-summary-heading">
+            <label className="proxy-mobile-selection">
+              <input
+                type="checkbox"
+                aria-label={`选择 ${row.id}`}
+                checked={selected.includes(row.id)}
+                onChange={() => toggle(row.id)}
+              />
+              <span className="sr-only">选择账号</span>
+            </label>
+            <p className="min-w-0 flex-1 font-mono text-sm font-medium text-gray-900">
+              {row.appleId}
+            </p>
+            <span
+              className={`badge shrink-0 ${{ 未使用: 'badge-success', 使用中: 'badge-info', 已下架: 'bg-gray-100 text-gray-700', 异常: 'badge-error' }[row.status] || 'bg-gray-100 text-gray-700'}`}
+            >
+              {row.status}
+            </span>
+          </header>
+          <div className="flex items-center justify-between gap-3 mt-2">
+            <p className="text-sm text-gray-600">
+              占用委托：{row.assignment ? `代抢 #${row.assignment.proxyOrderId}` : '未占用'}
+            </p>
+            {renderAccountEdit(row)}
+          </div>
+          <details className="proxy-mobile-more mt-2">
+            <summary className="btn btn-secondary">
+              查看备注
+              <ChevronDown className="w-4 h-4" aria-hidden="true" />
+            </summary>
+            <p className="mt-2 text-sm text-gray-600 whitespace-pre-wrap">{row.notes || '—'}</p>
+          </details>
+        </article>
+      ))}
+    </div>
+  );
+
   return (
     <div className="proxy-orders-page space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="proxy-page-heading flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">代抢管理</h1>
           <p className="text-gray-500 mt-1">登记客户委托，分配专用账号并跟踪抢购结果</p>
@@ -1056,8 +1295,8 @@ export default function ProxyOrders() {
           个账号。“未使用”和“使用中”均可分配，但不能被其他委托占用；“已下架”和“异常”不能分配。
         </div>
       )}
-      <div className="flex flex-wrap gap-2 items-center">
-        <div className="relative flex-1 min-w-[180px]">
+      <div className="proxy-list-toolbar flex flex-wrap gap-2 items-center">
+        <div className="proxy-search relative flex-1 min-w-[180px]">
           <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
           <input
             aria-label="搜索"
@@ -1163,6 +1402,30 @@ export default function ProxyOrders() {
           </>
         )}
       </div>
+      {mobile && (
+        <div className="proxy-mobile-selection-toolbar" aria-label="批量选择">
+          <label className="proxy-mobile-select-all">
+            <input
+              aria-label="全选当前页"
+              type="checkbox"
+              disabled={loading || !data.rows.length}
+              checked={!!data.rows.length && data.rows.every(row => selected.includes(row.id))}
+              onChange={event =>
+                setSelected(event.target.checked ? data.rows.map(row => row.id) : [])
+              }
+            />
+            全选本页
+          </label>
+          <span role="status">
+            已选 {selected.length} 项 · 本页 {data.rows.length} 项
+          </span>
+          {!!selected.length && (
+            <button className="btn btn-secondary" onClick={() => setSelected([])}>
+              清空选择
+            </button>
+          )}
+        </div>
+      )}
       <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
         {loading ? (
           <div className="flex gap-2 justify-center py-16 text-gray-500">
@@ -1177,6 +1440,12 @@ export default function ProxyOrders() {
                 ? '暂无代抢订单，粘贴客户信息开始登记'
                 : '暂无账号，可粘贴导入或核对历史候选'}
           </div>
+        ) : mobile ? (
+          tab === 'orders' ? (
+            renderMobileOrders()
+          ) : (
+            renderMobileAccounts()
+          )
         ) : (
           <div
             className="max-w-full overflow-x-auto"
@@ -1263,62 +1532,7 @@ export default function ProxyOrders() {
                         <td className="p-3 proxy-payment-cell">{row.paymentMethod || '—'}</td>
                         <td className="p-3 proxy-source-cell">{row.orderSource || '—'}</td>
                         <td className="proxy-notes-cell p-3 whitespace-normal">
-                          {noteEditor?.id === row.id ? (
-                            <div className="space-y-2">
-                              <textarea
-                                aria-label={`代抢 #${row.id} 备注`}
-                                className="input w-full min-h-24"
-                                value={noteEditor.notes}
-                                maxLength={10000}
-                                disabled={busy}
-                                onChange={event =>
-                                  setNoteEditor({ id: row.id, notes: event.target.value })
-                                }
-                                onKeyDown={event => {
-                                  if ((event.ctrlKey || event.metaKey) && event.key === 'Enter')
-                                    changeFromList(row, 'notes', { notes: noteEditor.notes });
-                                }}
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  className="btn btn-primary inline-flex items-center gap-1"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    changeFromList(row, 'notes', { notes: noteEditor.notes })
-                                  }
-                                >
-                                  <Save className="w-4 h-4" />
-                                  保存
-                                </button>
-                                <button
-                                  className="btn btn-secondary"
-                                  disabled={busy}
-                                  onClick={() => setNoteEditor(null)}
-                                >
-                                  取消
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="group flex items-start gap-2">
-                              <p className="flex-1 min-w-0 break-words text-gray-700 whitespace-pre-wrap">
-                                {row.notes || <span className="text-gray-400">暂无备注</span>}
-                              </p>
-                              {can(PERMISSIONS.PROXY_READ) && (
-                                <button
-                                  className="shrink-0 rounded-md p-1.5 text-primary hover:bg-blue-50 focus-visible:ring-2 focus-visible:ring-primary"
-                                  aria-label={`编辑代抢 #${row.id} 备注`}
-                                  title="编辑备注"
-                                  disabled={busy}
-                                  onClick={() =>
-                                    setNoteEditor({ id: row.id, notes: row.notes || '' })
-                                  }
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          )}
+                          {renderNotes(row)}
                         </td>
                         <td className="p-3 proxy-status-cell">
                           {can(PERMISSIONS.PROXY_READ) ? (
@@ -1394,22 +1608,7 @@ export default function ProxyOrders() {
                           {row.assignment ? `代抢 #${row.assignment.proxyOrderId}` : '未占用'}
                         </td>
                         <td className="proxy-account-notes-cell p-3">{row.notes || '—'}</td>
-                        <td className="p-3">
-                          {row.isProxyPool && (
-                            <button
-                              className="btn btn-secondary"
-                              onClick={() => {
-                                setNotice('');
-                                setDraft(row);
-                                setAccountOriginalStatus(row.status);
-                                setAccountStopped(false);
-                                setModal('account');
-                              }}
-                            >
-                              编辑
-                            </button>
-                          )}
-                        </td>
+                        <td className="p-3">{renderAccountEdit(row)}</td>
                       </>
                     )}
                   </tr>
@@ -1559,12 +1758,17 @@ export default function ProxyOrders() {
             )}
             <dl className="grid sm:grid-cols-2 gap-3 text-sm">
               {[
+                ['编号', current.id],
+                ['姓名', `${current.lastName || ''}${current.firstName || ''}`],
                 ['抢购需求', `${candidateNames(current)} × ${current.quantity}`],
+                ['取机城市', pickupCity(current)],
+                ['登记时间', DATE(current.createdAt)],
+                ['更新时间', DATE(current.updatedAt)],
                 ['支付要求', current.paymentMethod],
                 ['订单来源', current.orderSource],
                 ['手机号', current.phone],
                 ['邮箱', current.email],
-                ['身份证后四位', current.idLast4],
+                ['身份证后四位', String(current.idLast4 ?? '').slice(-4)],
                 ['平台订单号', current.platformOrderNumber],
                 ['门店范围', storeNames(current.storeCodes)],
                 [

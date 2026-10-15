@@ -283,3 +283,143 @@
   gap: 0.125rem;
   white-space: nowrap;
 }
+
+/* 手机只挂载摘要分支，桌面继续使用完整表格。 */
+.proxy-mobile-list,
+.proxy-mobile-summary,
+.proxy-mobile-summary > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.proxy-mobile-list {
+  display: flex;
+  flex-direction: column;
+}
+.proxy-mobile-summary {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e5e7eb;
+  overflow-wrap: anywhere;
+}
+.proxy-mobile-summary:last-child {
+  border-bottom: 0;
+}
+.proxy-mobile-summary-heading {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+}
+.proxy-mobile-selection {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+}
+.proxy-mobile-selection input,
+.proxy-mobile-select-all input {
+  width: 20px;
+  height: 20px;
+}
+.proxy-mobile-product {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+.proxy-mobile-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+}
+.proxy-mobile-notes .group > p {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+}
+.proxy-mobile-notes button {
+  min-width: 44px;
+  min-height: 44px;
+}
+.proxy-mobile-primary,
+.proxy-mobile-more-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+.proxy-mobile-primary .btn,
+.proxy-mobile-more-actions .btn {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+  white-space: normal;
+}
+.proxy-mobile-more > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  list-style: none;
+}
+.proxy-mobile-more > summary::-webkit-details-marker {
+  display: none;
+}
+.proxy-mobile-more[open] > summary > svg {
+  transform: rotate(180deg);
+}
+.proxy-mobile-selection-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: #4b5563;
+  font-size: 12px;
+}
+.proxy-mobile-select-all {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  font-size: 14px;
+}
+@media (max-width: 767px) {
+  .proxy-page-heading {
+    flex-wrap: nowrap;
+    gap: 0.5rem;
+  }
+  .proxy-page-heading > div:first-child {
+    min-width: 0;
+  }
+  .proxy-page-heading h1 {
+    font-size: 20px;
+    white-space: nowrap;
+  }
+  .proxy-page-heading p {
+    display: none;
+  }
+  .proxy-page-heading > div:last-child {
+    flex-shrink: 0;
+  }
+  .proxy-list-toolbar .proxy-search {
+    flex: 0 0 100%;
+    min-width: 0;
+  }
+  .proxy-list-toolbar > .btn,
+  .proxy-list-toolbar > .responsive-select-trigger {
+    flex: 1 1 calc(50% - 4px);
+    max-width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+  .proxy-mobile-more > summary {
+    min-height: 44px;
+  }
+  .proxy-dialog dd,
+  .proxy-dialog .whitespace-pre-wrap {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}

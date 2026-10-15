@@ -1,0 +1,6 @@
+{
+  "frontend": [
+    "frontend/src/pages/ProxyOrders.jsx",
+    "frontend/src/pages/proxyOrders/proxyOrders.css"
+  ]
+}

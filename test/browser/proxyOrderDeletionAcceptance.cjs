@@ -108,18 +108,29 @@ async function main() {
       await page.goto(origin + '/proxy-orders');
       const row = id =>
         page
-          .locator('tbody tr')
-          .filter({ has: page.getByRole('button', { name: `删除代抢 #${id}`, exact: true }) });
+          .locator(width < 768 ? 'article[data-proxy-order-id]' : 'tbody tr')
+          .filter({ has: page.getByRole('checkbox', { name: `选择 ${id}`, exact: true }) });
+      const openDelete = async id => {
+        try {
+          if (width < 768 && !((await row(id).locator('details').getAttribute('open')) !== null))
+            await row(id).locator('summary').click();
+          await row(id)
+            .getByRole('button', { name: `删除代抢 #${id}`, exact: true })
+            .click();
+        } catch (error) {
+          throw new Error(`打开删除 #${id}: ${error.message}`);
+        }
+      };
       const deleteCalls = () => calls.filter(call => call.path.endsWith('/delete'));
-      await page.getByRole('button', { name: '删除代抢 #1', exact: true }).waitFor();
+      await row(1).waitFor();
       await row(1).getByRole('checkbox').check();
-      await page.getByRole('button', { name: '删除代抢 #1', exact: true }).click();
+      await openDelete(1);
       let dialog = page.getByRole('dialog', { name: '删除代抢 #1', exact: true });
       assert.equal(await dialog.getByRole('checkbox').count(), 0);
       await dialog.getByRole('button', { name: '取消', exact: true }).click();
       assert.equal(deleteCalls().length, 0);
       assert.equal(await row(1).getByRole('checkbox').isChecked(), true);
-      await row(1).getByRole('button', { name: '详情', exact: true }).click();
+      await row(1).getByRole('button', { name: /详情/ }).click();
       const detail = page.getByRole('dialog', { name: '代抢 #1 · 张三', exact: true });
       await detail.getByRole('button', { name: '删除订单', exact: true }).click();
       dialog = page.getByRole('dialog', { name: '删除代抢 #1', exact: true });
@@ -128,7 +139,7 @@ async function main() {
       assert.equal(await detail.isVisible(), true);
       assert.equal(deleteCalls().length, 0);
       await detail.getByRole('button', { name: '关闭', exact: true }).click();
-      await page.getByRole('button', { name: '删除代抢 #1', exact: true }).click();
+      await openDelete(1);
       dialog = page.getByRole('dialog', { name: '删除代抢 #1', exact: true });
       await dialog.getByRole('button', { name: '确认删除', exact: true }).click();
       await dialog.waitFor({ state: 'hidden' });
@@ -138,7 +149,7 @@ async function main() {
       assert.equal(rows.length, 33);
       assert.equal(await page.getByRole('button', { name: /复制选中/ }).isDisabled(), true);
 
-      await page.getByRole('button', { name: '删除代抢 #2', exact: true }).click();
+      await openDelete(2);
       dialog = page.getByRole('dialog', { name: '删除代抢 #2', exact: true });
       const confirm = dialog.getByRole('button', { name: '确认删除', exact: true });
       const stopped = dialog.getByRole('checkbox', {
@@ -170,7 +181,7 @@ async function main() {
       assert.equal(occupiedRequest.body.expectedVersion, 1);
 
       // 页面数据陈旧：后端发现新增占用时必须补回确认，不允许直接重试释放。
-      await page.getByRole('button', { name: '删除代抢 #3', exact: true }).click();
+      await openDelete(3);
       dialog = page.getByRole('dialog', { name: '删除代抢 #3', exact: true });
       await dialog.getByRole('button', { name: '确认删除', exact: true }).click();
       await dialog.getByRole('checkbox').waitFor();
@@ -188,13 +199,13 @@ async function main() {
 
       // 最末页唯一记录删除后应退回上一页并清除已选ID。
       await page.getByRole('button', { name: '下一页', exact: true }).click();
-      await page.getByRole('button', { name: '删除代抢 #34', exact: true }).waitFor();
+      await row(34).waitFor();
       await row(34).getByRole('checkbox').check();
-      await page.getByRole('button', { name: '删除代抢 #34', exact: true }).click();
+      await openDelete(34);
       dialog = page.getByRole('dialog', { name: '删除代抢 #34', exact: true });
       await dialog.getByRole('button', { name: '确认删除', exact: true }).click();
       await dialog.waitFor({ state: 'hidden' });
-      await page.getByRole('button', { name: '删除代抢 #4', exact: true }).waitFor();
+      await row(4).waitFor();
       await page.getByText('共 30 条 · 第 1 页', { exact: true }).waitFor();
       assert.equal(
         await page.getByRole('button', { name: '上一页', exact: true }).isDisabled(),

@@ -148,11 +148,11 @@ async function main() {
       const installObserver = () =>
         page.evaluate(() => {
           window.__flickerObserver?.disconnect();
-          window.__flickerTable = document.querySelector('table');
+          window.__flickerTable = document.querySelector('table, .proxy-mobile-list');
           window.__flickerDetachments = 0;
           window.__flickerMounts = 1;
           window.__flickerObserver = new MutationObserver(() => {
-            const current = document.querySelector('table');
+            const current = document.querySelector('table, .proxy-mobile-list');
             if (window.__flickerTable && !window.__flickerTable.isConnected) {
               window.__flickerDetachments++;
               window.__flickerTable = null;
@@ -176,7 +176,7 @@ async function main() {
         await installObserver();
         const before = listCalls(path).length,
           authBefore = calls.filter(call => call.path === '/api/auth/me').length;
-        const scroller = page.locator('table').first().locator('..');
+        const scroller = page.locator('table, .proxy-mobile-list').first().locator('..');
         await scroller.evaluate(node => {
           node.scrollLeft = node.scrollWidth;
         });
@@ -208,14 +208,14 @@ async function main() {
           ...result,
         });
       };
-      const activeTable = page.locator('table').first();
+      const activeTable = page.locator('table, .proxy-mobile-list').first();
       const reloadBy = async (path, action) => {
         const response = page.waitForResponse(
           result => new URL(result.url()).pathname === path && result.request().method() === 'GET'
         );
         await action();
         await response;
-        await page.locator('table').first().waitFor();
+        await page.locator('table, .proxy-mobile-list').first().waitFor();
       };
       if (mode === 'baseline') {
         assert.ok(baselineOverrides > 0);
@@ -234,7 +234,7 @@ async function main() {
           holdLists = true;
           await page.clock.runFor(21000);
           await page.getByText('加载中…', { exact: true }).waitFor();
-          assert.equal(await page.locator('table').count(), 0);
+          assert.equal(await page.locator('table, .proxy-mobile-list').count(), 0);
           const during = await metrics();
           assert.equal(during.documentLoads, 1);
           assert.equal(during.documentToken, documentToken);
@@ -302,7 +302,12 @@ async function main() {
         const search = page.getByLabel('搜索', { exact: true });
         await search.fill('目标');
         await page.getByLabel('选择 31', { exact: true }).waitFor();
-        assert.equal(await page.locator('tbody tr').count(), 1);
+        assert.equal(
+          await page
+            .locator('tbody tr, article[data-proxy-order-id], article[data-proxy-account-id]')
+            .count(),
+          1
+        );
         assert.equal(listCalls('/api/proxy-orders').at(-1).query.keyword, '目标');
         await search.fill('');
         await orderSelection.waitFor();
@@ -318,7 +323,12 @@ async function main() {
         await filterResponse;
         await activeTable.waitFor();
         await page.getByLabel('选择 2', { exact: true }).waitFor();
-        assert.equal(await page.locator('tbody tr').count(), 1);
+        assert.equal(
+          await page
+            .locator('tbody tr, article[data-proxy-order-id], article[data-proxy-account-id]')
+            .count(),
+          1
+        );
         assert.equal(listCalls('/api/proxy-orders').at(-1).query.status, 'rushing');
         if (width < 768) {
           await page.getByRole('button', { name: '状态筛选', exact: true }).click();
@@ -333,7 +343,9 @@ async function main() {
         await poolSelection.waitFor();
         await poolSelection.check();
         await stable('pool-idle', '/api/proxy-orders/accounts', poolSelection);
-        const poolRow = page.locator('tbody tr').filter({ has: poolSelection });
+        const poolRow = page
+          .locator('tbody tr, article[data-proxy-order-id], article[data-proxy-account-id]')
+          .filter({ has: poolSelection });
         await poolRow.getByRole('button', { name: '编辑', exact: true }).click();
         const accountDialog = page.getByRole('dialog', { name: '编辑代抢账号', exact: true });
         const accountNote = accountDialog.getByLabel('备注', { exact: true });
@@ -357,7 +369,12 @@ async function main() {
         assert.ok(listCalls('/api/proxy-orders/accounts').length > poolBeforeRefresh);
         await page.getByLabel('搜索', { exact: true }).fill('account-30@');
         await page.getByLabel('选择 331', { exact: true }).waitFor();
-        assert.equal(await page.locator('tbody tr').count(), 1);
+        assert.equal(
+          await page
+            .locator('tbody tr, article[data-proxy-order-id], article[data-proxy-account-id]')
+            .count(),
+          1
+        );
         await page.screenshot({ path: `${output}/${width}-fixed-explicit-operations.png` });
         assert.equal(
           await page.evaluate(() => Number(sessionStorage.getItem('__flickerDocumentLoads'))),

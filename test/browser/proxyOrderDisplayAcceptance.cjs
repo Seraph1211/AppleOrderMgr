@@ -29,7 +29,7 @@ async function main() {
   fs.mkdirSync(output, { recursive: true });
   const browser = await chromium.launch({ headless: true, channel: 'chrome' });
   try {
-    for (const width of [375, 390, 768, 1366, 1920]) {
+    for (const width of [768, 1366, 1920]) {
       const context = await browser.newContext({
         viewport: { width, height: 900 },
         timezoneId: 'Asia/Shanghai',
