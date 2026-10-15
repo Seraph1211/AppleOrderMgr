@@ -119,7 +119,7 @@ async function main() {
       await dialog.getByRole('button', { name: '取消', exact: true }).click();
       assert.equal(deleteCalls().length, 0);
       assert.equal(await row(1).getByRole('checkbox').isChecked(), true);
-      await page.getByRole('button', { name: '#1 · 张三', exact: true }).click();
+      await row(1).getByRole('button', { name: '详情', exact: true }).click();
       const detail = page.getByRole('dialog', { name: '代抢 #1 · 张三', exact: true });
       await detail.getByRole('button', { name: '删除订单', exact: true }).click();
       dialog = page.getByRole('dialog', { name: '删除代抢 #1', exact: true });

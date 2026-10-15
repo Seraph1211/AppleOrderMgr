@@ -112,17 +112,174 @@
   cursor: not-allowed;
   box-shadow: none;
 }
-.proxy-orders-table td:nth-child(2) {
-  max-width: 10rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
+.proxy-orders-page {
+  min-width: 0;
+  max-width: 100%;
 }
-.proxy-orders-table td:nth-child(7) {
-  max-width: 11rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
+.proxy-delegations-table .proxy-id-cell {
+  min-width: 2.75rem;
 }
-.proxy-orders-table td:nth-child(8) {
+.proxy-delegations-table .proxy-customer-cell {
+  min-width: 5.25rem;
   max-width: 8rem;
   white-space: normal;
+  overflow-wrap: anywhere;
+}
+.proxy-delegations-table .proxy-phone-cell {
+  min-width: 7rem;
+  white-space: nowrap;
+}
+.proxy-delegations-table .proxy-email-cell {
+  min-width: 8.75rem;
+  max-width: 12rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.proxy-delegations-table .proxy-product-cell {
+  min-width: 10.75rem;
+  max-width: 15rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.proxy-delegations-table .proxy-city-cell {
+  min-width: 4.25rem;
+  max-width: 6rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.proxy-delegations-table .proxy-payment-cell {
+  min-width: 5.25rem;
+}
+.proxy-delegations-table .proxy-source-cell {
+  min-width: 4.5rem;
+  max-width: 7rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.proxy-delegations-table .proxy-notes-cell {
+  min-width: 8.75rem;
+  max-width: 14rem;
+  overflow-wrap: anywhere;
+}
+.proxy-delegations-table .proxy-status-cell {
+  min-width: 7.75rem;
+}
+.proxy-delegations-table .proxy-date-cell {
+  min-width: 6.5rem;
+  max-width: 7.5rem;
+  white-space: normal;
+}
+.proxy-order-action-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.375rem;
+  width: 10rem;
+}
+.proxy-order-action-grid > p {
+  grid-column: 1 / -1;
+  max-width: none;
+}
+.btn.proxy-status-control {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  min-height: 32px;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid currentColor;
+  border-radius: 9999px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.proxy-status-control:hover {
+  filter: brightness(0.97);
+}
+.proxy-status-control:focus-visible,
+.proxy-status-option:focus-visible {
+  outline: 2px solid #1e3a8a;
+  outline-offset: 3px;
+}
+.proxy-status-control:disabled,
+.proxy-status-option:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.proxy-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.proxy-status-pending {
+  color: #92400e;
+  background: #fef3c7;
+}
+.proxy-status-rushing {
+  color: #1e40af;
+  background: #dbeafe;
+}
+.proxy-status-succeeded {
+  color: #166534;
+  background: #dcfce7;
+}
+.proxy-status-cancelled {
+  color: #4b5563;
+  background: #f3f4f6;
+}
+.proxy-status-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+.btn.proxy-status-option {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-height: 44px;
+  padding: 0.75rem;
+  border: 2px solid transparent;
+  border-radius: 0.5rem;
+  text-align: left;
+}
+.proxy-status-option[aria-pressed='true'] {
+  border-color: currentColor;
+}
+@media (max-width: 767px) {
+  .proxy-orders-page .proxy-status-control,
+  .proxy-dialog .proxy-status-control {
+    min-height: 44px;
+  }
+  .proxy-order-action-grid {
+    width: 12rem;
+  }
+  .proxy-delegations-table .proxy-notes-cell button {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
+.proxy-orders-table .proxy-account-email-cell {
+  min-width: 12rem;
+  max-width: 20rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.proxy-orders-table .proxy-account-notes-cell {
+  min-width: 13rem;
+  max-width: 20rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.proxy-delegations-table td,
+.proxy-delegations-table th {
+  padding: 0.5rem;
+}
+.proxy-list-date {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  white-space: nowrap;
 }
