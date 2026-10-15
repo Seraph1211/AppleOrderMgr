@@ -48,7 +48,11 @@ export default function ProfileDetailsModal({ kind, item, onClose }) {
       client.get(`/${resource}/${item.id}`),
       canOrders
         ? client.get('/orders', {
-            params: { [account ? 'apple_id' : 'recipient_id']: item.id, page, limit: 20 },
+            params: {
+              [account ? 'apple_id' : 'recipient_id']: item.id,
+              page,
+              limit: 20,
+            },
           })
         : Promise.resolve(null),
     ])
@@ -148,7 +152,8 @@ export default function ProfileDetailsModal({ kind, item, onClose }) {
                 </p>
                 {!account && (
                   <p className="text-sm text-gray-700">
-                    TAG：{detail?.tag || '—'} · 渠道：{detail?.channel || '—'}
+                    TAG：{detail?.tag || '—'} · 信用评级：
+                    {detail?.credit_rating || '未评级'}
                   </p>
                 )}
                 {canQa && (

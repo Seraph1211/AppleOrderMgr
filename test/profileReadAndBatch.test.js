@@ -60,6 +60,7 @@ describe('基础资料读取权限与选填联系电话', () => {
         phone: '13800000000',
         streetAddress: '合成地址',
         channel: '合作渠道甲',
+        creditRating: 'B',
         password: 'hidden',
       };
       const appleRow = { id: 1, toJSON: () => ({ ...apple }) };
@@ -83,6 +84,7 @@ describe('基础资料读取权限与选填联系电话', () => {
             id_card_number: recipient.idCardNumber,
             phone: recipient.phone,
             channel: recipient.channel,
+            credit_rating: recipient.creditRating,
             street_address: null,
           },
         ],
@@ -93,6 +95,7 @@ describe('基础资料读取权限与选填联系电话', () => {
             id_card_number: recipient.idCardNumber,
             phone: recipient.phone,
             channel: recipient.channel,
+            credit_rating: recipient.creditRating,
             street_address: null,
           },
         ],

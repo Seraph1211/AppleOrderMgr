@@ -233,8 +233,8 @@ export const recipientsColumns = [
     pinned: false,
   },
   {
-    key: 'channel',
-    label: '渠道',
+    key: 'creditRating',
+    label: '信用评级',
     width: '140px',
     defaultVisible: true,
     sortable: true,

@@ -358,3 +358,17 @@ describe('订单自身证据与歧义防误配', () => {
     ).toBe(candidate);
   });
 });
+
+describe('取机人信用评级输入', () => {
+  test.each(['A', 'B', 'C', null, ''])('应该接受评级 %s 或显式清空', creditRating => {
+    expect(recipientInput({ creditRating }).creditRating).toBe(creditRating || null);
+  });
+  test.each(['D', 'a', ' A ', ' ', 1, false, [], {}])('应该拒绝非法评级 %j', creditRating => {
+    expect(() => recipientInput({ creditRating })).toThrow('信用评级必须是 A、B、C 或留空');
+  });
+  test('应该在省略评级和渠道时不生成覆盖字段', () => {
+    const updates = recipientInput({ notes: '仅改备注' });
+    expect(updates).not.toHaveProperty('creditRating');
+    expect(updates).not.toHaveProperty('channel');
+  });
+});
