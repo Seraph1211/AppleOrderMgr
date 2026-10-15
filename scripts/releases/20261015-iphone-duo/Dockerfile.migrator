@@ -1,5 +1,3 @@
-FROM apple-order-mgr-api:20261015-iphone-duo-amd64
-COPY --chown=node:node migrations /app/migrations
-COPY --chown=node:node .sequelizerc /app/.sequelizerc
-COPY --chown=node:node config /app/config
-CMD ["npm", "run", "db:migrate"]
+FROM apple-order-mgr-migrator:20261012-profile-decoupling-candidate
+COPY --chown=node:node migrations/20261015000001-add-iphone-duo-catalog.js /app/migrations/20261015000001-add-iphone-duo-catalog.js
+COPY --chown=node:node src/data/stockCatalogV20261015.json /app/src/data/stockCatalogV20261015.json
