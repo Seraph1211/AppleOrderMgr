@@ -1,5 +1,6 @@
 const { LIMITS } = require('./inventoryValidationPolicy');
 const { REQUEST_CONCURRENCY } = require('./inventoryConcurrency');
+const { PROVIDER_FAILURES, settleProviderFailure } = require('./inventoryTunnelPolicy');
 
 /** 正式采集的持久化请求许可，预占最大响应字节防并发超额。 @param {Object} original 状态 @param {number} now 时间 @param {string} id 尝试编号 @param {number} jitter 抖动 @param {string} egress 出口 @param {string} purpose 用途 @param {Object} config 配置 @returns {Object} 许可 */
 function reserveProduction(original, now, id, jitter, egress, purpose, config) {
@@ -7,9 +8,24 @@ function reserveProduction(original, now, id, jitter, egress, purpose, config) {
   if (!config.enabled) return { blocked: 'MONITOR_DISABLED' };
   if (state.pausedReason) return { blocked: state.pausedReason };
   if (state.pausedEgress?.[egress]) return { blocked: state.pausedEgress[egress] };
-  if (state.requiredAlternateEgress === egress) return { blocked: 'ALTERNATE_EGRESS_REQUIRED' };
+  const verifiedAlternate =
+    state.tunnel?.label === egress &&
+    state.tunnel.verified &&
+    state.tunnel.expiresAt > now &&
+    state.tunnel.exitHash &&
+    !state.tunnel.rejectedHashes?.includes(state.tunnel.exitHash);
+  if (state.requiredAlternateEgress === egress && purpose !== 'egress' && !verifiedAlternate)
+    return { blocked: 'ALTERNATE_EGRESS_REQUIRED' };
   if (state.cooldownUntil > now) return { blocked: 'TARGET_COOLDOWN', until: state.cooldownUntil };
-  if (state.recovering && !['inventory', 'provider'].includes(purpose))
+  if (state.providerCooldownUntil > now)
+    return { blocked: 'PROXY_PROVIDER_COOLDOWN', until: state.providerCooldownUntil };
+  if (
+    !['egress', 'provider'].includes(purpose) &&
+    state.tunnel?.label === egress &&
+    (!state.tunnel.verified || state.tunnel.expiresAt <= now)
+  )
+    return { blocked: 'REQUEST_IN_FLIGHT', until: now + 1000 };
+  if (state.recovering && !['inventory', 'provider', 'egress'].includes(purpose))
     return { blocked: 'RECOVERY_PROBE_REQUIRED' };
   const leases = Object.fromEntries(
     Object.entries(state.requestLeases || {}).filter(([, lease]) => lease.until > now)
@@ -28,19 +44,20 @@ function reserveProduction(original, now, id, jitter, egress, purpose, config) {
   const day = Math.floor(now / 86400000);
   if (state.hour !== hour) Object.assign(state, { hour, hourCount: 0 });
   if (state.day !== day) Object.assign(state, { day, dayCount: 0, byteCount: 0, proxyCount: 0 });
-  const reserveBytes = purpose === 'provider' ? 100000 : 5242880;
+  const extraction = ['provider', 'egress'].includes(purpose);
+  const reserveBytes = extraction ? 100000 : 5242880;
   if (
     (state.hourCount || 0) >= config.hourlyRequests ||
     (state.dayCount || 0) >= config.dailyRequests ||
     (state.byteCount || 0) + reserveBytes > config.dailyBytes ||
-    (purpose === 'provider' && (state.proxyCount || 0) >= config.dailyProxyExtractions)
+    (extraction && (state.proxyCount || 0) >= config.dailyProxyExtractions)
   )
     return { blocked: 'REQUEST_BUDGET_EXHAUSTED' };
   Object.assign(state, {
     hourCount: (state.hourCount || 0) + 1,
     dayCount: (state.dayCount || 0) + 1,
     byteCount: (state.byteCount || 0) + reserveBytes,
-    proxyCount: (state.proxyCount || 0) + (purpose === 'provider' ? 1 : 0),
+    proxyCount: (state.proxyCount || 0) + (extraction ? 1 : 0),
     requestLeases: {
       ...leases,
       [id]: {
@@ -50,6 +67,8 @@ function reserveProduction(original, now, id, jitter, egress, purpose, config) {
         purpose,
         recovery: Boolean(state.recovering),
         recoveryEpoch: Math.max(state.recoveryEpoch || 0, state.resumedAt || 0),
+        egressHash: state.tunnel?.label === egress ? state.tunnel.exitHash : null,
+        tunnelToken: state.tunnel?.label === egress ? state.tunnel.token : null,
       },
     },
     nextAt: now + 1000 + Math.min(150, Math.max(0, jitter)),
@@ -81,6 +100,32 @@ function settleProduction(original, result, now) {
       );
     Object.assign(state, { leaseId: null, leaseUntil: 0, leaseBytes: 0 });
   }
+  // 出口回显不是 Apple 请求，不清空风险或累积恢复成功。
+  if (result.purpose === 'egress') return state;
+  const currentTunnel = !lease?.tunnelToken || lease.tunnelToken === state.tunnel?.token;
+  if (
+    !currentTunnel &&
+    (PROVIDER_FAILURES.has(result.outcome) || result.summary?.responseSource === 'proxy_connect')
+  )
+    return state;
+  if (PROVIDER_FAILURES.has(result.outcome))
+    return settleProviderFailure(state, now, result.egress);
+  if (result.summary?.responseSource === 'proxy_connect') {
+    state.pausedEgress = { ...state.pausedEgress, [result.egress]: result.outcome };
+    if (state.tunnel?.label === result.egress)
+      state.tunnel = { ...state.tunnel, verified: false, expiresAt: 0 };
+    return state;
+  }
+  if (
+    result.purpose === 'inventory' &&
+    result.outcome === 'INVENTORY_VALID' &&
+    currentTunnel &&
+    (!state.tunnel || (state.tunnel.verified && state.tunnel.expiresAt > now))
+  ) {
+    state.providerFailures = 0;
+    state.providerFailedToken = null;
+    state.providerCooldownUntil = 0;
+  }
   if (result.purpose === 'provider' || result.egress?.includes('provider')) {
     if (result.outcome !== 'PROVIDER_ENDPOINT_RECEIVED') {
       state.pausedEgress = { ...state.pausedEgress, [result.egress]: 'PROVIDER_FAILED' };
@@ -107,7 +152,7 @@ function settleProduction(original, result, now) {
   const risk = ['TARGET_RATE_LIMITED', 'TARGET_REJECTED'].includes(result.outcome);
   state.recent = [
     ...(state.recent || []).filter(r => r.at >= now - 300000),
-    { at: now, risk, egress: result.egress },
+    { at: now, risk, egress: result.egress, exitHash: lease?.egressHash || result.egressHash },
   ].slice(-300);
   state.consecutiveRisks = risk ? (state.consecutiveRisks || 0) + 1 : 0;
   if (
@@ -125,7 +170,7 @@ function settleProduction(original, result, now) {
     const threshold =
       state.consecutiveRisks >= 3 ||
       (state.recent.length >= 20 && risks.length / state.recent.length >= 0.2) ||
-      new Set(risks.map(r => r.egress)).size >= 2;
+      new Set(risks.map(r => r.exitHash || r.egress)).size >= 2;
     state.cooldownUntil = Math.max(
       state.cooldownUntil || 0,
       now + Math.max(result.retryMs || 0, threshold ? 600000 : 60000)
@@ -134,7 +179,15 @@ function settleProduction(original, result, now) {
     state.recovering = true;
     state.recoverySuccesses = 0;
     state.recoveryEpoch = now;
-    if (result.outcome === 'TARGET_REJECTED') state.requiredAlternateEgress = result.egress;
+    if (result.outcome === 'TARGET_REJECTED') {
+      state.requiredAlternateEgress = result.egress;
+      const hash = lease?.egressHash || result.egressHash;
+      if (state.tunnel?.label === result.egress && hash)
+        state.tunnel = {
+          ...state.tunnel,
+          rejectedHashes: [...new Set([...(state.tunnel.rejectedHashes || []), hash])].slice(-20),
+        };
+    }
   } else if (result.retryMs)
     state.cooldownUntil = Math.max(state.cooldownUntil || 0, now + result.retryMs);
   // 只有实际库存结构可解除恢复；目录和代理成功均无此权限。
@@ -147,6 +200,7 @@ function settleProduction(original, result, now) {
         state.recoveryFailures = 0;
         state.requiredAlternateEgress = null;
         state.probeAt = 0;
+        if (state.tunnel) state.tunnel = { ...state.tunnel, rotationAttempts: 0 };
       }
     } else {
       state.recoveryFailures = (state.recoveryFailures || 0) + 1;

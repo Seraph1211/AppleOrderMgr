@@ -16,7 +16,6 @@ const {
 const TITLES = {
   arrival: 'iPhone 到货提醒',
   first: '初始库存摘要',
-  recovery: '恢复后检测到有货',
   health: '库存监控运行提醒',
   test: '库存机器人合成测试',
 };
@@ -162,7 +161,7 @@ class InventoryNotifier {
           );
           const products = new Set(
             (await this.s.rows('InventoryProduct', { transaction }))
-              .filter(r => r.enabled)
+              .filter(r => r.enabled && r.supported)
               .map(r => r.sku)
           );
           const stores = new Set(
@@ -194,7 +193,8 @@ class InventoryNotifier {
           const eligible = [];
           for (const item of queue) {
             let reason = null;
-            if (item.destinationId !== settings.destinationId || !settings.webhookCipher)
+            if (item.kind === 'recovery') reason = 'RECOVERY_NOTIFICATION_RETIRED';
+            else if (item.destinationId !== settings.destinationId || !settings.webhookCipher)
               reason = 'DESTINATION_CHANGED';
             else if (item.expiresAt <= now) reason = 'EXPIRED';
             else if (item.kind !== 'test' && !settings.config.notificationsEnabled)
@@ -255,12 +255,23 @@ class InventoryNotifier {
                     `${getProductDisplayName(r)}：${r.quote || '检测到可取货'}（${new Date(r.observedAt).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}）`
                 )
                 .join('\n')
-              : item.content;
+              : item.kind === 'health' && item.healthKey === 'normal'
+                ? `状态：查询通道恢复\n原因：查询通道已连续观察 2 分钟；覆盖范围见当前摘要\n最近成功：${state.lastSuccessAt ? new Date(state.lastSuccessAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚无'}`
+                : item.content;
             if (Buffer.byteLength(content + line, 'utf8') > 1600) break;
             content += `${line}\n`;
             batch.push(item);
           }
           if (first.partial) content += '本轮覆盖未完整，仅汇总当前有效结果。\n';
+          if (first.kind === 'health' && first.healthKey === 'normal') {
+            const current = [...snapshots.values()].filter(
+              row =>
+                products.has(row.sku) &&
+                stores.has(row.storeCode) &&
+                ['in_stock', 'out_of_stock'].includes(displayStatus(row, { enabled: true }, now))
+            );
+            content += `当前有效覆盖：${current.length} / ${products.size * stores.size} 个组合\n有货：${current.filter(row => row.status === 'in_stock').length} 个组合\n此为当前有效结果，不代表全国完整覆盖或长期稳定。\n`;
+          }
           const base = process.env.INVENTORY_PUBLIC_URL;
           if (base && /^https:\/\/[^\s?#]+$/.test(base))
             content += `详情（需登录）：${base.replace(/\/$/, '')}/inventory-monitor${first.kind === 'health' ? '/manage?tab=settings' : ''}\n`;

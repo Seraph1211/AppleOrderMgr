@@ -1,115 +1,80 @@
-jest.mock('fs', () => ({ readFileSync: jest.fn() }));
 jest.mock('../src/services/inventoryValidationClient', () => ({
   readProxy: jest.fn(),
   requestOnce: jest.fn(),
 }));
-jest.mock('../src/services/inventoryValidationProxy', () => ({ acquireProxy: jest.fn() }));
-const fs = require('fs');
+jest.mock('../src/services/inventoryTunnel', () => jest.fn());
 const { readProxy, requestOnce } = require('../src/services/inventoryValidationClient');
-const { acquireProxy } = require('../src/services/inventoryValidationProxy');
+const InventoryTunnel = require('../src/services/inventoryTunnel');
 const InventoryDriver = require('../src/services/inventoryDriver');
-const { encrypt } = require('../src/utils/fieldEncryption');
-describe('库存出口严格边界', () => {
-  let state;
-  let gate;
+
+describe('库存唯一 IPRoyal 出口', () => {
+  let select;
   beforeEach(() => {
     jest.clearAllMocks();
-    state = {};
-    gate = {
-      locked: jest.fn(work => Promise.resolve(work(state, Date.now(), {}))),
-      save: jest.fn().mockResolvedValue(),
-    };
-    process.env.FIELD_ENCRYPTION_KEY = 'a'.repeat(64);
-    readProxy.mockImplementation(file => ({ label: file, url: 'http://user:pass@proxy.test:80' }));
+    select = jest.fn().mockResolvedValue({ label: 'iproyal-main', url: 'private' });
+    InventoryTunnel.mockImplementation(() => ({ select }));
+    readProxy.mockReturnValue({
+      label: 'iproyal-main',
+      url: 'private',
+      tunnel: { provider: 'iproyal' },
+    });
     requestOnce.mockResolvedValue({ id: 'attempt', outcome: 'INVENTORY_VALID' });
   });
-  test('主出口已隔离才使用预配置备用，不直连', async () => {
-    try {
-      state.pausedEgress = { main: 'PROXY_AUTH_FAILED' };
-      const driver = new InventoryDriver(gate, { proxyFile: 'main', backupFile: 'backup' });
-      expect((await driver.proxy()).label).toBe('backup');
-      await driver.request('inventory', { skus: ['TEST1CH/A'], location: '100000' });
-      expect(requestOnce.mock.calls[0][0].proxy.label).toBe('backup');
-    } catch (error) {
-      throw new Error('出口测试失败', { cause: error });
-    }
+  test('唯一配置必须先验证出口，忽略备用与旧API配置', async () => {
+    const driver = new InventoryDriver(
+      {},
+      {
+        proxyFile: 'main',
+        backupFile: 'old-backup',
+        apiFile: 'old-api',
+      }
+    );
+    expect(await driver.request('inventory', {})).toMatchObject({ outcome: 'INVENTORY_VALID' });
+    expect(readProxy).toHaveBeenCalledTimes(1);
+    expect(readProxy).toHaveBeenCalledWith('main');
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(requestOnce.mock.calls[0][0].proxy).toEqual({ label: 'iproyal-main', url: 'private' });
   });
-  test('动态端点加密缓存、单次提取，541 不通过再提取同供应商绕过', async () => {
-    try {
-      fs.readFileSync.mockReturnValue(
-        JSON.stringify({ apiUrl: 'https://api.yiyouip.com/index.php?num=100' })
-      );
-      acquireProxy.mockResolvedValue({
-        url: 'http://user:pass@proxy.test:80',
-        expiresAt: Date.now() + 240000,
-      });
-      const driver = new InventoryDriver(gate, { apiFile: 'private-file' });
-      expect((await driver.proxy()).label).toBe('yiyou-main');
-      expect(state.proxyCache.cipher).toMatch(/^enc:/);
-      await driver.proxy();
-      expect(acquireProxy).toHaveBeenCalledTimes(1);
-      state.requiredAlternateEgress = 'yiyou-main';
-      expect((await driver.request('inventory', {})).outcome).toBe('NO_HEALTHY_PROXY');
-      expect(acquireProxy).toHaveBeenCalledTimes(1);
-    } catch (error) {
-      throw new Error('动态出口测试失败', { cause: error });
-    }
+  test.each([
+    { label: 'yiyou-main' },
+    { label: 'iproyal-main', tunnel: { provider: 'fanproxy' } },
+    { label: 'iproyal-main' },
+  ])('错误来源关闭请求 %#', async proxy => {
+    readProxy.mockReturnValue(proxy);
+    const driver = new InventoryDriver({}, { proxyFile: 'main' });
+    expect(await driver.request('inventory', {})).toEqual({ outcome: 'NO_HEALTHY_PROXY' });
+    expect(requestOnce).not.toHaveBeenCalled();
+    expect(select).not.toHaveBeenCalled();
   });
-  test('并发请求只提取一个代理端点，失败后可重新尝试', async () => {
-    try {
-      fs.readFileSync.mockReturnValue(
-        JSON.stringify({ apiUrl: 'https://api.yiyouip.com/index.php' })
-      );
-      acquireProxy.mockResolvedValue({
-        url: 'http://user:pass@proxy.test:80',
-        expiresAt: Date.now() + 240000,
-      });
-      const driver = new InventoryDriver(gate, { apiFile: 'private-file' });
-      const results = await Promise.all(
-        Array.from({ length: 3 }, () => driver.request('inventory', {}))
-      );
-      expect(results.every(result => result.outcome === 'INVENTORY_VALID')).toBe(true);
-      expect(acquireProxy).toHaveBeenCalledTimes(1);
-      expect(requestOnce).toHaveBeenCalledTimes(3);
-      state.proxyCache = null;
-      acquireProxy.mockRejectedValueOnce(new Error('PRIVATE_PROVIDER_ERROR'));
-      expect((await driver.request('inventory', {})).outcome).toBe('NO_HEALTHY_PROXY');
-      await driver.request('inventory', {});
-      expect(acquireProxy).toHaveBeenCalledTimes(3);
-    } catch (error) {
-      throw new Error('并发出口测试失败', { cause: error });
-    }
+  test('并发调用合并验证，网络请求仍逐个进入闸门', async () => {
+    const driver = new InventoryDriver({}, { proxyFile: 'main' });
+    const results = await Promise.all(
+      Array.from({ length: 3 }, () => driver.request('inventory', {}))
+    );
+    expect(results.every(x => x.outcome === 'INVENTORY_VALID')).toBe(true);
+    expect(select).toHaveBeenCalledTimes(1);
+    expect(requestOnce).toHaveBeenCalledTimes(3);
   });
-  test('并发端点换取等待保留为未发请求，不误报代理不可用', async () => {
-    try {
-      fs.readFileSync.mockReturnValue(
-        JSON.stringify({ apiUrl: 'https://api.yiyouip.com/index.php' })
+  test.each(['PROXY_PROVIDER_COOLDOWN', 'PROXY_RECOVERY_EXHAUSTED', 'REQUEST_IN_FLIGHT'])(
+    '保护结果 %s 保留且不发请求',
+    async outcome => {
+      select.mockRejectedValue(
+        Object.assign(new Error('secret'), {
+          inventoryOutcome: outcome,
+          until: 123,
+        })
       );
-      acquireProxy.mockRejectedValue(
-        Object.assign(new Error('PRIVATE'), { inventoryOutcome: 'REQUEST_IN_FLIGHT' })
-      );
-      const driver = new InventoryDriver(gate, { apiFile: 'private-file' });
-      expect(await driver.request('inventory', {})).toEqual({
-        outcome: 'REQUEST_IN_FLIGHT',
-        until: null,
-      });
+      const driver = new InventoryDriver({}, { proxyFile: 'main' });
+      expect(await driver.request('inventory', {})).toEqual({ outcome, until: 123 });
       expect(requestOnce).not.toHaveBeenCalled();
-    } catch (error) {
-      throw new Error('代理许可等待测试失败', { cause: error });
     }
-  });
-  test('可用缓存不暴露密文，网络错误只返回脱敏结果', async () => {
-    try {
-      state.proxyCache = {
-        expiresAt: Date.now() + 240000,
-        cipher: encrypt('http://user:pass@proxy.test:80'),
-      };
-      const driver = new InventoryDriver(gate, { apiFile: 'private-file' });
-      requestOnce.mockRejectedValue(new Error('sensitive-proxy-password'));
-      expect(await driver.request('inventory', {})).toEqual({ outcome: 'NO_HEALTHY_PROXY' });
-      expect(acquireProxy).not.toHaveBeenCalled();
-    } catch (error) {
-      throw new Error('错误脱敏测试失败', { cause: error });
-    }
+  );
+  test('原始错误不得泄露认证地址，失败后允许重新读取配置', async () => {
+    readProxy.mockImplementationOnce(() => {
+      throw new Error('http://user:private@host');
+    });
+    const driver = new InventoryDriver({}, { proxyFile: 'main' });
+    expect(await driver.request('inventory', {})).toEqual({ outcome: 'NO_HEALTHY_PROXY' });
+    expect(await driver.request('inventory', {})).toMatchObject({ outcome: 'INVENTORY_VALID' });
   });
 });

@@ -215,7 +215,11 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
   const updateCatalog = enabled =>
     act(
       async () => {
-        await api.put('catalog', { kind: catalogKind, ids: catalogSelected, enabled });
+        await api.put('catalog', {
+          kind: catalogKind,
+          ids: catalogSelected,
+          enabled,
+        });
         const result = await api.get('catalog');
         setCatalog(result.data);
         setCatalogSelected([]);
@@ -259,7 +263,12 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
     }
     if (kind === 'configurations') {
       const [model, capacity, color] = key.split(' · ');
-      next = { ...next, models: [model], capacities: [capacity], colors: [color] };
+      next = {
+        ...next,
+        models: [model],
+        capacities: [capacity],
+        colors: [color],
+      };
     }
     if (kind === 'hours') setHour(key);
     if (kind === 'heatmap') {
@@ -273,7 +282,10 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
       metric: kind === 'latest' ? 'all' : metric,
       hour: kind === 'hours' ? key : '',
       ...(kind === 'heatmap'
-        ? { from: localDate(new Date(+key)), to: localDate(new Date(+key + bucketMinutes * 60000)) }
+        ? {
+            from: localDate(new Date(+key)),
+            to: localDate(new Date(+key + bucketMinutes * 60000)),
+          }
         : {}),
     });
   };
@@ -405,13 +417,22 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
           {notice}
         </p>
       )}
-      {health && (health.paused || health.state === 'degraded' || !settings?.config.enabled) && (
-        <p className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-          {!settings?.config.enabled
-            ? '全局监控已关闭，页面保留上次结果。'
-            : `采集保护：${STATUS[health.state] || health.state}；${health.reason ? failureText(health.reason) : '等待冷却到期'}`}{' '}
-          {health.cooldownUntil ? `截止 ${timeText(health.cooldownUntil)}` : ''}
-        </p>
+      {health && health.state !== 'normal' && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800 space-y-1">
+          <p>
+            采集状态：{STATUS[health.state] || health.state} · {failureText(health.reason)}
+          </p>
+          <p>下一步：{health.nextAction || '查看通知与健康页的运行详情'}</p>
+          <p>
+            停采起点：{timeText(health.stoppedAt)} · 最近成功：
+            {timeText(health.lastSuccessAt)}
+          </p>
+          {!health.stoppedAt && health.state !== 'normal' && (
+            <p>尚无停采时刻记录，请参见最近成功时间。</p>
+          )}
+          {health.waitUntil && <p>等待至：{timeText(health.waitUntil)}</p>}
+          {health.dataStale && <p>当前无有效库存结果，未知不代表无货。</p>}
+        </div>
       )}
       {['latest', 'history', 'analysis'].includes(tab) && (
         <InventoryFilters
@@ -621,7 +642,8 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                   checked={tableRows.length > 0 && selected.length === tableRows.length}
                   onChange={e => setSelected(e.target.checked ? tableRows.map(r => r.id) : [])}
                 />
-                全选本页<span className="ml-auto text-gray-500">已选 {selected.length} 项</span>
+                全选本页
+                <span className="ml-auto text-gray-500">已选 {selected.length} 项</span>
               </label>
             }
             mobileChildren={tableRows.map(row => (
@@ -943,10 +965,17 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
           <section>
             <h2 className="font-medium mb-3">轮次与覆盖审计</h2>
             <p className="text-sm text-gray-500 mb-3">
-              下一轮：{timeText(health?.nextRoundAt)} · 最近成功：{timeText(health?.lastSuccessAt)}
+              下一轮：{timeText(health?.nextRoundAt)} · 最近成功：
+              {timeText(health?.lastSuccessAt)}
             </p>
             <Table
-              headers={['计划时间 / 来源', '状态', '完成 / 计划', '失败 / 待采', '耗时 / 重试']}
+              headers={[
+                '计划时间 / 来源',
+                '状态',
+                '完成 / 计划',
+                '失败 / 未采 / 待采',
+                '耗时 / 重试',
+              ]}
               mobileChildren={tableRows.map(row => (
                 <CompactRecord
                   key={row.id}
@@ -956,7 +985,10 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                 >
                   <RecordFields
                     fields={[
-                      ['失败 / 待采', `${row.failed} / ${row.pending}`],
+                      [
+                        '失败 / 未采 / 待采',
+                        `${row.attemptedFailed ?? row.failed} / ${row.notSent || 0} / ${row.pending}`,
+                      ],
                       [
                         '耗时 / 重试',
                         `${row.finishedAt && row.startedAt ? `${((row.finishedAt - row.startedAt) / 1000).toFixed(1)} 秒` : '—'} / ${row.retries}`,
@@ -991,7 +1023,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                     </button>
                   </td>
                   <td className="px-3 py-3">
-                    {row.failed} / {row.pending}
+                    {row.attemptedFailed ?? row.failed} / {row.notSent || 0} / {row.pending}
                   </td>
                   <td className="px-3 py-3 whitespace-nowrap">
                     {row.finishedAt && row.startedAt
@@ -1156,7 +1188,10 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                             : v,
                     }))}
                     onChange={value =>
-                      update('notificationFilters', { ...draft.notificationFilters, [key]: value })
+                      update('notificationFilters', {
+                        ...draft.notificationFilters,
+                        [key]: value,
+                      })
                     }
                   />
                 ))}
@@ -1208,6 +1243,14 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
               <p>
                 采集状态：
                 <Status value={health?.state} />
+              </p>
+              <p>下一步：{health?.nextAction || '—'}</p>
+              <p>停采起点：{timeText(health?.stoppedAt)}</p>
+              <p>等待至：{timeText(health?.waitUntil)}</p>
+              <p>
+                当前有效覆盖：{health?.coverage?.fresh || 0} / {health?.coverage?.expected || 0}
+                ；有货：
+                {health?.coverage?.inStock || 0}
               </p>
               <p>Worker 心跳：{timeText(health?.workerHeartbeat)}</p>
               <p>

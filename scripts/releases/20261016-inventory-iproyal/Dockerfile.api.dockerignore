@@ -1,0 +1,10 @@
+*
+!src
+!src/**
+!frontend
+!frontend/src
+!frontend/src/**
+!scripts
+!scripts/releases
+!scripts/releases/20261016-inventory-iproyal
+!scripts/releases/20261016-inventory-iproyal/**

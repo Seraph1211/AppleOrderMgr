@@ -5,7 +5,9 @@ const STATE_TEXT = {
   normal: '采集运行正常',
   disabled: '采集已关闭',
   empty: '尚未配置完整监控范围',
-  offline: '等待采集 Worker，暂无近期心跳',
+  offline: '采集 Worker 离线，需要管理员检查',
+  automatic_wait: '自动等待采集恢复',
+  data_stale: '当前库存数据已失效',
   degraded: '采集异常，当前结果可能已过期',
   recovering: '正在恢复探测',
   cooldown: '采集保护冷却中',
@@ -35,6 +37,14 @@ export default function InventoryScope({ scope }) {
       <p className="text-xs text-gray-500">
         最近成功采集：{timeText(scope.lastSuccessAt)} · 以下为全局配置，个人筛选不改变此范围
       </p>
+      {scope.state !== 'normal' && scope.nextAction && (
+        <p className="text-sm text-amber-800 break-words">
+          {scope.nextAction}
+          {scope.stoppedAt ? ` · 停采起点：${timeText(scope.stoppedAt)}` : ''}
+          {scope.waitUntil ? ` · 等待至：${timeText(scope.waitUntil)}` : ''}
+          {scope.dataStale ? ' · 当前无有效结果，未知不代表无货' : ''}
+        </p>
+      )}
       <details className="border-t border-gray-100">
         <summary className="min-h-11 flex items-center cursor-pointer text-sm text-primary">
           查看已启用商品（{scope.products.length}）

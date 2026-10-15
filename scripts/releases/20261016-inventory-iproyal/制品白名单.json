@@ -1,0 +1,23 @@
+{
+  "backend": [
+    "src/services/inventoryCollector.js",
+    "src/services/inventoryDriver.js",
+    "src/services/inventoryGuardPolicy.js",
+    "src/services/inventoryHealthNotificationPolicy.js",
+    "src/services/inventoryHealthPolicy.js",
+    "src/services/inventoryMaintenance.js",
+    "src/services/inventoryNotifier.js",
+    "src/services/inventoryService.js",
+    "src/services/inventoryTunnel.js",
+    "src/services/inventoryTunnelPolicy.js",
+    "src/services/inventoryValidationClient.js",
+    "src/services/inventoryValidationGate.js"
+  ],
+  "frontend": [
+    "frontend/src/components/inventory/InventoryCommon.jsx",
+    "frontend/src/components/inventory/InventoryCoverageDialog.jsx",
+    "frontend/src/components/inventory/InventoryScope.jsx",
+    "frontend/src/components/inventory/inventoryPresentation.js",
+    "frontend/src/pages/InventoryMonitor.jsx"
+  ]
+}

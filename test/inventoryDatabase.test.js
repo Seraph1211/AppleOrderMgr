@@ -524,7 +524,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
         stores: [{ storeCode: store.storeCode }],
         combinations: 1,
         enabled: true,
-        state: 'degraded',
+        state: 'manual_required',
       });
       const settings = await m.InventorySetting.findByPk('main');
       await settings.update({
@@ -600,11 +600,15 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       });
       expect(Object.keys(scope).sort()).toEqual([
         'combinations',
+        'dataStale',
         'enabled',
         'lastSuccessAt',
+        'nextAction',
         'products',
         'state',
+        'stoppedAt',
         'stores',
+        'waitUntil',
       ]);
       expect(Object.keys(scope.products[0]).sort()).toEqual(['capacity', 'color', 'model', 'sku']);
       expect((await fetch(`${base}/latest?page=-1`, { headers })).status).toBe(400);
@@ -746,7 +750,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       await age();
       await two.tick();
       expect(send).toHaveBeenCalledTimes(2);
-      expect(send.mock.calls[1][1]).toContain('已稳定恢复');
+      expect(send.mock.calls[1][1]).toContain('查询通道恢复');
       await two.tick();
       await change({ lastError: 'RESPONSE_READ_FAILED' });
       await one.health();
@@ -825,7 +829,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       });
       await notifier.tick();
       expect(send).toHaveBeenCalledTimes(1);
-      expect(send.mock.calls[0][1]).toContain('已稳定恢复');
+      expect(send.mock.calls[0][1]).toContain('查询通道恢复');
     } catch (error) {
       throw inventoryFailure(error);
     }
@@ -900,6 +904,9 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
           body: JSON.stringify({
             pausedReason: 'TEST',
             hourCount: 100,
+            providerFailures: 3,
+            providerFailedToken: 'candidate',
+            providerCooldownUntil: Date.now() + 120000,
             cooldownUntil: Date.now() + 600000,
           }),
         },
@@ -907,6 +914,9 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       await maintenance.resume(1);
       const [rows] = await db.query('SELECT body FROM inventory_validation_state');
       expect(rows[0].body.hourCount).toBe(100);
+      expect(rows[0].body.providerFailures).toBe(0);
+      expect(rows[0].body.providerFailedToken).toBeNull();
+      expect(rows[0].body.providerCooldownUntil).toBeGreaterThan(Date.now());
       expect(rows[0].body.cooldownUntil).toBeGreaterThan(Date.now());
       expect(rows[0].body.recovering).toBe(true);
       await db.query("UPDATE inventory_validation_state SET body = '{}'::jsonb");

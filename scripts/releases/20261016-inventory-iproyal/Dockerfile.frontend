@@ -1,0 +1,8 @@
+ARG BASE_IMAGE=apple-order-mgr-frontend:20261016-aos-retention-90
+FROM ${BASE_IMAGE}
+COPY --chown=node:node frontend/src/components/inventory/InventoryCommon.jsx /app/src/components/inventory/InventoryCommon.jsx
+COPY --chown=node:node frontend/src/components/inventory/InventoryCoverageDialog.jsx /app/src/components/inventory/InventoryCoverageDialog.jsx
+COPY --chown=node:node frontend/src/components/inventory/InventoryScope.jsx /app/src/components/inventory/InventoryScope.jsx
+COPY --chown=node:node frontend/src/components/inventory/inventoryPresentation.js /app/src/components/inventory/inventoryPresentation.js
+COPY --chown=node:node frontend/src/pages/InventoryMonitor.jsx /app/src/pages/InventoryMonitor.jsx
+RUN npm run lint && npm run build

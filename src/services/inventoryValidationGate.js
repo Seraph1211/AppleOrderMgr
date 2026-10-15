@@ -68,7 +68,12 @@ class InventoryValidationGate {
             'INSERT INTO inventory_validation_attempts (id, purpose, egress, context, started_at) VALUES (:id, :purpose, :egress, CAST(:context AS jsonb), clock_timestamp())',
             { replacements: { id, purpose, egress, context: JSON.stringify(context) }, transaction }
           );
-          return { id };
+          return {
+            id,
+            ...(result.state.requestLeases?.[id]?.egressHash
+              ? { egressHash: result.state.requestLeases[id].egressHash }
+              : {}),
+          };
         } catch (error) {
           throw new Error('VALIDATION_STORAGE_FAILED', { cause: error });
         }

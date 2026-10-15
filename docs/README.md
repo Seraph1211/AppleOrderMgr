@@ -10,6 +10,8 @@
 
 ## 按任务阅读
 
+- [库存监控 IPRoyal 优化实施方案](planning/库存监控IPRoyal优化实施方案.md)：已批准接入唯一来源及状态／调度／通知优化，开发验收中；[代理设计](design/IPRoyal库存代理接入.md)。
+
 - 官网电子收据批处理：[设计](design/官网电子收据批量采集.md) → [运维](deployment/官网电子收据批处理运维.md)。
 
 - 官网 HTTP 采集维护：[技术说明](design/官网订单HTTP采集技术说明.md) → [运维手册](deployment/服务器官网订单取数.md) → [验收清单](testing/测试与验收指南.md#官网订单-http-补录验收)。

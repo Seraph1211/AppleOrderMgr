@@ -1090,6 +1090,8 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 | POST /notifications/test | 当前机器人合成测试排队，与正式发送共用速率                                                                                  |
 | GET /deliveries          | 分页投递状态，accepted 不代表群内已读                                                                                       |
 
+2026-10-16 库存状态与覆盖增量（本地实现待验收）：`GET /health` 返回 `state`（disabled/offline/manual_required/cooldown/recovering/automatic_wait/data_stale/degraded/normal）、`automaticWait`、`actionRequired`、`stoppedAt`（可空）、`nextAction`、`waitUntil`、`dataStale`，以及 `coverage:{fresh,expected,inStock}`。Worker 心跳超过 120 秒为 offline；数据按成功时固化的有效期判断。`GET /scope` 仅附安全业务提示 `stoppedAt/nextAction/waitUntil/dataStale`，不返回原始代理错误或配置。`GET /rounds` 和详情保留 failed 为缺失覆盖数，新增 `notSent/attemptedFailed`；tasks 的 `not_sent` 与 `failed` 分别表示未发送、已尝试失败／未知，矩阵未发送为 not_sent。未发送等待不递增 attempts，不生成库存失败快照，截止时才记录真实缺口。单次风控不强制失效全库快照。恢复事件保留历史，旧 pending recovery 投递标 skipped/RECOVERY_NOTIFICATION_RETIRED；恢复通知为 health 单条当前覆盖摘要，不承诺覆盖完整或长期稳定。无新增端点、无凭据回显。
+
 库存展示与统计口径见[库存监控](库存监控.md)。个人筛选不修改全局采集清单；通知筛选仅影响提醒。不存在设置任意请求 URL 或任意 SQL 的接口。
 
 ### 单台入库识别与核对（2026-10-10）

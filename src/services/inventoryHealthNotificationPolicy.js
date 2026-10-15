@@ -1,3 +1,4 @@
+const { ACTIVE_EGRESS } = require('./inventoryHealthPolicy');
 const OBSERVATION_MS = 120000;
 const REPEAT_MS = 1800000;
 const VERSION = 1;
@@ -11,12 +12,21 @@ const URGENT_REASONS = new Set([
 
 /** 从事务内的运行状态投影通知分类，不改变采集保护状态。 */
 function healthObservation(runtime, guard = {}, now) {
-  if (guard.pausedReason)
+  const manualReason = guard.pausedReason || guard.pausedEgress?.[ACTIVE_EGRESS];
+  if (manualReason)
     return {
-      key: `manual:${guard.pausedReason}`,
+      key: `manual:${manualReason}`,
       urgent: true,
       label: '需要人工处理',
-      reason: guard.pausedReason,
+      reason: manualReason,
+    };
+  if (guard.providerCooldownUntil > now)
+    return {
+      key: 'provider_wait',
+      urgent: false,
+      label: '等待代理出口恢复',
+      reason: '供应商暂时不可用，冷却后自动更换并验证出口',
+      cooldownUntil: guard.providerCooldownUntil,
     };
   if (guard.cooldownUntil > now)
     return {
@@ -35,7 +45,12 @@ function healthObservation(runtime, guard = {}, now) {
       label: '查询持续异常',
       reason: runtime.lastError,
     };
-  return { key: 'normal', urgent: false, label: '已稳定恢复', reason: '查询已连续稳定 2 分钟' };
+  return {
+    key: 'normal',
+    urgent: false,
+    label: '查询通道恢复',
+    reason: '查询通道已连续观察 2 分钟；覆盖范围见当前摘要',
+  };
 }
 
 /** 持久化观察窗口；旧版本和目标切换从当前状态重新观察。 */

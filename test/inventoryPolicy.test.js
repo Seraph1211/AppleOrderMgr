@@ -215,15 +215,12 @@ describe('生产保护与费用上限', () => {
     }
     expect(state.recovering).toBe(false);
   });
-  test.each(['UPSTREAM_ERROR', 'PROXY_TUNNEL_UNAVAILABLE'])(
-    '连续 %s 单列异常冷却，不永久暂停代理',
-    outcome => {
-      let state = {};
-      for (let i = 0; i < 5; i += 1)
-        state = settleProduction(state, { purpose: 'inventory', outcome, egress: 'main' }, now);
-      expect(state.cooldownUntil).toBe(now + 600000);
-      expect(state.recent.filter(r => r.risk)).toHaveLength(0);
-      expect(state.pausedEgress?.main).toBeUndefined();
-    }
-  );
+  test.each(['UPSTREAM_ERROR'])('连续 %s 单列异常冷却，不永久暂停代理', outcome => {
+    let state = {};
+    for (let i = 0; i < 5; i += 1)
+      state = settleProduction(state, { purpose: 'inventory', outcome, egress: 'main' }, now);
+    expect(state.cooldownUntil).toBe(now + 600000);
+    expect(state.recent.filter(r => r.risk)).toHaveLength(0);
+    expect(state.pausedEgress?.main).toBeUndefined();
+  });
 });
