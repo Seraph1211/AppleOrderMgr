@@ -78,6 +78,8 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
     await m.sequelize.query(
       'TRUNCATE proxy_events, proxy_assignments, proxy_orders, recipients, apple_ids, orders, users RESTART IDENTITY CASCADE'
     );
+    const softDelete = require('../migrations/20261016000001-soft-delete-proxy-orders');
+    await softDelete.down(m.sequelize.getQueryInterface());
     const v2 = require('../migrations/20261015000003-proxy-orders-v2');
     await v2.down(m.sequelize.getQueryInterface());
     const migration = require('../migrations/20260928000002-add-proxy-orders');
@@ -87,6 +89,7 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
     await migration.up(m.sequelize.getQueryInterface());
     await independence.up(m.sequelize.getQueryInterface());
     await v2.up(m.sequelize.getQueryInterface());
+    await softDelete.up(m.sequelize.getQueryInterface());
     actor = await m.User.create({
       username: 'proxy_synthetic',
       password: 'Synthetic-Password',

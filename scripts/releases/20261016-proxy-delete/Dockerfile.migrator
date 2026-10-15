@@ -1,0 +1,2 @@
+FROM apple-order-mgr-migrator:20261015-proxy-v2-amd64
+COPY --chown=node:node migrations/20261016000001-soft-delete-proxy-orders.js /app/migrations/20261016000001-soft-delete-proxy-orders.js

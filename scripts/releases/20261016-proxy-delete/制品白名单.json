@@ -1,0 +1,14 @@
+{
+  "api": [
+    "src/models/ProxyOrder.js",
+    "src/routes/proxyOrders.js",
+    "src/services/proxyOrderService.js"
+  ],
+  "migrator": [
+    "migrations/20261016000001-soft-delete-proxy-orders.js"
+  ],
+  "frontend": [
+    "frontend/src/pages/ProxyOrders.jsx",
+    "frontend/src/pages/proxyOrders/deletion.js"
+  ]
+}

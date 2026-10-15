@@ -78,6 +78,10 @@ router.put(
   '/:id',
   handle(req => service.saveOrder(req.params.id, req.body, req.user.id))
 );
+router.post(
+  '/:id/delete',
+  handle(req => service.deleteOrder(req.params.id, req.body, req.user.id))
+);
 for (const action of ['status', 'notes', 'accounts', 'release', 'link'])
   router.post(
     `/:id/${action}`,

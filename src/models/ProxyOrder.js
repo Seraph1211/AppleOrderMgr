@@ -40,6 +40,7 @@ module.exports = sequelize =>
       rejectedOrderIds: { type: DataTypes.JSONB, defaultValue: [] },
       version: { type: DataTypes.INTEGER, defaultValue: 1 },
       createdBy: DataTypes.INTEGER,
+      deletedAt: { type: DataTypes.DATE, allowNull: true, defaultValue: null },
     },
-    { tableName: 'proxy_orders', underscored: true }
+    { tableName: 'proxy_orders', underscored: true, defaultScope: { where: { deletedAt: null } } }
   );

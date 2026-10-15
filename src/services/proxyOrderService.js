@@ -450,6 +450,55 @@ async function changeOrder(action, orderId, body, actorId) {
   }
 }
 
+/**
+ * 隐藏委托并在明确停抢确认后结束占用，保留全部业务和审计历史。
+ * @param {number} orderId 委托编号
+ * @param {Object} body 版本和停抢确认
+ * @param {number} actorId 操作人
+ * @returns {Promise<Object>} 删除结果
+ */
+async function deleteOrder(orderId, body, actorId) {
+  try {
+    if (!Number.isInteger(body?.expectedVersion) || body.expectedVersion <= 0)
+      throw ApiError.badRequest('expectedVersion 必须为正整数');
+    return await transact(actorId, async transaction => {
+      try {
+        const row = await lockedOrder(orderId, body.expectedVersion, transaction);
+        const assignments = await ProxyAssignment.findAll({
+          where: { proxyOrderId: row.id, endedAt: null },
+          transaction,
+          lock: transaction.LOCK.UPDATE,
+        });
+        if (assignments.length && body.confirmedStopped !== true)
+          throw ApiError.conflict('请先停止外部抢购软件对应任务，并明确确认已停止后删除', {
+            requiresStoppedConfirmation: true,
+          });
+        const now = new Date();
+        const assignmentIds = assignments.map(assignment => assignment.id);
+        if (assignmentIds.length) {
+          await ProxyAssignment.update(
+            { endedAt: now },
+            {
+              where: { id: assignmentIds, proxyOrderId: row.id, endedAt: null },
+              transaction,
+            }
+          );
+          await event('release', row.id, actorId, { assignmentIds, source: 'delete' }, transaction);
+        }
+        await row.update({ deletedAt: now, version: row.version + 1 }, { transaction });
+        await event('delete', row.id, actorId, { assignmentIds }, transaction);
+        return { id: row.id, version: row.version, deleted: true };
+      } catch (error) {
+        logger.debug('代抢删除事务未完成', { errorType: error.name });
+        throw error;
+      }
+    });
+  } catch (error) {
+    logger.debug('代抢删除未完成', { errorType: error.name });
+    throw error;
+  }
+}
+
 /** 读取账号池/待核对候选，无密码。 @param {Object} query 筛选 @returns {Promise<Object>} 列表 */
 async function listAccounts(query) {
   try {
@@ -817,6 +866,7 @@ async function parseText(text) {
 }
 
 module.exports = {
+  deleteOrder,
   parseText,
   listOrders,
   detail,

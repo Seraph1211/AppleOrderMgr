@@ -1,0 +1,4 @@
+FROM apple-order-mgr-frontend:20261016-proxy-feedback
+COPY --chown=node:node frontend/src/pages/ProxyOrders.jsx /app/src/pages/ProxyOrders.jsx
+COPY --chown=node:node frontend/src/pages/proxyOrders/deletion.js /app/src/pages/proxyOrders/deletion.js
+RUN npm run lint && npm run build

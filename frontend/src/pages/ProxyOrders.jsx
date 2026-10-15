@@ -1,3 +1,4 @@
+import { activeAssignmentCount, pageAfterDeletion } from './proxyOrders/deletion';
 import { createPortal } from 'react-dom';
 import './proxyOrders/proxyOrders.css';
 import {
@@ -10,7 +11,18 @@ import OfficialOrderStatus from '../components/OfficialOrderStatus';
 import { getProductDisplayName } from '../utils/productNaming';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { useEffect, useRef, useState } from 'react';
-import { Plus, Copy, RefreshCw, Search, X, Loader2, AlertCircle, Pencil, Save } from 'lucide-react';
+import {
+  Plus,
+  Copy,
+  RefreshCw,
+  Search,
+  X,
+  Loader2,
+  AlertCircle,
+  Pencil,
+  Save,
+  Trash2,
+} from 'lucide-react';
 import client from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
@@ -226,6 +238,10 @@ export default function ProxyOrders() {
   const [statusTarget, setStatusTarget] = useState(null);
   const [unlinkTarget, setUnlinkTarget] = useState(null);
   const [duplicateConfirmed, setDuplicateConfirmed] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteStopped, setDeleteStopped] = useState(false);
+  const [deleteRequiresStopped, setDeleteRequiresStopped] = useState(false);
+  const deleteInFlight = useRef(false);
   const selectedAccounts = data.rows.filter(row => selected.includes(row.id));
   const cities = [...new Set(stores.map(s => s.city))];
   const assignmentError = assignmentBlockReason(availableCount, count, manualAccount);
@@ -311,10 +327,10 @@ export default function ProxyOrders() {
   }, [tab, scope, keyword, status, page, revision]);
   useEffect(() => {
     const timer = setInterval(() => {
-      if (!modal && !busy && !noteEditor) setRevision(value => value + 1);
+      if (!modal && !busy && !noteEditor && !deleteTarget) setRevision(value => value + 1);
     }, 20000);
     return () => clearInterval(timer);
-  }, [modal, busy, noteEditor]);
+  }, [modal, busy, noteEditor, deleteTarget]);
 
   async function run(work, success) {
     if (busy) return;
@@ -520,6 +536,54 @@ export default function ProxyOrders() {
       setCount(1);
       setModal('assign');
     });
+  }
+  const openDelete = row => {
+    setError('');
+    setModalError('');
+    setNotice('');
+    setDeleteStopped(false);
+    setDeleteRequiresStopped(activeAssignmentCount(row) > 0);
+    setDeleteTarget(row);
+  };
+  const closeDelete = () => {
+    if (deleteInFlight.current) return;
+    setDeleteTarget(null);
+    setDeleteStopped(false);
+    setModalError('');
+    setError('');
+  };
+  async function deleteOrder() {
+    if (!deleteTarget || busy || deleteInFlight.current) return;
+    if (deleteRequiresStopped && !deleteStopped) return;
+    deleteInFlight.current = true;
+    try {
+      await run(async () => {
+        try {
+          await client.post(`/proxy-orders/${deleteTarget.id}/delete`, {
+            expectedVersion: deleteTarget.version,
+            confirmedStopped: deleteStopped,
+          });
+        } catch (failure) {
+          if (
+            failure.details?.requiresStoppedConfirmation ||
+            failure.response?.data?.error?.details?.requiresStoppedConfirmation
+          )
+            setDeleteRequiresStopped(true);
+          throw failure;
+        }
+        const nextPage = pageAfterDeletion(page, data.rows, deleteTarget.id);
+        setDeleteTarget(null);
+        setDeleteStopped(false);
+        setNoteEditor(null);
+        close();
+        setPage(nextPage);
+        setData({ rows: [], count: 0 });
+        setLoading(true);
+        refresh();
+      }, '代抢订单已删除；历史记录及 Apple 订单关联已保留。');
+    } finally {
+      deleteInFlight.current = false;
+    }
   }
   const toggle = id =>
     setSelected(values =>
@@ -920,7 +984,7 @@ export default function ProxyOrders() {
           正在处理，请稍候…
         </p>
       )}
-      {error && !modal && !statusTarget && !confirmation && !copyFallback && (
+      {error && !modal && !statusTarget && !confirmation && !copyFallback && !deleteTarget && (
         <div role="alert" className="p-3 rounded-lg bg-red-50 text-red-700 flex gap-2">
           <AlertCircle className="w-5 h-5 shrink-0" />
           {error}
@@ -1273,6 +1337,17 @@ export default function ProxyOrders() {
                                   复制模板
                                 </button>
                               )}
+                            {can(PERMISSIONS.PROXY_READ) && (
+                              <button
+                                className="btn btn-secondary inline-flex items-center justify-center gap-1 text-red-700"
+                                disabled={busy}
+                                onClick={() => openDelete(row)}
+                                aria-label={`删除代抢 #${row.id}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                                删除
+                              </button>
+                            )}
                             {!row.assignments.length &&
                               ['pending', 'rushing'].includes(row.status) && (
                                 <p className="text-xs text-gray-500 whitespace-normal max-w-28">
@@ -1439,6 +1514,16 @@ export default function ProxyOrders() {
                 !current.assignments.some(assignment => !assignment.endedAt) && (
                   <p className="text-sm text-amber-800">尚未分配账号，分配后才能复制模板。</p>
                 )}
+              {can(PERMISSIONS.PROXY_READ) && (
+                <button
+                  className="btn btn-secondary inline-flex items-center gap-1 text-red-700"
+                  disabled={busy}
+                  onClick={() => openDelete(current)}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  删除订单
+                </button>
+              )}
               <ResponsiveSelect
                 aria-label="调整代抢状态"
                 className="input w-auto"
@@ -2017,6 +2102,54 @@ export default function ProxyOrders() {
             >
               确认执行
             </button>
+          </div>
+        </Dialog>
+      )}
+      {deleteTarget && (
+        <Dialog title={`删除代抢 #${deleteTarget.id}`} close={closeDelete} busy={busy}>
+          {modalMessage}
+          <div className="space-y-4">
+            <p className="text-gray-900">
+              确认删除 {deleteTarget.lastName}
+              {deleteTarget.firstName} 的代抢订单 #{deleteTarget.id}？
+            </p>
+            <p className="text-sm text-gray-600">
+              删除后该订单将从页面隐藏，历史记录及 Apple 订单关联仍会保留。
+            </p>
+            {deleteRequiresStopped ? (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                <p>
+                  {activeAssignmentCount(deleteTarget)
+                    ? `当前仍占用 ${activeAssignmentCount(deleteTarget)} 个账号。`
+                    : '当前存在账号占用。'}
+                  系统不会停止外部抢购软件，请先确认任务已停止。
+                </p>
+                <label className="flex items-center gap-2 mt-2">
+                  <input
+                    type="checkbox"
+                    checked={deleteStopped}
+                    disabled={busy}
+                    onChange={event => setDeleteStopped(event.target.checked)}
+                  />
+                  已确认外部抢购任务停止，释放该订单账号占用
+                </label>
+              </div>
+            ) : (
+              <p className="text-sm text-gray-500">当前无账号占用。</p>
+            )}
+            <div className="proxy-dialog-footer flex justify-end gap-2">
+              <button className="btn btn-secondary" disabled={busy} onClick={closeDelete}>
+                取消
+              </button>
+              <button
+                className="btn btn-primary inline-flex items-center justify-center gap-1"
+                disabled={busy || (deleteRequiresStopped && !deleteStopped)}
+                onClick={deleteOrder}
+              >
+                <Trash2 className="w-4 h-4" />
+                {busy ? '正在删除…' : '确认删除'}
+              </button>
+            </div>
           </div>
         </Dialog>
       )}

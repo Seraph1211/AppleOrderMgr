@@ -1,0 +1,4 @@
+FROM apple-order-mgr-api:20261016-proxy-feedback-amd64
+COPY --chown=node:node src/models/ProxyOrder.js /app/src/models/ProxyOrder.js
+COPY --chown=node:node src/routes/proxyOrders.js /app/src/routes/proxyOrders.js
+COPY --chown=node:node src/services/proxyOrderService.js /app/src/services/proxyOrderService.js
