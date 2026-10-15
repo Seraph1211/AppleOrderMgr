@@ -1,5 +1,5 @@
 import RecipientTag from '../components/RecipientTag';
-import { OFFICIAL_ORDER_STATUS_LABELS } from '../constants/officialOrderStatus';
+import OfficialStatusFilter from '../components/OfficialStatusFilter';
 import OfficialOrderStatus from '../components/OfficialOrderStatus';
 import OfficialOrderRefreshModal from '../components/OfficialOrderRefreshModal';
 import { submitOfficialOrderRefresh } from '../api/officialOrderRefreshApi';
@@ -839,15 +839,10 @@ export default function Orders() {
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-2">官网订单状态</label>
-            <TagMultiSelect
-              enableSelectAll
+            <OfficialStatusFilter
               options={filterOptions.officialOrderStatuses || []}
-              optionLabels={OFFICIAL_ORDER_STATUS_LABELS}
               value={filters.officialOrderStatuses}
               onChange={value => handleFilterChange('officialOrderStatuses', value)}
-              ariaLabel="官网订单状态筛选"
-              placeholder="全部官网状态"
-              itemLabel="官网状态"
             />
           </div>
 

@@ -20,3 +20,27 @@ export const OFFICIAL_ORDER_STATUS_LABELS = {
   PICKUP_CANCELLED: '取货已取消',
   PICK_UP_CANCELLED: '取货已取消',
 };
+
+/** 官网状态共用配色：不同中文状态各用一色，同义状态保持同色。 */
+export const OFFICIAL_ORDER_STATUS_COLORS = {
+  __not_observed__: 'bg-gray-100 text-gray-700',
+  ORDER_PLACED: 'bg-slate-100 text-slate-700',
+  ORDER_RECEIVED: 'bg-indigo-100 text-indigo-800',
+  PROCESSING: 'bg-blue-100 text-blue-800',
+  PAYMENT_PENDING: 'bg-amber-100 text-amber-800',
+  PAYMENT_EXPIRED_STORED_ORDER: 'bg-stone-200 text-stone-700',
+  READY_FOR_PICKUP: 'bg-teal-100 text-teal-800',
+  PICKUP_READY: 'bg-teal-100 text-teal-800',
+  PICKED_UP: 'bg-green-100 text-green-800',
+  RETURN_STARTED: 'bg-orange-100 text-orange-800',
+  RETURN_EXPIRED: 'bg-yellow-100 text-yellow-800',
+  RECEIVED_BY_CARRIER: 'bg-fuchsia-100 text-fuchsia-800',
+  REFUND_INITIATED: 'bg-pink-100 text-pink-800',
+  PREPARING_TO_SHIP: 'bg-violet-100 text-violet-800',
+  SHIPPED: 'bg-cyan-100 text-cyan-800',
+  DELIVERED: 'bg-emerald-100 text-emerald-800',
+  CANCELLED: 'bg-red-100 text-red-800',
+  CANCELED: 'bg-red-100 text-red-800',
+  PICKUP_CANCELLED: 'bg-rose-100 text-rose-800',
+  PICK_UP_CANCELLED: 'bg-rose-100 text-rose-800',
+};

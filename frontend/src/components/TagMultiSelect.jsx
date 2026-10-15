@@ -19,6 +19,7 @@ export default function TagMultiSelect({
   placeholder = '全部 TAG',
   itemLabel = 'TAG',
   optionLabels = EMPTY_LABELS,
+  optionBadgeClasses,
   searchLabels = EMPTY_LABELS,
   compareOptions,
   enableSelectAll = false,
@@ -28,6 +29,19 @@ export default function TagMultiSelect({
   const [keyword, setKeyword] = useState('');
   const containerRef = useRef(null);
   const triggerRef = useRef(null);
+
+  const renderOptionLabel = option => {
+    const label = getOptionLabel(option, optionLabels);
+    return optionBadgeClasses ? (
+      <span
+        className={`badge max-w-full truncate ${optionBadgeClasses[option] || 'bg-gray-100 text-gray-700'}`}
+      >
+        {label}
+      </span>
+    ) : (
+      label
+    );
+  };
 
   const closeDropdown = () => {
     setOpen(false);
@@ -194,7 +208,7 @@ export default function TagMultiSelect({
                   className={mobile ? 'min-w-0 flex-1 whitespace-normal break-words' : 'truncate'}
                   title={getOptionLabel(option, optionLabels)}
                 >
-                  {getOptionLabel(option, optionLabels)}
+                  {renderOptionLabel(option)}
                 </span>
               </button>
             );
@@ -244,7 +258,7 @@ export default function TagMultiSelect({
           {value.length === 0
             ? placeholder
             : value.length === 1
-              ? getOptionLabel(value[0], optionLabels)
+              ? renderOptionLabel(value[0])
               : enableSelectAll
                 ? `已选 ${value.length} 项`
                 : `已选择 ${value.length} 个${itemLabel === 'TAG' ? ' TAG' : itemLabel}`}
