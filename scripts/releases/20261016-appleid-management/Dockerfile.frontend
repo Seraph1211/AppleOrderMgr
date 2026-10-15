@@ -1,0 +1,11 @@
+FROM apple-order-mgr-frontend:20261016-proxy-feedback
+COPY frontend/src/components/ProfileDetailsModal.jsx /app/src/components/ProfileDetailsModal.jsx
+COPY frontend/src/components/AppleIdBatchEditModal.jsx /app/src/components/AppleIdBatchEditModal.jsx
+COPY frontend/src/constants/tableColumns.js /app/src/constants/tableColumns.js
+COPY frontend/src/constants/appleIdStatus.js /app/src/constants/appleIdStatus.js
+COPY frontend/src/hooks/useColumnConfig.js /app/src/hooks/useColumnConfig.js
+COPY frontend/src/pages/AppleIds.jsx /app/src/pages/AppleIds.jsx
+COPY frontend/src/utils/columnConfig.js /app/src/utils/columnConfig.js
+COPY frontend/src/utils/appleIdBatch.js /app/src/utils/appleIdBatch.js
+COPY frontend/src/utils/appleIdSecurityQa.js /app/src/utils/appleIdSecurityQa.js
+RUN npm run lint && npm run build

@@ -65,3 +65,10 @@ export function restoreActualPickupDateColumn(columns) {
   result.splice(index + 1, 0, column);
   return result;
 }
+
+/** Apple ID 旧布局只迁移一次；新版布局继续尊重用户保存的顺序和可见性。 */
+export function resolveAppleIdColumnConfig(defaultColumns, config) {
+  return config.layoutVersion === 1
+    ? mergeColumnConfig(defaultColumns, config.columns)
+    : defaultColumns.map(column => ({ ...column, visible: column.defaultVisible }));
+}

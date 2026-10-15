@@ -1,0 +1,4 @@
+FROM apple-order-mgr-api:20261016-proxy-feedback-amd64
+COPY --chown=node:node src/models/AppleId.js /app/src/models/AppleId.js
+COPY --chown=node:node src/controllers/appleIdController.js /app/src/controllers/appleIdController.js
+COPY --chown=node:node src/routes/appleIds.js /app/src/routes/appleIds.js

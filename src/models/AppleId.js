@@ -1,4 +1,4 @@
-const { DataTypes } = require('sequelize');
+const { DataTypes, literal } = require('sequelize');
 const { encrypt, decrypt, encryptJson, decryptJson } = require('../utils/fieldEncryption');
 const { ACCOUNT_STATUSES } = require('../constants/business');
 
@@ -22,6 +22,15 @@ module.exports = sequelize => {
         primaryKey: true,
         autoIncrement: true,
         comment: '主键ID，自增',
+      },
+      accountNumber: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        unique: true,
+        field: 'account_number',
+        // DEFAULT 由数据库序列分配；create/bulkCreate 不得写入隐式 NULL。
+        defaultValue: literal('DEFAULT'),
+        comment: '独立账号编号，正整数且创建后不可变',
       },
       appleId: {
         type: DataTypes.STRING(255),
