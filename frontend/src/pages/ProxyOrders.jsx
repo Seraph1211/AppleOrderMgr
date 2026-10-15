@@ -356,12 +356,6 @@ export default function ProxyOrders() {
       clearTimeout(timer);
     };
   }, [tab, scope, keyword, status, page, revision]);
-  useEffect(() => {
-    const timer = setInterval(() => {
-      if (!modal && !busy && !noteEditor && !deleteTarget) setRevision(value => value + 1);
-    }, 20000);
-    return () => clearInterval(timer);
-  }, [modal, busy, noteEditor, deleteTarget]);
 
   async function run(work, success) {
     if (busy) return;
