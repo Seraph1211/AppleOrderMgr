@@ -87,12 +87,15 @@ def main():
                 run(['docker', 'cp', cid + ':/app/dist', str(out / 'frontend')], stdout=subprocess.DEVNULL)
         finally:
             run(['docker', 'rm', cid], stdout=subprocess.DEVNULL)
-    run(['docker', 'save', '-o', str(out / 'images.tar')] + list(c['images'].values()))
+    # 生产前端仅发布dist，不导入累计多层的构建镜像，避免服务器overlay2层数上限。
+    deployed_images = {service: c['images'][service] for service in ['api', 'migrator']}
+    frontend_build_local_id = image_ids['frontend']
+    run(['docker', 'save', '-o', str(out / 'images.tar')] + list(deployed_images.values()))
     config_ids = archive_image_ids(out / 'images.tar')
-    image_ids = {service: config_ids[tag] for service, tag in c['images'].items()}
+    image_ids = {service: config_ids[tag] for service, tag in deployed_images.items()}
     with (out / 'images.tar').open('rb') as source, gzip.open(out / 'images.tar.gz', 'wb', compresslevel=6) as target:
         shutil.copyfileobj(source, target)
-    manifest = {'release': c['release'], 'commit': c['approvedCommit'], 'baselineCommit': c['baselineCommit'], 'baselineRelease': c['baselineRelease'], 'baselineImages': c['baselineImages'], 'images': c['images'], 'imageIds': image_ids, 'imagesSha256': sha(out / 'images.tar.gz'), 'frontend': hashes(out / 'frontend'), 'sourceFingerprints': fingerprints, 'baselineSourceFingerprints': baseline_fingerprints, 'whitelist': whitelist}
+    manifest = {'release': c['release'], 'commit': c['approvedCommit'], 'baselineCommit': c['baselineCommit'], 'baselineRelease': c['baselineRelease'], 'baselineImages': c['baselineImages'], 'images': deployed_images, 'frontendBuildLocalId': frontend_build_local_id, 'imageIds': image_ids, 'imagesSha256': sha(out / 'images.tar.gz'), 'frontend': hashes(out / 'frontend'), 'sourceFingerprints': fingerprints, 'baselineSourceFingerprints': baseline_fingerprints, 'whitelist': whitelist}
     write_json(out / 'artifact-manifest.json', manifest)
     shutil.copy2(args.config, out / 'release-config.json')
     with tarfile.open(out / 'release-files.tar.gz', 'w:gz') as archive:

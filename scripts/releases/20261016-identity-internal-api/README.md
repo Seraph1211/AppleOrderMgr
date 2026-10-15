@@ -4,7 +4,7 @@
 
 ## 本轮范围
 
-仅发布身份核验内部 GET、本人令牌管理、管理员保护处置、共享暂停及 API Tab。`制品白名单.json` 是覆盖范围：API 11 个源文件、前端 8 个源文件及一个 Migration `20261016000002-add-identity-internal-api.js`。Dockerfile 只逐文件覆盖这些内容，不复制整个本地 `src`。API 和前端更新，migrator 只执行迁移；其他 Worker 保留原容器、镜像与启动时间。前端由宿主机 Nginx 读取版本目录静态文件，没有前端生产容器需要重启。
+仅发布身份核验内部 GET、本人令牌管理、管理员保护处置、共享暂停及 API Tab。`制品白名单.json` 是覆盖范围：API 11 个源文件、前端 8 个源文件及一个 Migration `20261016000002-add-identity-internal-api.js`。Dockerfile 只逐文件覆盖这些内容，不复制整个本地 `src`。API 和前端更新，migrator 只执行迁移；其他 Worker 保留原容器、镜像与启动时间。前端由宿主机 Nginx 读取版本目录静态文件，没有前端生产容器需要重启。镜像归档只包含API/migrator，前端构建镜像留在本地，其dist进入静态制品；避免将累计多层的前端构建镜像导入生产overlay2触发层数上限。
 
 Nginx 使用实际生产配置的局部补丁，独立备份、候选校验、原子替换和 reload。不以仓库模板整体替换服务器文件。仅本站 HTTP/TLS 两个 server 改为安全访问日志、关闭可能含请求行的错误日志、增加 server 级 `no-store`/`no-referrer`、HTTP 直接拒绝和 TLS 独立路由。其他域名与既有 location 保留。存在多域名 server、优先级冲突、已有相同入口或 server 级 rewrite 时停止并交主审处理。
 
