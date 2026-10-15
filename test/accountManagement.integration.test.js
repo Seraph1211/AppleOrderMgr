@@ -133,14 +133,19 @@ describeIntegration('账号管理隔离库验收', () => {
       expect((await request('/api/auth/me', { token: session.body.data.token })).status).toBe(200);
   });
 
-  test('并发登录全部成功且各会话独立有效', async () => {
-    const user = await freshUser();
-    const sessions = await Promise.all(Array.from({ length: 8 }, () => login(user)));
-    expect(sessions.map(item => item.status)).toEqual(Array(8).fill(200));
-    expect((await user.reload()).activeSessions).toHaveLength(8);
-    for (const session of sessions)
-      expect((await request('/api/auth/me', { token: session.body.data.token })).status).toBe(200);
-  });
+  test.each(['admin', 'operator', 'pickupStaff', 'readOnly'])(
+    '%s 并发登录全部成功且各会话独立有效',
+    async role => {
+      const user = await freshUser(role);
+      const sessions = await Promise.all(Array.from({ length: 8 }, () => login(user)));
+      expect(sessions.map(item => item.status)).toEqual(Array(8).fill(200));
+      expect((await user.reload()).activeSessions).toHaveLength(8);
+      for (const session of sessions)
+        expect((await request('/api/auth/me', { token: session.body.data.token })).status).toBe(
+          200
+        );
+    }
+  );
 
   test('退出仅撤销本机会话；迟到退出不影响其他设备', async () => {
     const user = await freshUser();
@@ -658,12 +663,8 @@ describeIntegration('账号管理隔离库验收', () => {
     const fields = 'id, username, password, role';
     const [before] = await models.sequelize.query(`SELECT ${fields} FROM users ORDER BY id`);
     const queryInterface = models.sequelize.getQueryInterface();
-    const threeSessionMigration = require(
-      '../migrations/20260909000004-allow-three-account-sessions'
-    );
-    const unlimitedSessionMigration = require(
-      '../migrations/20260924000001-remove-account-session-limit'
-    );
+    const threeSessionMigration = require('../migrations/20260909000004-allow-three-account-sessions');
+    const unlimitedSessionMigration = require('../migrations/20260924000001-remove-account-session-limit');
     await trimSessionsForLegacyConstraint();
     await unlimitedSessionMigration.down(queryInterface);
     await threeSessionMigration.down(queryInterface);
