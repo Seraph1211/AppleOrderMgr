@@ -381,12 +381,21 @@ export default function Orders() {
 
   loadOrdersRef.current = loadOrders;
 
+  const selectedExportCount = allFilteredSelected ? pagination.totalItems : selectedIds.length;
+
   const handleSelectedExport = async fields => {
-    if (!canExportOrders || selectedIds.length === 0 || exportingSelected) return;
+    if (!canExportOrders || exportingSelected) return;
+    if (selectedExportCount === 0) throw new Error('请先选择需要导出的订单');
     setExportingSelected(true);
     try {
-      await exportOrders({ orderIds: selectedIds, fields });
-      showToast('success', `已导出 ${selectedIds.length} 个订单`);
+      const selection = allFilteredSelected
+        ? { keyword: searchTerm || undefined, ...filters }
+        : { orderIds: selectedIds };
+      await exportOrders({ ...selection, fields });
+      showToast(
+        'success',
+        allFilteredSelected ? '已导出当前筛选结果' : `已导出 ${selectedIds.length} 个订单`
+      );
     } catch (error) {
       showToast('error', error.message || '导出失败，请稍后重试');
       throw error;
@@ -997,9 +1006,7 @@ export default function Orders() {
               {canExportOrders && (
                 <button
                   className="btn btn-secondary flex items-center gap-2"
-                  disabled={
-                    loading || exportingSelected || allFilteredSelected || selectedIds.length === 0
-                  }
+                  disabled={loading || exportingSelected || selectedExportCount === 0}
                   onClick={() => setShowExportModal(true)}
                 >
                   <Download className="w-4 h-4" />
@@ -1238,7 +1245,8 @@ export default function Orders() {
 
       {showExportModal && canExportOrders && (
         <OrderExportModal
-          count={selectedIds.length}
+          count={selectedExportCount}
+          allFiltered={allFilteredSelected}
           defaultFields={getDefaultOrderExportFields(columns)}
           onClose={() => setShowExportModal(false)}
           onExport={handleSelectedExport}

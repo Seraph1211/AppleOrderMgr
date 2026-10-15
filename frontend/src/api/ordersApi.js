@@ -56,9 +56,15 @@ export const getOrderDetailWithLink = async id => {
 
 export const getOrderFilterOptions = params => client.get('/orders/filter-options', { params });
 
+/**
+ * 导出明确选择的订单或全部筛选结果，沿用服务端字段和数据范围权限。
+ * @param {Object} params - 订单 ID 或筛选条件，以及导出字段
+ * @returns {Promise<void>} 已触发浏览器下载
+ */
 export const exportOrders = async (params = {}) => {
   const query = { ...params };
-  for (const key of ['orderIds', 'fields']) {
+  // 与列表的多选筛选一致，避免 Axios 将数组编码成 payerNames[] 等不同参数名。
+  for (const key of Object.keys(query)) {
     if (Array.isArray(query[key])) query[key] = JSON.stringify(query[key]);
   }
   const blob = await client.get('/orders/export', {

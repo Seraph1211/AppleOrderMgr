@@ -15,8 +15,14 @@ function loadSavedFields(defaultFields) {
   }
 }
 
-/** 选择当前页订单导出的服务端白名单字段。 */
-export default function OrderExportModal({ count, defaultFields, onClose, onExport }) {
+/** 选择当前页或全部筛选结果导出的服务端白名单字段。 */
+export default function OrderExportModal({
+  count,
+  allFiltered = false,
+  defaultFields,
+  onClose,
+  onExport,
+}) {
   const initialFields = useMemo(() => loadSavedFields(defaultFields), [defaultFields]);
   const [selectedFields, setSelectedFields] = useState(initialFields);
   const [exporting, setExporting] = useState(false);
@@ -57,7 +63,11 @@ export default function OrderExportModal({ count, defaultFields, onClose, onExpo
         <div className="flex items-center justify-between border-b border-gray-200 p-4">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">导出选中订单</h2>
-            <p className="mt-1 text-sm text-gray-500">将导出当前页已选择的 {count} 个订单</p>
+            <p className="mt-1 text-sm text-gray-500">
+              {allFiltered
+                ? `将导出全部筛选结果（当前 ${count} 个订单），以导出时符合筛选条件的订单为准`
+                : `将导出当前页已选择的 ${count} 个订单`}
+            </p>
           </div>
           <button
             type="button"
