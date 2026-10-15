@@ -236,7 +236,7 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 
 ## Apple ID 与取机人
 
-### Apple ID 管理扩展（2026-10-16，已批准，开发中）
+### Apple ID 管理扩展（2026-10-16，已生产发布）
 
 - Apple ID 列表／详情新增只读 `account_number` 正整数，原 `id` 仍作为所有操作与关联的主键，外部请求不得指定或修改编号。
 - `POST /api/apple-ids/batch-update`：需 `apple_ids.edit`，请求仅允许 `{ ids, status?, notes? }`。`ids` 为 1—5000 个唯一正整数；status 必须是现行四个状态之一，notes 为最长 10000 字符的字符串或 null。status／notes 至少提供一个；未提供字段保持原值，null 备注显式清空。事务内取得档案及目标行锁，任一账号不存在则整批拒绝，不部分成功。成功 `{ success: true, data: { updated: 数量 } }`，不返回密码／密保。
