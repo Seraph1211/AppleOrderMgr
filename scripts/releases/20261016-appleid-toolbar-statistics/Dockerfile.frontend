@@ -1,0 +1,6 @@
+FROM apple-order-mgr-frontend:20261016-identity-internal-api
+COPY --chown=node:node frontend/src/pages/AppleIds.jsx /app/src/pages/AppleIds.jsx
+COPY --chown=node:node frontend/src/utils/appleIdBatch.js /app/src/utils/appleIdBatch.js
+COPY --chown=node:node frontend/src/hooks/useAppleIdSelection.js /app/src/hooks/useAppleIdSelection.js
+COPY --chown=node:node frontend/src/components/AppleIdStatisticsModal.jsx /app/src/components/AppleIdStatisticsModal.jsx
+RUN npm run lint && npm run build

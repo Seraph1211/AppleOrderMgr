@@ -131,6 +131,8 @@ AOS 设备协议挂载于 `/api/aos-collector/v1`，管理员来源管理挂载�
 | GET    | /api/users/:id/permissions                          | users.permissions.manage（admin 保留）                                                 |
 | PUT    | /api/users/:id/permissions                          | users.permissions.manage（admin 保留）                                                 |
 | GET    | /api/apple-ids                                      | apple_ids.read                                                                         |
+| GET    | /api/apple-ids/statistics                           | apple_ids.read                                                                         |
+| GET    | /api/apple-ids/selection-ids                        | apple_ids.read                                                                         |
 | GET    | /api/apple-ids/:id                                  | apple_ids.read                                                                         |
 | POST   | /api/apple-ids                                      | apple_ids.create                                                                       |
 | PUT    | /api/apple-ids/:id                                  | apple_ids.edit                                                                         |
@@ -263,9 +265,12 @@ JWT 管理端统一响应 `{success:true,data:...}`，所有响应 no-store。�
 ### Apple ID 管理扩展（2026-10-16，已生产发布）
 
 - Apple ID 列表／详情新增只读 `account_number` 正整数，原 `id` 仍作为所有操作与关联的主键，外部请求不得指定或修改编号。
+- `GET /api/apple-ids/statistics`（本轮开发，待发布）：需 `apple_ids.read`，返回 `{ success: true, data: { total, statuses: [{ status, count }] } }`。统计全库账号，不使用当前页面的 keyword／status／country／分页条件；现行四个状态按规范顺序返回，缺失补 0，未知存量状态保留独立计数，各状态数量之和等于 total。单次数据库分组聚合，只读取状态和数量，不读取密码／密保。
+- `GET /api/apple-ids/selection-ids`（本轮开发，待发布）：需 `apple_ids.read`，仅接受与列表共用的 `keyword`（邮箱模糊查询，最长 255 字符）、`status`（现行四个状态之一）和 `country`（最长 50 字符）筛选，均须为字符串；空字符串视为未筛选，keyword 去除首尾空白。拒绝未知参数、数组／对象及已退役绑定筛选，不接受分页参数。返回 `{ success: true, data: { ids: [内部ID], total } }`，仅查询内部 ID，按 `id DESC` 排序。最多 5000 个；超出返回 400 `APPLE_ID_SELECTION_LIMIT_EXCEEDED`，不截断、不返回部分 ID。列表与本接口使用同一筛选构造逻辑。
+- 上述两个只读接口均设置 `Cache-Control: no-store`，路由位于 `/:id` 之前，不增加表结构或 Migration；统计未知状态不代表允许将其写入账号。
 - `POST /api/apple-ids/batch-update`：需 `apple_ids.edit`，请求仅允许 `{ ids, status?, notes? }`。`ids` 为 1—5000 个唯一正整数；status 必须是现行四个状态之一，notes 为最长 10000 字符的字符串或 null。status／notes 至少提供一个；未提供字段保持原值，null 备注显式清空。事务内取得档案及目标行锁，任一账号不存在则整批拒绝，不部分成功。成功 `{ success: true, data: { updated: 数量 } }`，不返回密码／密保。
 - `POST /api/apple-ids/copy-import`：需 `apple_ids.read`，请求仅允许 `{ ids }`，范围与上项一致。全部账号存在才返回 `{ success: true, data: { count, text } }`；text 按编号升序，每行严格为 `AppleID,密码,`，保留尾逗号、使用换行分隔、无表头／额外空行。账号或密码有逗号、CR／LF 时拒绝并提示资料格式问题，不静默改变凭据或输出歧义内容。响应 `Cache-Control: no-store`，不记录敏感值日志。
-- 多选跨页保留，改变搜索／状态筛选清空选择；页面只全选当前页。批量编辑显式选择状态及／或备注，保存前展示目标数量与变化，未勾选字段保持。复制结果仅写剪贴板，不在页面、日志或 localStorage 回显／持久化。
+- 多选跨页保留，改变搜索／状态筛选清空选择；本轮新增常驻工具栏的“全选本页”和“全选筛选结果”，后者使用上述 selection-ids 的完整集合与 5000 上限。全局状态统计弹窗独立于当前列表筛选。批量编辑打开即可修改状态及／或备注，点击“确认”一次保存；未编辑字段保持，编辑空白备注或点击清空后保存会清空备注。复制结果仅写剪贴板，不在页面、日志或 localStorage 回显／持久化。
 
 - Apple ID 列表 query 为 page、limit、status、country、keyword；keyword 只搜索账号，不搜索取机人。响应移除 recipient_count、recipient_names 与详情 recipients。新增接收 apple_id、password、notes、country、status、security_qa。持有 apple_ids.read 可在列表/详情读取完整password；普通请求不返回密保，详情includeSecrets=true另需apple_ids.secrets.read。Cache-Control: no-store，存储继续加密、日志不记录明文。
 - 取机人列表 query 包含 page、limit、tags、channels、status、keyword；tags/channels 接受数组或兼容逗号分隔值，维度内 OR、跨维度 AND，兼容 tag/channel。keyword 搜索姓名、证件完整盲索引或后四位；不搜索 Apple ID。GET /recipients/filter-options 保持。新增必须 lastName、firstName、idCardNumber；channel 单值最长100字符，独立于订单权限。响应移除 bound、apple_id、apple_id_ref、password。

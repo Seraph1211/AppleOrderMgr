@@ -9,6 +9,25 @@ const { PERMISSIONS } = require('../constants/business');
 const controller = require('../controllers/appleIdController');
 
 const router = express.Router();
+
+/** 所有响应均禁用缓存，包括权限与输入校验失败。 */
+function noStore(_req, res, next) {
+  res.set('Cache-Control', 'no-store');
+  next();
+}
+
+router.get(
+  '/statistics',
+  noStore,
+  requirePermission(PERMISSIONS.APPLE_IDS_READ),
+  asyncHandler(controller.getAppleIdStatistics)
+);
+router.get(
+  '/selection-ids',
+  noStore,
+  requirePermission(PERMISSIONS.APPLE_IDS_READ),
+  asyncHandler(controller.getAppleIdSelectionIds)
+);
 router.get(
   '/:id/bindings',
   requirePermission(PERMISSIONS.RECIPIENTS_READ),
