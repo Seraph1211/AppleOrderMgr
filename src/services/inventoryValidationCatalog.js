@@ -1,3 +1,4 @@
+const { resolveProductName } = require('../utils/productNaming');
 const cheerio = require('cheerio');
 
 /** 只接受官方购买页 metrics 内明确分类为 iPhone 的精确国行 SKU。 */
@@ -117,7 +118,9 @@ function parseDetailedProductCatalog(html) {
       const color = clean(selection.displayValues?.dimensionColor?.[variant.dimensionColor]?.value);
       const model =
         clean(selection.displayValues?.dimensionScreensize?.[variant.dimensionScreensize]?.value) ||
-        product.title.match(/^(iPhone .+?)\s+\d+\s*(?:GB|TB)\b/)?.[1];
+        (resolveProductName(product).matched
+          ? resolveProductName(product).modelName
+          : product.title.match(/^(iPhone .+?)\s+\d+\s*(?:GB|TB)\b/)?.[1]);
       if (!/^(?:\d+)(?:GB|TB)$/.test(capacity || '') || !color || !/^iPhone\b/.test(model || ''))
         throw new Error('INCOMPLETE_PRODUCT_SPEC');
       return { ...product, title: `${model} ${capacity} ${color}`, model, capacity, color };

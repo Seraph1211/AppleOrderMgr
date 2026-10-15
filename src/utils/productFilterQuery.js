@@ -1,3 +1,4 @@
+const { expandProductNameAliases } = require('./productNaming');
 const { Sequelize } = require('sequelize');
 const ApiError = require('./ApiError');
 
@@ -18,7 +19,9 @@ function parseProductKeys(value) {
     values.some(
       key =>
         typeof key !== 'string' ||
-        !/^(?:sku:[A-Z0-9]{5,12}\/[A-Z0-9]{1,3}:[a-f0-9]{64}|(?:name|review):[a-f0-9]{64})$/.test(key)
+        !/^(?:sku:[A-Z0-9]{5,12}\/[A-Z0-9]{1,3}:[a-f0-9]{64}|(?:name|review):[a-f0-9]{64})$/.test(
+          key
+        )
     )
   ) {
     throw ApiError.badRequest('productKeys 必须是最多 100 项的合法商品键数组');
@@ -46,7 +49,9 @@ function buildOrderProductCondition(query, sequelize, legacyNames = []) {
   const clauses = [keySql];
   if (legacyNames.length)
     clauses.push(
-      `item->>'name' IN (${legacyNames.map(value => sequelize.escape(value)).join(', ')})`
+      `item->>'name' IN (${expandProductNameAliases(legacyNames)
+        .map(value => sequelize.escape(value))
+        .join(', ')})`
     );
   if (query.productModel)
     clauses.push(`item::text ILIKE ${sequelize.escape(`%${query.productModel}%`)}`);

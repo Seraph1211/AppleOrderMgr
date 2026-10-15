@@ -1,0 +1,26 @@
+FROM apple-order-mgr-frontend:20261015-product-capacity-display
+COPY frontend/src/components/OrderDetailModal.jsx /app/src/components/OrderDetailModal.jsx
+COPY frontend/src/components/PaymentCodeButton.jsx /app/src/components/PaymentCodeButton.jsx
+COPY frontend/src/components/ProductFilter.jsx /app/src/components/ProductFilter.jsx
+COPY frontend/src/components/ProductName.jsx /app/src/components/ProductName.jsx
+COPY frontend/src/components/inventory/InventoryAnalysisView.jsx /app/src/components/inventory/InventoryAnalysisView.jsx
+COPY frontend/src/components/inventory/InventoryCommon.jsx /app/src/components/inventory/InventoryCommon.jsx
+COPY frontend/src/components/inventory/InventoryCoverageDialog.jsx /app/src/components/inventory/InventoryCoverageDialog.jsx
+COPY frontend/src/components/inventory/InventoryScope.jsx /app/src/components/inventory/InventoryScope.jsx
+COPY frontend/src/components/stock/ledgerEntryForm.jsx /app/src/components/stock/ledgerEntryForm.jsx
+COPY frontend/src/components/stock/stockHelpers.js /app/src/components/stock/stockHelpers.js
+COPY frontend/src/pages/ChannelOrders.jsx /app/src/pages/ChannelOrders.jsx
+COPY frontend/src/pages/Dashboard.jsx /app/src/pages/Dashboard.jsx
+COPY frontend/src/pages/EmailProcessing.jsx /app/src/pages/EmailProcessing.jsx
+COPY frontend/src/pages/InventoryMonitor.jsx /app/src/pages/InventoryMonitor.jsx
+COPY frontend/src/pages/Iphone18QuotePricing.jsx /app/src/pages/Iphone18QuotePricing.jsx
+COPY frontend/src/pages/OrderDetail.jsx /app/src/pages/OrderDetail.jsx
+COPY frontend/src/pages/OrderIngestion.jsx /app/src/pages/OrderIngestion.jsx
+COPY frontend/src/pages/Orders.jsx /app/src/pages/Orders.jsx
+COPY frontend/src/pages/ProxyOrders.jsx /app/src/pages/ProxyOrders.jsx
+COPY frontend/src/pages/PublicIphone18Quotes.jsx /app/src/pages/PublicIphone18Quotes.jsx
+COPY frontend/src/utils/paymentCopy.js /app/src/utils/paymentCopy.js
+COPY frontend/src/utils/productDisplay.js /app/src/utils/productDisplay.js
+COPY frontend/src/utils/productNaming.js /app/src/utils/productNaming.js
+COPY frontend/src/utils/productStorage.js /app/src/utils/productStorage.js
+RUN npm run lint && npm run build

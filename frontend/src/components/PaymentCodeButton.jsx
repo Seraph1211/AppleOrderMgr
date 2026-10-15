@@ -1,4 +1,5 @@
 import OrderAmount from './OrderAmount';
+import { formatProductSummary } from '../utils/productDisplay';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { QrCode, X } from 'lucide-react';
@@ -121,10 +122,7 @@ export default function PaymentCodeButton({ taskId, orderDate, dispatch = false 
                       {[
                         ['订单序号（系统 ID）', data.orderId],
                         ['订单号（Apple）', data.orderNumber],
-                        [
-                          '商品信息',
-                          data.products?.map(p => `${p.name} × ${p.quantity}`).join('；') || '—',
-                        ],
+                        ['商品信息', formatProductSummary(data.products)],
                         ['金额', <OrderAmount key="amount" amount={data.amount} />],
                         ['支付方式', data.paymentMethod || '—'],
                         ['付款截止时间', formatPaymentDeadline(orderDate)],

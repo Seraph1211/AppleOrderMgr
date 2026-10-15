@@ -1,0 +1,59 @@
+{
+  "baseCommit": "c4c60e5",
+  "api": [
+    "src/controllers/orderController.js",
+    "src/controllers/statsController.js",
+    "src/data/productNamingV20261015.json",
+    "src/services/inventoryNotifier.js",
+    "src/services/inventoryPolicy.js",
+    "src/services/inventoryValidationCatalog.js",
+    "src/services/paymentCodeService.js",
+    "src/services/paymentTaskService.js",
+    "src/services/productNameBatchService.js",
+    "src/services/proxyOrderService.js",
+    "src/services/quotePricingCore.js",
+    "src/services/wecomNotificationContent.js",
+    "src/utils/orderSerialization.js",
+    "src/utils/productFilter.js",
+    "src/utils/productFilterQuery.js",
+    "src/utils/productNaming.js"
+  ],
+  "frontend": [
+    "frontend/src/components/OrderDetailModal.jsx",
+    "frontend/src/components/PaymentCodeButton.jsx",
+    "frontend/src/components/ProductFilter.jsx",
+    "frontend/src/components/ProductName.jsx",
+    "frontend/src/components/inventory/InventoryAnalysisView.jsx",
+    "frontend/src/components/inventory/InventoryCommon.jsx",
+    "frontend/src/components/inventory/InventoryCoverageDialog.jsx",
+    "frontend/src/components/inventory/InventoryScope.jsx",
+    "frontend/src/components/stock/ledgerEntryForm.jsx",
+    "frontend/src/components/stock/stockHelpers.js",
+    "frontend/src/pages/ChannelOrders.jsx",
+    "frontend/src/pages/Dashboard.jsx",
+    "frontend/src/pages/EmailProcessing.jsx",
+    "frontend/src/pages/InventoryMonitor.jsx",
+    "frontend/src/pages/Iphone18QuotePricing.jsx",
+    "frontend/src/pages/OrderDetail.jsx",
+    "frontend/src/pages/OrderIngestion.jsx",
+    "frontend/src/pages/Orders.jsx",
+    "frontend/src/pages/ProxyOrders.jsx",
+    "frontend/src/pages/PublicIphone18Quotes.jsx",
+    "frontend/src/utils/paymentCopy.js",
+    "frontend/src/utils/productDisplay.js",
+    "frontend/src/utils/productNaming.js",
+    "frontend/src/utils/productStorage.js"
+  ],
+  "wecom-worker": [
+    "src/utils/productNaming.js",
+    "src/data/productNamingV20261015.json",
+    "src/services/wecomNotificationContent.js"
+  ],
+  "inventory-worker": [
+    "src/utils/productNaming.js",
+    "src/data/productNamingV20261015.json",
+    "src/services/inventoryNotifier.js",
+    "src/services/inventoryPolicy.js",
+    "src/services/inventoryValidationCatalog.js"
+  ]
+}

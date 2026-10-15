@@ -1,3 +1,4 @@
+const { getProductDisplayName, expandProductNameAliases } = require('../utils/productNaming');
 const {
   recipientTagSql,
   recipientTagAttributes,
@@ -208,7 +209,7 @@ async function listProductNameOptions(taskWhere, orderWhere, detailed = false) {
     const productNames = new Set();
     for (const row of rows) {
       for (const product of Array.isArray(row.order?.products) ? row.order.products : []) {
-        const name = String(product?.name || '').trim();
+        const name = getProductDisplayName(product);
         if (name) productNames.add(name);
       }
     }
@@ -328,12 +329,17 @@ function buildProductCondition(query) {
       )
     );
   if (productNames.length > 0) {
-    const escapedNames = productNames.map(name => sequelize.escape(name)).join(', ');
+    const escapedNames = expandProductNameAliases(productNames)
+      .map(name => sequelize.escape(name))
+      .join(', ');
     clauses.push(`item->>'name' IN (${escapedNames})`);
   }
   if (keyword) {
-    const pattern = sequelize.escape(`%${keyword}%`);
-    clauses.push(`(item->>'name' ILIKE ${pattern} OR item->>'model' ILIKE ${pattern})`);
+    const patterns = expandProductNameAliases([keyword]).map(alias => {
+      const pattern = sequelize.escape(`%${alias}%`);
+      return `(item->>'name' ILIKE ${pattern} OR item->>'model' ILIKE ${pattern})`;
+    });
+    clauses.push(`(${patterns.join(' OR ')})`);
   }
   if (model) {
     clauses.push(`item->>'model' = ${sequelize.escape(model)}`);

@@ -1108,6 +1108,9 @@ export default function Orders() {
                         : '商品待核实'}
                       {products.length > 1 && `，另 ${products.length - 1} 款`}
                     </p>
+                    {products.some(product => product.filterNeedsReview) && (
+                      <p className="mt-1 text-xs text-amber-700">商品信息待核对</p>
+                    )}
                     <p className="mt-1 truncate text-xs text-gray-600">
                       取机人：{order.recipientName || '-'}
                       {' · '}

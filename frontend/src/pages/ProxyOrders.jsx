@@ -1,4 +1,5 @@
-import { formatProductStorageText } from '../utils/productStorage';
+import ProductName from '../components/ProductName';
+import { getProductDisplayName } from '../utils/productNaming';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { useEffect, useRef, useState } from "react";
 import {
@@ -875,10 +876,7 @@ export default function ProxyOrders() {
                           )}
                         </td>
                         <td className="p-3">
-                          <p>{row.productModel}</p>
-                          <p className="text-gray-500 mt-1">
-                            {row.color} / {formatProductStorageText(row.storage)} × {row.quantity}
-                          </p>
+                          <p><ProductName product={row} /> × {row.quantity}</p>
                           <p className="text-xs text-gray-400">
                             {row.paymentMethod || "支付要求未填"}
                           </p>
@@ -1185,7 +1183,7 @@ export default function ProxyOrders() {
               {[
                 [
                   "抢购需求",
-                  `${current.productModel} / ${current.color} / ${formatProductStorageText(current.storage)} × ${current.quantity}`,
+                  `${getProductDisplayName(current)} × ${current.quantity}`,
                 ],
                 ["支付要求", current.paymentMethod],
                 ["手机号", current.phone],
@@ -1289,7 +1287,7 @@ export default function ProxyOrders() {
                   </p>
                   <p>
                     {current.officialOrder.products
-                      .map((p) => `${p.name} × ${p.quantity}`)
+                      .map((p) => `${getProductDisplayName(p)} × ${p.quantity}`)
                       .join("；")}
                   </p>
                   <p>

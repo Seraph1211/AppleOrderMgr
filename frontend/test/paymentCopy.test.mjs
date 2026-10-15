@@ -8,14 +8,14 @@ test('同名同型号商品合并数量，单条及批量共用格式，不修�
     orderId: 183,
     paymentMethod: 'wechat',
     products: [
-      { name, model: 'MODEL-A', quantity: 1 },
-      { name, model: 'MODEL-A', quantity: 1 },
+      { name, model: 'MJYD4CH/A', quantity: 1 },
+      { name, model: 'MJYD4CH/A', quantity: 1 },
     ],
   };
   const original = JSON.stringify(task);
   assert.equal(
     buildPaymentCopyText(task, 'https://example.com/order'),
-    `183 || ${name} x 2 || 微信 || - || https://example.com/order`
+    '183 || iPhone 18 Pro Max 勃艮第酒红色 512G x 2 || 微信 || - || https://example.com/order'
   );
   assert.equal(JSON.stringify(task), original);
 });
@@ -105,4 +105,20 @@ test('截止时间跨年后使用新日期，月日和时分补零', () => {
     buildPaymentCopyText({ orderId: 1, orderDate: '2026-12-31T23:38:00+08:00' }, 'url'),
     '1 || - || - || 27/01/01 00:08 || url'
   );
+});
+
+test('复制保留服务器待核对精简DTO的原名和独立数量', () => {
+  const name = 'iPhone 18 Pro Max 256GB 黑色';
+  const text = buildPaymentCopyText(
+    {
+      orderId: 1,
+      products: [
+        { name, model: 'MJY64CH/A', quantity: 1 },
+        { name, model: 'MJY64CH/A', quantity: 2, nameNeedsReview: true },
+      ],
+    },
+    'url'
+  );
+  assert.match(text, /iPhone 18 Pro Max 黑色 256G x 1/);
+  assert.match(text, /iPhone 18 Pro Max 256GB 黑色 x 2/);
 });

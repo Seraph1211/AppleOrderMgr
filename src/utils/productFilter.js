@@ -1,3 +1,4 @@
+const { getProductDisplayName, resolveProductName } = require('./productNaming');
 const { createHash } = require('node:crypto');
 
 const text = value =>
@@ -15,7 +16,8 @@ function normalizeProductName(value) {
   let name = text(value).toLowerCase();
   const capacities = [];
   name = name.replace(/\b(\d+(?:\.\d+)?)\s*(gb|tb|g|t)\b/gi, (_all, number, unit) => {
-    capacities.push(`${number}${unit[0].toLowerCase()}b`);
+    const gb = Number(number) * (unit[0].toLowerCase() === 't' ? 1024 : 1);
+    capacities.push(`${gb}gb`);
     return ' ';
   });
   return [name.replace(/\s+/g, ' ').trim(), ...capacities].filter(Boolean).join(' ');
@@ -25,6 +27,10 @@ function compatible(left, right) {
   const leftSku = normalizeSku(left.model);
   const rightSku = normalizeSku(right.model);
   if (leftSku && rightSku && leftSku !== rightSku) return false;
+  const leftResolved = resolveProductName({ model: left.model, name: left.name || left.label });
+  const rightResolved = resolveProductName({ model: right.model, name: right.name || right.label });
+  if (leftResolved.matched && rightResolved.matched && leftResolved.name === rightResolved.name)
+    return true;
   return (
     normalizeProductName(left.name || left.label) ===
     normalizeProductName(right.name || right.label)
@@ -82,7 +88,7 @@ function buildProductFilterItems(products, previous = [], source = []) {
       );
     });
     // 不自动继承其他已明确型号的旧键；真实身份修正不继续命中原商品。
-    const oldKeys = inheritable.flatMap(item => item.keys || []);
+    const oldKeys = inheritable.flatMap(item => [item.key, ...(item.keys || [])]).filter(Boolean);
     const aliases = [
       ...new Set(
         [label, ...inheritable.flatMap(item => item.aliases || [item.name || item.label])]
@@ -92,7 +98,7 @@ function buildProductFilterItems(products, previous = [], source = []) {
     ];
     return {
       productIndex,
-      key,
+      key: inheritable.find(item => item.key)?.key || key,
       keys: [...new Set([key, ...oldKeys])].filter(value => typeof value === 'string'),
       label,
       aliases,
@@ -123,26 +129,29 @@ function collectProductOptions(rows) {
     for (const key of rowKeys) keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
     const seen = new Set();
     for (const item of items) {
-      let option = options.get(item.key);
+      const resolution = resolveProductName({ model: item.model, name: item.label });
+      const identity = resolution.matched && !String(item.key).startsWith('review:') ? resolution.identity : item.key;
+      const displayLabel = getProductDisplayName({ model: item.model, name: item.label });
+      let option = options.get(identity);
       if (!option) {
         option = {
           value: item.key,
-          label: item.label,
+          label: displayLabel,
           aliases: [],
           count: 0,
           needsReview: false,
           model: item.model,
           keys: [],
         };
-        options.set(item.key, option);
+        options.set(identity, option);
       }
       option.keys = [...new Set([...option.keys, ...item.keys])];
       option.aliases = [...new Set([...option.aliases, ...item.aliases])];
       // 同 SKU 的显示名称固定选字典序首项，查询顺序变化不造成标签跳动。
-      option.label = [option.label, item.label].sort((a, b) => a.localeCompare(b, 'zh-CN'))[0];
-      option.needsReview ||= item.needsReview;
-      if (!seen.has(item.key)) option.count++;
-      seen.add(item.key);
+      option.label = [option.label, displayLabel].sort((a, b) => a.localeCompare(b, 'zh-CN'))[0];
+      option.needsReview ||= item.needsReview || resolution.needsReview;
+      if (!seen.has(identity)) option.count++;
+      seen.add(identity);
     }
   }
   const identitiesByModel = new Map();

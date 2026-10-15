@@ -1,3 +1,5 @@
+const { resolveProductName } = require('../utils/productNaming');
+const namingCatalog = require('../data/productNamingV20261015.json');
 const { recipientTagSql, normalizeRecipientTag } = require('../services/recipientTagService');
 const { formatOrderTime, parseOrderTimeBoundary } = require('../utils/orderTime');
 /* eslint-disable camelcase */
@@ -204,7 +206,7 @@ async function getRecipientStats(req, res) {
  */
 const PRODUCT_STATS_SQL = `
   SELECT
-    COALESCE(elem->>'name', '') AS name,
+    COALESCE(normalize_business_product_name(elem), '') AS name,
     SUM(COALESCE((elem->>'quantity')::int, 0)) AS total_quantity,
     COUNT(DISTINCT o.id) AS order_count
   FROM "orders" o,
@@ -213,7 +215,7 @@ const PRODUCT_STATS_SQL = `
     AND ($2::timestamptz IS NULL OR o.order_date <= $2)
     AND ($3::text[] IS NULL OR ${recipientTagSql('o')} = ANY($3::text[]))
     AND elem ? 'name'
-  GROUP BY elem->>'name'
+  GROUP BY normalize_business_product_name(elem), COALESCE(elem->>'sku',elem->>'skuCode',elem->>'partNumber',CASE WHEN elem->>'model' ~* '^[A-Z0-9]{5,12}/[A-Z0-9]{1,3}$' THEN elem->>'model' END,(SELECT c->>'sku' FROM jsonb_array_elements('${JSON.stringify(namingCatalog)}'::jsonb) c WHERE c->>'name'=normalize_business_product_name(elem) LIMIT 1))
   ORDER BY total_quantity DESC
   LIMIT 50
 `;
@@ -234,7 +236,18 @@ const COLOR_KEYWORDS = [
   '午夜色',
   '星光色',
 ];
-const CAPACITY_KEYWORDS = ['1TB', '512GB', '256GB', '128GB', '2TB'];
+const CAPACITY_KEYWORDS = [
+  '1TB',
+  '512GB',
+  '256GB',
+  '128GB',
+  '2TB',
+  '256G',
+  '512G',
+  '1T',
+  '2T',
+  '128G',
+];
 
 /**
  * 从产品名称中提取颜色 / 容量关键词
@@ -264,7 +277,7 @@ async function getProductStats(req, res) {
 
     // 颜色 / 容量分布需要原始明细，使用 PostgreSQL jsonb_array_elements 拉平
     const DETAIL_SQL = `
-      SELECT elem->>'name' AS name
+      SELECT normalize_business_product_name(elem) AS name
       FROM "orders" o,
            jsonb_array_elements(o.products) AS elem
       WHERE ($1::timestamptz IS NULL OR o.order_date >= $1)
@@ -282,11 +295,14 @@ async function getProductStats(req, res) {
     const capacityDistribution = {};
     detailRows.forEach(row => {
       const name = row.name || '';
-      const color = matchKeyword(name, COLOR_KEYWORDS);
+      const resolution = resolveProductName(name);
+      const color = resolution.matched ? resolution.color : matchKeyword(name, COLOR_KEYWORDS);
       if (color) {
         colorDistribution[color] = (colorDistribution[color] || 0) + 1;
       }
-      const capacity = matchKeyword(name, CAPACITY_KEYWORDS);
+      const capacity = resolution.matched
+        ? resolution.capacity
+        : matchKeyword(name, CAPACITY_KEYWORDS);
       if (capacity) {
         capacityDistribution[capacity] = (capacityDistribution[capacity] || 0) + 1;
       }

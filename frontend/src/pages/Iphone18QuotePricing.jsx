@@ -1,4 +1,6 @@
+import ProductName from '../components/ProductName';
 import { formatStorageCapacity } from '../utils/productStorage';
+import { getProductDisplayName } from '../utils/productNaming';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
@@ -545,7 +547,7 @@ export default function Iphone18QuotePricing() {
                         <button
                           type="button"
                           draggable={!hasActiveFilters && !busy}
-                          aria-label={`拖动 ${item.productName} 调整顺序`}
+                          aria-label={`拖动 ${getProductDisplayName(item)} 调整顺序`}
                           title={hasActiveFilters ? '清除筛选后可调整顺序' : '拖动调整展示顺序'}
                           onDragStart={event => startDragging(event, item.productKey)}
                           onDragEnd={() => setDraggingKey('')}
@@ -559,13 +561,13 @@ export default function Iphone18QuotePricing() {
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
-                          aria-label={`选择 ${item.productName}`}
+                          aria-label={`选择 ${getProductDisplayName(item)}`}
                           checked={selected.has(item.productKey)}
                           onChange={() => toggleOne(item.productKey)}
                         />
                       </td>
                       <td className="min-w-[260px] px-4 py-3 font-medium text-gray-900">
-                        {item.productName}
+                        <ProductName product={item} />
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">
                         {item.specCode || '-'}

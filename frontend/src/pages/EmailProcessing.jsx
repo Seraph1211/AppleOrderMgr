@@ -1,3 +1,4 @@
+import ProductName from '../components/ProductName';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { formatOrderTime } from '../utils/orderTime';
 import { ORDER_STATUS_LABELS } from '../constants/orderStatus';
@@ -737,6 +738,10 @@ export default function EmailProcessing() {
                               value={product.name}
                               onChange={event => updateProduct(index, 'name', event.target.value)}
                             />
+                            <p className="mt-1 text-xs text-gray-500">
+                              业务展示：
+                              <ProductName product={product} />
+                            </p>
                           </td>
                           <td className="px-3 py-2">
                             <input

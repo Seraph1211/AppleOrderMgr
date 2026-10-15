@@ -1,4 +1,5 @@
 import { formatProductStorageText } from '../utils/productStorage';
+import ProductName from '../components/ProductName';
 import RecipientTag from './RecipientTag';
 import OrderSerialEditor from './OrderSerialEditor';
 import AlertModal from './AlertModal';
@@ -373,7 +374,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
                         {formatProductStorageText(product.model || product.modelId || '-')}
                       </td>
                       <td className="px-4 py-3 text-sm">
-                        {formatProductStorageText(product.name || '-')}
+                        <ProductName product={product} />
                       </td>
                       <td className="px-4 py-3 text-right text-sm">{product.quantity ?? '-'}</td>
                     </tr>

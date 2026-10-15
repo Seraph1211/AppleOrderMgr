@@ -1,3 +1,4 @@
+const { getProductDisplayName, expandProductNameAliases } = require('../utils/productNaming');
 const {
   getRecipientTag,
   getRecipientTagState,
@@ -70,7 +71,7 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
     value: item =>
       (item.products || [])
         .map(product => {
-          const name = product.name || product.model || '-';
+          const name = getProductDisplayName(product) || '-';
           const quantity = Number.isInteger(product.quantity) ? product.quantity : '待核实';
           return `${name} ×${quantity}`;
         })
@@ -317,7 +318,9 @@ const RECIPIENT_TAG_EXPRESSION = Sequelize.literal(recipientTagSql());
 /** 构造商品完整名称多选条件。 */
 function buildProductNamesCondition(productNames) {
   if (productNames.length === 0) return null;
-  const escapedNames = productNames.map(name => sequelize.escape(name)).join(', ');
+  const escapedNames = expandProductNameAliases(productNames)
+    .map(name => sequelize.escape(name))
+    .join(', ');
   return Sequelize.literal(`EXISTS (
     SELECT 1
     FROM jsonb_array_elements("products") AS item
@@ -536,7 +539,8 @@ function buildListFilters(query) {
       const asOrderNumber = /^W\d{10}$/.test(kw);
       if (!asOrderNumber) {
         // 模糊搜索产品名称（通过 JSONB @> 包含含此 name 字符串的条目不可行，因此退化为 iLike 整个 products JSON 文本）
-        where[Op.or].push(sequelizeJsonbTextSearch('products', kw));
+        for (const alias of expandProductNameAliases([kw]))
+          where[Op.or].push(sequelizeJsonbTextSearch('products', alias));
       }
     }
   }
@@ -952,7 +956,7 @@ async function getFilterOptions(req, res) {
     rows.forEach(row => {
       (row.products || []).forEach(product => {
         if (product.model || product.modelId) productModels.add(product.model || product.modelId);
-        if (product.name) productNames.add(product.name);
+        if (product.name) productNames.add(getProductDisplayName(product));
       });
       if (row.recipientName) recipients.add(row.recipientName);
     });

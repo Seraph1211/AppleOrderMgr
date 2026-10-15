@@ -97,3 +97,7 @@
 可用 `--before <带时区的ISO时间>` 缩小过期范围，不允许未来时间；`--created-by <用户ID>` 可限定创建人。库存专用隔离库之外，实际清理还必须提供 `--confirm-database <实际数据库名>`，服务端按连接到的数据库名逐字核对。清理是显式运维动作，不代替生产备份或发布步骤；本轮仅在专用测试库验证。
 
 实现入口：[导入服务](../../src/services/stockImportService.js)、[接口适配](../../src/controllers/stockImportController.js)、[维护脚本](../../scripts/cleanupStockImportPreviews.js)。专项验证见[验收清单](../testing/自有库存与销售管理验收清单.md)及[真实数据库导入测试](../../test/stockImport.integration.test.js)。
+
+## 商品名称统一（2026-10-15）
+
+订单 Excel 重新导出时完整商品名称使用“机型 完整颜色 容量”；既有已导出文件不回写。库存导入 storageGb 数值协议仍为 GB（256、512、1024、2048 等），不把展示 G/T 单位写入数值列。参见[已确认实施方案](../planning/全系统商品名称规范化实施方案.md)。

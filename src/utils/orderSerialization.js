@@ -1,4 +1,5 @@
 /* eslint-disable camelcase -- 既有订单 API 使用 snake_case */
+const { resolveProductName } = require('./productNaming');
 const { safeText } = require('./text');
 
 /** 订单商品对外白名单，历史图片和动作链接也不返回。 */
@@ -15,6 +16,10 @@ function serializePublicProducts(products, filterItems = []) {
       Number(product.quantity) >= 0
     )
       result.quantity = Number(product.quantity);
+    const naming = resolveProductName(product);
+    result.displayName = safeText(naming.name);
+    result.nameNeedsReview = naming.needsReview;
+    result.nameReviewReason = naming.reason;
     const filter = filterItems?.find(item => item.productIndex === productIndex);
     if (filter) {
       result.filterKeys = filter.keys;

@@ -1,0 +1,732 @@
+[
+  {
+    "sku": "MG314CH/A",
+    "modelName": "iPhone Air",
+    "color": "深空黑色",
+    "capacity": "256G",
+    "name": "iPhone Air 深空黑色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["深空黑色"]
+  },
+  {
+    "sku": "MG334CH/A",
+    "modelName": "iPhone Air",
+    "color": "云白色",
+    "capacity": "256G",
+    "name": "iPhone Air 云白色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["云白色"]
+  },
+  {
+    "sku": "MG344CH/A",
+    "modelName": "iPhone Air",
+    "color": "浅金色",
+    "capacity": "256G",
+    "name": "iPhone Air 浅金色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["浅金色"]
+  },
+  {
+    "sku": "MG364CH/A",
+    "modelName": "iPhone Air",
+    "color": "天蓝色",
+    "capacity": "256G",
+    "name": "iPhone Air 天蓝色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["天蓝色"]
+  },
+  {
+    "sku": "MG374CH/A",
+    "modelName": "iPhone Air",
+    "color": "深空黑色",
+    "capacity": "512G",
+    "name": "iPhone Air 深空黑色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["深空黑色"]
+  },
+  {
+    "sku": "MG394CH/A",
+    "modelName": "iPhone Air",
+    "color": "云白色",
+    "capacity": "512G",
+    "name": "iPhone Air 云白色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["云白色"]
+  },
+  {
+    "sku": "MG3A4CH/A",
+    "modelName": "iPhone Air",
+    "color": "浅金色",
+    "capacity": "512G",
+    "name": "iPhone Air 浅金色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["浅金色"]
+  },
+  {
+    "sku": "MG3C4CH/A",
+    "modelName": "iPhone Air",
+    "color": "天蓝色",
+    "capacity": "512G",
+    "name": "iPhone Air 天蓝色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["天蓝色"]
+  },
+  {
+    "sku": "MG3D4CH/A",
+    "modelName": "iPhone Air",
+    "color": "深空黑色",
+    "capacity": "1T",
+    "name": "iPhone Air 深空黑色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["深空黑色"]
+  },
+  {
+    "sku": "MG3E4CH/A",
+    "modelName": "iPhone Air",
+    "color": "云白色",
+    "capacity": "1T",
+    "name": "iPhone Air 云白色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["云白色"]
+  },
+  {
+    "sku": "MG3F4CH/A",
+    "modelName": "iPhone Air",
+    "color": "浅金色",
+    "capacity": "1T",
+    "name": "iPhone Air 浅金色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["浅金色"]
+  },
+  {
+    "sku": "MG3G4CH/A",
+    "modelName": "iPhone Air",
+    "color": "天蓝色",
+    "capacity": "1T",
+    "name": "iPhone Air 天蓝色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["天蓝色"]
+  },
+  {
+    "sku": "MG6W4CH/A",
+    "modelName": "iPhone 17",
+    "color": "黑色",
+    "capacity": "256G",
+    "name": "iPhone 17 黑色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MG6X4CH/A",
+    "modelName": "iPhone 17",
+    "color": "白色",
+    "capacity": "256G",
+    "name": "iPhone 17 白色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["白色"]
+  },
+  {
+    "sku": "MG6Y4CH/A",
+    "modelName": "iPhone 17",
+    "color": "青雾蓝色",
+    "capacity": "256G",
+    "name": "iPhone 17 青雾蓝色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["青雾蓝色"]
+  },
+  {
+    "sku": "MG704CH/A",
+    "modelName": "iPhone 17",
+    "color": "薰衣草紫色",
+    "capacity": "256G",
+    "name": "iPhone 17 薰衣草紫色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["薰衣草紫色"]
+  },
+  {
+    "sku": "MG714CH/A",
+    "modelName": "iPhone 17",
+    "color": "鼠尾草绿色",
+    "capacity": "256G",
+    "name": "iPhone 17 鼠尾草绿色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["鼠尾草绿色"]
+  },
+  {
+    "sku": "MG724CH/A",
+    "modelName": "iPhone 17",
+    "color": "黑色",
+    "capacity": "512G",
+    "name": "iPhone 17 黑色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MG734CH/A",
+    "modelName": "iPhone 17",
+    "color": "白色",
+    "capacity": "512G",
+    "name": "iPhone 17 白色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["白色"]
+  },
+  {
+    "sku": "MG744CH/A",
+    "modelName": "iPhone 17",
+    "color": "青雾蓝色",
+    "capacity": "512G",
+    "name": "iPhone 17 青雾蓝色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["青雾蓝色"]
+  },
+  {
+    "sku": "MG754CH/A",
+    "modelName": "iPhone 17",
+    "color": "薰衣草紫色",
+    "capacity": "512G",
+    "name": "iPhone 17 薰衣草紫色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["薰衣草紫色"]
+  },
+  {
+    "sku": "MG764CH/A",
+    "modelName": "iPhone 17",
+    "color": "鼠尾草绿色",
+    "capacity": "512G",
+    "name": "iPhone 17 鼠尾草绿色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["鼠尾草绿色"]
+  },
+  {
+    "sku": "MHU44CH/A",
+    "modelName": "iPhone 17e",
+    "color": "黑色",
+    "capacity": "256G",
+    "name": "iPhone 17e 黑色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MHU54CH/A",
+    "modelName": "iPhone 17e",
+    "color": "白色",
+    "capacity": "256G",
+    "name": "iPhone 17e 白色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["白色"]
+  },
+  {
+    "sku": "MHU64CH/A",
+    "modelName": "iPhone 17e",
+    "color": "浅粉色",
+    "capacity": "256G",
+    "name": "iPhone 17e 浅粉色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["浅粉色"]
+  },
+  {
+    "sku": "MHU74CH/A",
+    "modelName": "iPhone 17e",
+    "color": "黑色",
+    "capacity": "512G",
+    "name": "iPhone 17e 黑色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MHU94CH/A",
+    "modelName": "iPhone 17e",
+    "color": "白色",
+    "capacity": "512G",
+    "name": "iPhone 17e 白色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["白色"]
+  },
+  {
+    "sku": "MHUA4CH/A",
+    "modelName": "iPhone 17e",
+    "color": "浅粉色",
+    "capacity": "512G",
+    "name": "iPhone 17e 浅粉色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["浅粉色"]
+  },
+  {
+    "sku": "MJT74CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "黑色",
+    "capacity": "256G",
+    "name": "iPhone 18 Pro 黑色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MJT84CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "银色",
+    "capacity": "256G",
+    "name": "iPhone 18 Pro 银色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["银色"]
+  },
+  {
+    "sku": "MJT94CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "勃艮第酒红色",
+    "capacity": "256G",
+    "name": "iPhone 18 Pro 勃艮第酒红色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["勃艮第酒红色"]
+  },
+  {
+    "sku": "MJTA4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "冰川蓝色",
+    "capacity": "256G",
+    "name": "iPhone 18 Pro 冰川蓝色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["冰川蓝色"]
+  },
+  {
+    "sku": "MJTC4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "黑色",
+    "capacity": "512G",
+    "name": "iPhone 18 Pro 黑色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MJTD4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "银色",
+    "capacity": "512G",
+    "name": "iPhone 18 Pro 银色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["银色"]
+  },
+  {
+    "sku": "MJTE4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "勃艮第酒红色",
+    "capacity": "512G",
+    "name": "iPhone 18 Pro 勃艮第酒红色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["勃艮第酒红色"]
+  },
+  {
+    "sku": "MJTF4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "冰川蓝色",
+    "capacity": "512G",
+    "name": "iPhone 18 Pro 冰川蓝色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["冰川蓝色"]
+  },
+  {
+    "sku": "MJTG4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "黑色",
+    "capacity": "1T",
+    "name": "iPhone 18 Pro 黑色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MJTH4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "银色",
+    "capacity": "1T",
+    "name": "iPhone 18 Pro 银色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["银色"]
+  },
+  {
+    "sku": "MJTJ4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "勃艮第酒红色",
+    "capacity": "1T",
+    "name": "iPhone 18 Pro 勃艮第酒红色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["勃艮第酒红色"]
+  },
+  {
+    "sku": "MJTK4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "冰川蓝色",
+    "capacity": "1T",
+    "name": "iPhone 18 Pro 冰川蓝色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["冰川蓝色"]
+  },
+  {
+    "sku": "MJTL4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "黑色",
+    "capacity": "2T",
+    "name": "iPhone 18 Pro 黑色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MJTM4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "银色",
+    "capacity": "2T",
+    "name": "iPhone 18 Pro 银色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["银色"]
+  },
+  {
+    "sku": "MJTN4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "勃艮第酒红色",
+    "capacity": "2T",
+    "name": "iPhone 18 Pro 勃艮第酒红色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["勃艮第酒红色"]
+  },
+  {
+    "sku": "MJTP4CH/A",
+    "modelName": "iPhone 18 Pro",
+    "color": "冰川蓝色",
+    "capacity": "2T",
+    "name": "iPhone 18 Pro 冰川蓝色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["冰川蓝色"]
+  },
+  {
+    "sku": "MJY64CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "黑色",
+    "capacity": "256G",
+    "name": "iPhone 18 Pro Max 黑色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MJY74CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "银色",
+    "capacity": "256G",
+    "name": "iPhone 18 Pro Max 银色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["银色"]
+  },
+  {
+    "sku": "MJY84CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "勃艮第酒红色",
+    "capacity": "256G",
+    "name": "iPhone 18 Pro Max 勃艮第酒红色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["勃艮第酒红色", "酒红色"]
+  },
+  {
+    "sku": "MJY94CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "冰川蓝色",
+    "capacity": "256G",
+    "name": "iPhone 18 Pro Max 冰川蓝色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["冰川蓝色"]
+  },
+  {
+    "sku": "MJYA4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "黑色",
+    "capacity": "512G",
+    "name": "iPhone 18 Pro Max 黑色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MJYC4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "银色",
+    "capacity": "512G",
+    "name": "iPhone 18 Pro Max 银色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["银色"]
+  },
+  {
+    "sku": "MJYD4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "勃艮第酒红色",
+    "capacity": "512G",
+    "name": "iPhone 18 Pro Max 勃艮第酒红色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["勃艮第酒红色", "酒红色"]
+  },
+  {
+    "sku": "MJYE4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "冰川蓝色",
+    "capacity": "512G",
+    "name": "iPhone 18 Pro Max 冰川蓝色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["冰川蓝色"]
+  },
+  {
+    "sku": "MJYF4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "黑色",
+    "capacity": "1T",
+    "name": "iPhone 18 Pro Max 黑色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MJYG4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "银色",
+    "capacity": "1T",
+    "name": "iPhone 18 Pro Max 银色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["银色"]
+  },
+  {
+    "sku": "MJYH4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "勃艮第酒红色",
+    "capacity": "1T",
+    "name": "iPhone 18 Pro Max 勃艮第酒红色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["勃艮第酒红色", "酒红色"]
+  },
+  {
+    "sku": "MJYJ4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "冰川蓝色",
+    "capacity": "1T",
+    "name": "iPhone 18 Pro Max 冰川蓝色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["冰川蓝色"]
+  },
+  {
+    "sku": "MJYK4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "黑色",
+    "capacity": "2T",
+    "name": "iPhone 18 Pro Max 黑色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MJYL4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "银色",
+    "capacity": "2T",
+    "name": "iPhone 18 Pro Max 银色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["银色"]
+  },
+  {
+    "sku": "MJYM4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "勃艮第酒红色",
+    "capacity": "2T",
+    "name": "iPhone 18 Pro Max 勃艮第酒红色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["勃艮第酒红色", "酒红色"]
+  },
+  {
+    "sku": "MJYN4CH/A",
+    "modelName": "iPhone 18 Pro Max",
+    "color": "冰川蓝色",
+    "capacity": "2T",
+    "name": "iPhone 18 Pro Max 冰川蓝色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["冰川蓝色"]
+  },
+  {
+    "sku": "MYEV3CH/A",
+    "modelName": "iPhone 16",
+    "color": "黑色",
+    "capacity": "128G",
+    "name": "iPhone 16 黑色 128G",
+    "storageGb": 128,
+    "capacityAliases": ["128G", "128GB"],
+    "colorAliases": ["黑色"]
+  },
+  {
+    "sku": "MYEW3CH/A",
+    "modelName": "iPhone 16",
+    "color": "白色",
+    "capacity": "128G",
+    "name": "iPhone 16 白色 128G",
+    "storageGb": 128,
+    "capacityAliases": ["128G", "128GB"],
+    "colorAliases": ["白色"]
+  },
+  {
+    "sku": "MYEX3CH/A",
+    "modelName": "iPhone 16",
+    "color": "粉色",
+    "capacity": "128G",
+    "name": "iPhone 16 粉色 128G",
+    "storageGb": 128,
+    "capacityAliases": ["128G", "128GB"],
+    "colorAliases": ["粉色"]
+  },
+  {
+    "sku": "MYEY3CH/A",
+    "modelName": "iPhone 16",
+    "color": "群青色",
+    "capacity": "128G",
+    "name": "iPhone 16 群青色 128G",
+    "storageGb": 128,
+    "capacityAliases": ["128G", "128GB"],
+    "colorAliases": ["群青色"]
+  },
+  {
+    "sku": "MYF03CH/A",
+    "modelName": "iPhone 16",
+    "color": "深青色",
+    "capacity": "128G",
+    "name": "iPhone 16 深青色 128G",
+    "storageGb": 128,
+    "capacityAliases": ["128G", "128GB"],
+    "colorAliases": ["深青色"]
+  },
+  {
+    "sku": "MK2M4CH/A",
+    "modelName": "iPhone Duo",
+    "color": "星光白色",
+    "capacity": "256G",
+    "name": "iPhone Duo 星光白色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["星光白色"]
+  },
+  {
+    "sku": "MK2N4CH/A",
+    "modelName": "iPhone Duo",
+    "color": "夜空色",
+    "capacity": "256G",
+    "name": "iPhone Duo 夜空色 256G",
+    "storageGb": 256,
+    "capacityAliases": ["256G", "256GB"],
+    "colorAliases": ["夜空色"]
+  },
+  {
+    "sku": "MK2P4CH/A",
+    "modelName": "iPhone Duo",
+    "color": "星光白色",
+    "capacity": "512G",
+    "name": "iPhone Duo 星光白色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["星光白色"]
+  },
+  {
+    "sku": "MK2Q4CH/A",
+    "modelName": "iPhone Duo",
+    "color": "夜空色",
+    "capacity": "512G",
+    "name": "iPhone Duo 夜空色 512G",
+    "storageGb": 512,
+    "capacityAliases": ["512G", "512GB"],
+    "colorAliases": ["夜空色"]
+  },
+  {
+    "sku": "MK2T4CH/A",
+    "modelName": "iPhone Duo",
+    "color": "星光白色",
+    "capacity": "1T",
+    "name": "iPhone Duo 星光白色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["星光白色"]
+  },
+  {
+    "sku": "MK2U4CH/A",
+    "modelName": "iPhone Duo",
+    "color": "夜空色",
+    "capacity": "1T",
+    "name": "iPhone Duo 夜空色 1T",
+    "storageGb": 1024,
+    "capacityAliases": ["1T", "1TB", "1024G", "1024GB"],
+    "colorAliases": ["夜空色"]
+  },
+  {
+    "sku": "MK2V4CH/A",
+    "modelName": "iPhone Duo",
+    "color": "星光白色",
+    "capacity": "2T",
+    "name": "iPhone Duo 星光白色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["星光白色"]
+  },
+  {
+    "sku": "MK2W4CH/A",
+    "modelName": "iPhone Duo",
+    "color": "夜空色",
+    "capacity": "2T",
+    "name": "iPhone Duo 夜空色 2T",
+    "storageGb": 2048,
+    "capacityAliases": ["2T", "2TB", "2048G", "2048GB"],
+    "colorAliases": ["夜空色"]
+  }
+]

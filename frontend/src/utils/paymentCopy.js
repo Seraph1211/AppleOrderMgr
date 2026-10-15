@@ -1,21 +1,15 @@
 import { formatPaymentDeadline } from './paymentDeadline.js';
+import { groupDisplayProducts } from './productDisplay.js';
 
 /** 格式化两张付款页面共用的订单复制内容。 */
 export function buildPaymentCopyText(task, paymentUrl) {
-  const grouped = new Map();
-  for (const product of Array.isArray(task.products) ? task.products : []) {
-    const productName = String(product?.name || '').trim();
-    const model = String(product?.model || '').trim();
-    const name = productName || model;
-    if (!name) continue;
-    const parsedQuantity = Number(product?.quantity);
-    const quantity = Number.isInteger(parsedQuantity) && parsedQuantity > 0 ? parsedQuantity : 1;
-    const key = JSON.stringify([name, model]);
-    if (grouped.has(key)) grouped.get(key).quantity += quantity;
-    else grouped.set(key, { name, quantity });
-  }
-  const productInfo = [...grouped.values()]
-    .map(product => `${product.name} x ${product.quantity}`)
+  const productInfo = groupDisplayProducts(
+    (Array.isArray(task.products) ? task.products : []).map(product => {
+      const quantity = Number(product?.quantity);
+      return { ...product, quantity: Number.isInteger(quantity) && quantity > 0 ? quantity : 1 };
+    })
+  )
+    .map(product => `${product.name} x ${product.quantity ?? '待核实'}`)
     .join('、');
   const rawPaymentMethod = String(task.paymentMethod || '').trim();
   const normalizedPaymentMethod = rawPaymentMethod.toLowerCase();

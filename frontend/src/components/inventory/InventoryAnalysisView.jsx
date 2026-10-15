@@ -1,8 +1,15 @@
-import { formatProductStorageText } from '../../utils/productStorage';
+import { getProductDisplayName } from '../../utils/productNaming';
+
 import { timeText } from './inventoryPresentation';
 import { useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts';
 import { Table } from './InventoryCommon';
+/** 历史配置键是固定分列协议，展示映射不改变钻取查询键。 */
+function configurationProduct(key) {
+  const [modelName, capacity, color] = String(key).split(' · ');
+  return { modelName, capacity, color };
+}
+
 /** 统一筛选的分布、热力图和榜单，缺口单独标记。 */
 export default function InventoryAnalysisView({ data, onDrill }) {
   const [heatPage, setHeatPage] = useState(0);
@@ -108,7 +115,9 @@ export default function InventoryAnalysisView({ data, onDrill }) {
                 {data[key].map(row => (
                   <tr key={row.key}>
                     <td className="px-3 py-3">
-                      {key === 'configurations' ? formatProductStorageText(row.key) : row.key}
+                      {key === 'configurations'
+                        ? getProductDisplayName(row.displayName || configurationProduct(row.key))
+                        : row.key}
                     </td>
                     <td className="px-3 py-3 font-medium text-primary">{row.count}</td>
                     <td className="px-3 py-3">

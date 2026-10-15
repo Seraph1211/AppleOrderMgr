@@ -1,3 +1,5 @@
+import ProductName from '../components/ProductName';
+import { getProductDisplayName } from '../utils/productNaming';
 import { formatProductStorageText } from '../utils/productStorage';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { STATUS, timeText, failureText } from '../components/inventory/inventoryPresentation';
@@ -228,7 +230,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
         rows
           .map(
             r =>
-              `${r.city} · Apple ${r.storeName}\t${r.model} ${r.capacity} ${r.color}\t${STATUS[r.displayStatus]}\t${r.quote || ''}\t${timeText(r.observedAt)}`
+              `${r.city} · Apple ${r.storeName}\t${getProductDisplayName(r)}\t${STATUS[r.displayStatus]}\t${r.quote || ''}\t${timeText(r.observedAt)}`
           )
           .join('\n')
       );
@@ -625,8 +627,8 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
             mobileChildren={tableRows.map(row => (
               <CompactRecord
                 key={row.id}
-                title={row.model}
-                subtitle={`${formatProductStorageText(row.capacity)} · ${row.color} / ${row.city} ${row.storeName}`}
+                title={<ProductName product={row} />}
+                subtitle={`${row.city} ${row.storeName}`}
                 status={<Status value={row.displayStatus} />}
                 selection={
                   <input
@@ -679,9 +681,8 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                   />
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap">
-                  <p className="font-medium text-gray-900">{row.model}</p>
-                  <p className="text-gray-600">
-                    {formatProductStorageText(row.capacity)} · {row.color}
+                  <p className="font-medium text-gray-900">
+                    <ProductName product={row} />
                   </p>
                   <p className="text-xs text-gray-400">{row.sku}</p>
                 </td>
@@ -872,15 +873,13 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                   <CompactRecord
                     key={row.id}
                     title={
-                      catalogKind === 'products'
-                        ? row.model
-                        : `${row.city} · Apple ${row.storeName}`
+                      catalogKind === 'products' ? (
+                        <ProductName product={row} />
+                      ) : (
+                        `${row.city} · Apple ${row.storeName}`
+                      )
                     }
-                    subtitle={
-                      catalogKind === 'products'
-                        ? `${formatProductStorageText(row.capacity)} · ${row.color}`
-                        : row.id
-                    }
+                    subtitle={row.id}
                     status={<Status value={row.enabled ? 'normal' : 'disabled'} />}
                     selection={
                       <input
@@ -923,9 +922,11 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                       />
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">
-                      {catalogKind === 'products'
-                        ? `${row.model} · ${formatProductStorageText(row.capacity)} · ${row.color}`
-                        : `${row.city} · Apple ${row.storeName}`}
+                      {catalogKind === 'products' ? (
+                        <ProductName product={row} />
+                      ) : (
+                        `${row.city} · Apple ${row.storeName}`
+                      )}
                       <p className="text-xs text-gray-400">{row.id}</p>
                     </td>
                     <td className="px-3 py-3">
@@ -1033,8 +1034,8 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
             mobileChildren={tableRows.map(row => (
               <CompactRecord
                 key={row.id}
-                title={row.model}
-                subtitle={`${formatProductStorageText(row.capacity)} · ${row.color} / ${row.city} ${row.storeName}`}
+                title={<ProductName product={row} />}
+                subtitle={`${row.city} ${row.storeName}`}
                 status={<Status value={row.kind || row.status} />}
                 meta={`${timeText(row.observedAt)} · ${STATUS[row.source]}`}
               >
@@ -1054,10 +1055,7 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
                   {row.city} · {row.storeName}
                 </td>
                 <td className="px-3 py-3 whitespace-nowrap">
-                  {row.model}
-                  <p className="text-gray-500">
-                    {formatProductStorageText(row.capacity)} · {row.color}
-                  </p>
+                  <ProductName product={row} />
                 </td>
                 <td className="px-3 py-3">
                   <Status value={row.kind || row.status} />

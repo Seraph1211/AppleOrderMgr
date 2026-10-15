@@ -299,7 +299,9 @@ test('由当前登录页发现 Shld 路由并复用原证据采集器', async ()
   expect((await bootstrapOfficialOrderHttp(options)).outcome).toBe('HTTP_LOGIN_BOOTSTRAP_READY');
   const requests = transport.request.mock.calls.map(([input]) => input);
   expect(requests).toHaveLength(4);
-  expect(requests[2].url).toBe('https://secure6.www.apple.com.cn/shop/shld/work/v1_2/q');
+  expect(requests[2].url).toBe(
+    'https://secure6.www.apple.com.cn/shop/shld/work/v1_2/q?jr=255&jr_r=env'
+  );
   expect(requests[3].method).toBe('POST');
   expect(requests.every(input => !input.url.includes('/appleauth/'))).toBe(true);
 });

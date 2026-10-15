@@ -1,4 +1,6 @@
+import ProductName from '../components/ProductName';
 import { formatStorageCapacity } from '../utils/productStorage';
+import { getProductDisplayName } from '../utils/productNaming';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Apple, Check, Copy, RefreshCw, Search } from 'lucide-react';
@@ -77,7 +79,10 @@ export default function PublicIphone18Quotes() {
 
   function copyCurrentList() {
     const text = items
-      .map(item => `${item.productName}｜报价 ${formatCurrency(item.quotePrice, '暂未报价')}`)
+      .map(
+        item =>
+          `${getProductDisplayName(item)}｜报价 ${formatCurrency(item.quotePrice, '暂未报价')}`
+      )
       .join('\n');
     return copyText('list', text);
   }
@@ -217,7 +222,9 @@ export default function PublicIphone18Quotes() {
                         className="grid grid-cols-[minmax(0,1fr)_auto] items-center hover:bg-blue-50/40 sm:table-row"
                       >
                         <td className="col-span-2 min-w-0 px-4 pb-2 pt-4 sm:table-cell sm:min-w-[260px] sm:py-4">
-                          <p className="font-medium text-gray-900">{item.productName}</p>
+                          <p className="font-medium text-gray-900">
+                            <ProductName product={item} />
+                          </p>
                           <p className="mt-1 text-xs text-gray-500">
                             {formatStorageCapacity(item.storageGb)} · {item.color}
                             <span className="sm:hidden">
@@ -239,7 +246,7 @@ export default function PublicIphone18Quotes() {
                             onClick={() =>
                               copyText(
                                 item.productKey,
-                                `${item.productName}｜报价 ${formatCurrency(item.quotePrice, '暂未报价')}`
+                                `${getProductDisplayName(item)}｜报价 ${formatCurrency(item.quotePrice, '暂未报价')}`
                               )
                             }
                           >

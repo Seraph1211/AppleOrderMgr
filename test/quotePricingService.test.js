@@ -110,7 +110,7 @@ describe('iPhone 18 公开报价字段边界', () => {
     expect(result.enabled).toBe(true);
     expect(result.items[0]).toEqual({
       productKey: createProductKey(rows[1]),
-      productName: 'iPhone 18 Pro Max 256GB 银色',
+      productName: 'iPhone 18 Pro Max 银色 256G',
       productModel: '18 Pro Max',
       storageGb: 256,
       color: '银色',

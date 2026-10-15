@@ -1,4 +1,5 @@
-import { formatProductStorageText } from '../../utils/productStorage';
+import ProductName from '../ProductName';
+import { getProductDisplayName } from '../../utils/productNaming';
 import { timeText } from './inventoryPresentation';
 import { useEffect, useState } from 'react';
 import { inventoryApi } from '../../api/inventoryApi';
@@ -66,8 +67,8 @@ export default function InventoryCoverageDialog({ id, onClose }) {
                   mobileChildren={data.items.map(row => (
                     <CompactRecord
                       key={row.id}
-                      title={row.model}
-                      subtitle={`${formatProductStorageText(row.capacity)} · ${row.color} / ${row.city} ${row.storeName}`}
+                      title={getProductDisplayName(row)}
+                      subtitle={`${row.city} ${row.storeName}`}
                       status={<Status value={row.stockStatus} />}
                     >
                       <RecordFields
@@ -83,10 +84,7 @@ export default function InventoryCoverageDialog({ id, onClose }) {
                   {data.items.map(row => (
                     <tr key={row.id}>
                       <td className="px-3 py-3 whitespace-nowrap">
-                        {row.model}
-                        <p className="text-xs text-gray-500">
-                          {formatProductStorageText(row.capacity)} · {row.color}
-                        </p>
+                        <ProductName product={row} />
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">
                         {row.city} · {row.storeName}

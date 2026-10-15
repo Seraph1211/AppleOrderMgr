@@ -1,3 +1,4 @@
+const { serializePublicProducts } = require('../utils/orderSerialization');
 const { assertCurrentOrderAccess } = require('./orderAccessService');
 const { getSourcePaymentMethod, isWechatPayment } = require('../utils/paymentMethod');
 const { getPaymentDeadline } = require('./paymentEligibility');
@@ -268,7 +269,7 @@ async function getPaymentCode(id, userId, own = true) {
           message: row ? null : '暂未采集到付款码，请稍后重试',
           orderId: order.id,
           orderNumber: order.orderNumber,
-          products: order.products,
+          products: serializePublicProducts(order.products, order.productFilterItems),
           amount: order.orderAmount ?? null,
           amountCurrency: 'CNY',
           amountSource: 'catalog',

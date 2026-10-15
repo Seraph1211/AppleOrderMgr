@@ -1,3 +1,4 @@
+const { resolveProductName } = require('../utils/productNaming');
 const ApiError = require('../utils/ApiError');
 
 const MONITORED_MODELS = Object.freeze(['iPhone 18 Pro', 'iPhone 18 Pro Max', 'iPhone Duo']);
@@ -50,6 +51,14 @@ const COLORS = {
 
 /** 从官方目录标题分离配置，不按型号猜测 SKU。 @param {Object} item 目录项 @returns {Object} 配置 */
 function productDetails(item) {
+  const naming = resolveProductName(item);
+  if (naming.matched)
+    return {
+      ...item,
+      model: naming.modelName,
+      color: naming.color,
+      capacity: naming.capacity.replace(/G$/, 'GB').replace(/T$/, 'TB'),
+    };
   const match = item.title?.match(/^(iPhone .+?)\s+(\d+\s*(?:GB|TB))\s+(.+)$/i);
   if (!match) throw new Error('INVALID_PRODUCT_SPEC');
   return {

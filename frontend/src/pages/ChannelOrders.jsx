@@ -1,4 +1,4 @@
-import { formatProductStorageText } from '../utils/productStorage';
+import ProductName from '../components/ProductName';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { getOrderPickupDisplay } from '../utils/orderPickupDisplay';
 import OrderDateFilter from '../components/OrderDateFilter';
@@ -229,7 +229,7 @@ export default function ChannelOrders() {
                           <div className="text-sm">
                             {order.products.map((product, idx) => (
                               <div key={idx} className="text-gray-900">
-                                {formatProductStorageText(product.name)} x{product.quantity}
+                                <ProductName product={product} /> x{product.quantity}
                               </div>
                             ))}
                           </div>

@@ -1,3 +1,4 @@
+import ProductName from '../components/ProductName';
 import ResponsiveSelect from '../components/responsiveSelect';
 import { useAuth } from '../contexts/AuthContext';
 import CollectorUpdates from '../components/CollectorUpdates';
@@ -89,11 +90,12 @@ function Dialog({ title, onClose, children }) {
   closeRef.current = onClose;
   useEffect(() => {
     const previous = document.activeElement;
-    const focusable = () => [
-      ...(dialog.current?.querySelectorAll(
-        'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]'
-      ) || []),
-    ].filter(node => node.getClientRects().length);
+    const focusable = () =>
+      [
+        ...(dialog.current?.querySelectorAll(
+          'button:not(:disabled),input:not(:disabled),select:not(:disabled),textarea:not(:disabled),a[href]'
+        ) || []),
+      ].filter(node => node.getClientRects().length);
     dialog.current?.focus({ preventScroll: true });
     const handler = e => {
       if (e.key === 'Escape') closeRef.current();
@@ -103,7 +105,10 @@ function Dialog({ title, onClose, children }) {
           e.preventDefault();
           return;
         }
-        if (e.shiftKey && (document.activeElement === items[0] || document.activeElement === dialog.current)) {
+        if (
+          e.shiftKey &&
+          (document.activeElement === items[0] || document.activeElement === dialog.current)
+        ) {
           e.preventDefault();
           items.at(-1).focus();
         } else if (!e.shiftKey && document.activeElement === items.at(-1)) {
@@ -1134,6 +1139,12 @@ export default function OrderIngestion() {
                                     })
                                   }
                                 />
+                                {field === 'name' && (
+                                  <p className="mt-1 text-xs text-gray-500">
+                                    业务展示：
+                                    <ProductName product={p} />
+                                  </p>
+                                )}
                               </td>
                             ))}
                             <td>

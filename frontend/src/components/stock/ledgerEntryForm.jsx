@@ -1,4 +1,4 @@
-import { formatStorageCapacity } from '../../utils/productStorage';
+import { productLabel } from './stockHelpers';
 import ResponsiveSelect from '../responsiveSelect';
 import { useEffect, useRef, useState } from 'react';
 import { stockGet } from '../../api/stockApi';
@@ -175,8 +175,7 @@ export default function LedgerEntryForm({
         <option value="">请选择容量与颜色</option>
         {products.map(product => (
           <option key={product.id} value={product.id}>
-            {formatStorageCapacity(product.storageGb)}{' '}
-            {product.colorName}
+            {productLabel(product)}
           </option>
         ))}
       </ResponsiveSelect>

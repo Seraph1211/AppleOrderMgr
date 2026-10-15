@@ -1,3 +1,4 @@
+const { getProductDisplayName, resolveProductName } = require('../utils/productNaming');
 const { getRecipientTag, getRecipientTagState } = require('./recipientTagService');
 const { getSourcePaymentMethod, isWechatPayment } = require('../utils/paymentMethod');
 const { PNG } = require('pngjs');
@@ -69,13 +70,25 @@ function orderBlockReason(order, now) {
 function buildNotificationText(order, url) {
   const grouped = new Map();
   for (const product of Array.isArray(order.products) ? order.products : []) {
-    const productName = clean(product?.name);
+    const productName = clean(getProductDisplayName(product));
     const model = clean(product?.model);
     const name = productName || model;
     if (!name) continue;
     const qty = Number(product.quantity);
     const quantity = Number.isInteger(qty) && qty > 0 ? qty : 1;
-    const key = JSON.stringify([name, model]);
+    const resolution = resolveProductName(product);
+    const productId = [product?.productId ?? null, product?.product_id ?? null];
+    const key = resolution.matched
+      ? JSON.stringify([resolution.identity, productId])
+      : JSON.stringify([
+        name,
+        model,
+        product?.sku ?? null,
+        product?.skuCode ?? null,
+        product?.partNumber ?? null,
+        product?.product_sku ?? null,
+        productId,
+      ]);
     if (grouped.has(key)) grouped.get(key).quantity += quantity;
     else grouped.set(key, { name, quantity });
   }

@@ -1,3 +1,4 @@
+/* eslint-disable camelcase -- 测试保留来源SKU字段 */
 const { execFileSync } = require('child_process');
 const path = require('path');
 const content = require('../src/services/wecomNotificationContent');
@@ -209,3 +210,33 @@ test.each(['招行24期', '微信分付12期', '微信分付24期', '支付宝�
     ).toContain(` || ${paymentMethod} || `);
   }
 );
+
+test('通知合并确认名称变体，但不同SKU、冲突及productId不合并', () => {
+  const first = { name: 'iPhone 18 Pro Max 黑色 256GB', sku: 'MJY64CH/A', quantity: 2 };
+  const normal = content.buildNotificationText(
+    { ...order, products: [first, { ...first, name: 'iPhone 18 Pro Max 256G 黑色', quantity: 3 }] },
+    'link'
+  );
+  expect(normal).toContain('iPhone 18 Pro Max 黑色 256G x 5');
+  for (const second of [
+    { ...first, sku: 'MJY74CH/A', quantity: 3 },
+    { ...first, skuCode: 'MJY74CH/A', quantity: 3 },
+    { ...first, partNumber: 'MJY74CH/A', quantity: 3 },
+    { ...first, product_sku: 'MJY74CH/A', quantity: 3 },
+    { ...first, productId: 20, quantity: 3 },
+  ]) {
+    const text = content.buildNotificationText({ ...order, products: [first, second] }, 'link');
+    expect(text).toContain(' x 2、');
+    expect(text).toContain(' x 3');
+    expect(text).not.toContain(' x 5');
+  }
+});
+
+test('通知未知名称的全部SKU字段保留分组边界', () => {
+  const base = { name: '待核实商品', sku: 'MJY64CH/A', quantity: 2 };
+  const text = content.buildNotificationText(
+    { ...order, products: [base, { ...base, partNumber: 'MJY74CH/A', quantity: 3 }] },
+    'link'
+  );
+  expect(text).toContain('待核实商品 x 2、待核实商品 x 3');
+});

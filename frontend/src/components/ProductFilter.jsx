@@ -1,4 +1,4 @@
-import { formatProductStorageText } from '../utils/productStorage';
+import { resolveProductName } from '../utils/productNaming';
 import { useRef } from 'react';
 import TagMultiSelect from './TagMultiSelect';
 
@@ -36,7 +36,20 @@ export default function ProductFilter({
   for (const key of keys) {
     const option = current.get(key) || remembered.current.get(key);
     const label = option?.label || '已选商品';
-    const storageLabel = formatProductStorageText(label);
+    const [sourceName, ...suffix] = label.split(' · ');
+    const sku = suffix.find(part => /^[a-z0-9]+\/[a-z0-9]+$/i.test(part));
+    const resolution = resolveProductName({
+      name: sourceName,
+      nameNeedsReview: option?.nameNeedsReview,
+      nameReviewReason: option?.nameReviewReason,
+      ...(sku ? { sku } : {}),
+    });
+    const needsReview = option && (resolution.needsReview || option.needsReview);
+    const storageLabel = [
+      resolution.name,
+      ...suffix,
+      ...(needsReview && !suffix.some(part => part.includes('核对')) ? ['信息待核对'] : []),
+    ].join(' · ');
     const displayLabel = hideProductCode
       ? storageLabel.replace(/\s*·\s*[a-z0-9]+\/[a-z0-9]+(?=\s*(?:·|$))/gi, '').trim()
       : storageLabel;

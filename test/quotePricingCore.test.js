@@ -37,9 +37,9 @@ describe('iPhone 18 公开报价计算', () => {
     expect(createProductKey(sourceRow())).toBe(
       createProductKey(sourceRow({ specCode: 'NEW-CODE', basePrice: 12000 }))
     );
-    expect(productName(sourceRow())).toBe('iPhone 18 Pro 256GB 黑色');
-    expect(formatStorage(1024)).toBe('1TB');
-    expect(formatStorage(2048)).toBe('2TB');
+    expect(productName(sourceRow())).toBe('iPhone 18 Pro 黑色 256G');
+    expect(formatStorage(1024)).toBe('1T');
+    expect(formatStorage(2048)).toBe('2T');
   });
 
   test('接纳来源实际商品列表并拒绝重复商品', () => {
@@ -47,7 +47,7 @@ describe('iPhone 18 公开报价计算', () => {
     const normalized = normalizeSourceItems(rows);
     expect(normalized).toHaveLength(2);
     expect(normalized[0]).toMatchObject({
-      productName: 'iPhone 18 Pro 256GB 黑色',
+      productName: 'iPhone 18 Pro 黑色 256G',
       productKey: expect.stringMatching(/^[a-f0-9]{40}$/),
     });
     expect(normalizeSourceItems([sourceRow()])).toHaveLength(1);

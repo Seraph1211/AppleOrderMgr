@@ -1,3 +1,4 @@
+const { getProductDisplayName, formatProductCapacity } = require('../utils/productNaming');
 const { createHash } = require('crypto');
 const ApiError = require('../utils/ApiError');
 
@@ -72,12 +73,17 @@ function createProductKey(item) {
 
 /** 格式化容量。 @param {number} storageGb GB容量 @returns {string} 展示容量 */
 function formatStorage(storageGb) {
-  return storageGb >= 1024 && storageGb % 1024 === 0 ? `${storageGb / 1024}TB` : `${storageGb}GB`;
+  return formatProductCapacity(storageGb);
 }
 
 /** 生成完整商品名。 @param {Object} item 商品 @returns {string} 商品名 */
 function productName(item) {
-  return `iPhone ${item.productModel} ${formatStorage(item.storageGb)} ${item.color}`;
+  return getProductDisplayName({
+    name: `iPhone ${item.productModel} ${item.color} ${formatProductCapacity(item.storageGb)}`,
+    modelName: `iPhone ${item.productModel}`,
+    color: item.color,
+    storageGb: item.storageGb,
+  });
 }
 
 /**

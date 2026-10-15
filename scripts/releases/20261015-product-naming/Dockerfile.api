@@ -1,0 +1,18 @@
+ARG BASE_IMAGE=apple-order-mgr-api:20261015-iphone-duo-amd64
+FROM ${BASE_IMAGE}
+COPY --chown=node:node src/controllers/orderController.js /app/src/controllers/orderController.js
+COPY --chown=node:node src/controllers/statsController.js /app/src/controllers/statsController.js
+COPY --chown=node:node src/data/productNamingV20261015.json /app/src/data/productNamingV20261015.json
+COPY --chown=node:node src/services/inventoryNotifier.js /app/src/services/inventoryNotifier.js
+COPY --chown=node:node src/services/inventoryPolicy.js /app/src/services/inventoryPolicy.js
+COPY --chown=node:node src/services/inventoryValidationCatalog.js /app/src/services/inventoryValidationCatalog.js
+COPY --chown=node:node src/services/paymentCodeService.js /app/src/services/paymentCodeService.js
+COPY --chown=node:node src/services/paymentTaskService.js /app/src/services/paymentTaskService.js
+COPY --chown=node:node src/services/productNameBatchService.js /app/src/services/productNameBatchService.js
+COPY --chown=node:node src/services/proxyOrderService.js /app/src/services/proxyOrderService.js
+COPY --chown=node:node src/services/quotePricingCore.js /app/src/services/quotePricingCore.js
+COPY --chown=node:node src/services/wecomNotificationContent.js /app/src/services/wecomNotificationContent.js
+COPY --chown=node:node src/utils/orderSerialization.js /app/src/utils/orderSerialization.js
+COPY --chown=node:node src/utils/productFilter.js /app/src/utils/productFilter.js
+COPY --chown=node:node src/utils/productFilterQuery.js /app/src/utils/productFilterQuery.js
+COPY --chown=node:node src/utils/productNaming.js /app/src/utils/productNaming.js

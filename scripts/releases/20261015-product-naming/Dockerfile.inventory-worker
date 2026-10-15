@@ -1,0 +1,7 @@
+ARG BASE_IMAGE=apple-order-mgr-inventory-worker:20261015-iphone-duo-amd64
+FROM ${BASE_IMAGE}
+COPY --chown=node:node src/utils/productNaming.js /app/src/utils/productNaming.js
+COPY --chown=node:node src/data/productNamingV20261015.json /app/src/data/productNamingV20261015.json
+COPY --chown=node:node src/services/inventoryNotifier.js /app/src/services/inventoryNotifier.js
+COPY --chown=node:node src/services/inventoryPolicy.js /app/src/services/inventoryPolicy.js
+COPY --chown=node:node src/services/inventoryValidationCatalog.js /app/src/services/inventoryValidationCatalog.js

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { getProductDisplayName } from '../utils/productNaming';
 import { Package, CheckCircle, DollarSign, Users, RefreshCw } from 'lucide-react';
 import {
   LineChart,
@@ -179,7 +180,10 @@ export default function Dashboard() {
           setData({
             stats: stats.data,
             trend: trend.data,
-            products: products.data,
+            products: products.data.map(product => ({
+              ...product,
+              name: getProductDisplayName(product),
+            })),
             cities: cities.data,
           });
           setOptions(candidates.data);

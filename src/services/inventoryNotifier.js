@@ -1,3 +1,4 @@
+const { getProductDisplayName } = require('../utils/productNaming');
 const inventoryFailure = require('../utils/inventoryFailure');
 const { randomUUID } = require('crypto');
 const { Op, QueryTypes } = require('sequelize');
@@ -251,7 +252,7 @@ class InventoryNotifier {
               ? item.rows
                 .map(
                   r =>
-                    `${r.model} · ${r.capacity} · ${r.color}：${r.quote || '检测到可取货'}（${new Date(r.observedAt).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}）`
+                    `${getProductDisplayName(r)}：${r.quote || '检测到可取货'}（${new Date(r.observedAt).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}）`
                 )
                 .join('\n')
               : item.content;

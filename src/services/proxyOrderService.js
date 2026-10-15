@@ -1,3 +1,4 @@
+const { serializePublicProducts } = require('../utils/orderSerialization');
 const { Op } = require('sequelize');
 const {
   sequelize,
@@ -33,7 +34,7 @@ function summary(order) {
     ? {
       id: order.id,
       orderNumber: order.orderNumber,
-      products: order.products,
+      products: serializePublicProducts(order.products),
       pickupStore: order.pickupStore,
       pickupStoreCode: order.pickupStoreCode,
       status: order.emailOrderStatus || order.status,

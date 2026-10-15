@@ -1,0 +1,6 @@
+FROM apple-order-mgr-migrator:20261015-iphone-duo-amd64
+COPY --chown=node:node src/utils/productNaming.js /app/src/utils/productNaming.js
+COPY --chown=node:node src/data/productNamingV20261015.json /app/src/data/productNamingV20261015.json
+COPY --chown=node:node src/services/productNameBatchService.js /app/src/services/productNameBatchService.js
+COPY --chown=node:node migrations/20261015000002-product-name-standardization.js /app/migrations/20261015000002-product-name-standardization.js
+COPY --chown=node:node scripts/standardizeProductNames.js /app/scripts/standardizeProductNames.js

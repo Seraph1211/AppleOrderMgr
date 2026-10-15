@@ -1,3 +1,4 @@
+import { getProductDisplayName } from '../../utils/productNaming';
 import { formatProductStorageText } from '../../utils/productStorage';
 import useModalScrollLock from '../useModalScrollLock';
 import MobilePickerDialog from '../mobilePickerDialog';
@@ -251,7 +252,7 @@ export function InventoryFilters({ catalog, filters, applied, onChange, onApply,
     colors: uniq(catalog.products, 'color'),
     skus: catalog.products.map(product => ({
       value: product.sku,
-      label: `${product.model} · ${formatProductStorageText(product.capacity)} · ${product.color} (${product.sku})`,
+      label: `${getProductDisplayName(product)} (${product.sku})`,
     })),
   };
   const count = Object.values(applied).reduce((sum, items) => sum + items.length, 0);
