@@ -170,3 +170,67 @@ describe('库存探测 HTTP 边界', () => {
     });
   });
 });
+
+describe('库存307原URL有限恢复且从不跟随', () => {
+  function inventoryHarness(location, status = 307, tunnelStatus = 200) {
+    const h = harness(
+      { status, headers: { location }, data: 'private redirect body' },
+      tunnelStatus
+    );
+    h.options.purpose = 'inventory';
+    h.options.context = { skus: ['TEST1CH/A'], location: '100000' };
+    return h;
+  }
+  test.each([undefined, '', '/unknown-route?private=secret'])(
+    '未确认307不永久暂停，但只发送原固定请求 %#',
+    async location => {
+      const h = inventoryHarness(location);
+      const result = await requestOnce(h.options);
+      expect(result).toMatchObject({
+        outcome: 'TARGET_REJECTED',
+        status: 307,
+        summary: {
+          responseSource: 'target',
+          targetRejectReason: 'UNFOLLOWED_REDIRECT',
+        },
+      });
+      expect(result.evidence).toBeUndefined();
+      expect(h.request).toHaveBeenCalledTimes(1);
+      expect(h.request.mock.calls[0][0]).toBe(
+        'https://www.apple.com.cn/shop/retail/pickup-message?parts.0=TEST1CH/A&location=100000'
+      );
+      expect(h.request.mock.calls[0][1].maxRedirects).toBe(0);
+      expect(h.gate.reserve).toHaveBeenCalledTimes(1);
+      expect(h.gate.finish).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(result)).not.toMatch(/private|secret|unknown-route/);
+    }
+  );
+  test.each(['https://outside.test/?private=secret', '/auth/login?private=secret'])(
+    '危险Location保留人工暂停且不消费 %#',
+    async location => {
+      const h = inventoryHarness(location);
+      const result = await requestOnce(h.options);
+      expect(result).toMatchObject({ outcome: 'REDIRECT_BLOCKED', status: 307 });
+      expect(h.request).toHaveBeenCalledTimes(1);
+      expect(JSON.stringify(h.gate.finish.mock.calls)).not.toMatch(
+        /outside|private|secret|auth\/login/
+      );
+    }
+  );
+  test('CONNECT失败优先于目标307，不误报Apple风控', async () => {
+    const h = inventoryHarness('/unknown-route', 307, 503);
+    expect(await requestOnce(h.options)).toMatchObject({
+      outcome: 'PROXY_TUNNEL_UNAVAILABLE',
+      status: 503,
+      summary: { responseSource: 'proxy_connect' },
+    });
+    expect(h.request).toHaveBeenCalledTimes(1);
+  });
+  test('未确认CONNECT200仍保留manual，其他302亦然', async () => {
+    const h = inventoryHarness('/unknown-route');
+    h.request.mockImplementation(() => Promise.resolve({ status: 307, headers: {}, data: '' }));
+    expect((await requestOnce(h.options)).outcome).toBe('REDIRECT_BLOCKED');
+    const other = inventoryHarness('/unknown-route', 302);
+    expect((await requestOnce(other.options)).outcome).toBe('REDIRECT_BLOCKED');
+  });
+});

@@ -2,6 +2,7 @@ const fs = require('fs');
 const crypto = require('crypto');
 const axios = require('axios');
 const { validateTunnel } = require('./inventoryTunnelPolicy');
+const { classifyInventoryRedirect } = require('./inventoryRedirectPolicy');
 const {
   classifyResponse,
   retryAfterMs,
@@ -235,6 +236,22 @@ async function requestOnce({
       } else {
         result.summary.responseSource = 'target';
       }
+    }
+    if (
+      response &&
+      response.status >= 300 &&
+      response.status < 400 &&
+      (tunnelStatus === undefined || tunnelStatus === 200)
+    ) {
+      const redirect = classifyInventoryRedirect({
+        purpose,
+        status: response.status,
+        tunnelStatus,
+        location: response.headers.location,
+      });
+      result.outcome = redirect.outcome;
+      result.summary = { ...result.summary, ...redirect.summary };
+      evidence = undefined;
     }
     if (result.egressHash)
       result.summary = { ...result.summary, inventoryEgressHash: result.egressHash };
