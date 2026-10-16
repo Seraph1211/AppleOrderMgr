@@ -51,6 +51,34 @@ const PAYMENT_METHODS = Object.freeze({
   工行12期: 'installments0000833448-2',
   工行24期: 'installments0000833448',
 });
+const PAYMENT_BANK_ALIASES = Object.freeze({
+  招行: '招行',
+  招商银行: '招行',
+  工行: '工行',
+  工商银行: '工行',
+  建行: '建行',
+  建设银行: '建行',
+});
+
+/**
+ * 只规范已核实支付名称与明确期数，未知或混合要求保留供校验拒绝。
+ * @param {string} value 客户支付名称
+ * @returns {string} 规范名称或原输入
+ */
+function normalizeProxyPayment(value) {
+  if (typeof value !== 'string') return value;
+  const original = value.trim();
+  if (/[\r\n]/.test(original) || [...original].some(char => char.charCodeAt(0) < 32))
+    return original;
+  const normalized = original.normalize('NFKC');
+  if (Object.hasOwn(PAYMENT_METHODS, normalized)) return normalized;
+  if (/^花呗 *(?:分期 *)?12 *期 *免息$/.test(normalized)) return '花呗12期';
+  const match = normalized.match(
+    /^(招商银行|招行|工商银行|工行|建设银行|建行) *(?:分期 *)?(12|24) *期$/
+  );
+  return match ? `${PAYMENT_BANK_ALIASES[match[1]]}${match[2]}期` : original;
+}
+
 const STORE_SOFTWARE_NAMES = Object.freeze({
   R448: '北京王府井',
   R572: '郑州万象城',
@@ -158,6 +186,8 @@ function normalizeColor(value, model) {
         白色: '星光白色',
         星光白: '星光白色',
         星光白色: '星光白色',
+        黑: '夜空色',
+        黑色: '夜空色',
         夜空: '夜空色',
         夜空色: '夜空色',
       }[color] || color
@@ -323,10 +353,12 @@ function parseProxyText(text) {
         parseProduct(text).quantity !== product.quantity
       )
         throw ApiError.badRequest('候选数量不一致，请核对统一数量');
+      const quantityTokens = normalizedText.match(/\d+\s*(台|部|件)/g) || [];
+      if (quantityTokens.length > 1) throw ApiError.badRequest('候选包含多个数量，请核对');
       const modelTokens =
-        normalizedText.match(
-          /(?:iphone\s*)?(?:\d{1,2}\s*(?:pro\s*max|pm|pro|plus|air|p)?\b|duo\b)/gi
-        ) || [];
+        normalizedText
+          .replace(/\d+\s*(台|部|件)/g, '')
+          .match(/(?:iphone\s*)?(?:\d{1,2}\s*(?:pro\s*max|pm|pro|plus|air|p)?\b|duo\b)/gi) || [];
       const capacityTokens = normalizedText.match(/\b\d+\s*(?:gb|g|tb|t)\b/gi) || [];
       const colorTokens =
         normalizedText.match(
@@ -366,7 +398,7 @@ function parseProxyText(text) {
     storeMode: storeText ? 'selected' : 'city_any',
     storeCity: city,
     billing: storeCodes.length ? generateProxyAddress(storeCodes[0]) : null,
-    paymentMethod: fields['支付方式'] || '微信',
+    paymentMethod: normalizeProxyPayment(fields['支付方式'] || '微信'),
     orderSource: fields['订单来源'] || '',
     notes: fields['备注'] || '',
     platformOrderNumber: /^\(选填\)$/.test(norm(fields['平台订单号']))
@@ -474,9 +506,11 @@ function validateProxyInput(input, options = {}) {
     result.billing[key] = field(billing[key], label, 200);
   result.platformOrderNumber =
     field(input.platformOrderNumber || '', '平台订单号', 100, false) || null;
-  result.paymentMethod = field(input.paymentMethod || '微信', '支付要求', 50);
+  result.paymentMethod = normalizeProxyPayment(
+    field(input.paymentMethod || '微信', '支付要求', 50)
+  );
   if (
-    !PAYMENT_METHODS[result.paymentMethod] &&
+    !Object.hasOwn(PAYMENT_METHODS, result.paymentMethod) &&
     result.paymentMethod !== options.existing?.paymentMethod
   )
     throw ApiError.badRequest('支付方式没有已核实软件映射');
@@ -596,6 +630,7 @@ function isProxyMatch(request, order, assignments) {
 module.exports = {
   STORES,
   PAYMENT_METHODS,
+  normalizeProxyPayment,
   PRODUCT_CANDIDATES,
   STORE_SOFTWARE_NAMES,
   parseProduct,

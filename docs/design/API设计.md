@@ -1054,6 +1054,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 - GET `/stores` 返回门店及 softwareName；GET `/catalog` 返回 productCandidates（productModel/color/storage/softwareName）与 paymentMethods（名称到软件值映射）。
 - POST `/parse` 输入 text，返回 draft/warnings/errors/canSave/duplicates；draft 含 productCandidates、orderSource、paymentMethod（默认微信）、quantity（默认1）、storeCity、storeCodes、storeMode、billing（自动草稿）和旧单商品字段。未知组合进入 errors，备注不解析为规则。duplicates 为疑似重复编号摘要。身份证兼容身份证、身份证号、身份证号码、身份证后四号、身份证后四位、身份证后4位及后四位标签；四位尾号直接保留，合法18位（校验位及日期）或15位（日期）完整号码仅提取后四位，无效或冲突提示核对，不截取任意字符串。结构化 idLast4 和软件模板始终仅含尾四位；原文继续 AES-GCM 加密保存，只在现有获授权解析/详情的原文核对路径展示，不记录日志或审计明文。PUT/POST 手工 idLast4 也可接受合法完整号码并提取尾号。
+- 支付别名在 `/parse` 的 draft、POST/PUT 校验和模板生成统一规范：招商银行／招行、工商银行／工行、建设银行／建行加明确12或24期，可带“分期”、合理空格和全角数字；花呗12期免息（可带“分期”）转花呗12期。规范名称及软件值沿用 catalog；裸银行名、未核实期数和混合要求仍拒绝。Duo 黑／黑色转夜空色，白／白色转星光白色，不影响 Pro 系列；商品行单一台／部／件数量不作为型号判断，多数量或候选数量冲突仍报错。
 - POST `/address` 输入 storeCode，返回可编辑地址；GET `/` 支持 page/limit/keyword/status 返回 rows/count。
 - POST `/`、PUT `/:id` 保存完整资料，编辑带 expectedVersion；新增必填 orderSource，productCandidates 完整任选数组，旧 productModel/color/storage 兼容。城市必填，未指定门店默认城市集合并固定保存；门店须同城市。平台订单号允许重复。新建疑似重复返回409并附 duplicateIds，明确继续时传 confirmedDuplicate=true；无可用账号仍建单。创建返回 assigned（数字）、assignmentStatus=assigned|awaiting_account、assignmentMessage，空池明确提示待分配。分配只允许专用池中状态未使用或使用中、且无活跃占用的账号；自动与手选共用规则，不纳入普通池或重置账号状态。
 - GET `/:id` 返回详情、assignments、events、officialOrders 活跃关联数组、links 历史及兼容 officialOrder 首项。官网摘要含 officialRawStatus/officialStatusObservedAt，status 仅官网原始状态，无观测显示 null；不使用邮件状态。
