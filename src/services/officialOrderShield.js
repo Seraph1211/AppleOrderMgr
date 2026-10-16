@@ -13,6 +13,9 @@ const LIMITS = Object.freeze({
 const MILLISECONDS_PER_SECOND = 1000;
 const COOKIE_EXPIRY_INDEX = 1;
 const MIN_COOKIE_PARTS = 3;
+const HASH_CHALLENGE_VERSIONS = Object.freeze([2, 3]);
+const HASH_REVERSED_TAIL_VERSION = 3;
+const HASH_REVERSED_TAIL_BYTES = 4;
 const MAX_INT64 = 9223372036854775807n;
 const BIGINT_ZERO = 0n;
 const BIGINT_ONE = 1n;
@@ -50,11 +53,14 @@ function parseShieldChallenge(body) {
   }
   if (!model || typeof model !== 'object' || Array.isArray(model))
     throw fault('SHIELD_MODEL_INVALID');
+  const challengeVersion = model['challenge_version'];
+  if (challengeVersion !== undefined && ![1, ...HASH_CHALLENGE_VERSIONS].includes(challengeVersion))
+    throw fault('SHIELD_VERSION_UNSUPPORTED');
   const hasAlgorithm = Object.prototype.hasOwnProperty.call(model, 'algorithm');
   const hasFactorField = FACTOR_FIELDS.some(field => Object.hasOwn(model, field));
   const timeoutMs = parseTimeout(model.timeout);
   if (hasAlgorithm) {
-    if (hasFactorField) throw fault('SHIELD_TYPE_AMBIGUOUS');
+    if (hasFactorField || challengeVersion === 1) throw fault('SHIELD_TYPE_AMBIGUOUS');
     if (typeof model.algorithm !== 'string' || !/^sha-?(256|384|512)$/i.test(model.algorithm))
       throw fault('SHIELD_ALGORITHM_UNSUPPORTED');
     const algorithm = model.algorithm.toLowerCase().replace('-', '');
@@ -71,10 +77,15 @@ function parseShieldChallenge(body) {
       algorithm,
       salt: model.salt,
       challenge: model.challenge,
+      ...(challengeVersion === undefined ? {} : { challengeVersion }),
       timeoutMs,
     });
   }
-  if (Object.hasOwn(model, 'salt') || Object.hasOwn(model, 'challenge'))
+  if (
+    Object.hasOwn(model, 'salt') ||
+    Object.hasOwn(model, 'challenge') ||
+    HASH_CHALLENGE_VERSIONS.includes(challengeVersion)
+  )
     throw fault('SHIELD_TYPE_AMBIGUOUS');
   if (
     !FACTOR_FIELDS.every(field => Object.hasOwn(model, field)) ||
@@ -151,13 +162,18 @@ function computationBudget(model, options) {
 }
 
 function solveHash(model, budget) {
+  const expectedBytes = Buffer.from(model.challenge, 'hex');
+  // v3 反转末尾四字节；此变换自逆，只处理一次目标，避免增加逐候选开销。
+  if (model.challengeVersion === HASH_REVERSED_TAIL_VERSION)
+    expectedBytes.subarray(-HASH_REVERSED_TAIL_BYTES).reverse();
+  const expectedDigest = expectedBytes.toString('hex');
   for (let candidate = 0; candidate < LIMITS.operations; candidate += 1) {
     if (!budget.step()) return budget.result(null);
     const digest = crypto
       .createHash(model.algorithm)
       .update(`${model.salt}${candidate}`, 'utf8')
       .digest('hex');
-    if (digest === model.challenge) return budget.result(candidate);
+    if (digest === expectedDigest) return budget.result(candidate);
   }
   return budget.result(null);
 }

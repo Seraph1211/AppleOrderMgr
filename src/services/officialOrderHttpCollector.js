@@ -27,7 +27,7 @@ function discoverShieldUrl(body, documentUrl) {
   if (sources.length !== 1) throw fault('SHIELD_ROUTE_MISSING');
   const origin = permittedUrl(documentUrl).origin;
   const script = permittedUrl(new URL($(sources[0]).attr('src'), origin).href);
-  const match = /^\/shop\/shld\/(v[0-9_]+)\/verify\.js$/.exec(script.pathname);
+  const match = /^\/shop\/shld\/(v[0-9_]+|s3)\/verify\.js$/.exec(script.pathname);
   if (script.origin !== origin || !match || script.search || script.hash)
     throw fault('SHIELD_ROUTE_INVALID');
   return `${origin}/shop/shld/work/${match[1]}/q`;
@@ -50,7 +50,7 @@ function validateReadUrl(value, method = 'GET', allowLoginBootstrap = false) {
         ['/shop/signIn', '/shop/signIn/account'].includes(url.pathname)));
   if (loginBootstrap && !url.href.includes('#')) return url;
   const readPath = /^\/(?:xc\/cn\/vieworder\/|shop\/order\/(?:list|guest|detail|print\/invoice)\/)/;
-  const challenge = /^\/shop\/shld\/work\/v[0-9_]+\/q$/;
+  const challenge = /^\/shop\/shld\/work\/(?:v[0-9_]+|s3)\/q$/;
   const action = /^\/shop\/orderx\/guestx\//;
   if (
     (method === 'GET' && !readPath.test(url.pathname) && !challenge.test(url.pathname)) ||

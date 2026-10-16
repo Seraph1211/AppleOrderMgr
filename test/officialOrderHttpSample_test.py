@@ -392,6 +392,21 @@ class EgressProbeTests(unittest.TestCase):
         self.assertNotIn('private-password', json.dumps(command.call_args[0]))
         self.assertEqual(command.call_args[1]['timeout'], 25)
 
+    def test_redacted_log_with_separate_probe_field_confirms_public_egress(self):
+        log = ('8.8.8.8 [16/Oct/2026:21:23:49 +0800] '
+               '"GET /api/health/ready HTTP/1.1" 200 170 probe=' + self.token + '\n').encode()
+        with patch.object(sample.uuid, 'uuid4', return_value=SimpleNamespace(hex='1' * 32)), \
+                patch.object(sample, 'run', return_value=b'{"success":true}'), \
+                patch('builtins.open', return_value=io.BytesIO(log)):
+            self.assertEqual(sample.probe(self.proxy), hashlib.sha256(b'8.8.8.8').hexdigest())
+
+    def test_redacted_log_without_probe_token_still_rejects_egress(self):
+        log = b'8.8.8.8 [16/Oct/2026:21:23:49 +0800] "GET /api/health/ready HTTP/1.1" 200 170\n'
+        with patch.object(sample, 'run', return_value=b'{"success":true}'), \
+                patch('builtins.open', return_value=io.BytesIO(log)):
+            with self.assertRaisesRegex(RuntimeError, 'EGRESS_LOG_UNAVAILABLE'):
+                sample.probe(self.proxy)
+
     def test_multiple_log_matches_are_not_assumed_one_exit(self):
         with self.assertRaisesRegex(RuntimeError, 'EGRESS_LOG_UNAVAILABLE'):
             self.probe(['8.8.8.8', '8.8.8.8'])
