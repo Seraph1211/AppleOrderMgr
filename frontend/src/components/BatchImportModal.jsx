@@ -7,7 +7,8 @@ import { downloadTemplate, previewImport, reviewImport, executeImport } from '..
 /** 上传、预览、裁定、确认执行四步导入，密码及密保不进入预览。 */
 export default function BatchImportModal({ type, onClose, onImport }) {
   const apiType = type === 'appleIds' ? 'apple_ids' : 'recipients';
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const canChangeOrderScope = user?.role === 'admin' || user?.orderAccess?.mode === 'all';
   const [files, setFiles] = useState([]);
   const [plan, setPlan] = useState(null);
   const [token, setToken] = useState('');
@@ -17,6 +18,10 @@ export default function BatchImportModal({ type, onClose, onImport }) {
   const [error, setError] = useState('');
   const [result, setResult] = useState(null);
   const [page, setPage] = useState(1);
+  const restrictedRecords =
+    type === 'recipients' && !canChangeOrderScope
+      ? plan?.records.filter(record => record.requiresAllOrderScope) || []
+      : [];
   const run = async action => {
     setBusy(true);
     setError('');
@@ -46,6 +51,10 @@ export default function BatchImportModal({ type, onClose, onImport }) {
     });
   const execute = () =>
     run(async () => {
+      if (restrictedRecords.length) {
+        setError('当前预览包含需要全部订单数据范围的档案，请先跳过并更新预览。');
+        return;
+      }
       const response = await executeImport(token, apiType, decisions);
       setResult(response.data);
       setToken('');
@@ -80,8 +89,9 @@ export default function BatchImportModal({ type, onClose, onImport }) {
           {type === 'recipients' && (
             <p className="text-sm text-blue-800 bg-blue-50 p-3 rounded">
               取机人与 Apple ID 独立管理。旧表中的账号、密码列会忽略，不会创建或修改 Apple
-              ID；账号请到 Apple ID 管理单独导入。覆盖已有取机人 TAG
-              需要全部订单数据范围，修改后历史订单实时跟随。
+              ID；账号请到 Apple ID 管理单独导入。新增取机人或更新姓名、身份证、TAG
+              需要全部订单数据范围；有限范围账号仅可更新已有档案的联系方式、地址和状态等资料。
+              档案变更只影响通过身份匹配使用档案 TAG 兜底的订单。
             </p>
           )}
           <div className="flex flex-wrap items-center gap-3">
@@ -145,6 +155,12 @@ export default function BatchImportModal({ type, onClose, onImport }) {
           )}
           {plan && (
             <>
+              {restrictedRecords.length > 0 && (
+                <p role="alert" className="text-sm text-amber-800 bg-amber-50 p-3 rounded">
+                  当前预览中有 {restrictedRecords.length}{' '}
+                  份档案需要全部订单数据范围。请跳过这些档案并更新预览，或由有相应范围的账号执行。
+                </p>
+              )}
               <p className="text-sm bg-blue-50 p-3 rounded">
                 源行 {plan.summary.total} · 档案 {plan.summary.records} · 无效行{' '}
                 {plan.summary.invalid} · 未裁定差异 {plan.summary.conflicts} · 有问题档案{' '}
@@ -194,6 +210,11 @@ export default function BatchImportModal({ type, onClose, onImport }) {
                         </td>
                         <td className="p-2">{record.action}</td>
                         <td className="p-2 space-y-2">
+                          {!canChangeOrderScope && record.requiresAllOrderScope && (
+                            <p className="text-amber-800">
+                              新增或修改身份／TAG，需要全部订单数据范围
+                            </p>
+                          )}
                           {record.problems.map((message, i) => (
                             <p key={i} className="text-red-700">
                               {message}
@@ -281,6 +302,7 @@ export default function BatchImportModal({ type, onClose, onImport }) {
                 disabled={
                   busy ||
                   dirty ||
+                  restrictedRecords.length > 0 ||
                   plan.summary.conflicts > 0 ||
                   plan.summary.blocked > 0 ||
                   !plan.records.length

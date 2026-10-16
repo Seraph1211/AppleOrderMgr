@@ -240,12 +240,12 @@ export default function Dashboard() {
             />
           </div>
           <div className="min-w-0">
-            <label className="block text-sm font-medium text-gray-700 mb-2">取机人 TAG</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">TAG</label>
             <TagMultiSelect
               options={options.recipientTags}
               value={filters.recipientTags}
               onChange={value => change('recipientTags', value)}
-              ariaLabel="取机人 TAG 筛选"
+              ariaLabel="TAG 筛选"
               placeholder="全部 TAG"
               itemLabel="TAG"
             />

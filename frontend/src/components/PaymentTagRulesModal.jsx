@@ -14,7 +14,7 @@ const emptyRule = () => ({ name: '', enabled: true, recipientTags: [], assigneeU
 const accountLabel = person =>
   person ? `${person.nickname || person.username}（${person.username}）` : '';
 
-/** 管理取机人 TAG 自动分配规则，所有修改均显式保存。 */
+/** 管理订单 TAG 自动分配规则，所有修改均显式保存。 */
 export default function PaymentTagRulesModal({ onClose, onSaved }) {
   const [rules, setRules] = useState([]);
   const [tagOptions, setTagOptions] = useState([]);
@@ -181,8 +181,8 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
               TAG 分配规则
             </h2>
             <p className="text-sm text-gray-500 mt-1">
-              所有来源订单按当前取机人 TAG
-              完整匹配；在有对应访问范围的指定账号中按负载分配，无人可接单时等待。
+              按订单 TAG 完整匹配：优先使用 AOS TAG，缺失时使用姓名和身份证后四位唯一匹配的取机人
+              TAG。在有对应访问范围的指定账号中按负载分配，无人可接单时等待。
             </p>
           </div>
           <button
@@ -253,7 +253,7 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
                   </p>
                   <TagMultiSelect
                     ariaLabel="选择规则 TAG"
-                    placeholder="选择取机人 TAG"
+                    placeholder="选择订单 TAG"
                     options={tagOptions}
                     value={draft.recipientTags}
                     onChange={recipientTags => setDraft({ ...draft, recipientTags })}
@@ -289,7 +289,7 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
                       >
                         <span className="break-all whitespace-pre-wrap">{tag}</span>
                         {!tagOptions.includes(tag) && (
-                          <span className="text-xs text-amber-700">暂无对应档案 TAG</span>
+                          <span className="text-xs text-amber-700">暂无对应 TAG 候选</span>
                         )}
                         <button
                           type="button"
@@ -491,7 +491,7 @@ export default function PaymentTagRulesModal({ onClose, onSaved }) {
                               {tag}
                               {!tagOptions.includes(tag) && (
                                 <span className="ml-1 text-xs text-amber-700">
-                                  暂无对应档案 TAG
+                                  暂无对应 TAG 候选
                                 </span>
                               )}
                             </div>

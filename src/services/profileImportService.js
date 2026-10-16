@@ -1,4 +1,5 @@
 const { assertAllOrderAccess } = require('./orderAccessService');
+const ORDER_SCOPE_FIELDS = ['tag', 'lastName', 'firstName', 'idCardNumber'];
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 const { AppleId, Recipient } = require('../models');
@@ -187,6 +188,10 @@ function buildImportPlan(rows, type, profiles, decisions = {}) {
           : `${data.lastName}${data.firstName} ${maskIdCard(data.idCardNumber)}`,
       sources: group.rows.map(r => r.source),
       action: skipped ? '跳过' : !existing ? '新增' : changed.length ? '更新' : '重复',
+      requiresAllOrderScope:
+        !skipped &&
+        kind === 'recipient' &&
+        (!existing || changed.some(field => ORDER_SCOPE_FIELDS.includes(field))),
       fields: Object.fromEntries(
         Object.entries(data).map(([field, value]) => [LABELS[field], displayValue(field, value)])
       ),
@@ -247,7 +252,8 @@ async function applyImportPlan(plan, req, transaction) {
       const { data, existing, changed } = write;
       if (existing && !changed.length) continue;
       assertPermission(req, existing ? PERMISSIONS.RECIPIENTS_EDIT : PERMISSIONS.RECIPIENTS_IMPORT);
-      if (existing && changed.includes('tag')) assertAllOrderAccess(req.user);
+      if (!existing || changed.some(field => ORDER_SCOPE_FIELDS.includes(field)))
+        assertAllOrderAccess(req.user);
       const fields = data;
       let recipient;
       if (existing) {

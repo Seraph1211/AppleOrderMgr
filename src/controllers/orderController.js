@@ -2,6 +2,9 @@ const { getProductDisplayName, expandProductNameAliases } = require('../utils/pr
 const {
   getRecipientTag,
   getRecipientTagState,
+  getRecipientTagSource,
+  getOrderRecipientName,
+  recipientTagProjection,
   recipientTagSql,
 } = require('../services/recipientTagService');
 const {
@@ -61,10 +64,8 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
   appleId: { label: 'Apple ID', value: item => item.apple_id || '' },
   recipientName: { label: '取机人', value: item => item.recipient_name || '' },
   recipientTag: {
-    label: '取机人 TAG',
-    value: item =>
-      item.recipient_tag ||
-      (item.recipient_tag_state === 'unlinked' ? '未关联取机人' : '未设置 TAG'),
+    label: '订单 TAG',
+    value: item => item.recipient_tag || 'TAG 缺失',
   },
   products: {
     label: '商品信息',
@@ -129,8 +130,7 @@ const ORDER_EXPORT_FIELDS = Object.freeze({
   payerName: { label: '付款人', value: item => item.payer_name || '' },
   tag: {
     label: '标签',
-    value: item =>
-      item.tag || (item.recipient_tag_state === 'unlinked' ? '未关联取机人' : '未设置 TAG'),
+    value: item => item.tag || 'TAG 缺失',
   },
   notes: { label: '备注', value: item => item.notes || '' },
   orderDate: {
@@ -203,11 +203,10 @@ function serializeOrderListItem(order, includeRecipientPhone = false, officialRe
       plain.recipient.tag !== plain.sourceRecipientTag
     ),
     apple_id: plain.appleAccount?.appleId || plain.appleId || null,
-    recipient_name: plain.recipient
-      ? `${plain.recipient.lastName || ''}${plain.recipient.firstName || ''}` || plain.recipientName
-      : plain.recipientName || null,
+    recipient_name: getOrderRecipientName(plain),
     recipient_tag: getRecipientTag(plain),
     recipient_tag_state: getRecipientTagState(plain),
+    recipient_tag_source: getRecipientTagSource(plain),
     products: serializePublicProducts(plain.products, plain.productFilterItems),
     ...serializeOrderPricingFields(plain),
     ...serializeEmailLifecycleFields(plain),
@@ -292,8 +291,10 @@ function serializeOrderDetail(order, includeRecipientPhone = false, includeOrder
     recipient_email: plain.recipientEmail,
     recipient_phone: plain.recipientPhone || null,
     recipient,
+    recipient_name: getOrderRecipientName(plain),
     recipient_tag: getRecipientTag(plain),
     recipient_tag_state: getRecipientTagState(plain),
+    recipient_tag_source: getRecipientTagSource(plain),
     products: serializePublicProducts(plain.products, plain.productFilterItems),
     ...serializeOrderPricingFields(plain),
     ...serializeEmailLifecycleFields(plain),
@@ -573,6 +574,7 @@ async function listOrders(req, res) {
 
     const { count, rows } = await Order.findAndCountAll({
       where: scopeOrderWhere(req.user, where),
+      attributes: recipientTagProjection(),
       include: [
         { model: AppleId, as: 'appleAccount', attributes: ['id', 'appleId', 'nickname'] },
         {
@@ -645,6 +647,7 @@ async function getOrderDetail(req, res) {
 
     const order = await Order.findOne({
       where: scopeOrderWhere(req.user, { id: orderId }),
+      attributes: recipientTagProjection(),
       include: [
         { model: AppleId, as: 'appleAccount' },
         { model: Recipient, as: 'recipient' },
@@ -818,6 +821,7 @@ async function exportOrders(req, res) {
     if (orderIds) where.id = { [Op.in]: orderIds };
     const rows = await Order.findAll({
       where: scopeOrderWhere(req.user, where),
+      attributes: recipientTagProjection(),
       include: [
         { model: AppleId, as: 'appleAccount', attributes: ['appleId'] },
         { model: Recipient, as: 'recipient', attributes: ['lastName', 'firstName', 'tag'] },

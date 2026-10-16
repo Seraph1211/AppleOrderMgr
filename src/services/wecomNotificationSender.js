@@ -1,4 +1,4 @@
-const { recipientTagAttributes } = require('./recipientTagService');
+const { recipientTagProjection } = require('./recipientTagService');
 const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 const { randomUUID } = require('crypto');
 const { Op } = require('sequelize');
@@ -106,7 +106,7 @@ async function prepare(row, now) {
   try {
     if (row.kind === 'test') return { text: TEST_MESSAGE };
     const order = await Order.findByPk(row.orderId, {
-      attributes: { include: recipientTagAttributes('Order').slice(1) },
+      attributes: recipientTagProjection(),
     });
     const reason = content.orderBlockReason(order, now);
     if (reason)

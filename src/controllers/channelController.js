@@ -3,12 +3,15 @@ const {
   recipientTagWhere,
   getRecipientTag,
   getRecipientTagState,
+  getRecipientTagSource,
+  getOrderRecipientName,
+  recipientTagProjection,
 } = require('../services/recipientTagService');
 const { getSourcePaymentMethod } = require('../utils/paymentMethod');
 /**
  * 渠道控制器
  * @module controllers/channelController
- * @description 基于订单关联的 recipients.tag 实现渠道管理功能
+ * @description 基于订单最终 TAG 实现渠道管理功能
  */
 
 const { buildOrderDateCondition } = require('../utils/orderDateFilter');
@@ -255,6 +258,7 @@ exports.getChannelOrders = async (req, res, next) => {
 
     // 查询订单
     const { count, rows: orders } = await Order.findAndCountAll({
+      attributes: recipientTagProjection(),
       where: whereClause,
       include: [
         {
@@ -280,9 +284,7 @@ exports.getChannelOrders = async (req, res, next) => {
         id: plain.id,
         orderNumber: plain.orderNumber,
         appleId: plain.appleAccount?.appleId || plain.appleId,
-        recipientName: plain.recipient
-          ? `${plain.recipient.lastName}${plain.recipient.firstName}`
-          : plain.recipientName,
+        recipientName: getOrderRecipientName(plain),
         recipientPhone: maskPhone(plain.recipient?.phone || plain.recipientPhone),
         products: serializePublicProducts(plain.products),
         status: plain.emailOrderStatus || 'unknown',
@@ -294,6 +296,7 @@ exports.getChannelOrders = async (req, res, next) => {
         orderDate: plain.orderDate,
         tag: getRecipientTag(plain),
         recipientTagState: getRecipientTagState(plain),
+        recipientTagSource: getRecipientTagSource(plain),
         createdAt: plain.createdAt,
       };
     });
@@ -363,20 +366,34 @@ exports.updateChannelName = async (req, res, next) => {
       return next(ApiError.notFound('渠道不存在或没有订单数据'));
     }
 
-    // 检查新渠道名称是否已存在
+    // AOS 来源不可变；拒绝只改档案却声称整个渠道已改名。
+    const sourceOrderCount = await Order.count({
+      where: { ingestionSource: 'aos', sourceRecipientTag: tag },
+      transaction,
+    });
+    if (sourceOrderCount > 0) {
+      await transaction.rollback();
+      return next(ApiError.badRequest('该渠道包含 AOS 原始 TAG，不能通过修改取机人档案重命名'));
+    }
+
+    // 检查新渠道名称是否已存在（包括仅存在于 AOS 来源的渠道）。
+    const targetOrderCount = await Order.count({
+      where: recipientTagWhere(newTag),
+      transaction,
+    });
     const existingOrderCount = await Recipient.count({
       where: { tag: newTag },
       transaction,
     });
 
-    if (existingOrderCount > 0) {
+    if (existingOrderCount > 0 || targetOrderCount > 0) {
       await transaction.rollback();
       return next(ApiError.badRequest('新渠道名称已存在，无法重命名'));
     }
 
     await renameOrderAccessTags(tag, newTag, req.user.id, transaction);
 
-    const ordersUpdated = orderCount; // 实时 JOIN 生效，不重写来源记录。
+    const ordersUpdated = orderCount; // 实时身份匹配生效，不重写来源记录。
 
     // 级联更新 recipients 表
     const [recipientsUpdated] = await Recipient.update(

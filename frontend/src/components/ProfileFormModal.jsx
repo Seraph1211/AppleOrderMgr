@@ -11,7 +11,8 @@ const clean = value => (value === '-' ? '' : value || '');
 export default function ProfileFormModal({ kind, item, onClose, onSave }) {
   const account = kind === 'account';
   const { can, user } = useAuth();
-  const canChangeTag = !item || user?.role === 'admin' || user?.orderAccess?.mode === 'all';
+  const canChangeIdentity = user?.role === 'admin' || user?.orderAccess?.mode === 'all';
+  const createBlocked = !account && !item && !canChangeIdentity;
   const canQa = can('apple_ids.secrets.read');
   const [form, setForm] = useState(() => ({
     appleId: clean(account ? item?.appleId : ''),
@@ -90,6 +91,10 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
   );
   const submit = async event => {
     event.preventDefault();
+    if (createBlocked) {
+      setError('新建取机人需要全部订单数据范围。');
+      return;
+    }
     setBusy(true);
     setError('');
     try {
@@ -130,7 +135,9 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
             'notes',
           ].map(key => [key, form[key]])
         );
-        if (!canChangeTag) delete payload.tag;
+        if (!canChangeIdentity) {
+          for (const key of ['lastName', 'firstName', 'idCardNumber', 'tag']) delete payload[key];
+        }
       }
       await onSave(payload);
       onClose();
@@ -173,9 +180,9 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
               </>
             ) : (
               <>
-                {field('lastName', '姓', true)}
-                {field('firstName', '名', true)}
-                {field('idCardNumber', '身份证号', true)}
+                {field('lastName', '姓', true, 'text', !canChangeIdentity)}
+                {field('firstName', '名', true, 'text', !canChangeIdentity)}
+                {field('idCardNumber', '身份证号', true, 'text', !canChangeIdentity)}
                 {field('realPhone', '真实联系电话')}
                 {field('phone', '下单手机号')}
                 {field('email', '下单邮箱（@vvv8.net）', false, 'email')}
@@ -183,7 +190,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
                 {field('city', '市')}
                 {field('district', '区')}
                 {field('streetAddress', '街道地址')}
-                {field('tag', 'TAG', false, 'text', !canChangeTag)}
+                {field('tag', 'TAG', false, 'text', !canChangeIdentity)}
                 <label className="block text-sm text-gray-700">
                   信用评级
                   <ResponsiveSelect
@@ -218,11 +225,11 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
               </ResponsiveSelect>
             </label>
           </div>
-          {!account && item && (
+          {!account && (
             <p className="text-sm text-gray-500">
-              {canChangeTag
-                ? '修改 TAG 后，全部历史订单及访问范围实时跟随。'
-                : '修改取机人 TAG 需要全部订单数据范围；其他资料可按现有权限维护。'}
+              {canChangeIdentity
+                ? '姓名、身份证和 TAG 会影响订单兜底匹配及访问范围；有 AOS TAG 的订单保持原值。'
+                : '新建取机人或修改姓名、身份证、TAG 需要全部订单数据范围；已有档案的联系方式、地址和状态等资料可按现有权限维护。'}
             </p>
           )}
           <label className="block text-sm text-gray-700">
@@ -270,7 +277,7 @@ export default function ProfileFormModal({ kind, item, onClose, onSave }) {
           </button>
           <button
             className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-            disabled={busy || loadingQa}
+            disabled={busy || loadingQa || createBlocked}
           >
             {busy ? '保存中…' : '保存'}
           </button>

@@ -17,7 +17,7 @@ test.each([
   [null, null, 'unlinked'],
   [{ tag: ' \u00a0 ' }, null, 'missing'],
   [{ tag: ' A ' }, ' A ', 'present'],
-])('取货照片列表使用档案 TAG %j，保留筛选交集', async (recipient, tag, state) => {
+])('取货照片列表使用查询验证后的最终 TAG %j，保留筛选交集', async (recipient, tag, state) => {
   const res = { json: jest.fn() };
   Order.findAndCountAll.mockResolvedValue({
     count: 1,
@@ -27,6 +27,7 @@ test.each([
           id: 1,
           tag: 'SOURCE',
           sourceRecipientTag: 'AOS',
+          recipientTag: tag,
           recipient,
           products: [],
         }),

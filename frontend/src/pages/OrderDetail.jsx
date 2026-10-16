@@ -229,7 +229,7 @@ export default function OrderDetail() {
                 </dd>
               </div>
               <div>
-                <dt className="text-gray-500">来源 TAG（历史记录）</dt>
+                <dt className="text-gray-500">AOS 原始 TAG</dt>
                 <dd>{order.source_recipient_tag || '—'}</dd>
               </div>
               <div>
@@ -278,10 +278,15 @@ export default function OrderDetail() {
             </h2>
             <dl className="space-y-3 text-sm">
               <div>
-                <dt className="text-gray-500">姓名 / TAG</dt>
+                <dt className="text-gray-500">姓名 / 订单 TAG</dt>
                 <dd className="break-words text-gray-900">
-                  {order.recipient?.name || '-'} /{' '}
-                  <RecipientTag value={order.recipient_tag} state={order.recipient_tag_state} />
+                  {order.recipient_name || order.recipient?.name || '-'} /{' '}
+                  <RecipientTag
+                    value={order.recipient_tag}
+                    state={order.recipient_tag_state}
+                    source={order.recipient_tag_source}
+                    showSource
+                  />
                 </dd>
               </div>
               <div>

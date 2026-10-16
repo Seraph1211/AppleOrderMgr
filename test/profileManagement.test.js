@@ -372,3 +372,22 @@ describe('取机人信用评级输入', () => {
     expect(updates).not.toHaveProperty('channel');
   });
 });
+
+test('导入预览标记身份范围变更，跳过与普通字段更新无需全部订单范围', () => {
+  const profiles = {
+    accounts: [],
+    recipients: [{ id: 1, ...data, idCardHash: blindIndex(idCard) }],
+  };
+  const created = buildImportPlan([row(data)], 'recipients', empty);
+  expect(created.records[0].requiresAllOrderScope).toBe(true);
+  const skipped = buildImportPlan([row(data)], 'recipients', empty, { 'g0:skip': true });
+  expect(skipped.records[0].requiresAllOrderScope).toBe(false);
+  const ordinary = buildImportPlan([row({ ...data, notes: '新备注' })], 'recipients', profiles);
+  expect(ordinary.records[0].requiresAllOrderScope).toBe(false);
+  const identity = buildImportPlan([row({ ...data, firstName: '亮' })], 'recipients', profiles, {
+    'g0:firstName': 'source0',
+  });
+  expect(identity.records[0].requiresAllOrderScope).toBe(true);
+  const tag = buildImportPlan([row({ ...data, tag: '新TAG' })], 'recipients', profiles);
+  expect(tag.records[0].requiresAllOrderScope).toBe(true);
+});

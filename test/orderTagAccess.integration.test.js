@@ -108,13 +108,14 @@ suite('订单 TAG 范围与付款任务交集授权（隔离库 HTTP）', () => 
       ['TAG-A', 'TAG-B', 'TAG-A-1', 'tag-a', null, ' TAG-A '].map((tag, i) => ({
         orderNumber: `W880000000${i}`,
         tag,
-        sourceRecipientTag: i === 1 ? 'TAG-A' : null,
+        sourceRecipientTag: null,
         ingestionSource: 'aos',
         emailOrderStatus: 'confirmed',
         emailPaymentStatus: 'unknown',
         products: [{ name: `合成商品${i}`, model: `MODEL-${i}`, quantity: 1 }],
         pickupStore: `合成门店${i}`,
-        recipientName: `合成取机人${i}`,
+        recipientName: `合成${i}`,
+        recipientIdLast4: `00${String(i + 10)}`,
         orderDate: new Date(),
         orderUrl: `https://example.invalid/order/${i}`,
       }))
