@@ -243,9 +243,9 @@ JWT 管理端统一响应 `{success:true,data:...}`，所有响应 no-store。�
 | POST /api-admin/unknown/:id/resolve        | admin；`{action:'release',reason}`，5..200字，保存审计，允许将来新请求重新核验 |
 | DELETE /api-admin/tokens/:id               | admin；撤销指定令牌，不返回明文                                                |
 
-元数据 `{token:null\|{id,status,expiresAt,createdAt,lastUsedAt},limits:{requestsPerMinute:50,dailyProviderCalls:100,dedupSeconds:600},usage:{date,providerCalls},service:{configured,enabled,paused,pauseReason}}`。限额是本地保护，不代表供应商实际余额。
+元数据 `{token:null\|{id,status,expiresAt,createdAt,lastUsedAt},limits:{requestsPerMinute:50,dailyProviderCalls:500,dedupSeconds:600},usage:{date,providerCalls},service:{configured,enabled,paused,pauseReason}}`。限额是本地保护，不代表供应商实际余额。
 
-`GET /api/internal/v1/identity/verify` 使用独立令牌认证，在后台JWT之前；仅 name/idCardNumber/token 三个单值字符串，拒绝多余、重复及嵌套键。仅HTTPS（可信代理按现有TRUST_PROXY配置）；HEAD和其他方法405，不执行核验。首次请求同步取得结果；全局槽位忙/500ms间隔未到429，不排队。每员工固定自然分钟桶50次/分钟，API入口每天最多100次新调用，北京日期；相同员工+规范化输入确定结果600秒复用。未知结果409阻断，管理员release前不重发。
+`GET /api/internal/v1/identity/verify` 使用独立令牌认证，在后台JWT之前；仅 name/idCardNumber/token 三个单值字符串，拒绝多余、重复及嵌套键。仅HTTPS（可信代理按现有TRUST_PROXY配置）；HEAD和其他方法405，不执行核验。首次请求同步取得结果；全局槽位忙/500ms间隔未到429，不排队。每员工固定自然分钟桶50次/分钟，API入口每天最多500次新调用，北京日期；相同员工+规范化输入确定结果600秒复用。未知结果409阻断，管理员release前不重发。
 
 200 `{success:true,requestId,data:{verificationId,status:'matched'\|'mismatched',matched:boolean,message,verifiedAt,reused}}`；不返回身份字段或供应商原文。错误 `{success:false,requestId,error:{code,message},verificationId?,status?,matched?,providerCalled?}`。400输入、401令牌、403撤权/停用、405方法、429限频/额度/忙、502异常响应、503关闭/暂停/供应商鉴权额度、504超时未知、409未处置未知。429带Retry-After；所有响应no-store/no-referrer，不支持JSONP或跨域。客户端必须关闭自动重试与预取。
 

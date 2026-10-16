@@ -8,7 +8,7 @@ const ApiError = require('../utils/ApiError');
 const provider = require('./identityProviderService');
 const logger = require('../utils/logger');
 const LOCK_ID = 742095;
-const DAILY_LIMIT = 100;
+const DAILY_LIMIT = 500;
 
 /** 北京时间日期，用于API调用日额度。 @returns {string} 日期 */
 function usageDate() {
@@ -122,4 +122,4 @@ async function withSlot(work) {
   }
 }
 
-module.exports = { usageDate, getState, setPaused, reserveUsage, withSlot };
+module.exports = { DAILY_LIMIT, usageDate, getState, setPaused, reserveUsage, withSlot };

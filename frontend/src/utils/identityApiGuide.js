@@ -18,7 +18,7 @@ HTTPS GET ${url.origin}${url.pathname}?name=<URL编码后的姓名>&idCardNumber
 未知：success=false，error.code="RESULT_UNKNOWN"，status="unknown"、matched=null；不得解释为不一致。保留 requestId 和 verificationId 交管理员核查。
 响应含 requestId；确定结果含 verificationId、verifiedAt、reused。接口不返回完整姓名或身份证。
 
-额度：每人每分钟最多 50 次请求；每天最多 100 次新供应商调用（北京时间），不是供应商套餐余额。已发出的超时调用也占次数。
+额度：每人每分钟最多 50 次请求；每天最多 500 次新供应商调用（北京时间），不是供应商套餐余额。已发出的超时调用也占次数。
 本人相同姓名和身份证的确定结果在完成后 600 秒内复用，reused=true，不增加新供应商调用次数。窗口外再次请求可能重新计费。未知结果不会自动重新核验。
 令牌默认有效期 90 天，重置立即使旧令牌失效；停用、过期、账号停用或权限撤销后不可调用。
 

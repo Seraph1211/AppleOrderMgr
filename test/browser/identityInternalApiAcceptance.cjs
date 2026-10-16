@@ -60,7 +60,7 @@ async function main() {
       });
       const metadata = () => ({
         token: state,
-        limits: { requestsPerMinute: 50, dailyProviderCalls: 100, dedupSeconds: 600 },
+        limits: { requestsPerMinute: 50, dailyProviderCalls: 500, dedupSeconds: 600 },
         usage: { date: '2026-10-16', providerCalls: 9 },
         service: { configured: true, enabled: true, paused: servicePaused },
       });
@@ -148,6 +148,7 @@ async function main() {
       await page.goto(`${ORIGIN}/identity-verifications`);
       await page.getByRole('heading', { name: '本人 API 令牌' }).waitFor();
       await page.getByText('未创建', { exact: true }).waitFor();
+      await page.getByText('9 / 500 次（北京时间 2026-10-16）', { exact: true }).waitFor();
       assert.equal(await page.getByRole('tab', { name: '单人核验', exact: true }).count(), 0);
       assert.equal(await page.getByRole('tab', { name: 'Excel 批量', exact: true }).count(), 0);
       await page.getByRole('button', { name: '一键复制使用说明' }).click();
@@ -155,6 +156,8 @@ async function main() {
       const guide = await page.evaluate(() => navigator.clipboard.readText());
       assert(guide.includes('https://127.0.0.1:5196/api/internal/v1/identity/verify'));
       assert(guide.includes('600 秒') && guide.includes('50 次') && guide.includes('禁止自动重试'));
+      assert(guide.includes('每天最多 500 次新供应商调用'));
+      assert(!guide.includes('每天最多 100 次新供应商调用'));
       assert(!guide.includes(TOKEN));
       await page.getByRole('button', { name: '创建本人令牌' }).click();
       await page.getByText('令牌已创建，请单独复制并妥善保管。').waitFor();

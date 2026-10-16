@@ -58,7 +58,7 @@ async function metadata(actor) {
       );
       return {
         token: tokens[0] || null,
-        limits: { requestsPerMinute: 50, dailyProviderCalls: 100, dedupSeconds: 600 },
+        limits: { requestsPerMinute: 50, dailyProviderCalls: execution.DAILY_LIMIT, dedupSeconds: 600 },
         usage: { date, providerCalls: usage[0]?.count || 0 },
         service: await execution.getState(transaction),
       };

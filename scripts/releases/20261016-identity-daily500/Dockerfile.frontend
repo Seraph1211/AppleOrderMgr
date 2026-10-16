@@ -1,0 +1,4 @@
+ARG BASE_IMAGE=apple-order-mgr-frontend:20261016-recipient-credit-rating
+FROM ${BASE_IMAGE}
+COPY --chown=node:node frontend/src/utils/identityApiGuide.js /app/src/utils/identityApiGuide.js
+RUN npm run lint && npm run build

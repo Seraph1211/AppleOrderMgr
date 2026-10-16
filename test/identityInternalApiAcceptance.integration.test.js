@@ -191,6 +191,11 @@ describeAcceptance('内部身份API独立真实HTTP与PostgreSQL验收', () => {
   });
   test('仅read+api即可调用，与verify/batch独立；确定DTO无身份字段及禁止缓存', async () => {
     const response = await verify();
+    expect((await management()).body.data.limits).toEqual({
+      requestsPerMinute: 50,
+      dailyProviderCalls: 500,
+      dedupSeconds: 600,
+    });
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       success: true,
@@ -315,7 +320,7 @@ describeAcceptance('内部身份API独立真实HTTP与PostgreSQL验收', () => {
     expect((await verify('合成甲', otherToken)).body.data.reused).toBe(false);
     expect(calls).toHaveLength(4);
   });
-  test('第50次允许复用、第51次拒绝；100次新调用边界且复用不占日额度', async () => {
+  test('第50次允许复用、第51次拒绝；500次新调用边界且复用不占日额度', async () => {
     expect((await verify()).status).toBe(200);
     await sql("UPDATE identity_api_usage SET count=49 WHERE user_id=:id AND kind='minute'", {
       id: people.owner.user.id,
@@ -326,19 +331,34 @@ describeAcceptance('内部身份API独立真实HTTP与PostgreSQL验收', () => {
     expect(limited.body.error.code).toBe('RATE_LIMIT');
     expect(limited.headers.get('retry-after')).toBeTruthy();
     await sql("UPDATE identity_api_usage SET count=0 WHERE kind='minute'");
-    await sql("UPDATE identity_api_usage SET count=99 WHERE user_id=:id AND kind='day'", {
+    await sql("UPDATE identity_api_usage SET count=499 WHERE user_id=:id AND kind='day'", {
       id: people.owner.user.id,
     });
     await releaseSpacing();
-    expect((await verify('合成第百次')).status).toBe(200);
+    expect((await verify('合成第五百次')).status).toBe(200);
     await releaseSpacing();
-    expect((await verify('合成超额')).body.error.code).toBe('DAILY_LIMIT');
+    const dailyLimited = await verify('合成第五百零一次');
+    expect(dailyLimited.status).toBe(429);
+    expect(dailyLimited.body.error.code).toBe('DAILY_LIMIT');
+    expect(dailyLimited.headers.get('retry-after')).toBeTruthy();
     expect((await verify()).body.data.reused).toBe(true);
     const [rows] = await sql(
       "SELECT count FROM identity_api_usage WHERE user_id=:id AND kind='day'",
       { id: people.owner.user.id }
     );
-    expect(rows[0].count).toBe(100);
+    expect(rows[0].count).toBe(500);
+    expect(calls).toHaveLength(2);
+    const reset = await management('/reset', 'owner', 'POST');
+    expect(reset.status).toBe(200);
+    expect(reset.body.data).toMatchObject({
+      limits: { requestsPerMinute: 50, dailyProviderCalls: 500, dedupSeconds: 600 },
+      usage: { providerCalls: 500 },
+    });
+    const previousToken = apiToken;
+    apiToken = (await management('/reveal', 'owner', 'POST')).body.data.token;
+    expect((await verify('合成重置后超额', previousToken)).status).toBe(401);
+    expect((await verify('合成重置后超额')).body.error.code).toBe('DAILY_LIMIT');
+    expect((await verify()).body.data.reused).toBe(true);
     expect(calls).toHaveLength(2);
   });
   test('多进程相同请求并发最多一次；执行中其他请求不排队、全局500ms起点间隔', async () => {
@@ -438,7 +458,7 @@ describeAcceptance('内部身份API独立真实HTTP与PostgreSQL验收', () => {
       await models.sequelize.transaction(transaction =>
         execution.reserveUsage(people.owner.user.id, 'day', transaction)
       );
-      await sql("UPDATE identity_api_usage SET count=99 WHERE kind='day' AND period='2026-10-16'");
+      await sql("UPDATE identity_api_usage SET count=499 WHERE kind='day' AND period='2026-10-16'");
       const claims = await Promise.allSettled(
         [1, 2].map(() =>
           models.sequelize.transaction(transaction =>
@@ -460,7 +480,7 @@ describeAcceptance('内部身份API独立真实HTTP与PostgreSQL验收', () => {
         "SELECT period,count FROM identity_api_usage WHERE kind='day' ORDER BY period"
       );
       expect(rows).toEqual([
-        { period: '2026-10-16', count: 100 },
+        { period: '2026-10-16', count: 500 },
         { period: '2026-10-17', count: 1 },
       ]);
     } finally {
@@ -522,7 +542,7 @@ describeAcceptance('内部身份API独立真实HTTP与PostgreSQL验收', () => {
       defaults: { grantedBy: people.admin.user.id },
     });
     expect((await verify()).status).toBe(200);
-    await sql("UPDATE identity_api_usage SET count=100 WHERE kind='day'");
+    await sql("UPDATE identity_api_usage SET count=500 WHERE kind='day'");
     const book = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       book,
@@ -554,7 +574,7 @@ describeAcceptance('内部身份API独立真实HTTP与PostgreSQL验收', () => {
     const detail = await service.detail(people.owner.user, preview.batch.id);
     expect(detail.rows[0].status).toBe('matched');
     const [usage] = await sql("SELECT count FROM identity_api_usage WHERE kind='day'");
-    expect(usage[0].count).toBe(100);
+    expect(usage[0].count).toBe(500);
   });
   test('单人／Excel与API跨进程共享在途槽，API在途不会被后台恢复为unknown', async () => {
     await models.UserPermission.destroy({
