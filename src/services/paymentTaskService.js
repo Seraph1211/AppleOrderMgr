@@ -4,6 +4,8 @@ const {
   recipientTagAttributes,
   getRecipientTag,
   getRecipientTagState,
+  getRecipientTagSource,
+  getOrderRecipientName,
 } = require('./recipientTagService');
 const { scopeOrderWhere, assertCurrentOrderAccess } = require('./orderAccessService');
 const { getSourcePaymentMethod } = require('../utils/paymentMethod');
@@ -240,8 +242,10 @@ function serializeTask(task, serverTime = new Date()) {
     id: plain.id,
     orderId: plain.orderId,
     orderNumber: plain.order?.orderNumber,
+    recipientName: getOrderRecipientName(plain.order),
     recipientTag: getRecipientTag(plain.order),
     recipientTagState: getRecipientTagState(plain.order),
+    recipientTagSource: getRecipientTagSource(plain.order),
     products: serializePublicProducts(plain.order?.products, plain.order?.productFilterItems),
     officialRefreshState: plain.officialRefreshState || null,
     officialRawStatus: plain.order?.officialRawStatus || null,

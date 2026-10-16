@@ -594,7 +594,7 @@ export default function Recipients() {
               <span>批量导入</span>
             </button>
           )}
-          {can(PERMISSIONS.RECIPIENTS_CREATE) && (
+          {can(PERMISSIONS.RECIPIENTS_CREATE) && canChangeOrderScope && (
             <button
               onClick={() => setShowAddModal(true)}
               className="btn btn-primary flex items-center space-x-2"
@@ -605,6 +605,16 @@ export default function Recipients() {
           )}
         </div>
       </div>
+
+      {!canChangeOrderScope &&
+        (can(PERMISSIONS.RECIPIENTS_CREATE) ||
+          can(PERMISSIONS.RECIPIENTS_EDIT) ||
+          can(PERMISSIONS.RECIPIENTS_IMPORT)) && (
+          <p className="text-sm text-gray-500">
+            新建取机人及修改姓名、身份证、TAG
+            需要全部订单数据范围；联系方式、地址和状态等资料仍可按权限维护。
+          </p>
+        )}
 
       {/* 搜索、筛选和批量操作 */}
       <div className="card">
@@ -804,7 +814,7 @@ export default function Recipients() {
       )}
 
       {/* 添加取机人弹窗 */}
-      {showAddModal && (
+      {showAddModal && canChangeOrderScope && (
         <AddRecipientModal onClose={() => setShowAddModal(false)} onSave={handleSaveRecipient} />
       )}
 

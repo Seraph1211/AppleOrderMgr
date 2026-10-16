@@ -40,9 +40,9 @@ test('多商品、重复合并、AOS TAG 优先与空值', () => {
     },
     'https://example.test'
   );
-  expect(text).toContain('335 || 档案TAG || A x 5、B x 1 || 支付宝');
+  expect(text).toContain('335 || 新TAG || A x 5、B x 1 || 支付宝');
   expect(content.buildNotificationText({ id: 1 }, 'link')).toBe(
-    '1 || 未关联取机人 || - || - || - || link'
+    '1 || TAG 缺失 || - || - || - || link'
   );
 });
 test('代抢消息在完整 TAG 后插入取机人姓名，其他字段保持顺序', () => {
@@ -90,26 +90,26 @@ test.each([undefined, null, '', ' \n\t '])('代抢姓名缺失或空白 %s 用�
   expect(fields).toHaveLength(7);
   expect(fields[2]).toBe('-');
 });
-test('代抢判断使用实时档案，来源关键词不影响消息', () => {
+test('代抢判断使用AOS优先的最终TAG', () => {
   const aosOrder = { ...order, ingestionSource: 'aos', recipientName: '测试姓名' };
   expect(
     content.buildNotificationText(
       { ...aosOrder, sourceRecipientTag: '代抢 来源TAG' },
       fixture.payload
     )
-  ).not.toContain('测试姓名');
+  ).toContain('代抢 来源TAG || 测试姓名');
   expect(
     content.buildNotificationText(
       { ...aosOrder, recipientTag: '代抢 档案', sourceRecipientTag: '普通' },
       fixture.payload
     )
-  ).toContain('代抢 档案 || 测试姓名');
+  ).not.toContain('测试姓名');
   expect(
     content.buildNotificationText(
       { ...aosOrder, recipientTag: null, sourceRecipientTag: '代抢 来源TAG' },
       fixture.payload
     )
-  ).toContain('未设置 TAG');
+  ).toContain('代抢 来源TAG || 测试姓名');
 });
 test('取机人姓名清理控制字符与分隔符，保留付款链接完整', () => {
   const fields = content

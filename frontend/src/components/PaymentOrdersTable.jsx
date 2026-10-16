@@ -13,7 +13,7 @@ const COLUMNS = [
   '订单',
   '商品信息',
   '官网订单状态',
-  '取机人TAG',
+  '订单TAG',
   '下单时间',
   '付款倒计时',
   '处理人',
@@ -152,8 +152,12 @@ export default function PaymentOrdersTable({
                         </p>
                       )}
                     </td>
-                    <td data-label="取机人TAG" className="px-4 py-4 text-sm">
-                      <RecipientTag value={task.recipientTag} state={task.recipientTagState} />
+                    <td data-label="订单TAG" className="px-4 py-4 text-sm">
+                      <RecipientTag
+                        value={task.recipientTag}
+                        state={task.recipientTagState}
+                        source={task.recipientTagSource}
+                      />
                     </td>
                     <td data-label="下单时间" className="px-4 py-4 text-sm text-gray-600">
                       {formatOrderTime(task.orderDate)}

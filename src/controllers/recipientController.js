@@ -348,6 +348,7 @@ async function createRecipient(req, res) {
     const payload = req.body || {};
     rejectLegacyBindingFields(payload);
     const data = recipientInput(payload, true);
+    assertAllOrderAccess(req.user);
     const created = await sequelize.transaction(async transaction => {
       await lockProfiles(transaction, req.user?.id);
       const duplicate = await Recipient.findOne({
@@ -379,7 +380,11 @@ async function updateRecipient(req, res) {
       await lockProfiles(transaction, req.user?.id);
       const row = await Recipient.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
       if (!row) throw ApiError.notFound('取机人不存在');
-      if (Object.prototype.hasOwnProperty.call(updates, 'tag') && updates.tag !== row.tag)
+      if (
+        ['tag', 'lastName', 'firstName', 'idCardNumber'].some(
+          field => Object.hasOwn(updates, field) && updates[field] !== row[field]
+        )
+      )
         assertAllOrderAccess(req.user);
       if (updates.idCardNumber) {
         const duplicate = await Recipient.findOne({

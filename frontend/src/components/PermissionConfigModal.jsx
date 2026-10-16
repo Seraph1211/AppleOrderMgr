@@ -168,9 +168,10 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
               <section className="border border-gray-200 rounded-lg p-4 space-y-3">
                 <h3 className="font-semibold text-gray-900">订单数据范围</h3>
                 <p className="text-sm text-gray-500">
-                  按订单关联取机人的当前 TAG
-                  精确匹配，同时限制订单、本人付款任务、历史取货照片和库存来源关联。取机人 TAG
-                  修改后历史订单范围同步变化；下方功能权限与数据范围同时生效。管理员可访问全部订单。
+                  按订单 TAG 精确匹配，同时限制订单、本人付款任务、历史取货照片和库存来源关联。
+                  优先使用 AOS TAG；缺失时仅使用姓名和身份证后四位唯一匹配的取机人 TAG。 修改档案
+                  TAG 只影响使用档案兜底的订单；下方功能权限与数据范围同时生效。
+                  管理员可访问全部订单。
                 </p>
                 <div className="flex flex-wrap gap-5">
                   {[
@@ -213,8 +214,8 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
                     </div>
                     <input
                       className="input"
-                      placeholder="搜索取机人 TAG"
-                      aria-label="搜索取机人 TAG"
+                      placeholder="搜索订单 TAG"
+                      aria-label="搜索订单 TAG"
                       value={tagSearch}
                       onChange={event => setTagSearch(event.target.value)}
                     />
@@ -238,17 +239,17 @@ export default function PermissionConfigModal({ user, onClose, onSuccess }) {
                             />
                             <span className="break-all whitespace-pre-wrap">{tag}</span>
                             {!tagOptions.includes(tag) && (
-                              <span className="text-xs text-amber-700">暂无对应档案 TAG</span>
+                              <span className="text-xs text-amber-700">暂无对应 TAG 候选</span>
                             )}
                           </label>
                         ))}
                     </div>
                     {tagOptions.length === 0 && (
-                      <p className="text-sm text-gray-500">暂无取机人 TAG 候选</p>
+                      <p className="text-sm text-gray-500">暂无订单 TAG 候选</p>
                     )}
                     <p className="text-sm text-gray-600">
-                      已选择 {orderAccess.tags.length} 个 TAG；不选择时无法查看任何订单，无 TAG
-                      或未关联取机人的订单不可见。
+                      已选择 {orderAccess.tags.length} 个 TAG；不选择时无法查看任何订单，TAG
+                      缺失的订单不可见。未关联取机人但有 AOS TAG 的订单仍按该 TAG 授权。
                     </p>
                   </>
                 )}

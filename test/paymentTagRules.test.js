@@ -47,19 +47,20 @@ test.each([
   expect(() => normalizeRule({ ...input, ...patch })).toThrow();
 });
 
-test('所有来源仅匹配当前档案完整 TAG，无来源回退', () => {
+test('分配规则采用AOS优先或已验证的兜底TAG，不能信任旧关联', () => {
   const rule = { ...input, id: 7 };
   const index = buildRuleIndex([rule]);
   for (const ingestionSource of ['aos', 'email', 'unknown']) {
-    expect(matchRule({ ingestionSource, recipient: { tag: '渠道A' }, tag: 'OLD' }, index)).toBe(
-      rule
-    );
+    expect(matchRule({ ingestionSource, recipientTag: '渠道A', tag: 'OLD' }, index)).toBe(rule);
     expect(
-      matchRule({ ingestionSource, sourceRecipientTag: '渠道A', tag: '渠道A' }, index)
+      matchRule({ ingestionSource, recipient: { tag: '渠道A' }, tag: '渠道A' }, index)
     ).toBeNull();
   }
+  expect(
+    matchRule({ ingestionSource: 'aos', sourceRecipientTag: '渠道A', recipientTag: '渠道B' }, index)
+  ).toBe(rule);
   for (const tag of [null, '', ' ', ' 渠道A ', '渠道A-1', '渠道a']) {
-    expect(matchRule({ recipient: { tag }, sourceRecipientTag: '渠道A' }, index)).toBeNull();
+    expect(matchRule({ recipientTag: tag, sourceRecipientTag: '渠道A' }, index)).toBeNull();
   }
 });
 

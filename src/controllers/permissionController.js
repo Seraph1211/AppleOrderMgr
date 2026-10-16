@@ -51,21 +51,26 @@ async function replaceUserPermissions(req, res) {
   return res.json({ success: true, data: result, message: '权限配置已更新' });
 }
 
-/** 管理员获取当前档案 TAG 候选。 */
+/** 管理员获取订单最终 TAG 候选。 */
 async function getOrderTagOptions(_req, res) {
   try {
-    const { Recipient } = require('../models');
-    const { Op } = require('sequelize');
-    const rows = await Recipient.findAll({
-      attributes: ['tag'],
-      where: { tag: { [Op.ne]: null } },
-      group: ['tag'],
-      order: [['tag', 'ASC']],
+    const { Order } = require('../models');
+    const { Sequelize } = require('sequelize');
+    const { recipientTagSql } = require('../services/recipientTagService');
+    const expression = Sequelize.literal(recipientTagSql());
+    const rows = await Order.findAll({
+      attributes: [[expression, 'tag']],
+      group: [expression],
       raw: true,
     });
     return res.json({
       success: true,
-      data: { tags: rows.map(row => row.tag).filter(tag => tag.trim()) },
+      data: {
+        tags: rows
+          .map(row => row.tag)
+          .filter(tag => typeof tag === 'string' && tag.trim())
+          .sort(),
+      },
     });
   } catch (error) {
     logger.warn('读取授权 TAG 候选失败', { errorType: error.name });

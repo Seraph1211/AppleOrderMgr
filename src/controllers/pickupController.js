@@ -2,6 +2,9 @@ const {
   recipientTagWhere,
   getRecipientTag,
   getRecipientTagState,
+  getRecipientTagSource,
+  getOrderRecipientName,
+  recipientTagProjection,
 } = require('../services/recipientTagService');
 const { Op } = require('sequelize');
 const { sequelize, Order, Recipient, PickupRecord, PickupEvidence, User } = require('../models');
@@ -62,9 +65,8 @@ function serialize(order) {
     orderNumber: plain.orderNumber,
     tag: getRecipientTag(plain),
     recipientTagState: getRecipientTagState(plain),
-    recipientName: plain.recipient
-      ? `${plain.recipient.lastName || ''}${plain.recipient.firstName || ''}` || plain.recipientName
-      : plain.recipientName,
+    recipientTagSource: getRecipientTagSource(plain),
+    recipientName: getOrderRecipientName(plain),
     products: serializePublicProducts(plain.products, plain.productFilterItems),
     pickupStore: email.email_pickup_info?.storeName || plain.pickupStore || null,
     pickupDate: email.email_pickup_date || null,
@@ -148,6 +150,7 @@ async function list(req, res) {
     const pageSize = Math.min(MAX_PAGE_SIZE, positiveInteger(req.query.pageSize, 20, 'pageSize'));
     const { where, include } = buildPickupQuery(req.query);
     const result = await Order.findAndCountAll({
+      attributes: recipientTagProjection(),
       where: scopeOrderWhere(req.user, where),
       subQuery: false,
       include,
@@ -169,6 +172,7 @@ async function list(req, res) {
 
 async function accessibleOrder(req, orderId, transaction) {
   const order = await Order.findOne({
+    attributes: recipientTagProjection(),
     where: scopeOrderWhere(req.user, { id: orderId }),
     transaction,
     lock: transaction?.LOCK.UPDATE,

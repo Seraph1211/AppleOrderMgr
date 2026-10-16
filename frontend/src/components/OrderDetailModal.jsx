@@ -39,6 +39,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
     recipientPhone: null,
     recipientTag: null,
     recipientTagState: null,
+    recipientTagSource: null,
     tagLoaded: false,
     applePassword: null,
     orderUrl: null,
@@ -75,6 +76,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
       recipientPhone: null,
       recipientTag: null,
       recipientTagState: null,
+      recipientTagSource: null,
       tagLoaded: false,
       applePassword: null,
       orderUrl: null,
@@ -88,6 +90,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
           recipientPhone: response.data?.recipient_phone || null,
           recipientTag: response.data?.recipient_tag ?? null,
           recipientTagState: response.data?.recipient_tag_state,
+          recipientTagSource: response.data?.recipient_tag_source,
           tagLoaded: true,
           applePassword: response.data?.apple_password || null,
           orderUrl: response.data?.order_url || null,
@@ -101,6 +104,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
           recipientPhone: null,
           recipientTag: null,
           recipientTagState: null,
+          recipientTagSource: null,
           tagLoaded: false,
           applePassword: null,
           orderUrl: null,
@@ -113,7 +117,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
     return () => {
       active = false;
     };
-  }, [isOpen, order?.id, order?.recipientTag, order?.recipientTagState]);
+  }, [isOpen, order?.id, order?.recipientTag, order?.recipientTagState, order?.recipientTagSource]);
 
   if (!isOpen || !order) return null;
 
@@ -248,7 +252,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
                 <p className="mt-1 text-sm">{formatOrderTime(order.orderDate)}</p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">取机人 / TAG</p>
+                <p className="text-sm text-gray-600">取机人 / 订单 TAG</p>
                 <p className="mt-1 break-words text-sm">
                   {order.recipientName || '-'} /{' '}
                   {detailLoading || detailExtras.orderId !== order.id ? (
@@ -257,6 +261,8 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
                     <RecipientTag
                       value={detailExtras.recipientTag}
                       state={detailExtras.recipientTagState}
+                      source={detailExtras.recipientTagSource}
+                      showSource
                     />
                   ) : (
                     'TAG 读取失败'
@@ -264,7 +270,7 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
                 </p>
               </div>
               <div>
-                <p className="text-sm text-gray-600">来源 TAG（历史记录）</p>
+                <p className="text-sm text-gray-600">AOS 原始 TAG</p>
                 <p className="mt-1 break-words whitespace-pre-wrap text-sm">
                   {order.sourceRecipientTag || '—'}
                 </p>
