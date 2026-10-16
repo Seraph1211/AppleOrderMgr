@@ -77,7 +77,7 @@ export default function EditChannelModal({ channel, onClose, onSave }) {
               autoFocus
             />
             <p className="text-xs text-gray-500 mt-1">
-              修改取机人 TAG 后，相关历史订单实时跟随新 TAG
+              修改取机人 TAG 后，仅使用该档案 TAG 兜底的订单跟随变化；有 AOS TAG 的订单保持原值
             </p>
           </div>
 
@@ -88,7 +88,7 @@ export default function EditChannelModal({ channel, onClose, onSave }) {
               <div className="text-sm text-yellow-800">
                 <p className="font-medium mb-1">注意事项：</p>
                 <ul className="list-disc list-inside space-y-1 text-xs">
-                  <li>此操作更新取机人 TAG，并同步原 TAG 的用户授权</li>
+                  <li>包含 AOS 原始 TAG 的渠道不可改名；其他渠道更新档案 TAG 并同步用户授权</li>
                   <li>如果新名称已存在，将无法完成修改</li>
                   <li>来源 TAG 保留；付款分配规则需按新 TAG 核对</li>
                 </ul>

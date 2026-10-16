@@ -1,0 +1,5 @@
+ARG BASE_IMAGE=apple-order-mgr-api:20261016-inventory-iproyal-amd64
+FROM ${BASE_IMAGE}
+COPY --chown=node:node src/models/Recipient.js /app/src/models/Recipient.js
+COPY --chown=node:node src/utils/profileInput.js /app/src/utils/profileInput.js
+COPY --chown=node:node src/controllers/recipientController.js /app/src/controllers/recipientController.js

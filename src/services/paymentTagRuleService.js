@@ -1,4 +1,8 @@
-const { getRecipientTag, normalizeRecipientTag } = require('./recipientTagService');
+const {
+  getRecipientTag,
+  normalizeRecipientTag,
+  recipientTagSql,
+} = require('./recipientTagService');
 const { Op, Sequelize } = require('sequelize');
 const {
   sequelize,
@@ -6,7 +10,7 @@ const {
   PaymentDispatchEvent,
   User,
   UserPermission,
-  Recipient,
+  Order,
 } = require('../models');
 const { PAYMENT_ASSIGNMENT_LOCK_ID } = require('./permissionService');
 const { PAYMENT_EXECUTION_PERMISSIONS } = require('../constants/permissionCatalog');
@@ -32,9 +36,7 @@ function normalizeRule(input) {
     !Array.isArray(input.recipientTags) ||
     !input.recipientTags.length ||
     input.recipientTags.length > 100 ||
-    input.recipientTags.some(
-      tag => typeof tag !== 'string' || !tag.trim() || tag.length > 500
-    )
+    input.recipientTags.some(tag => typeof tag !== 'string' || !tag.trim() || tag.length > 500)
   ) {
     throw ApiError.badRequest('请选择或填写 1–100 个 TAG，每项 1–500 个字符');
   }
@@ -70,7 +72,7 @@ function buildRuleIndex(rules) {
 }
 
 /**
- * 匹配所有来源订单当前档案 TAG。
+ * 匹配所有来源订单最终 TAG。
  * @param {Object} order 订单
  * @param {Map} index 索引
  * @returns {Object|null} 规则
@@ -81,15 +83,15 @@ function matchRule(order, index) {
 }
 
 /**
- * 查询管理员规则及全部档案 TAG 候选。
+ * 查询管理员规则及订单最终 TAG 候选，保留既有规则配置值。
  * @returns {Promise<Object>} 列表
  */
 async function listRules() {
   try {
-    const expression = Sequelize.col('tag');
+    const expression = Sequelize.literal(recipientTagSql());
     const [items, tags] = await Promise.all([
       PaymentTagRule.findAll({ order: [['id', 'ASC']] }),
-      Recipient.findAll({
+      Order.findAll({
         attributes: [[expression, 'value']],
         group: [expression],
         raw: true,
@@ -98,7 +100,12 @@ async function listRules() {
     return {
       items,
       tagOptions: [
-        ...new Set(tags.map(row => normalizeRecipientTag(row.value)).filter(Boolean)),
+        ...new Set(
+          [
+            ...tags.map(row => normalizeRecipientTag(row.value)),
+            ...items.flatMap(item => item.recipientTags),
+          ].filter(Boolean)
+        ),
       ].sort(),
     };
   } catch (error) {

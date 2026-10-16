@@ -5,6 +5,13 @@ const path = require('node:path');
 const { chromium } = require('playwright-core');
 const { DEFAULT_CONFIG } = require('../src/services/inventoryPolicy');
 const logger = require('../src/utils/logger');
+const HEALTH_CASES = {
+  normal: { nextAction: '按计划继续采集；库存以各组合有效期为准' },
+  'automatic_wait': { reason: 'PROXY_PROVIDER_COOLDOWN', nextAction: '自动等待供应商冷却到期，再更换并验证出口' },
+  'manual_required': { reason: 'PROXY_RECOVERY_EXHAUSTED', nextAction: '管理员核查当前代理配置、账号或预算，处理后确认恢复探测' },
+  offline: { reason: null, nextAction: '管理员检查库存 Worker 服务及数据库连接' },
+  'data_stale': { reason: null, nextAction: '当前无有效库存结果；等待新采样并检查最近查询错误' },
+};
 /** 专用临时浏览器验证，所有 API 均合成拦截，不启动真实采集或通知。 */
 async function main() {
   let browser;
@@ -81,6 +88,7 @@ async function main() {
       };
       const deliver = [];
       let latestQuery;
+      let healthState = 'normal';
       await page.route('**/*', async route => {
         try {
           const url = new URL(route.request().url());
@@ -145,8 +153,10 @@ async function main() {
                 stores: store.enabled ? [store] : [],
                 combinations: product.enabled && store.enabled ? 1 : 0,
                 enabled: settings.config.enabled,
-                state: 'normal',
-                lastSuccessAt: row.observedAt,
+                state: healthState,
+                nextAction: HEALTH_CASES[healthState].nextAction,
+                dataStale: healthState === 'data_stale',
+                lastSuccessAt: healthState === 'data_stale' ? Date.now() - 3600000 : row.observedAt,
               };
             else if (action === 'catalog') {
               const body = route.request().postDataJSON();
@@ -196,13 +206,23 @@ async function main() {
               };
             } else if (action === 'health')
               data = {
-                state: 'normal',
-                paused: false,
+                state: healthState,
+                stoppedAt: null,
+                nextAction: HEALTH_CASES[healthState].nextAction,
+                dataStale: healthState === 'data_stale',
+                coverage: {
+                  fresh: healthState === 'data_stale' ? 0 : 40,
+                  expected: 49,
+                  inStock: healthState === 'data_stale' ? 0 : 3,
+                },
+                waitUntil: healthState === 'automatic_wait' ? Date.now() + 60000 : null,
+                reason: HEALTH_CASES[healthState].reason || null,
+                paused: healthState === 'manual_required',
                 hourCount: 20,
                 dayCount: 100,
-                lastSuccessAt: row.observedAt,
+                lastSuccessAt: healthState === 'data_stale' ? Date.now() - 3600000 : row.observedAt,
                 nextRoundAt: Date.now() + 300000,
-                workerHeartbeat: Date.now(),
+                workerHeartbeat: healthState === 'offline' ? Date.now() - 180000 : Date.now(),
               };
             else if (action === 'refresh') {
               checked += 1;
@@ -220,6 +240,8 @@ async function main() {
                     completed: 40,
                     expected: 49,
                     failed: 9,
+                    attemptedFailed: 4,
+                    notSent: 5,
                     pending: 0,
                     retries: 1,
                   },
@@ -317,7 +339,7 @@ async function main() {
       };
       const menu = async name => {
         try {
-          const group = ['监控管理', '通知与健康'].includes(name) ? '监控管理' : '库存监控';
+          const group = ['监控管理', '通知与健康'].includes(name) ? '监控管理' : '库存查询';
           if (
             !(await page
               .getByRole('navigation', { name: '库存视图' })
@@ -500,7 +522,10 @@ async function main() {
       await page.getByText('北京时间小时分布', { exact: true }).waitFor();
       if (viewport.width === 375)
         await click(page.getByRole('button', { name: '时间与统计口径', exact: true }));
-      await page.getByLabel('热力图间隔', { exact: true }).selectOption('10');
+      if (viewport.width === 375) {
+        await click(page.getByRole('button', { name: '热力图间隔', exact: true }));
+        await click(page.getByRole('dialog').getByRole('option', { name: '10 分钟', exact: true }));
+      } else await page.getByLabel('热力图间隔', { exact: true }).selectOption('10');
       await assertNoOverflow();
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
@@ -560,10 +585,26 @@ async function main() {
           .evaluate(el => el === document.activeElement),
         true
       );
+      for (const state of ['automatic_wait', 'manual_required', 'offline', 'data_stale']) {
+        healthState = state;
+        await menu('通知与健康');
+        await page.reload();
+        await page
+          .getByText(`下一步：${HEALTH_CASES[state].nextAction}`, { exact: true })
+          .first()
+          .waitFor();
+        await assertNoOverflow();
+        await page.screenshot({
+          path: path.join(output, `健康-${state}-${viewport.width}x${viewport.height}.png`),
+          fullPage: true,
+        });
+      }
+      healthState = 'normal';
+      await menu('全国库存');
       allowed = false;
       readAllowed = true;
       await page.reload();
-      await page.getByRole('heading', { name: '库存监控', exact: true, level: 1 }).waitFor();
+      await page.getByRole('heading', { name: '库存查询', exact: true, level: 1 }).waitFor();
       assert.equal(await page.getByRole('button', { name: '检查当前筛选' }).count(), 0);
       assert.equal(await page.getByRole('link', { name: '监控管理', exact: true }).count(), 0);
       assert.equal(await page.getByRole('link', { name: '通知与健康', exact: true }).count(), 0);
@@ -579,7 +620,7 @@ async function main() {
       readAllowed = false;
       await page.goto(`${baseUrl}/inventory-monitor`);
       await page.waitForURL('**/profile');
-      assert.equal(await page.getByRole('heading', { name: '库存监控', exact: true }).count(), 0);
+      assert.equal(await page.getByRole('heading', { name: '库存查询', exact: true }).count(), 0);
       assert.deepEqual(errors, []);
       await context.close();
       logger.info('库存浏览器合成交互通过', { viewport });
@@ -587,7 +628,7 @@ async function main() {
   } catch (error) {
     logger.error('库存浏览器验收失败', {
       message: error.message,
-      cause: error.cause?.message,
+      cause: error.cause?.cause?.message || error.cause?.message,
       stack: error.stack,
     });
     process.exitCode = 1;

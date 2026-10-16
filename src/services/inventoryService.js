@@ -5,6 +5,7 @@ const ApiError = require('../utils/ApiError');
 const { encrypt } = require('../utils/fieldEncryption');
 const { validateWebhook } = require('./wecomTransport');
 const policy = require('./inventoryPolicy');
+const { healthProjection } = require('./inventoryHealthPolicy');
 const seed = require('../data/inventoryCatalog.json');
 
 /** 库存持久化服务；所有状态转换由同一行锁串行化，网络调用在事务外。 */
@@ -155,6 +156,10 @@ class InventoryService {
         enabled: settings.config.enabled,
         state,
         lastSuccessAt: health.lastSuccessAt,
+        stoppedAt: health.stoppedAt,
+        nextAction: health.nextAction,
+        waitUntil: health.waitUntil,
+        dataStale: health.dataStale,
       };
     } catch (error) {
       throw inventoryFailure(error);
@@ -321,7 +326,6 @@ class InventoryService {
       const catalog = await this.catalog();
       const settings = await this.getSettings();
       const snapshots = new Map((await this.rows('InventorySnapshot')).map(row => [row.id, row]));
-      const health = await this.health();
       const now = Date.now();
       const rows = [];
       for (const product of catalog.products)
@@ -340,7 +344,7 @@ class InventoryService {
             {
               enabled: product.enabled && store.enabled,
               supported: product.supported,
-              paused: !settings.config.enabled || health.paused,
+              paused: !settings.config.enabled,
             },
             now
           );
@@ -585,6 +589,8 @@ class InventoryService {
               expected: r.expected,
               completed: r.completed,
               failed: r.failed,
+              notSent: r.notSent ?? (r.status === 'missed' ? r.failed : 0),
+              attemptedFailed: r.attemptedFailed ?? (r.status === 'missed' ? 0 : r.failed),
               pending: Math.max(0, r.expected - r.completed - r.failed),
               retries: r.retries,
               error: r.error,
@@ -635,7 +641,9 @@ class InventoryService {
                 ? 'complete'
                 : ['queued', 'running'].includes(round.status)
                   ? 'pending'
-                  : 'failed',
+                  : round.tasks.some(task => task.skus.includes(product.sku) && (task.attempts > 0 || task.error === 'INTERRUPTED_ATTEMPT_UNKNOWN'))
+                    ? 'failed'
+                    : 'not_sent',
               stockStatus: sample?.status || null,
               observedAt: sample?.observedAt || null,
             });
@@ -647,6 +655,8 @@ class InventoryService {
         expected: round.expected,
         completed: round.completed,
         failed: round.failed,
+        notSent: round.notSent ?? (round.status === 'missed' ? round.failed : 0),
+        attemptedFailed: round.attemptedFailed ?? (round.status === 'missed' ? 0 : round.failed),
         plannedCount: round.plannedCount || 1,
         tasks: round.tasks,
         plannedAt: round.plannedAt,
@@ -665,7 +675,32 @@ class InventoryService {
       );
       const b = gate?.body || {};
       const now = Date.now();
-      const paused = Boolean(b.pausedReason || (b.cooldownUntil || 0) > now);
+      const config = {
+        ...policy.DEFAULT_CONFIG,
+        ...(await this.m.InventorySetting.findByPk('main'))?.body.config,
+      };
+      const [products, stores, snapshots] = await Promise.all([
+        this.rows('InventoryProduct'),
+        this.rows('InventoryStore'),
+        this.rows('InventorySnapshot'),
+      ]);
+      const productIds = new Set(
+        products.filter(row => row.enabled && row.supported).map(row => row.sku)
+      );
+      const storeIds = new Set(stores.filter(row => row.enabled).map(row => row.storeCode));
+      const fresh = snapshots.filter(
+        row =>
+          productIds.has(row.sku) &&
+          storeIds.has(row.storeCode) &&
+          ['in_stock', 'out_of_stock'].includes(policy.displayStatus(row, { enabled: true }, now))
+      );
+      const coverage = {
+        fresh: fresh.length,
+        expected: productIds.size * storeIds.size,
+        inStock: fresh.filter(row => row.status === 'in_stock').length,
+      };
+      const projection = healthProjection(runtime, b, config, now, coverage);
+      const paused = ['manual_required', 'cooldown', 'automatic_wait'].includes(projection.state);
       const [pendingNotifications, sendingNotifications, queuedRounds, latestRounds] =
         await Promise.all([
           this.m.InventoryDelivery.count({ where: { 'body.status': 'pending' } }),
@@ -679,15 +714,8 @@ class InventoryService {
         ]);
       const lastRound = latestRounds[0];
       return {
-        state: b.pausedReason
-          ? 'manual_required'
-          : b.cooldownUntil > now
-            ? 'cooldown'
-            : b.recovering
-              ? 'recovering'
-              : runtime.lastError
-                ? 'degraded'
-                : 'normal',
+        ...projection,
+        coverage,
         paused,
         queue: { pendingNotifications, sendingNotifications, queuedRounds },
         lastRound: lastRound
@@ -700,7 +728,6 @@ class InventoryService {
           : null,
         taskRps: 1,
         globalRps: 5,
-        reason: b.pausedReason || runtime.lastError || null,
         cooldownUntil: b.cooldownUntil || null,
         riskRatio: b.recent?.length ? b.recent.filter(r => r.risk).length / b.recent.length : 0,
         hourCount: b.hour === Math.floor(now / 3600000) ? b.hourCount : 0,

@@ -1,0 +1,4 @@
+{
+  "api": ["src/services/identityExecutionService.js", "src/services/identityApiService.js"],
+  "frontend": ["frontend/src/utils/identityApiGuide.js"]
+}

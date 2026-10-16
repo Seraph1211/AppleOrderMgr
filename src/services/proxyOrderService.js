@@ -582,20 +582,27 @@ async function changeAccounts(action, body, actorId, accountId) {
         let accountIds = [];
         if (action === 'import') {
           const existing = await AppleId.findAll({
-            where: sequelize.where(sequelize.fn('lower', sequelize.col('apple_id')), {
-              [Op.in]: parsed.map(a => a.appleId),
-            }),
+            where: sequelize.where(
+              sequelize.fn('lower', sequelize.fn('trim', sequelize.col('apple_id'))),
+              {
+                [Op.in]: parsed.map(a => a.appleId.toLowerCase()),
+              }
+            ),
             transaction,
           });
           for (const value of parsed) {
-            const found = existing.find(a => a.appleId.trim().toLowerCase() === value.appleId);
+            const found = existing.find(
+              a => a.appleId.trim().toLowerCase() === value.appleId.toLowerCase()
+            );
             if (found && (!found.isProxyPool || found.password !== value.password))
               throw ApiError.conflict(
                 '部分账号已存在且归属或密码不同，请在已有账号页核对；本批未导入'
               );
           }
           for (const value of parsed) {
-            const found = existing.find(a => a.appleId.trim().toLowerCase() === value.appleId);
+            const found = existing.find(
+              a => a.appleId.trim().toLowerCase() === value.appleId.toLowerCase()
+            );
             const row =
               found ||
               (await AppleId.create(

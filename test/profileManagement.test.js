@@ -358,3 +358,36 @@ describe('订单自身证据与歧义防误配', () => {
     ).toBe(candidate);
   });
 });
+
+describe('取机人信用评级输入', () => {
+  test.each(['A', 'B', 'C', null, ''])('应该接受评级 %s 或显式清空', creditRating => {
+    expect(recipientInput({ creditRating }).creditRating).toBe(creditRating || null);
+  });
+  test.each(['D', 'a', ' A ', ' ', 1, false, [], {}])('应该拒绝非法评级 %j', creditRating => {
+    expect(() => recipientInput({ creditRating })).toThrow('信用评级必须是 A、B、C 或留空');
+  });
+  test('应该在省略评级和渠道时不生成覆盖字段', () => {
+    const updates = recipientInput({ notes: '仅改备注' });
+    expect(updates).not.toHaveProperty('creditRating');
+    expect(updates).not.toHaveProperty('channel');
+  });
+});
+
+test('导入预览标记身份范围变更，跳过与普通字段更新无需全部订单范围', () => {
+  const profiles = {
+    accounts: [],
+    recipients: [{ id: 1, ...data, idCardHash: blindIndex(idCard) }],
+  };
+  const created = buildImportPlan([row(data)], 'recipients', empty);
+  expect(created.records[0].requiresAllOrderScope).toBe(true);
+  const skipped = buildImportPlan([row(data)], 'recipients', empty, { 'g0:skip': true });
+  expect(skipped.records[0].requiresAllOrderScope).toBe(false);
+  const ordinary = buildImportPlan([row({ ...data, notes: '新备注' })], 'recipients', profiles);
+  expect(ordinary.records[0].requiresAllOrderScope).toBe(false);
+  const identity = buildImportPlan([row({ ...data, firstName: '亮' })], 'recipients', profiles, {
+    'g0:firstName': 'source0',
+  });
+  expect(identity.records[0].requiresAllOrderScope).toBe(true);
+  const tag = buildImportPlan([row({ ...data, tag: '新TAG' })], 'recipients', profiles);
+  expect(tag.records[0].requiresAllOrderScope).toBe(true);
+});

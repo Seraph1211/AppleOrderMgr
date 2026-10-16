@@ -243,9 +243,9 @@ JWT 管理端统一响应 `{success:true,data:...}`，所有响应 no-store。�
 | POST /api-admin/unknown/:id/resolve        | admin；`{action:'release',reason}`，5..200字，保存审计，允许将来新请求重新核验 |
 | DELETE /api-admin/tokens/:id               | admin；撤销指定令牌，不返回明文                                                |
 
-元数据 `{token:null\|{id,status,expiresAt,createdAt,lastUsedAt},limits:{requestsPerMinute:50,dailyProviderCalls:100,dedupSeconds:600},usage:{date,providerCalls},service:{configured,enabled,paused,pauseReason}}`。限额是本地保护，不代表供应商实际余额。
+元数据 `{token:null\|{id,status,expiresAt,createdAt,lastUsedAt},limits:{requestsPerMinute:50,dailyProviderCalls:500,dedupSeconds:600},usage:{date,providerCalls},service:{configured,enabled,paused,pauseReason}}`。限额是本地保护，不代表供应商实际余额。
 
-`GET /api/internal/v1/identity/verify` 使用独立令牌认证，在后台JWT之前；仅 name/idCardNumber/token 三个单值字符串，拒绝多余、重复及嵌套键。仅HTTPS（可信代理按现有TRUST_PROXY配置）；HEAD和其他方法405，不执行核验。首次请求同步取得结果；全局槽位忙/500ms间隔未到429，不排队。每员工固定自然分钟桶50次/分钟，API入口每天最多100次新调用，北京日期；相同员工+规范化输入确定结果600秒复用。未知结果409阻断，管理员release前不重发。
+`GET /api/internal/v1/identity/verify` 使用独立令牌认证，在后台JWT之前；仅 name/idCardNumber/token 三个单值字符串，拒绝多余、重复及嵌套键。仅HTTPS（可信代理按现有TRUST_PROXY配置）；HEAD和其他方法405，不执行核验。首次请求同步取得结果；全局槽位忙/500ms间隔未到429，不排队。每员工固定自然分钟桶50次/分钟，API入口每天最多500次新调用，北京日期；相同员工+规范化输入确定结果600秒复用。未知结果409阻断，管理员release前不重发。
 
 200 `{success:true,requestId,data:{verificationId,status:'matched'\|'mismatched',matched:boolean,message,verifiedAt,reused}}`；不返回身份字段或供应商原文。错误 `{success:false,requestId,error:{code,message},verificationId?,status?,matched?,providerCalled?}`。400输入、401令牌、403撤权/停用、405方法、429限频/额度/忙、502异常响应、503关闭/暂停/供应商鉴权额度、504超时未知、409未处置未知。429带Retry-After；所有响应no-store/no-referrer，不支持JSONP或跨域。客户端必须关闭自动重试与预取。
 
@@ -262,8 +262,16 @@ JWT 管理端统一响应 `{success:true,data:...}`，所有响应 no-store。�
 
 ## Apple ID 与取机人
 
+### 取机人信用评级（2026-10-16，已生产发布）
+
+- 新增／编辑取机人接收 `creditRating`，仅接受 A／B／C、null 或空字符串；空字符串归一为 null，非法值返回 400。新增省略时为 null，编辑省略时保留已有评级。
+- 列表、详情、新增和编辑响应增加 `credit_rating`（A／B／C 或 null），沿用既有读取／创建／编辑权限，不改变 TAG 与订单范围。
+- 管理页面列表、列设置、详情及新增／编辑显示信用评级，可选择“未评级”清空。渠道列、筛选、详情及表单隐藏，页面请求不再提交渠道；数据库旧值及已有渠道 API／导入导出契约保留。旧列配置自动移除渠道，并展示新增评级列。
+- 本轮不扩展信用评级批量导入、导出或筛选；既有导入及其他资料更新省略评级时保留原值。
+
 ### Apple ID 管理扩展（2026-10-16，已生产发布）
 
+- Apple ID 大小写保留修复（2026-10-16，本轮开发待发布）：新增账号去首尾空白后保留原文大小写；身份匹配和重复校验仍按 `lower(trim(apple_id))`，由已有数据库唯一索引兜底。普通编辑不修改账号邮箱。列表、详情、复制与软件模板使用已存原文；Excel／腾讯账号表及代抢池导入均遵循同一规则。跨大小写命中已有账号不改写其账号原文；大小写差异本身不产生更新或凭据变更。其他字段差异仍需既有导入预览裁定及编辑／密保权限，不扩大更新范围。
 - Apple ID 列表／详情新增只读 `account_number` 正整数，原 `id` 仍作为所有操作与关联的主键，外部请求不得指定或修改编号。
 - `GET /api/apple-ids/statistics`（本轮开发，待发布）：需 `apple_ids.read`，返回 `{ success: true, data: { total, statuses: [{ status, count }] } }`。统计全库账号，不使用当前页面的 keyword／status／country／分页条件；现行四个状态按规范顺序返回，缺失补 0，未知存量状态保留独立计数，各状态数量之和等于 total。单次数据库分组聚合，只读取状态和数量，不读取密码／密保。
 - `GET /api/apple-ids/selection-ids`（本轮开发，待发布）：需 `apple_ids.read`，仅接受与列表共用的 `keyword`（邮箱模糊查询，最长 255 字符）、`status`（现行四个状态之一）和 `country`（最长 50 字符）筛选，均须为字符串；空字符串视为未筛选，keyword 去除首尾空白。拒绝未知参数、数组／对象及已退役绑定筛选，不接受分页参数。返回 `{ success: true, data: { ids: [内部ID], total } }`，仅查询内部 ID，按 `id DESC` 排序。最多 5000 个；超出返回 400 `APPLE_ID_SELECTION_LIMIT_EXCEEDED`，不截断、不返回部分 ID。列表与本接口使用同一筛选构造逻辑。
@@ -319,7 +327,7 @@ JWT 管理端统一响应 `{success:true,data:...}`，所有响应 no-store。�
 ## 付款任务与付款人姓名
 
 - 新增付款接口沿用项目现有 JavaScript API 的 camelCase 请求／响应，不对既有 snake_case 订单 DTO 做隐式全局转换。普通用户的列表、详情、状态、付款人、链接和刷新入口均同时校验权限和最新 assigneeUserId；转派后原负责人立即失去访问。
-- 本人任务列表支持 page、limit、orderNumber、productNames、recipientTags、officialOrderStatuses、processingStatus；官网多选与订单管理共用分项精确匹配、同义归一、未知原值和未观测项，空选不限制。返回完整范围的 `officialOrderStatuses` 候选，忽略当前官网选择但保留其余筛选和本人归属；`productNames` 是 JSON 数组，最多 100 项，每项去除首尾空格后按完整 `products[].name` 精确匹配且最长 500 字符，多个商品之间为 OR。筛选在分页前完成，与 TAG、订单号、状态和日期等其他维度之间为 AND。旧 `productModel`、`productKeyword` 继续兼容且与商品名称条件命中同一 products 元素。`recipientTags` 同样最多 100 项、每项最长 500 字符，多个 TAG 之间为 OR；兼容单值 `recipientTag`。所有来源订单实时使用关联档案 TAG，缺失不回退来源。
+- 本人任务列表支持 page、limit、orderNumber、productNames、recipientTags、officialOrderStatuses、processingStatus；官网多选与订单管理共用分项精确匹配、同义归一、未知原值和未观测项，空选不限制。返回完整范围的 `officialOrderStatuses` 候选，忽略当前官网选择但保留其余筛选和本人归属；`productNames` 是 JSON 数组，最多 100 项，每项去除首尾空格后按完整 `products[].name` 精确匹配且最长 500 字符，多个商品之间为 OR。筛选在分页前完成，与 TAG、订单号、状态和日期等其他维度之间为 AND。旧 `productModel`、`productKeyword` 继续兼容且与商品名称条件命中同一 products 元素。`recipientTags` 同样最多 100 项、每项最长 500 字符，多个 TAG 之间为 OR；兼容单值 `recipientTag`。AOS来源TAG优先，缺失时按姓名＋证件后四位唯一匹配档案兜底，无法匹配则缺失。
 - `PUT /api/payment-tasks/:id` 是行级原子保存接口，body 可包含 `{ processingStatus?, processingNotes?, expectedVersion?, payerName?, expectedPayerVersion? }`，幂等键通过请求头传入。接口只更新实际提交且发生变化的字段；任务字段要求 `payment_tasks.handle_own`，付款人字段要求 `payment_tasks.payer.edit_own`，同时修改时在同一事务提交或全部回滚。四态为 pending、processing、completed、exception；官网状态、复制链接、登记付款人、到期和转派不自动改变处理状态。状态变更与备注填写、保存无关，备注可空。兼容的独立付款人接口仍保留。
 - 外部付款人姓名在四种状态、到期、官网已付／退款／取消后仍可维护。`PUT /api/payment-tasks/:id/payer` 使用 `{ payerName: string | null, expectedVersion, reason? }`；系统不提供付款人候选接口，不创建付款人账号或主数据。
 - 单项和当前页勾选批量复制订单信息均通过既有链接接口逐单校验 `payment_tasks.link.read_own` 和当前任务归属，接口直接返回该任务关联订单的 `orders.orderUrl`；前端结合本人任务 DTO 生成 `orders.id || 商品信息 || 支付方式 || 付款截止时间 || 订单链接`，批量结果按当前列表顺序每单一行。商品名称优先、型号兜底，每项按 `名称 x 数量` 展示，多商品使用 `、` 连接；`WECHAT`／`WECHAT PAY`／`微信支付` 显示为 `微信`，`ALIPAY` 显示为 `支付宝`，其他非空值保留原文，商品或支付方式缺失时使用 `-`，付款截止时间仅由任务 DTO 的来源下单时间 `orderDate + 30 分钟` 计算，固定北京时间 `YY/MM/DD HH:mm`；来源时间缺失、不含时分／时区或无效时使用 `-`，不回退官网时间；链接保持普通 URL。接口不按核实、截止时间、人工处理状态或官网支付／订单状态限制复制；链接为空时返回资源不存在，响应设置 `Cache-Control: no-store`，事件和日志不保存原始链接。
@@ -366,7 +374,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `GET /api/orders` 和 `GET /api/orders/export` 支持 `statuses`、`productNames`、`pickupStores`、`recipientTags` 四个 JSON 数组筛选参数，每项最多 100 个值。同一数组内按 OR 匹配，不同筛选维度之间按 AND 组合；订单状态必须属于现有状态枚举，商品名称和门店按完整值精确匹配。继续兼容既有单值 `status`、`productModel`、`pickupStore` 参数。
 - `pickupDateFrom` / `pickupDateTo` 按邮件预约日期 `email_pickup_date` 筛选，格式为 `YYYY-MM-DD`，允许单边范围，双边包含当天；同一天表示单日。非法日期、数组和反向范围返回 400。列表、候选、导出及官网刷新筛选全选共用条件；兼容单日 `pickupDate`，同时传入时与范围取交集。
 - `pickupDate` 仅接受 `YYYY-MM-DD`，匹配邮件预约日期 `email_pickup_date`；不使用下单日期或实际取货日期替代。列表和详情继续返回独立的官网派生 `pickup_time`、`official_pickup_date`、`official_pickup_time_slot`，供核对官网履约提示。
-- `recipientTags` 按列表实际展示的 `recipient_tag` 精确匹配，最多 100 项、每项最长 500 字符；数组值保留内部逗号及首尾空格。所有来源订单只使用关联取机人当前档案 TAG；未关联或空值为缺失状态，不回退来源或历史订单 TAG。多个 TAG 为 OR，与其他维度为 AND，分页与导出前过滤，始终叠加已有订单访问范围。
+- `recipientTags` 按列表实际展示的 `recipient_tag` 精确匹配，最多 100 项、每项最长 500 字符；数组值保留内部逗号及首尾空格。AOS来源TAG优先，缺失时按姓名＋证件后四位唯一匹配取机人当前TAG；不依赖旧关联，不回退历史orders.tag。多个 TAG 为 OR，与其他维度为 AND，分页与导出前过滤，始终叠加已有订单访问范围。
 - `GET /api/orders/filter-options` 新增 `recipientTags`，来自当前账号可见的全部订单展示 TAG，排除空值、去重排序，不受分页或前 5000 条订单限制。返回 `productNames` 和 `stores`，候选来自订单完整 `products[].name` 与邮件 `email_pickup_info.storeName`，不从当前分页临时拼接。兼容返回 `productModels`，但订单管理页面不再使用型号筛选。
 - 订单管理主表不展示 `validation_status` 和 `apple_id` 列；校验问题仍通过行首提示图标进入原异常说明，异常行不使用整行红色背景。上述字段仍保留在既有 DTO、搜索和详情能力中。
 - `keyword` 为纯正整数且不超过 PostgreSQL `INTEGER` 上限时，额外对系统订单 `orders.id` 做精确匹配；官网订单号、Apple ID、取机人和商品等既有模糊搜索保持不变。
@@ -406,13 +414,13 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 以下端点均要求管理员及 `payment_dispatch.configure`，普通付款人员不能读取规则和目标账号集合。
 
-- `GET /api/payment-dispatch/tag-rules`：返回 `data: { items, tagOptions }`。规则字段为 `id, name, enabled, recipientTags, assigneeUserIds, version, updatedBy, createdAt, updatedAt`；TAG 候选取系统取机人档案中的非空白 TAG 原值，不限任务当前页。可手工输入尚未入库的 TAG。
+- `GET /api/payment-dispatch/tag-rules`：返回 `data: { items, tagOptions }`。规则字段为 `id, name, enabled, recipientTags, assigneeUserIds, version, updatedBy, createdAt, updatedAt`；TAG 候选取全部订单按AOS优先及唯一档案兜底计算的非空最终TAG，并保留既有规则值，不限任务当前页。可手工输入尚未入库的 TAG。
 - `POST /api/payment-dispatch/tag-rules`：提交 `{ name, enabled, recipientTags, assigneeUserIds }`，返回 201 与新规则。名称去首尾空格后 1–100 字符；TAG 数组 1–100 项、每项 1–500 字符、非空白原文及去重；账号数组 1–100 个互不重复的正整数。新增账号必须正常且具备完整付款执行权限，允许暂未开启接单／没有容量。
 - `PUT /api/payment-dispatch/tag-rules/:id`：提交完整规则字段及 `expectedVersion`（非负整数）；启停也使用此端点。允许保留该规则原有失效账号；新增账号仍按上述资格校验。
 - `DELETE /api/payment-dispatch/tag-rules/:id`：请求体 `{ expectedVersion }`，删除规则，返回 `data: { id }`。
 - 不存在返回 404；参数非法返回 400；同 TAG 在启用规则中重复返回 409 `TAG_RULE_CONFLICT`；过期版本返回 409 `CONCURRENT_MODIFICATION`。增改删与分配共用事务调度锁并原子记录审计。停用规则允许 TAG 重叠，重新启用必须检查。
 - `GET /api/payment-dispatch/tasks` 的任务增加 `autoAssignment: { ruleId, ruleName, reasonCode, reason }`（已分配为 null）；只显示当前规则名称和待分配原因，不向本人任务端点暴露账号规则。原因区分全局关闭、手动模式、非待处理、订单不可付款、时间未知／过期、入口缺失、规则内无人可接单、规则内容量已满和等待调度。展示按查询时状态派生，不把旧原因持久化到任务。
-- 自动分配对所有来源订单的当前取机人 TAG 完整匹配（保留原文、区分大小写）；命中后只在规则账号内按现有负载算法分配，无合格账号时等待。空 TAG／未命中仅在未绑定启用 TAG 规则的普通账号中沿用默认算法。保存后下次调度生效；未分配存量参与，已分配保持负责人，人工转派不受规则专属账号限制，但接收人仍须拥有订单当前 TAG 范围。停用／删除会让未分配订单重新走其他启用规则或默认分配。
+- 自动分配对所有来源订单按最终 TAG 完整匹配（保留原文、区分大小写）；命中后只在规则账号内按现有负载算法分配，无合格账号时等待。空 TAG／未命中仅在未绑定启用 TAG 规则的普通账号中沿用默认算法。保存后下次调度生效；未分配存量参与，已分配保持负责人，人工转派不受规则专属账号限制，但接收人仍须拥有订单当前 TAG 范围。停用／删除会让未分配订单重新走其他启用规则或默认分配。
 
 ## AOS 文件入库与数据源切换契约（2026-09-10）
 
@@ -721,7 +729,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - Apple ID 接收／返回 notes，country 默认中国；列表支持 bound=true/false。详情 includeSecrets=true 要求 apple_ids.secrets.read，返回 security_qa。取机人新增 realPhone，返回 real_phone，phone 为下单手机号；地址在具有 recipients.edit 或 recipients.export_sensitive 权限时可读。账号密码读取仍要求 apple_ids.read。
 - PUT /recipients/:id/binding：{appleIdRef: 正整数或 null, expectedAppleIdRef: 当前值或 null}，要求 recipients.bind_apple_ids；账号被其他人占用返回 409，不自动抢占。GET /recipients/:id/bindings 和 /apple-ids/:id/bindings 返回历史，双方读取权限同时检查。绑定不改状态。
 - 导出 includeSensitive=true 要求 recipients.export_sensitive，默认脱敏。完整导出按腾讯文档“信息导入模板”公式生成 UTF-8 TXT，每条档案一行、无表头、不附加其他列；空账号输出空字符串。默认导出仍为脱敏 Excel。
-- POST /import/preview 支持 files（兼容 file），返回服务器会话 token、有效行／差异／来源位置／汇总；execute 提交 {type,sessionToken,decisions}，差异决策为 keep/source/skip，未裁定不能执行。跨资源写入分别检查账号导入／编辑、取机人编辑／绑定权限；执行前重验档案摘要。
+- POST /import/preview 支持 files（兼容 file），返回服务器会话 token、有效行／差异／来源位置／汇总；records[].requiresAllOrderScope 表示未跳过的取机人新增或姓名／身份证／TAG变更需要全部订单范围；前端据此阻止无范围执行，服务端执行时重新计算且不信任客户端布尔值；execute 提交 {type,sessionToken,decisions}，差异决策为 keep/source/skip，未裁定不能执行。跨资源写入分别检查账号导入／编辑、取机人编辑／绑定权限；执行前重验档案摘要。
 - POST /import/associations/preview 和 /execute：要求 orders.edit、orders.read、recipients.read、apple_ids.read；预览未关联订单并选中执行，只补空关联，不改快照、TAG、付款任务；无证据或歧义保持未关联。取机人统一按姓名＋身份证后四位唯一匹配（完整证件可提取尾号），手机号和邮箱差异不拦截，缺尾号不以联系方式代替。
 
 基础档案增量补充：
@@ -738,7 +746,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 - `GET /api/users/order-tag-options` 仅 users.permissions.manage 可用，返回 `{tags: string[]}`，来源为 recipients.tag 非空白去重原值。允许保留暂无订单的已授权 TAG。精确区分大小写和首尾空白，不拆分 TAG；最多 500 项，每项最多 500 字符，空白值拒绝。
 - /auth/me 和登录用户信息返回 orderAccess。管理员固定全部；新普通用户默认指定 TAG 空集合，绑定 TAG 不授予读取或操作权限。
 - orders.read/edit/export/refresh/payer.edit 均受范围限制；列表、分页总数、筛选候选、导出、详情、批量动作、刷新 job/batch、渠道查询和订单统计采用同一限制。指定 ID 混合越权批次整体拒绝；不存在或不可见订单统一 404。刷新全部只提交当前范围，每位发起人复用自己的批次，撤权后不可读取超出范围的旧批次。
-- 本人付款任务展示、链接、刷新、付款人登记按既有任务权限、所有权与当前档案 TAG 范围取交集，不额外要求 orders.read；不能凭任务归属调用订单管理接口。
+- 本人付款任务展示、链接、刷新、付款人登记按既有任务权限、所有权与最终订单 TAG 范围取交集，不额外要求 orders.read；不能凭任务归属调用订单管理接口。
 - 渠道改名仅允许全部订单范围且有 channels.rename 权限者执行；在同一事务更新授权 TAG 与审计，目标 TAG 已存在档案或已有授权时拒绝。订单普通编辑不开放 tag 写入。
 - 仪表板、统计、基础档案内的订单聚合和历史订单关联入口均限制订单范围；基础档案自身的读取权限不改变。
 
@@ -1120,6 +1128,8 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 | POST /notifications/test | 当前机器人合成测试排队，与正式发送共用速率                                                                                  |
 | GET /deliveries          | 分页投递状态，accepted 不代表群内已读                                                                                       |
 
+2026-10-16 库存状态与覆盖增量（本地实现待验收）：`GET /health` 返回 `state`（disabled/offline/manual_required/cooldown/recovering/automatic_wait/data_stale/degraded/normal）、`automaticWait`、`actionRequired`、`stoppedAt`（可空）、`nextAction`、`waitUntil`、`dataStale`，以及 `coverage:{fresh,expected,inStock}`。Worker 心跳超过 120 秒为 offline；数据按成功时固化的有效期判断。`GET /scope` 仅附安全业务提示 `stoppedAt/nextAction/waitUntil/dataStale`，不返回原始代理错误或配置。`GET /rounds` 和详情保留 failed 为缺失覆盖数，新增 `notSent/attemptedFailed`；tasks 的 `not_sent` 与 `failed` 分别表示未发送、已尝试失败／未知，矩阵未发送为 not_sent。未发送等待不递增 attempts，不生成库存失败快照，截止时才记录真实缺口。单次风控不强制失效全库快照。恢复事件保留历史，旧 pending recovery 投递标 skipped/RECOVERY_NOTIFICATION_RETIRED；恢复通知为 health 单条当前覆盖摘要，不承诺覆盖完整或长期稳定。无新增端点、无凭据回显。
+
 库存展示与统计口径见[库存监控](库存监控.md)。个人筛选不修改全局采集清单；通知筛选仅影响提醒。不存在设置任意请求 URL 或任意 SQL 的接口。
 
 ### 单台入库识别与核对（2026-10-10）
@@ -1207,11 +1217,11 @@ API 进程每三分钟扫描付款任务关联订单；仅核对 `orders.created
 
 ## 订单取机人 TAG 统一契约（2026-10-14）
 
-本轮已实现、验收并生产发布，证据见[统一方案](../planning/订单取机人TAG统一方案.md)。所有来源及历史订单的业务 TAG 唯一读取 `orders.recipient_ref` 关联的 `recipients.tag`，档案修改实时生效。NULL、空串、全空白为缺失；非空值保留原字符串并区分大小写精确匹配。未关联或缺失不回退来源。`orders.tag`、`source_recipient_tag` 及 AOS 快照仅保留原始记录，不覆盖。
+2026-10-16 已按批准规则完成实现、生产发布与独立只读验收，见[统一方案](../planning/订单取机人TAG统一方案.md)。AOS订单优先使用非空 `source_recipient_tag`；缺失或无AOS来源时，按来源姓名与显式身份证后四位唯一匹配 `recipients` 并读取当前 TAG，不信任旧 `recipient_ref`。无候选、多候选、无有效身份、来源姓名冲突或档案TAG为空时缺失。完整身份证快照可能来自旧档案，不额外要求完整号码一致；不从密文截取尾号。NULL、空串和全空白TAG均缺失；非空值保留原字符串并区分大小写精确匹配。历史 `orders.tag` 不作回退，原始来源、订单关联与档案不自动改写。
 
-订单响应 `recipient_tag`、`tag` 为当前值或 null，新增 `recipient_tag_state`（unlinked／missing／present）；付款对应 `recipientTag` 和 `recipientTagState`。列表、详情、导出、筛选候选、仪表板、渠道聚合和用户 TAG 范围采用相同规则；缺失值不构成真实渠道或授权 TAG。本人付款任务所有权须与当前 TAG 范围相交，不要求额外的 orders.read。
+订单显示姓名优先来源快照，详情顶层 `recipient_name` 与最终TAG匹配身份一致，嵌套 `recipient` 保留实际关联档案且不迁移外键。订单响应 `recipient_tag`、`tag` 为最终值或 null，保留 `recipient_tag_state`（unlinked／missing／present），新增 `recipient_tag_source`（aos／recipient／null）；付款对应 `recipientTag`、`recipientTagState`、`recipientTagSource`。有效AOS TAG或唯一候选兜底均为present，缺失统一展示“TAG 缺失”，不能仅凭关联为空判定缺失。列表、详情、导出、筛选候选、仪表板、渠道聚合和用户 TAG 范围采用相同规则；缺失值不构成真实渠道或授权 TAG。本人付款任务所有权须与当前 TAG 范围相交，不要求额外的 orders.read。
 
-自动分配对所有来源按当前 TAG 匹配规则，候选人也必须具有当前 TAG 范围；缺失只允许全部范围账号接单。无匹配规则沿用普通账号集合，已分配历史任务不自动转派。新企微通知采用当前值，旧投递记录保留。渠道改名仅更新档案 TAG 和授权配置，不改来源快照。修改既有档案 TAG、删除、导入覆盖 TAG、补关联等影响订单范围的操作要求全部范围及原功能权限。
+自动分配对所有来源按当前 TAG 匹配规则，候选人也必须具有当前 TAG 范围；缺失只允许全部范围账号接单。无匹配规则沿用普通账号集合，已分配历史任务不自动转派。新企微通知采用当前值，旧投递记录保留。含AOS固定来源TAG的渠道拒绝改名；纯档案兜底渠道才事务更新档案TAG和授权配置，不改来源快照。新建、删除、修改姓名／身份证／TAG和导入等可能改变候选与订单范围的操作要求全部范围及原功能权限。
 
 ## 商品名称展示契约（2026-10-15）
 

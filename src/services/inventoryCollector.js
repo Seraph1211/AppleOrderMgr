@@ -2,6 +2,7 @@ const inventoryFailure = require('../utils/inventoryFailure');
 const { randomUUID } = require('crypto');
 const { Op } = require('sequelize');
 const policy = require('./inventoryPolicy');
+const { WAIT_REASONS } = require('./inventoryHealthPolicy');
 const { REQUEST_CONCURRENCY, TASK_LEASE_MS } = require('./inventoryConcurrency');
 
 /** 持久化库存轮次与样本事务；驱动网络由 Worker 注入。 */
@@ -85,7 +86,7 @@ class InventoryCollector {
               where: { 'body.status': 'queued' },
               order: [['createdAt', 'ASC']],
             });
-            const expired = queued.filter(r => now > r.plannedAt + r.intervalSeconds * 1000);
+            const expired = queued.filter(r => now >= r.plannedAt + r.intervalSeconds * 1000);
             await this.s.put(
               'InventoryRound',
               expired.map(r => ({
@@ -97,7 +98,7 @@ class InventoryCollector {
               })),
               transaction
             );
-            const waiting = queued.filter(r => now <= r.plannedAt + r.intervalSeconds * 1000);
+            const waiting = queued.filter(r => now < r.plannedAt + r.intervalSeconds * 1000);
             // 自动与手动交替，手动最多两个排队，防止任何一方饿死。
             round = waiting.find(x => x.source !== state.lastSource) || waiting[0];
             if (!round) return null;
@@ -110,10 +111,10 @@ class InventoryCollector {
             task.status = 'failed';
             task.error = 'INTERRUPTED_ATTEMPT_UNKNOWN';
           }
-          if (now > round.plannedAt + round.intervalSeconds * 1000)
+          if (now >= round.plannedAt + round.intervalSeconds * 1000)
             for (const task of round.tasks.filter(t => t.status === 'pending')) {
-              task.status = 'failed';
-              task.error = 'ROUND_DEADLINE_EXCEEDED';
+              task.status = task.attempts ? 'failed' : 'not_sent';
+              task.error = task.error || 'ROUND_DEADLINE_EXCEEDED';
             }
           this.updateLease(round, state);
           const running = round.tasks.filter(t => t.status === 'running');
@@ -175,13 +176,32 @@ class InventoryCollector {
           )
             return { ignored: true };
           const actual = Boolean(result.id);
-          // 并发容量或限速等待不是已发出的失败，不能污染有效库存。
-          if (!actual && result.outcome === 'REQUEST_IN_FLIGHT') {
-            task.status = 'pending';
-            task.notBefore = Math.max(now + 1000, result.until || 0);
+          // 未发送请求没有库存结论；可等待状态保留至原轮次截止。
+          if (!actual && !['INVENTORY_VALID', 'PARTIAL_RESPONSE'].includes(result.outcome)) {
+            task.error = result.outcome;
+            if (result.outcome !== 'REQUEST_IN_FLIGHT') {
+              state.stoppedAt = state.stoppedAt || (state.lastError ? null : now);
+              state.lastError = result.outcome;
+              state.stopReason = result.outcome;
+              state.waitUntil = result.until || null;
+            }
+            const deadline = round.plannedAt + round.intervalSeconds * 1000;
+            const waiting = WAIT_REASONS.has(result.outcome) && now < deadline;
+            task.status = waiting ? 'pending' : task.attempts ? 'failed' : 'not_sent';
+            task.notBefore = waiting
+              ? Math.min(deadline, Math.max(now + 1000, result.until || 0))
+              : null;
+            // 不可自动解除的阻断终止未发任务，但不伪造请求失败。
+            if (!waiting)
+              for (const other of round.tasks.filter(t => t.status === 'pending')) {
+                other.status = other.attempts ? 'failed' : 'not_sent';
+                other.error = result.outcome;
+              }
             this.updateLease(round, state);
-            await this.s.put('InventoryRound', [round], transaction);
-            return { applied: true, deferred: true };
+            if (round.tasks.every(t => ['complete', 'failed', 'not_sent'].includes(t.status)))
+              await this.finishRound(round, context);
+            else await this.s.put('InventoryRound', [round], transaction);
+            return { applied: true, deferred: waiting, enabled: settings.config.enabled };
           }
           if (actual) task.attempts += 1;
           const valid = ['INVENTORY_VALID', 'PARTIAL_RESPONSE'].includes(result.outcome);
@@ -207,7 +227,9 @@ class InventoryCollector {
           if (valid && !inconsistent) await this.applyRows(round, data, context);
           const success = valid && !inconsistent && data.length > 0;
           if (!success || result.outcome === 'PARTIAL_RESPONSE') {
+            state.stoppedAt = state.stoppedAt || (state.lastError ? null : now);
             state.lastError = result.outcome;
+            state.stopReason = result.outcome;
             const oldRows = await this.s.rows('InventorySnapshot', {
               transaction,
               where: { 'body.sku': { [Op.in]: task.skus } },
@@ -254,20 +276,14 @@ class InventoryCollector {
             'TRANSPORT_UNKNOWN',
             'UPSTREAM_ERROR',
             'PROXY_TUNNEL_UNAVAILABLE',
+            'PROXY_SESSION_EXPIRED',
             'RESPONSE_READ_FAILED',
           ].includes(result.outcome);
-          const blocked = !actual && !success;
           if (
-            blocked &&
-            ['TARGET_COOLDOWN', 'REQUEST_IN_FLIGHT'].includes(result.outcome) &&
-            now < round.plannedAt + round.intervalSeconds * 1000
-          ) {
-            task.status = 'pending';
-            task.notBefore = Math.max(now + 1000, result.until || 0);
-          } else if (
             retryable &&
             task.attempts < 3 &&
-            round.retries < Math.floor(round.tasks.length * 0.2)
+            round.retries < Math.floor(round.tasks.length * 0.2) &&
+            now < round.plannedAt + round.intervalSeconds * 1000
           ) {
             task.status = 'pending';
             task.notBefore = now + 5000;
@@ -276,12 +292,6 @@ class InventoryCollector {
             task.status = success ? 'complete' : 'failed';
             task.error = success ? null : result.outcome;
           }
-          // 保护暂停不留无限期队列；剩余范围记为未完成。
-          if (blocked && task.status === 'failed')
-            for (const other of round.tasks.filter(t => t.status === 'pending')) {
-              other.status = 'failed';
-              other.error = result.outcome;
-            }
           if (
             [
               'TARGET_RATE_LIMITED',
@@ -291,19 +301,13 @@ class InventoryCollector {
               'CATALOG_MISMATCH',
             ].includes(result.outcome)
           ) {
-            const interrupted = await this.s.rows('InventorySnapshot', { transaction });
-            await this.s.put(
-              'InventorySnapshot',
-              interrupted.map(row => ({ ...row, interrupted: true, hardInterrupted: true })),
-              transaction
-            );
             state.lastRiskAt = now;
             state.riskFreeSince = null;
             state.rampReady = false;
             state.completeStreak = 0;
           }
           this.updateLease(round, state);
-          if (round.tasks.every(t => ['complete', 'failed'].includes(t.status)))
+          if (round.tasks.every(t => ['complete', 'failed', 'not_sent'].includes(t.status)))
             await this.finishRound(round, context);
           else await this.s.put('InventoryRound', [round], transaction);
           // Settings participates in the transaction via service.locked.
@@ -402,6 +406,7 @@ class InventoryCollector {
           const event = { id: sampleId, ...snapshot, kind };
           events.push(event);
           if (
+            kind !== 'recovery' &&
             settings.config.enabled &&
             settings.config.notificationsEnabled &&
             !snapshot.interrupted &&
@@ -435,6 +440,9 @@ class InventoryCollector {
       if (samples.length) {
         state.lastSuccessAt = now;
         state.lastError = null;
+        state.stoppedAt = null;
+        state.stopReason = null;
+        state.waitUntil = null;
       }
     } catch (error) {
       throw inventoryFailure(error);
@@ -522,6 +530,7 @@ class InventoryCollector {
       const got = new Set(samples.map(r => `${r.sku}|${r.storeCode}`));
       const expected = [];
       const missing = [];
+      let notSent = 0;
       const old = new Map(
         (await this.s.rows('InventorySnapshot', { transaction })).map(r => [r.id, r])
       );
@@ -542,7 +551,9 @@ class InventoryCollector {
             failed: !got.has(key),
           };
           expected.push(row);
-          if (!got.has(key))
+          if (!got.has(key)) {
+            if (!round.tasks.some(task => task.skus.includes(product.sku) && (task.attempts > 0 || task.error === 'INTERRUPTED_ATTEMPT_UNKNOWN')))
+              notSent += 1;
             missing.push({
               ...row,
               observedAt: null,
@@ -557,12 +568,15 @@ class InventoryCollector {
                 'ROUND_COVERAGE_MISSING',
               lastAttemptAt: now,
             });
+          }
         }
       await this.s.put('InventorySnapshot', missing, transaction);
       await this.aggregate([], [], expected, context);
       Object.assign(round, {
         completed: got.size,
         failed: round.expected - got.size,
+        notSent,
+        attemptedFailed: round.expected - got.size - notSent,
         status: got.size === round.expected ? 'complete' : 'partial',
         finishedAt: now,
       });

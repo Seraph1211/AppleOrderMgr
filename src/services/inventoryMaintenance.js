@@ -20,6 +20,8 @@ class InventoryMaintenance {
         try {
           state.pausedReason = null;
           state.pausedEgress = {};
+          state.providerFailures = 0;
+          state.providerFailedToken = null;
           state.requiredAlternateEgress = null;
           state.recovering = true;
           state.recoveryFailures = 0;

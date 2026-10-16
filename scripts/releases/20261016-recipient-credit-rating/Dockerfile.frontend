@@ -1,0 +1,7 @@
+ARG BASE_IMAGE=apple-order-mgr-frontend:20261016-inventory-iproyal
+FROM ${BASE_IMAGE}
+COPY --chown=node:node frontend/src/pages/Recipients.jsx /app/src/pages/Recipients.jsx
+COPY --chown=node:node frontend/src/constants/tableColumns.js /app/src/constants/tableColumns.js
+COPY --chown=node:node frontend/src/components/ProfileFormModal.jsx /app/src/components/ProfileFormModal.jsx
+COPY --chown=node:node frontend/src/components/ProfileDetailsModal.jsx /app/src/components/ProfileDetailsModal.jsx
+RUN npm run lint && npm run build

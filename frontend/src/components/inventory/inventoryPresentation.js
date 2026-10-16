@@ -1,5 +1,9 @@
 export const STATUS = {
-  degraded: '异常 / 降速',
+  degraded: '查询异常',
+  automatic_wait: '自动等待',
+  data_stale: '数据失效',
+  offline: 'Worker 离线',
+  not_sent: '未发送',
   test: '合成测试',
   health: '运行提醒',
   delivery_unknown: '结果未知',
@@ -35,7 +39,10 @@ export const STATUS = {
 /** 北京时间展示，空值不伪造成功时间。 */
 export function timeText(value) {
   return value
-    ? new Date(value).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })
+    ? new Date(value).toLocaleString('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        hour12: false,
+      })
     : '—';
 }
 
@@ -44,6 +51,16 @@ const FAILURE_TEXT = {
   PROXY_TUNNEL_UNAVAILABLE: '代理隧道暂时不可用，等待有限重试',
   PROXY_CONNECT_REJECTED: '代理拒绝连接，出口已暂停',
   PROXY_AUTH_FAILED: '代理认证失败，需核对配置',
+  PROXY_RECOVERY_EXHAUSTED: '代理出口恢复次数已用尽，需管理员处理',
+  PROXY_PACKAGE_EXPIRED: '代理套餐配置已到期，需管理员核查',
+  PROXY_SESSION_EXPIRED: '代理出口会话已失效，等待更换出口',
+  PROXY_PROVIDER_COOLDOWN: '等待供应商冷却，之后自动更换并验证出口',
+  ALTERNATE_EGRESS_REQUIRED: '等待更换并验证新出口',
+  RECOVERY_PROBE_REQUIRED: '等待有限恢复探测',
+  REQUEST_IN_FLIGHT: '等待请求许可或出口验证',
+  ROUND_DEADLINE_EXCEEDED: '轮次已截止，剩余查询未发送',
+  INTERRUPTED_ATTEMPT_UNKNOWN: '在途请求中断，结果未知',
+  RECOVERY_NOTIFICATION_RETIRED: '恢复观察已改为健康摘要，跳过逐门店通知',
   ROUND_COVERAGE_MISSING: '本轮未取得该商品和门店的有效结果',
   REQUEST_BUDGET_EXHAUSTED: '已达到请求预算上限',
   TARGET_COOLDOWN: '采集正在保护冷却',

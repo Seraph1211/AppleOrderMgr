@@ -1,0 +1,16 @@
+{
+  "api": [
+    "src/models/Recipient.js",
+    "src/utils/profileInput.js",
+    "src/controllers/recipientController.js"
+  ],
+  "frontend": [
+    "frontend/src/pages/Recipients.jsx",
+    "frontend/src/constants/tableColumns.js",
+    "frontend/src/components/ProfileFormModal.jsx",
+    "frontend/src/components/ProfileDetailsModal.jsx"
+  ],
+  "migration": [
+    "migrations/20261016000003-add-recipient-credit-rating.js"
+  ]
+}

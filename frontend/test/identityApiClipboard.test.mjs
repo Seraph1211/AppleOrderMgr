@@ -17,7 +17,7 @@ test('说明强制HTTPS、三个占位参数和未知语义', () => {
   );
   for (const value of [
     '50',
-    '100',
+    '500',
     '600',
     '90',
     'matched=false',
@@ -28,6 +28,7 @@ test('说明强制HTTPS、三个占位参数和未知语义', () => {
   ])
     assert.ok(guide.includes(value));
   assert.ok(!guide.includes('http://'));
+  assert.ok(!guide.includes('每天最多 100 次新供应商调用'));
 });
 
 test('支持异步ClipboardItem且仅获取一次文本', async () => {

@@ -1,6 +1,6 @@
 import ProductName from '../ProductName';
 import { getProductDisplayName } from '../../utils/productNaming';
-import { timeText } from './inventoryPresentation';
+import { timeText, failureText } from './inventoryPresentation';
 import { useEffect, useState } from 'react';
 import { inventoryApi } from '../../api/inventoryApi';
 import {
@@ -53,7 +53,7 @@ export default function InventoryCoverageDialog({ id, onClose }) {
           <>
             <p className="text-sm text-gray-600">
               计划 {timeText(data.plannedAt)} · 完成 {data.completed} / {data.expected} · 失败{' '}
-              {data.failed}
+              {data.attemptedFailed ?? data.failed} · 未采 {data.notSent || 0}
               {data.plannedCount > 1 ? ` · 含 ${data.plannedCount} 个错过的计划轮次` : ''}
             </p>
             {!data.detailAvailable ? (
@@ -120,7 +120,7 @@ export default function InventoryCoverageDialog({ id, onClose }) {
                       <Status value={task.status} />
                     </td>
                     <td className="px-3 py-3">{task.attempts}</td>
-                    <td className="px-3 py-3">{task.error || '—'}</td>
+                    <td className="px-3 py-3">{failureText(task.error)}</td>
                   </tr>
                 ))}
               </Table>

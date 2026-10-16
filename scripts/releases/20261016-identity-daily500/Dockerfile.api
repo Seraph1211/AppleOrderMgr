@@ -1,0 +1,4 @@
+ARG BASE_IMAGE=apple-order-mgr-api:20261016-recipient-credit-rating-amd64
+FROM ${BASE_IMAGE}
+COPY --chown=node:node src/services/identityExecutionService.js /app/src/services/identityExecutionService.js
+COPY --chown=node:node src/services/identityApiService.js /app/src/services/identityApiService.js

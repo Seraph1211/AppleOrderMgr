@@ -339,6 +339,7 @@ export default function Orders() {
           recipientName: order.recipient_name || '-',
           recipientTag: order.recipient_tag,
           recipientTagState: order.recipient_tag_state,
+          recipientTagSource: order.recipient_tag_source,
           recipientIdCard: order.recipient_id_card || '-',
           recipientEmail: order.recipient_email || '-',
           recipientPhone: order.recipient_phone || '-',
@@ -521,7 +522,13 @@ export default function Orders() {
           <span className="text-gray-400">-</span>
         );
       case 'recipientTag':
-        return <RecipientTag value={value} state={order.recipientTagState} />;
+        return (
+          <RecipientTag
+            value={value}
+            state={order.recipientTagState}
+            source={order.recipientTagSource}
+          />
+        );
 
       case 'emailOrderStatus': {
         const badge = getDisplayOrderStatusBadge(order.displayOrderStatus);
@@ -883,13 +890,13 @@ export default function Orders() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">取机人 TAG</label>
+            <label className="block text-sm font-medium text-gray-700 mb-2">订单 TAG</label>
             <TagMultiSelect
               enableSelectAll
               options={filterOptions.recipientTags || []}
               value={filters.recipientTags}
               onChange={value => handleFilterChange('recipientTags', value)}
-              ariaLabel="取机人 TAG 筛选"
+              ariaLabel="订单 TAG 筛选"
               placeholder="全部 TAG"
               itemLabel="TAG"
             />
@@ -1114,7 +1121,11 @@ export default function Orders() {
                     <p className="mt-1 truncate text-xs text-gray-600">
                       取机人：{order.recipientName || '-'}
                       {' · '}
-                      <RecipientTag value={order.recipientTag} state={order.recipientTagState} />
+                      <RecipientTag
+                        value={order.recipientTag}
+                        state={order.recipientTagState}
+                        source={order.recipientTagSource}
+                      />
                     </p>
                     <p className="mt-1 text-xs text-gray-600">
                       实际取货日期：{order.actualPickupDate || '尚未获取'}

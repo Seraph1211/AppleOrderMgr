@@ -1,5 +1,5 @@
 const { getProductDisplayName, resolveProductName } = require('../utils/productNaming');
-const { getRecipientTag, getRecipientTagState } = require('./recipientTagService');
+const { getRecipientTag, getOrderRecipientName } = require('./recipientTagService');
 const { getSourcePaymentMethod, isWechatPayment } = require('../utils/paymentMethod');
 const { PNG } = require('pngjs');
 const jsQR = require('jsqr');
@@ -99,9 +99,7 @@ function buildNotificationText(order, url) {
     : method.toLowerCase() === 'alipay'
       ? '支付宝'
       : method || '-';
-  const tag =
-    getRecipientTag(order) ||
-    (getRecipientTagState(order) === 'unlinked' ? '未关联取机人' : '未设置 TAG');
+  const tag = getRecipientTag(order) || 'TAG 缺失';
   const deadline = getPaymentDeadline(order);
   const parts = deadline
     ? Object.fromEntries(formatter.formatToParts(deadline).map(p => [p.type, p.value]))
@@ -109,7 +107,7 @@ function buildNotificationText(order, url) {
   const time = parts
     ? `${parts.year}/${parts.month}/${parts.day} ${parts.hour}:${parts.minute}`
     : '-';
-  const recipientPart = tag.includes('代抢') ? ` || ${clean(order.recipientName) || '-'}` : '';
+  const recipientPart = tag.includes('代抢') ? ` || ${clean(getOrderRecipientName(order)) || '-'}` : '';
   return `${order.id} || ${tag}${recipientPart} || ${products} || ${paymentMethod} || ${time} || ${url}`;
 }
 module.exports = {

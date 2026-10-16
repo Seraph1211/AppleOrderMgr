@@ -122,7 +122,7 @@ function parseExcelFile(filePath, type) {
           !rowData.password
         )
           continue;
-        if (rowData.appleId) rowData.appleId = rowData.appleId.trim().toLowerCase();
+        if (rowData.appleId) rowData.appleId = rowData.appleId.trim();
         if (rowData.idCardNumber) rowData.idCardNumber = rowData.idCardNumber.toUpperCase();
         if (type === 'recipients') {
           const statusMapping = {

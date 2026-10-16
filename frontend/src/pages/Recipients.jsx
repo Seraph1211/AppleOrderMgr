@@ -54,8 +54,6 @@ export default function Recipients() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterTags, setFilterTags] = useState([]);
   const [tagOptions, setTagOptions] = useState([]);
-  const [filterChannels, setFilterChannels] = useState([]);
-  const [channelOptions, setChannelOptions] = useState([]);
   const [filterStatus, setFilterStatus] = useState('');
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
@@ -94,22 +92,14 @@ export default function Recipients() {
 
   useEffect(() => {
     setSelectedIds([]);
-  }, [
-    pagination.currentPage,
-    pagination.pageSize,
-    searchTerm,
-    filterTags,
-    filterChannels,
-    filterStatus,
-  ]);
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterTags, filterStatus]);
 
   useEffect(() => {
     getRecipientFilterOptions()
       .then(response => {
         setTagOptions(response.data?.tags || []);
-        setChannelOptions(response.data?.channels || []);
       })
-      .catch(error => setPageError(error.message || '加载 TAG／渠道选项失败'));
+      .catch(error => setPageError(error.message || '加载 TAG 选项失败'));
   }, []);
 
   const loadRecipients = useCallback(async () => {
@@ -122,7 +112,6 @@ export default function Recipients() {
         limit: pagination.pageSize,
         keyword: searchTerm || undefined,
         tags: filterTags.length ? filterTags : undefined,
-        channels: filterChannels.length ? filterChannels : undefined,
         status: filterStatus || undefined,
       };
       const res = await getRecipients(params);
@@ -150,7 +139,7 @@ export default function Recipients() {
             city: item.city || '',
             district: item.district || '',
             tag: item.tag || '-',
-            channel: item.channel || '-',
+            creditRating: item.credit_rating || '',
             status: item.status,
             orderCount: item.order_count || 0,
             createdAt: item.created_at,
@@ -168,19 +157,16 @@ export default function Recipients() {
       if (requestId === requestSequence.current) {
         setPageError(error.message || '加载取机人失败');
         setRecipients([]);
-        setPagination(previous => ({ ...previous, totalItems: 0, totalPages: 0 }));
+        setPagination(previous => ({
+          ...previous,
+          totalItems: 0,
+          totalPages: 0,
+        }));
       }
     } finally {
       if (requestId === requestSequence.current) setLoading(false);
     }
-  }, [
-    pagination.currentPage,
-    pagination.pageSize,
-    searchTerm,
-    filterTags,
-    filterChannels,
-    filterStatus,
-  ]);
+  }, [pagination.currentPage, pagination.pageSize, searchTerm, filterTags, filterStatus]);
 
   useEffect(() => {
     loadRecipients();
@@ -424,7 +410,6 @@ export default function Recipients() {
         : {
             keyword: searchTerm || undefined,
             tags: filterTags.length ? filterTags : undefined,
-            channels: filterChannels.length ? filterChannels : undefined,
             status: filterStatus || undefined,
           };
       const blob = await exportRecipients({
@@ -498,12 +483,8 @@ export default function Recipients() {
         ) : (
           <span className="text-sm text-gray-400">-</span>
         );
-      case 'channel':
-        return item.channel !== '-' ? (
-          <span className="badge badge-info">{item.channel}</span>
-        ) : (
-          <span className="text-sm text-gray-400">-</span>
-        );
+      case 'creditRating':
+        return <span className="text-sm text-gray-600">{item.creditRating || '—'}</span>;
       case 'status': {
         const badge = getStatusBadge(item.status);
         return <span className={`badge ${badge.class}`}>{badge.text}</span>;
@@ -613,7 +594,7 @@ export default function Recipients() {
               <span>批量导入</span>
             </button>
           )}
-          {can(PERMISSIONS.RECIPIENTS_CREATE) && (
+          {can(PERMISSIONS.RECIPIENTS_CREATE) && canChangeOrderScope && (
             <button
               onClick={() => setShowAddModal(true)}
               className="btn btn-primary flex items-center space-x-2"
@@ -624,6 +605,16 @@ export default function Recipients() {
           )}
         </div>
       </div>
+
+      {!canChangeOrderScope &&
+        (can(PERMISSIONS.RECIPIENTS_CREATE) ||
+          can(PERMISSIONS.RECIPIENTS_EDIT) ||
+          can(PERMISSIONS.RECIPIENTS_IMPORT)) && (
+          <p className="text-sm text-gray-500">
+            新建取机人及修改姓名、身份证、TAG
+            需要全部订单数据范围；联系方式、地址和状态等资料仍可按权限维护。
+          </p>
+        )}
 
       {/* 搜索、筛选和批量操作 */}
       <div className="card">
@@ -651,19 +642,6 @@ export default function Recipients() {
               }}
               ariaLabel="TAG 筛选"
               placeholder="全部 TAG"
-            />
-          </div>
-          <div className="w-full sm:w-[220px]">
-            <TagMultiSelect
-              options={channelOptions}
-              value={filterChannels}
-              onChange={value => {
-                setFilterChannels(value);
-                setPagination(previous => ({ ...previous, currentPage: 1 }));
-              }}
-              ariaLabel="渠道筛选"
-              placeholder="全部渠道"
-              itemLabel="渠道"
             />
           </div>
           <ResponsiveSelect
@@ -836,7 +814,7 @@ export default function Recipients() {
       )}
 
       {/* 添加取机人弹窗 */}
-      {showAddModal && (
+      {showAddModal && canChangeOrderScope && (
         <AddRecipientModal onClose={() => setShowAddModal(false)} onSave={handleSaveRecipient} />
       )}
 

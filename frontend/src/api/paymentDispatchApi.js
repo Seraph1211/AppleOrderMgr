@@ -28,7 +28,7 @@ export const runPaymentDispatchScan = () => client.post('/payment-dispatch/scan'
 export const updatePaymentStaffSettingsBatch = staff =>
   client.put('/payment-dispatch/staff', { staff });
 
-/** 查询 TAG 分配规则与 取机人档案 TAG 候选。 */
+/** 查询 TAG 分配规则与订单 TAG 候选。 */
 export const getPaymentTagRules = () => client.get('/payment-dispatch/tag-rules');
 /** 保存完整 TAG 分配规则。 */
 export const savePaymentTagRule = (id, payload) =>

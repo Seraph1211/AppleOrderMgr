@@ -1,0 +1,14 @@
+ARG BASE_IMAGE=apple-order-mgr-api:20261016-aos-retention-90-amd64
+FROM ${BASE_IMAGE}
+COPY --chown=node:node src/services/inventoryCollector.js /app/src/services/inventoryCollector.js
+COPY --chown=node:node src/services/inventoryDriver.js /app/src/services/inventoryDriver.js
+COPY --chown=node:node src/services/inventoryGuardPolicy.js /app/src/services/inventoryGuardPolicy.js
+COPY --chown=node:node src/services/inventoryHealthNotificationPolicy.js /app/src/services/inventoryHealthNotificationPolicy.js
+COPY --chown=node:node src/services/inventoryHealthPolicy.js /app/src/services/inventoryHealthPolicy.js
+COPY --chown=node:node src/services/inventoryMaintenance.js /app/src/services/inventoryMaintenance.js
+COPY --chown=node:node src/services/inventoryNotifier.js /app/src/services/inventoryNotifier.js
+COPY --chown=node:node src/services/inventoryService.js /app/src/services/inventoryService.js
+COPY --chown=node:node src/services/inventoryTunnel.js /app/src/services/inventoryTunnel.js
+COPY --chown=node:node src/services/inventoryTunnelPolicy.js /app/src/services/inventoryTunnelPolicy.js
+COPY --chown=node:node src/services/inventoryValidationClient.js /app/src/services/inventoryValidationClient.js
+COPY --chown=node:node src/services/inventoryValidationGate.js /app/src/services/inventoryValidationGate.js

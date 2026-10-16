@@ -1,6 +1,7 @@
 const fs = require('fs');
 const crypto = require('crypto');
 const axios = require('axios');
+const { validateTunnel } = require('./inventoryTunnelPolicy');
 const {
   classifyResponse,
   retryAfterMs,
@@ -10,6 +11,7 @@ const {
 /** 固定目标白名单，不允许凭据出现在目标 URL。 */
 function targetFor(purpose, context) {
   if (purpose === 'connect') return 'https://api.ipify.org?format=json';
+  if (purpose === 'egress') return 'https://myip.ipip.net/';
   if (purpose === 'catalog') {
     if (
       !/^\/(?:shop\/buy-iphone(?:\/[a-z0-9-]+)?|retail\/(?:storelist|[a-z0-9-]+)\/)$/.test(
@@ -37,7 +39,12 @@ function targetFor(purpose, context) {
 /** 仅从本地私密文件读取已授权的单一出口；不自动提取／采购／直连。 */
 function readProxy(file) {
   const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-  if (!/^[a-z0-9-]{1,40}$/.test(value.label) || typeof value.url !== 'string')
+  if (
+    !value ||
+    Object.keys(value).some(key => !['label', 'url', 'tunnel'].includes(key)) ||
+    !/^[a-z0-9-]{1,40}$/.test(value.label) ||
+    typeof value.url !== 'string'
+  )
     throw new Error('INVALID_PROXY_CONFIG');
   const url = new URL(value.url);
   if (
@@ -50,7 +57,9 @@ function readProxy(file) {
     !url.password
   )
     throw new Error('INVALID_PROXY_CONFIG');
-  return { label: value.label, url: value.url };
+  const proxy = { label: value.label, url: value.url };
+  proxy.tunnel = validateTunnel(proxy, value.tunnel);
+  return proxy;
 }
 
 /** 创建保持 TLS 校验的代理 Agent。 */
@@ -96,6 +105,7 @@ async function requestOnce({
       durationMs: 0,
       bytes: 0,
     };
+    if (permit.egressHash) result.egressHash = permit.egressHash;
     let response;
     try {
       response = await request(url, {
@@ -104,7 +114,7 @@ async function requestOnce({
         maxRedirects: 0,
         timeout: 20000,
         responseType: 'text',
-        maxContentLength: 5 * 1024 * 1024,
+        maxContentLength: purpose === 'egress' ? 100000 : 5 * 1024 * 1024,
         validateStatus: () => true,
         headers: {
           'User-Agent':
@@ -157,8 +167,11 @@ async function requestOnce({
               throw new Error();
             result.outcome = 'CATALOG_RECEIVED';
             evidence = response.data;
-          } else if (purpose === 'connect') {
-            const data = JSON.parse(response.data);
+          } else if (['connect', 'egress'].includes(purpose)) {
+            const data =
+              purpose === 'egress'
+                ? { ip: /^当前 IP[：:]\s*([0-9.]+)\s/.exec(response.data)?.[1] }
+                : JSON.parse(response.data);
             if (typeof data.ip !== 'string' || !require('net').isIP(data.ip)) throw new Error();
             result.outcome = 'PROXY_CONNECTED';
             result.summary = {
@@ -211,9 +224,11 @@ async function requestOnce({
         result.outcome =
           tunnelStatus === 407
             ? 'PROXY_AUTH_FAILED'
-            : [502, 503, 504].includes(tunnelStatus)
-              ? 'PROXY_TUNNEL_UNAVAILABLE'
-              : 'PROXY_CONNECT_REJECTED';
+            : tunnelStatus === 410
+              ? 'PROXY_SESSION_EXPIRED'
+              : [500, 502, 503, 504].includes(tunnelStatus)
+                ? 'PROXY_TUNNEL_UNAVAILABLE'
+                : 'PROXY_CONNECT_REJECTED';
         result.summary.responseSource = 'proxy_connect';
         delete result.retryMs;
         evidence = undefined;
@@ -221,6 +236,8 @@ async function requestOnce({
         result.summary.responseSource = 'target';
       }
     }
+    if (result.egressHash)
+      result.summary = { ...result.summary, inventoryEgressHash: result.egressHash };
     await gate.finish(result);
     return { ...result, evidence };
   } catch (_error) {

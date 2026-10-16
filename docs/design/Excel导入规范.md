@@ -29,8 +29,8 @@
 ## 预览、差异与执行协议
 
 1. `GET /api/import/template/:type` 下载模板；type 为 apple_ids 或 recipients。
-2. `POST /api/import/preview?type=...`：multipart 上传 files（兼容 file）。返回 sessionToken、expiresInSeconds、summary、records、conflicts、errors。每条记录带文件／工作表／原行号；密码和密保在预览中不回显。
-3. 身份证标准化后去重；账号按去首尾空白、忽略大小写去重。同证件不同姓名需裁定；同名不同证件独立。空来源不擦除库值，来源有值而库为空可补齐，非空差异必须选择来源。冲突字段用 conflict.id 作为键，值为返回的 options.key；整条跳过键为 `记录id:skip`、值 true。
+2. `POST /api/import/preview?type=...`：multipart 上传 files（兼容 file）。返回 sessionToken、expiresInSeconds、summary、records、conflicts、errors。每条记录带文件／工作表／原行号；密码和密保在预览中不回显。 `records[].requiresAllOrderScope` 对未跳过的取机人新增或姓名／身份证／TAG变更为true，其他普通字段更新或跳过为false；有限订单范围用户须跳过受限记录后重新预览才能执行，后端仍在执行时重新鉴权。
+3. 身份证标准化后去重；账号按去首尾空白、忽略大小写去重。账号实际保存去首尾空白后的原文大小写，不将显示值转小写。同一批次的同身份账号归为一条，新增时采用首个来源的账号拼写；命中已有账号时保留库中拼写，单纯大小写差异不构成冲突或更新。已有档案执行更新时只写已裁定且实际变化的字段，不能因为修改备注等字段重新加密未变的密码／密保。同证件不同姓名需裁定；同名不同证件独立。空来源不擦除库值，来源有值而库为空可补齐，非空差异必须选择来源。冲突字段用 conflict.id 作为键，值为返回的 options.key；整条跳过键为 `记录id:skip`、值 true。
 4. `POST /api/import/review` 接收 `{ sessionToken, type, decisions }`，按选择重新计算预览。尚有差异或资料问题时不能执行；可跳过问题档案。无效源行单列且不导入。
 5. `POST /api/import/execute` 提交相同结构。执行前消费令牌，事务内串行化档案写入，重新验证库中档案摘要；资料已变返回 409，要求重新上传。无半批写入。返回 imported、updated、skipped、errors；档案计数仅包含所选导入类型，不联合写其他档案。
 

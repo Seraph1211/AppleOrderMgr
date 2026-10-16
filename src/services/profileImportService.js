@@ -1,4 +1,5 @@
 const { assertAllOrderAccess } = require('./orderAccessService');
+const ORDER_SCOPE_FIELDS = ['tag', 'lastName', 'firstName', 'idCardNumber'];
 const logger = require('../utils/logger');
 const crypto = require('crypto');
 const { AppleId, Recipient } = require('../models');
@@ -107,7 +108,8 @@ function buildImportPlan(rows, type, profiles, decisions = {}) {
         groups.get(`recipient:${blindIndex(normalized.idCardNumber)}`).rows.at(-1).ignoredAccount =
           Boolean(data.appleId || data.password);
       } else {
-        if (!data.appleId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(data.appleId))
+        const appleId = typeof data.appleId === 'string' ? data.appleId.trim() : data.appleId;
+        if (!appleId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(appleId))
           throw ApiError.badRequest('Apple ID 邮箱格式错误');
         if (data.status && !ACCOUNT_STATUSES.includes(data.status))
           throw ApiError.badRequest('状态未映射，请确认后修正源表');
@@ -122,7 +124,7 @@ function buildImportPlan(rows, type, profiles, decisions = {}) {
             )
           );
         }
-        add('account', data.appleId, { ...data, securityQa }, source);
+        add('account', appleId.toLowerCase(), { ...data, appleId, securityQa }, source);
       }
     } catch (error) {
       errors.push({
@@ -142,6 +144,11 @@ function buildImportPlan(rows, type, profiles, decisions = {}) {
     const data = {};
     const skipped = decisions[`${id}:skip`] === true;
     for (const field of fields) {
+      // 身份key与展示值分离；已有账号不因来源大小写差异被重命名。
+      if (kind === 'account' && field === 'appleId') {
+        data.appleId = existing?.appleId ?? group.rows[0].data.appleId;
+        continue;
+      }
       const variants = [];
       const variant = (value, source, key) => {
         if (value === null || value === undefined || value === '') return;
@@ -187,6 +194,10 @@ function buildImportPlan(rows, type, profiles, decisions = {}) {
           : `${data.lastName}${data.firstName} ${maskIdCard(data.idCardNumber)}`,
       sources: group.rows.map(r => r.source),
       action: skipped ? '跳过' : !existing ? '新增' : changed.length ? '更新' : '重复',
+      requiresAllOrderScope:
+        !skipped &&
+        kind === 'recipient' &&
+        (!existing || changed.some(field => ORDER_SCOPE_FIELDS.includes(field))),
       fields: Object.fromEntries(
         Object.entries(data).map(([field, value]) => [LABELS[field], displayValue(field, value)])
       ),
@@ -232,7 +243,9 @@ async function applyImportPlan(plan, req, transaction) {
       if (existing && changed.includes('securityQa'))
         assertPermission(req, PERMISSIONS.APPLE_IDS_SECRETS_READ);
       if (existing) {
-        await AppleId.update(data, {
+        const updates = Object.fromEntries(changed.map(field => [field, data[field]]));
+        await AppleId.update(updates, {
+          fields: changed,
           where: { id: existing.id },
           transaction,
           individualHooks: true,
@@ -247,7 +260,8 @@ async function applyImportPlan(plan, req, transaction) {
       const { data, existing, changed } = write;
       if (existing && !changed.length) continue;
       assertPermission(req, existing ? PERMISSIONS.RECIPIENTS_EDIT : PERMISSIONS.RECIPIENTS_IMPORT);
-      if (existing && changed.includes('tag')) assertAllOrderAccess(req.user);
+      if (!existing || changed.some(field => ORDER_SCOPE_FIELDS.includes(field)))
+        assertAllOrderAccess(req.user);
       const fields = data;
       let recipient;
       if (existing) {

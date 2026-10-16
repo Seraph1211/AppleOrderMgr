@@ -1,15 +1,22 @@
-const fs = require('fs');
-const { encrypt, decrypt } = require('../utils/fieldEncryption');
 const { readProxy, requestOnce } = require('./inventoryValidationClient');
-const { acquireProxy } = require('./inventoryValidationProxy');
+const InventoryTunnel = require('./inventoryTunnel');
+const { PROVIDER_LABEL } = require('./inventoryTunnelPolicy');
 const DEFERRED_OUTCOMES = new Set([
   'REQUEST_IN_FLIGHT',
   'TARGET_COOLDOWN',
+  'PROXY_PROVIDER_COOLDOWN',
+  'ALTERNATE_EGRESS_REQUIRED',
+  'RECOVERY_PROBE_REQUIRED',
   'REQUEST_BUDGET_EXHAUSTED',
   'MONITOR_DISABLED',
+  'RECOVERY_EXHAUSTED',
+  'PROXY_RECOVERY_EXHAUSTED',
+  'PROXY_PACKAGE_EXPIRED',
+  'PROXY_AUTH_FAILED',
+  'PROXY_CONNECT_REJECTED',
 ]);
 
-/** 仅保留已知闸门原因，禁止透传供应商地址或敏感异常。 */
+/** 仅保留已知保护原因，禁止透传供应商地址或敏感异常。 */
 function safeProxyFailure(error) {
   const safe = new Error('NO_HEALTHY_PROXY');
   if (DEFERRED_OUTCOMES.has(error.inventoryOutcome)) {
@@ -19,13 +26,14 @@ function safeProxyFailure(error) {
   return safe;
 }
 
-/** 已配置出口驱动，不购买、不开浏览器、不回退直连 Apple。 */
+/** 唯一 IPRoyal 出口驱动，不购买、不开浏览器、不回退直连 Apple。 */
 class InventoryDriver {
   constructor(gate, options = {}) {
     this.gate = gate;
     this.options = options;
+    this.tunnel = new InventoryTunnel(gate);
   }
-  /** 选择健康的既有主/备出口，动态端点按供应商身份固定计费计风险。 */
+  /** 同进程合并候选选择，实际发送仍逐请求经过数据库闸门。 */
   async proxy() {
     try {
       if (!this.proxyPending) this.proxyPending = this.loadProxy();
@@ -36,39 +44,15 @@ class InventoryDriver {
       this.proxyPending = null;
     }
   }
-  /** 合并同进程的端点提取；网络发送仍需逐请求经过数据库闸门。 */
+  /** 只读取显式配置的 IPRoyal 凭据，缺失或非法时关闭请求。 */
   async loadProxy() {
     try {
-      const state = await this.gate.locked(body => ({ ...body }));
-      const files = [
-        this.options.proxyFile || process.env.INVENTORY_PROXY_FILE,
-        this.options.backupFile || process.env.INVENTORY_BACKUP_PROXY_FILE,
-      ].filter(Boolean);
-      for (const file of files) {
-        const proxy = readProxy(file);
-        if (!state.pausedEgress?.[proxy.label] && state.requiredAlternateEgress !== proxy.label)
-          return proxy;
-      }
-      const apiFile = this.options.apiFile || process.env.INVENTORY_PROXY_API_FILE;
-      if (
-        !apiFile ||
-        state.pausedEgress?.['yiyou-main'] ||
-        state.requiredAlternateEgress === 'yiyou-main'
-      )
+      const file = this.options.proxyFile || process.env.INVENTORY_PROXY_FILE;
+      if (!file) throw new Error('NO_HEALTHY_PROXY');
+      const proxy = readProxy(file);
+      if (proxy.label !== PROVIDER_LABEL || proxy.tunnel?.provider !== 'iproyal')
         throw new Error('NO_HEALTHY_PROXY');
-      if (state.proxyCache?.expiresAt > Date.now() + 30000)
-        return { label: 'yiyou-main', url: decrypt(state.proxyCache.cipher) };
-      const data = JSON.parse(fs.readFileSync(apiFile, 'utf8'));
-      const endpoint = await acquireProxy({ apiUrl: data.apiUrl || data.url, gate: this.gate });
-      await this.gate.locked(async (body, _now, transaction) => {
-        try {
-          body.proxyCache = { expiresAt: endpoint.expiresAt, cipher: encrypt(endpoint.url) };
-          await this.gate.save(body, transaction);
-        } catch (_error) {
-          throw new Error('PROXY_CACHE_FAILED');
-        }
-      });
-      return { label: 'yiyou-main', url: endpoint.url };
+      return await this.tunnel.select(proxy);
     } catch (error) {
       throw safeProxyFailure(error);
     }

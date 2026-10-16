@@ -10,7 +10,7 @@ import { STATUS } from './inventoryPresentation';
 export function Status({ value }) {
   return (
     <span
-      className={`badge inventory-status ${['in_stock', 'complete', 'normal', 'accepted'].includes(value) ? 'bg-green-100 text-green-700' : ['error', 'failed', 'manual_required'].includes(value) ? 'bg-red-100 text-red-700' : ['stale', 'paused', 'partial'].includes(value) ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}
+      className={`badge inventory-status ${['in_stock', 'complete', 'normal', 'accepted'].includes(value) ? 'bg-green-100 text-green-700' : ['error', 'failed', 'manual_required', 'offline'].includes(value) ? 'bg-red-100 text-red-700' : ['stale', 'paused', 'partial', 'automatic_wait', 'data_stale'].includes(value) ? 'bg-amber-100 text-amber-800' : 'bg-gray-100 text-gray-600'}`}
     >
       <span className="inventory-status-dot" aria-hidden="true" />
       {STATUS[value] || value || '—'}

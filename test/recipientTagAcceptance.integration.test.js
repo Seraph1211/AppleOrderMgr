@@ -1,6 +1,6 @@
 /* eslint-disable camelcase, no-magic-numbers -- 独立合成 HTTP 与 PostgreSQL 验收数据。 */
 const enabled = process.env.RUN_RECIPIENT_TAG_ACCEPTANCE === 'true';
-(enabled ? describe : describe.skip)('取机人TAG独立HTTP与真实PG验收', () => {
+(enabled ? describe : describe.skip)('订单TAG身份兜底HTTP与真实PG回归验收', () => {
   let db, server, baseUrl, users, tokens, recipients, orders, tasks;
   const getIds = response => response.body.data.orders.map(row => row.id).sort((a, b) => a - b);
   async function request(path, actor = 'a', method = 'GET', body) {
@@ -109,6 +109,7 @@ const enabled = process.env.RUN_RECIPIENT_TAG_ACCEPTANCE === 'true';
         lastName: '合成',
         firstName: `测试${index}`,
         idCardNumber: `1101011990010100${String(index + 10)}`,
+        idCardLast4: `00${String(index + 10)}`,
         tag,
       }))
     );
@@ -116,7 +117,9 @@ const enabled = process.env.RUN_RECIPIENT_TAG_ACCEPTANCE === 'true';
       Array.from({ length: 10 }, (_, index) => ({
         orderNumber: `W89000000${String(index).padStart(2, '0')}`,
         ingestionSource: index % 3 === 0 ? 'aos' : index % 3 === 1 ? 'email' : 'manual',
-        sourceRecipientTag: 'SOURCE',
+        sourceRecipientTag: null,
+        recipientName: index === 7 ? null : `合成测试${index < 7 ? index : 0}`,
+        recipientIdLast4: index === 7 ? null : recipients[index < 7 ? index : 0].idCardLast4,
         tag: 'LEGACY',
         recipientRef: index < 7 ? recipients[index].id : index === 7 ? null : recipients[0].id,
         products: [{ name: `合成手机${index}`, model: `MODEL${index}`, quantity: 1 }],
@@ -154,7 +157,7 @@ const enabled = process.env.RUN_RECIPIENT_TAG_ACCEPTANCE === 'true';
     const page2 = await request('/orders?limit=2&page=2');
     expect(page1.body.data.total).toBe(3);
     expect(new Set([...getIds(page1), ...getIds(page2)]).size).toBe(3);
-    expect((await orders[0].reload()).sourceRecipientTag).toBe('SOURCE');
+    expect((await orders[0].reload()).sourceRecipientTag).toBeNull();
     expect(orders[0].tag).toBe('LEGACY');
   });
   test('AC02 未关联与NULL/空串/全空白均缺失且不回退', async () => {
@@ -213,7 +216,7 @@ const enabled = process.env.RUN_RECIPIENT_TAG_ACCEPTANCE === 'true';
     expect(good.status).toBe(200);
     const xlsx = require('xlsx');
     const book = xlsx.read(good.body, { type: 'buffer' });
-    expect(xlsx.utils.sheet_to_json(book.Sheets[book.SheetNames[0]])[0]['取机人 TAG']).toBe('A');
+    expect(xlsx.utils.sheet_to_json(book.Sheets[book.SheetNames[0]])[0]['订单 TAG']).toBe('A');
   });
   test('AC06 真实PG仪表板及渠道/统计聚合权限一致', async () => {
     const stats = await request('/dashboard/stats');
@@ -270,7 +273,7 @@ const enabled = process.env.RUN_RECIPIENT_TAG_ACCEPTANCE === 'true';
     expect((await recipients[0].reload()).tag).toBe('RENAMED');
     expect((await users.a.reload()).orderAccess.tags).toEqual(['RENAMED']);
     expect((await orders[0].reload()).tag).toBe('LEGACY');
-    expect(orders[0].sourceRecipientTag).toBe('SOURCE');
+    expect(orders[0].sourceRecipientTag).toBeNull();
     expect((await request(`/orders/${orders[0].id}`)).status).toBe(200);
   });
   test('AC10 删除档案后历史订单失去范围且不回退', async () => {
@@ -478,7 +481,10 @@ const enabled = process.env.RUN_RECIPIENT_TAG_ACCEPTANCE === 'true';
         // Worker 不执行 API 档案编辑；模拟真实 API 已验证的跨服务互斥锁。
         await db.sequelize.query('SELECT pg_advisory_xact_lock(742091)', { transaction });
       } else {
-        await require('../src/services/profileBindingService').lockProfiles(transaction, users.admin.id);
+        await require('../src/services/profileBindingService').lockProfiles(
+          transaction,
+          users.admin.id
+        );
       }
       await recipients[0].update({ tag: 'B' }, { transaction });
       scanning = require('../src/services/paymentDispatchService')

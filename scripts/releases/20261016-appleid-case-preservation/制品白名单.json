@@ -1,0 +1,11 @@
+{
+  "api": [
+    "src/controllers/appleIdController.js",
+    "src/services/importService.js",
+    "src/services/profileImportService.js",
+    "src/services/proxyOrderService.js",
+    "src/utils/proxyOrderInput.js"
+  ],
+  "frontend": [],
+  "migrations": []
+}

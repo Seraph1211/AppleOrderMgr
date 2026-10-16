@@ -179,6 +179,19 @@ module.exports = sequelize => {
           },
         },
       },
+      creditRating: {
+        type: DataTypes.STRING(1),
+        allowNull: true,
+        defaultValue: null,
+        field: 'credit_rating',
+        comment: '信用评级：A/B/C；空值表示未评级',
+        validate: {
+          isIn: {
+            args: [['A', 'B', 'C']],
+            msg: '信用评级必须是 A、B、C 或留空',
+          },
+        },
+      },
       channel: {
         type: DataTypes.STRING(100),
         allowNull: true,

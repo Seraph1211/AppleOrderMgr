@@ -1,0 +1,4 @@
+ARG BASE_IMAGE=apple-order-mgr-migrator:20261016-proxy-delete-amd64
+FROM ${BASE_IMAGE}
+COPY --chown=node:node migrations/20261016000003-add-recipient-credit-rating.js /app/migrations/20261016000003-add-recipient-credit-rating.js
+CMD ["npx", "sequelize-cli", "db:migrate", "--name", "20261016000003-add-recipient-credit-rating.js"]
