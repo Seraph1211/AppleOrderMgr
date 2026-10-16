@@ -543,10 +543,11 @@ function parsePoolAccounts(text) {
     const match = line.trim().match(/^([^\s,]+?)(?:\s*----\s*|\s+|,)(.+)$/);
     if (!match || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(match[1]))
       throw ApiError.badRequest(`第 ${index + 1} 行账号格式不正确`);
-    const appleId = match[1].toLowerCase();
+    const appleId = match[1];
+    const accountKey = appleId.toLowerCase();
     const password = field(match[2], `第 ${index + 1} 行密码`, 1000);
-    if (seen.has(appleId)) throw ApiError.badRequest(`第 ${index + 1} 行账号重复`);
-    seen.add(appleId);
+    if (seen.has(accountKey)) throw ApiError.badRequest(`第 ${index + 1} 行账号重复`);
+    seen.add(accountKey);
     return { appleId, password };
   });
 }

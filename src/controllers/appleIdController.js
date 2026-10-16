@@ -298,7 +298,8 @@ async function createAppleId(req, res) {
     const { apple_id, password, notes, country, status, security_qa } = req.body || {};
 
     validateAccountText({ appleId: apple_id, password, notes, country });
-    if (!isValidEmail(apple_id)) {
+    const originalAppleId = typeof apple_id === 'string' ? apple_id.trim() : apple_id;
+    if (!isValidEmail(originalAppleId)) {
       throw ApiError.badRequest('apple_id 必须是合法邮箱', { received: apple_id });
     }
     if (!password || typeof password !== 'string' || password.length === 0) {
@@ -312,15 +313,18 @@ async function createAppleId(req, res) {
 
     const created = await sequelize.transaction(async transaction => {
       await lockProfiles(transaction, req.user?.id);
-      const normalized = apple_id.trim().toLowerCase();
+      const normalized = originalAppleId.toLowerCase();
       const existing = await AppleId.findOne({
-        where: sequelize.where(sequelize.fn('lower', sequelize.col('apple_id')), normalized),
+        where: sequelize.where(
+          sequelize.fn('lower', sequelize.fn('trim', sequelize.col('apple_id'))),
+          normalized
+        ),
         transaction,
       });
       if (existing) throw ApiError.conflict('该 Apple ID 已存在');
       return AppleId.create(
         {
-          appleId: normalized,
+          appleId: originalAppleId,
           password,
           notes: notes || null,
           country: country || '中国',

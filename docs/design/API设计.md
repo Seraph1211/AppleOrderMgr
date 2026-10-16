@@ -271,6 +271,7 @@ JWT 管理端统一响应 `{success:true,data:...}`，所有响应 no-store。�
 
 ### Apple ID 管理扩展（2026-10-16，已生产发布）
 
+- Apple ID 大小写保留修复（2026-10-16，本轮开发待发布）：新增账号去首尾空白后保留原文大小写；身份匹配和重复校验仍按 `lower(trim(apple_id))`，由已有数据库唯一索引兜底。普通编辑不修改账号邮箱。列表、详情、复制与软件模板使用已存原文；Excel／腾讯账号表及代抢池导入均遵循同一规则。跨大小写命中已有账号不改写其账号原文；大小写差异本身不产生更新或凭据变更。其他字段差异仍需既有导入预览裁定及编辑／密保权限，不扩大更新范围。
 - Apple ID 列表／详情新增只读 `account_number` 正整数，原 `id` 仍作为所有操作与关联的主键，外部请求不得指定或修改编号。
 - `GET /api/apple-ids/statistics`（本轮开发，待发布）：需 `apple_ids.read`，返回 `{ success: true, data: { total, statuses: [{ status, count }] } }`。统计全库账号，不使用当前页面的 keyword／status／country／分页条件；现行四个状态按规范顺序返回，缺失补 0，未知存量状态保留独立计数，各状态数量之和等于 total。单次数据库分组聚合，只读取状态和数量，不读取密码／密保。
 - `GET /api/apple-ids/selection-ids`（本轮开发，待发布）：需 `apple_ids.read`，仅接受与列表共用的 `keyword`（邮箱模糊查询，最长 255 字符）、`status`（现行四个状态之一）和 `country`（最长 50 字符）筛选，均须为字符串；空字符串视为未筛选，keyword 去除首尾空白。拒绝未知参数、数组／对象及已退役绑定筛选，不接受分页参数。返回 `{ success: true, data: { ids: [内部ID], total } }`，仅查询内部 ID，按 `id DESC` 排序。最多 5000 个；超出返回 400 `APPLE_ID_SELECTION_LIMIT_EXCEEDED`，不截断、不返回部分 ID。列表与本接口使用同一筛选构造逻辑。

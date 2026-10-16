@@ -38,3 +38,16 @@ test('应该区分复制成功、权限拒绝、接口缺失及超时，供页�
   assert.equal(await tryClipboard('fixture', undefined), false);
   assert.equal(await tryClipboard('fixture', { writeText: () => new Promise(() => {}) }, 5), false);
 });
+
+test('应该原样复制包含大小写混合账号的模板，保留密码与行分隔', async () => {
+  const template =
+    'Mixed.Case@Example.COM,Synthetic-Only!,\nSecond.Account@Example.COM,Other-Only!,';
+  let copiedText;
+  const copied = await tryClipboard(template, {
+    writeText: async value => {
+      copiedText = value;
+    },
+  });
+  assert.equal(copied, true);
+  assert.equal(copiedText, template);
+});
