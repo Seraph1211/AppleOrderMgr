@@ -205,6 +205,7 @@ async function listOrders(query) {
       count: result.count,
       rows: rows.map(r => ({
         ...r,
+        storeCities: input.getProxyStoreCities(r),
         ...input.normalizeProxyProduct(r.productModel, r.color),
         assignments: assignments.filter(a => a.proxyOrderId === r.id),
         officialOrders: links
@@ -252,6 +253,7 @@ async function detail(orderId) {
     delete data.rejectedOrderIds;
     return {
       ...data,
+      storeCities: input.getProxyStoreCities(data),
       ...input.normalizeProxyProduct(data.productModel, data.color),
       assignments,
       events,
@@ -271,7 +273,7 @@ async function saveOrder(orderId, body, actorId) {
     return await transact(actorId, async transaction => {
       try {
         if (!orderId) {
-          const values = input.validateProxyInput(body);
+          const values = input.validateProxyInput(body, { expandCityStores: true });
           const duplicates = await findDuplicates(values, transaction);
           if (duplicates.length && body.confirmedDuplicate !== true)
             throw ApiError.conflict('疑似重复登记，请核对后明确继续另建', {
@@ -291,10 +293,35 @@ async function saveOrder(orderId, body, actorId) {
           };
         }
         const row = await lockedOrder(orderId, body.expectedVersion, transaction);
-        const values = input.validateProxyInput(
-          { ...row.toJSON(), ...body },
-          { existing: row.toJSON() }
-        );
+        const existing = row.toJSON();
+        const next = { ...existing, ...body };
+        // 两种城市入参均可单独更新，避免旧兼容字段覆盖显式的新选择。
+        if (Object.hasOwn(body, 'storeCities') && !Object.hasOwn(body, 'storeCity'))
+          delete next.storeCity;
+        const changedCities =
+          body.storeCities != null
+            ? JSON.stringify(body.storeCities) !==
+              JSON.stringify(input.getProxyStoreCities(existing))
+            : body.storeCity != null &&
+              JSON.stringify(input.parseProxyCities(body.storeCity)) !==
+                JSON.stringify(input.getProxyStoreCities(existing));
+        if (
+          next.storeMode === 'city_any' &&
+          existing.storeMode === 'city_any' &&
+          !changedCities &&
+          Object.hasOwn(body, 'storeCodes') &&
+          JSON.stringify(body.storeCodes) !== JSON.stringify(existing.storeCodes)
+        )
+          throw ApiError.badRequest('全部门店范围已固定；修改门店请切换为指定门店');
+        if (changedCities && next.storeMode === 'city_any') {
+          if (!Object.hasOwn(body, 'storeCodes')) next.storeCodes = [];
+          if (!Object.hasOwn(body, 'billing')) next.billing = null;
+        }
+        const values = input.validateProxyInput(next, {
+          existing,
+          expandCityStores:
+            changedCities || (body.storeMode === 'city_any' && existing.storeMode !== 'city_any'),
+        });
         await row.update({ ...values, version: row.version + 1 }, { transaction });
         await event('edit', row.id, actorId, { fields: Object.keys(values) }, transaction);
         return { id: row.id, version: row.version };

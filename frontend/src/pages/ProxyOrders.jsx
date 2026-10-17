@@ -6,6 +6,12 @@ import {
   assignmentBlockReason,
   tryClipboard,
 } from './proxyOrders/feedback';
+import {
+  normalizeStoreScope,
+  pickupCities,
+  storeScopeSummary,
+  updateStoreScope,
+} from './proxyOrders/storeScope';
 import useModalScrollLock from '../components/useModalScrollLock';
 import OfficialOrderStatus from '../components/OfficialOrderStatus';
 import { getProductDisplayName } from '../utils/productNaming';
@@ -49,6 +55,7 @@ const EMPTY = {
   storeCodes: [],
   storeMode: 'city_any',
   storeCity: '',
+  storeCities: [],
   billing: {},
   paymentMethod: '微信',
   notes: '',
@@ -408,7 +415,7 @@ export default function ProxyOrders() {
       const response = await client.get(`/proxy-orders/${row.id}`);
       setCurrent(response.data);
       setDraft({
-        ...response.data,
+        ...normalizeStoreScope(response.data, stores),
         productCandidates: response.data.productCandidates?.length
           ? response.data.productCandidates
           : [
@@ -425,7 +432,7 @@ export default function ProxyOrders() {
   async function parse(quick = false) {
     await run(async () => {
       const response = await client.post('/proxy-orders/parse', { text });
-      const next = { ...EMPTY, ...response.data.draft };
+      const next = normalizeStoreScope({ ...EMPTY, ...response.data.draft }, stores);
       if (next.storeCodes.length && !next.billing?.streetAddress) {
         const generated = await client.post('/proxy-orders/address', {
           storeCode: next.storeCodes[0],
@@ -445,11 +452,7 @@ export default function ProxyOrders() {
   const setField = (key, value) => setDraft(previous => ({ ...previous, [key]: value }));
   async function changeStoreScope(updates) {
     await run(async () => {
-      const next = { ...draft, ...updates };
-      if (next.storeMode === 'city_any')
-        next.storeCodes = stores
-          .filter(store => store.city === next.storeCity)
-          .map(store => store.code);
+      const next = updateStoreScope(draft, updates, stores);
       if (!next.storeCodes.includes(next.billing?.referenceStoreCode)) {
         next.billing = next.storeCodes.length
           ? (
@@ -521,7 +524,7 @@ export default function ProxyOrders() {
       }
       setCurrent(response.data);
       setDraft({
-        ...response.data,
+        ...normalizeStoreScope(response.data, stores),
         productCandidates: response.data.productCandidates?.length
           ? response.data.productCandidates
           : [
@@ -633,14 +636,7 @@ export default function ProxyOrders() {
   };
   const storeNames = codes =>
     (codes || []).map(code => stores.find(s => s.code === code)?.name || code).join('、');
-  const pickupCity = row => {
-    if (row.storeCity?.trim()) return row.storeCity;
-    const codes = row.storeCodes || [];
-    const knownStores = codes.map(code => stores.find(store => store.code === code));
-    if (!codes.length || knownStores.some(store => !store?.city)) return '—';
-    const knownCities = [...new Set(knownStores.map(store => store.city))];
-    return knownCities.length === 1 ? knownCities[0] : '—';
-  };
+  const pickupCity = row => pickupCities(row, stores).join('、') || '—';
   const openStatus = row => {
     setModalError('');
     setNotice('');
@@ -836,70 +832,88 @@ export default function ProxyOrders() {
         </div>
         <div className="rounded-lg bg-blue-50 p-3 space-y-3">
           <p className="font-medium text-gray-900">可接受的直营店范围</p>
-          <div className="grid sm:grid-cols-2 gap-3">
-            <label className="text-sm">
-              选择方式
-              <ResponsiveSelect
-                aria-label="选择方式"
-                className="input w-full mt-1"
-                value={draft.storeMode}
-                onChange={event =>
-                  changeStoreScope({
-                    storeMode: event.target.value,
-                    storeCodes: [],
-                  })
-                }
-              >
-                <option value="selected">指定一家或多家任选</option>
-                <option value="city_any">城市内任意一家</option>
-              </ResponsiveSelect>
-            </label>
-            <label className="text-sm">
-              城市
-              <ResponsiveSelect
-                aria-label="城市"
-                className="input w-full mt-1"
-                value={draft.storeCity}
-                onChange={event =>
-                  changeStoreScope({
-                    storeCity: event.target.value,
-                    storeCodes: [],
-                    storeMode: 'city_any',
-                  })
-                }
-              >
-                <option value="">请选择城市</option>
-                {cities.map(city => (
-                  <option key={city}>{city}</option>
-                ))}
-              </ResponsiveSelect>
-            </label>
-          </div>
-          {draft.storeMode === 'selected' && (
-            <div className="max-h-40 overflow-auto space-y-2">
-              {stores
-                .filter(s => !draft.storeCity || s.city === draft.storeCity)
-                .map(store => (
-                  <label key={store.code} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={draft.storeCodes.includes(store.code)}
-                      onChange={() =>
-                        changeStoreScope({
-                          storeCodes: draft.storeCodes.includes(store.code)
-                            ? draft.storeCodes.filter(code => code !== store.code)
-                            : [...draft.storeCodes, store.code],
-                        })
-                      }
-                    />
-                    {store.name} · {store.city}
-                  </label>
-                ))}
+          <label className="block text-sm">
+            选择方式
+            <ResponsiveSelect
+              aria-label="选择方式"
+              className="input w-full mt-1"
+              value={draft.storeMode}
+              onChange={event => changeStoreScope({ storeMode: event.target.value })}
+            >
+              <option value="selected">指定一家或多家任选</option>
+              <option value="city_any">所选城市全部门店任选</option>
+            </ResponsiveSelect>
+          </label>
+          <fieldset>
+            <legend className="text-sm font-medium text-gray-900">取机城市（可多选）</legend>
+            <p className="mt-1 text-xs text-gray-500" id="proxy-city-help">
+              可选择两座或多座城市；已选 {draft.storeCities.length} 座。
+              {draft.storeMode === 'city_any'
+                ? '任意一家已确认门店符合即可，保存后门店范围固定。'
+                : '再勾选下方门店，任意一家符合即可。'}
+            </p>
+            <div className="proxy-city-options mt-2" aria-describedby="proxy-city-help">
+              {[...new Set([...cities, ...draft.storeCities])].map(city => (
+                <label key={city} className="proxy-city-option">
+                  <input
+                    type="checkbox"
+                    checked={draft.storeCities.includes(city)}
+                    onChange={() =>
+                      changeStoreScope({
+                        storeCities: draft.storeCities.includes(city)
+                          ? draft.storeCities.filter(value => value !== city)
+                          : [...draft.storeCities, city],
+                      })
+                    }
+                  />
+                  <span>
+                    {city}
+                    {!cities.includes(city) ? '（待核对）' : ''}
+                  </span>
+                </label>
+              ))}
             </div>
+          </fieldset>
+          {draft.storeMode === 'selected' && (
+            <fieldset>
+              <legend className="text-sm font-medium text-gray-900">
+                指定门店（可跨城市多选）
+              </legend>
+              <div className="proxy-store-options mt-2">
+                {stores
+                  .filter(store => draft.storeCities.includes(store.city))
+                  .map(store => (
+                    <label key={store.code} className="proxy-store-option">
+                      <input
+                        type="checkbox"
+                        checked={draft.storeCodes.includes(store.code)}
+                        onChange={() =>
+                          changeStoreScope({
+                            storeCodes: draft.storeCodes.includes(store.code)
+                              ? draft.storeCodes.filter(code => code !== store.code)
+                              : [...draft.storeCodes, store.code],
+                          })
+                        }
+                      />
+                      <span>
+                        {store.name} · {store.city}
+                      </span>
+                    </label>
+                  ))}
+              </div>
+              {!draft.storeCities.length && (
+                <p className="text-sm text-gray-500">请先选择取机城市。</p>
+              )}
+            </fieldset>
           )}
-          <p className="text-sm text-gray-600">
-            已选：{storeNames(draft.storeCodes) || '尚未确认'}。任一家符合即可。
-          </p>
+          <div className="proxy-store-scope-summary text-sm text-gray-600" aria-live="polite">
+            <p className="font-medium text-gray-900">
+              {pickupCity(draft)} · {storeScopeSummary(draft)}
+            </p>
+            <p className="mt-1">
+              已确认门店：{storeNames(draft.storeCodes) || '尚未确认'}。任一家符合即可。
+            </p>
+          </div>
         </div>
         <div className="space-y-3">
           <label className="block text-sm">
@@ -1084,6 +1098,7 @@ export default function ProxyOrders() {
             </p>
             <p className="proxy-mobile-meta mt-2 text-xs text-gray-600">
               <span>取机城市：{pickupCity(row)}</span>
+              <span>门店范围：{storeScopeSummary(row)}</span>
               <span>支付：{row.paymentMethod || '—'}</span>
               <span>来源：{row.orderSource || '—'}</span>
             </p>
@@ -1528,7 +1543,10 @@ export default function ProxyOrders() {
                           <p>{candidateNames(row) || '—'}</p>
                           <p className="mt-1 text-xs text-gray-500">数量 {row.quantity || 1}</p>
                         </td>
-                        <td className="p-3 proxy-city-cell">{pickupCity(row)}</td>
+                        <td className="p-3 proxy-city-cell">
+                          <p>{pickupCity(row)}</p>
+                          <p className="mt-1 text-xs text-gray-500">{storeScopeSummary(row)}</p>
+                        </td>
                         <td className="p-3 proxy-payment-cell">{row.paymentMethod || '—'}</td>
                         <td className="p-3 proxy-source-cell">{row.orderSource || '—'}</td>
                         <td className="proxy-notes-cell p-3 whitespace-normal">
@@ -1675,7 +1693,7 @@ export default function ProxyOrders() {
               />
               <p className="text-xs text-gray-500">
                 选填取机门店、数量和平台订单号，可在末尾另起一行填写。未填数量默认
-                1；未指定门店默认所选城市全部门店。
+                1；未指定门店默认所选城市全部门店。多城市可填写“取机城市：广州、深圳全店”。
               </p>
               <div className="flex flex-wrap gap-2">
                 <button
@@ -1770,7 +1788,10 @@ export default function ProxyOrders() {
                 ['邮箱', current.email],
                 ['身份证后四位', String(current.idLast4 ?? '').slice(-4)],
                 ['平台订单号', current.platformOrderNumber],
-                ['门店范围', storeNames(current.storeCodes)],
+                [
+                  '门店范围',
+                  `${storeScopeSummary(current)}：${storeNames(current.storeCodes) || '—'}`,
+                ],
                 [
                   '账单地址',
                   [
@@ -2003,7 +2024,7 @@ export default function ProxyOrders() {
                     const response = await client.get(`/proxy-orders/${current.id}`);
                     setCurrent(response.data);
                     setDraft({
-                      ...response.data,
+                      ...normalizeStoreScope(response.data, stores),
                       productCandidates: response.data.productCandidates?.length
                         ? response.data.productCandidates
                         : [

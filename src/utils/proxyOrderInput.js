@@ -202,9 +202,19 @@ function normalizeProxyProduct(model, color) {
   return { productModel: normalizedModel, color: normalizeColor(color, normalizedModel) };
 }
 
+// 仅对明确机型及颜色后紧邻的已核实裸容量补 GB，不将型号或台数作为容量。
+function normalizeBareProductCapacity(value) {
+  const text = norm(value);
+  if (!/(?:iphone\s*)?(?:18\s*(?:pro\s*max|pm|pro)\b|duo\b)/i.test(text)) return text;
+  return text.replace(
+    /(星光白色?|夜空色?|勃艮第酒红色?|酒红色?|红色?|冰川蓝色?|蓝色?|银色?|黑色?|白色?)\s*(256|512)(?=$|[\s,/|])/g,
+    '$1 $2GB'
+  );
+}
+
 /** 规范化机型、容量与颜色，不猜测未知型号。 @param {string} value 商品文字 @returns {Object} 商品 */
 function parseProduct(value) {
-  const input = norm(value).toLowerCase();
+  const input = normalizeBareProductCapacity(value).toLowerCase();
   const model = input.match(/(?:iphone\s*)?(\d{1,2})\s*(pro\s*max|pm|pro|plus|air|p)?\b/i);
   const capacity = input.match(/\b(\d+)\s*(gb|g|tb|t)\b/i);
   const quantity = input.match(/(\d+)\s*(台|部|件)/);
@@ -265,6 +275,80 @@ function extractProxyIdLast4(value) {
   throw ApiError.badRequest('身份证须为四位尾号或有效的15/18位完整号码，请核对');
 }
 
+/**
+ * 严格解析城市范围；只接受已核实城市与明确的全店修饰，不按子串猜测。
+ * @param {string} value 城市文本
+ * @returns {Array<string>} 有序城市集合
+ */
+function parseProxyCities(value) {
+  if (
+    typeof value !== 'string' ||
+    !value.trim() ||
+    value.length > 200 ||
+    [...value].some(char => char.charCodeAt(0) < 32)
+  )
+    throw ApiError.badRequest('请填写有效取机城市');
+  const cities = norm(value)
+    .replace(/\s+(?=(?:全部门店|所有门店|全部直营店|全店)$)/, '')
+    .replace(/\s*([、,|/])\s*/g, '$1')
+    .split(/[、,|/]|\s+/)
+    .map(token => {
+      const city = token
+        .trim()
+        .replace(/(?:全部门店|所有门店|全部直营店|全店)$/, '')
+        .trim()
+        .replace(/市$/, '');
+      if (!STORES.some(store => store.city === city))
+        throw ApiError.badRequest('取机城市未核实或包含不明确要求，请核对');
+      return city;
+    });
+  if (new Set(cities).size !== cities.length) throw ApiError.badRequest('取机城市重复，请核对');
+  return cities;
+}
+
+/**
+ * 从保存的城市说明或完整已知门店集合派生城市，不扩张门店范围。
+ * @param {Object} order 已保存委托
+ * @returns {Array<string>} 城市集合，无法确认时为空
+ */
+function getProxyStoreCities(order) {
+  try {
+    if (Array.isArray(order.storeCodes) && order.storeCodes.length) {
+      const stores = order.storeCodes.map(code => STORES.find(store => store.code === code));
+      if (stores.every(Boolean)) return [...new Set(stores.map(store => store.city))];
+    }
+    return order.storeCity ? parseProxyCities(order.storeCity) : [];
+  } catch (_error) {
+    return [];
+  }
+}
+
+function cityStoreCodes(cities) {
+  return cities.flatMap(city =>
+    STORES.filter(store => store.city === city).map(store => store.code)
+  );
+}
+
+// 兼容旧“取机城市苹果直营店”字段的省、市、区及已核实门店组合。
+function parseLegacyStoreLocation(value) {
+  const matches = STORES.filter(store => {
+    let remainder = norm(value);
+    for (const token of [store.province, `${store.city}市`, store.city, store.district]) {
+      if (token) remainder = remainder.replace(token, '');
+    }
+    remainder = remainder
+      .replace(/^省/, '')
+      .replace(/^Apple\s*/i, '')
+      .trim();
+    const name = store.name
+      .replace(/^Apple\s*/, '')
+      .replace(store.city, '')
+      .trim();
+    return value.includes(store.city) && compact(remainder) === compact(name);
+  });
+  return matches.length === 1 ? matches[0] : null;
+}
+
 /** 解析一位客户的固定文本，返回待核对草稿而不写库。 @param {string} text 原文 @returns {Object} 草稿 */
 function parseProxyText(text) {
   if (typeof text !== 'string' || !text.trim() || text.length > 10000)
@@ -295,10 +379,20 @@ function parseProxyText(text) {
     product.storage = parseProduct(`18pm ${fields['容量'] || fields['内存']}`).storage;
   if (fields['数量']) product.quantity = Number(fields['数量'].replace(/\s*(台|部|件)$/, ''));
   const cityText = fields['取机城市'] || fields['取机城市苹果直营店'] || '';
-  const cities = [...new Set(STORES.filter(s => cityText.includes(s.city)).map(s => s.city))];
-  const city = cities.length === 1 ? cities[0] : '';
   const storeText = fields['取机门店'] || fields['苹果直营店'] || fields['门店'] || '';
   const errors = [];
+  let cities = [];
+  let legacyStore;
+  try {
+    cities = parseProxyCities(cityText);
+  } catch (error) {
+    legacyStore = fields['取机城市苹果直营店'] && parseLegacyStoreLocation(cityText);
+    if (legacyStore) cities = [legacyStore.city];
+    else errors.push(error.message);
+  }
+  const city = cities.join('、');
+  if (storeText && /全店|全部门店|所有门店|全部直营店/.test(cityText))
+    errors.push('全店与指定门店要求冲突，请核对');
   let idLast4 = '';
   const identityValues = [
     '身份证后四号',
@@ -318,25 +412,21 @@ function parseProxyText(text) {
   } catch (error) {
     errors.push(error.message);
   }
-  let storeCodes = STORES.filter(s => s.city === city).map(s => s.code);
+  let storeCodes = legacyStore ? [legacyStore.code] : cityStoreCodes(cities);
   if (storeText) {
     storeCodes = [];
     for (const token of storeText.split('|').map(norm)) {
       const matches = STORES.filter(
         s =>
-          s.city === city &&
+          cities.includes(s.city) &&
           [s.code, s.name, s.name.replace(/^Apple\s*/, ''), STORE_SOFTWARE_NAMES[s.code]].some(
             name => compact(name) === compact(token)
           )
       );
       if (matches.length !== 1) errors.push('门店未明确或与取机城市不符，请核对');
+      else if (storeCodes.includes(matches[0].code)) errors.push('取机门店重复，请核对');
       else storeCodes.push(matches[0].code);
     }
-  } else if (fields['取机城市苹果直营店']) {
-    const matches = STORES.filter(
-      s => s.city === city && cityText.includes(s.name.replace(/^Apple\s*/, ''))
-    );
-    if (matches.length) storeCodes = matches.map(s => s.code);
   }
   const warnings = [];
   if (idLast4 && identityValues.some(value => norm(value).length > 4))
@@ -347,7 +437,7 @@ function parseProxyText(text) {
   const productCandidates = productText.split('|').map(text => {
     const candidate = text === productText ? product : parseProduct(text);
     try {
-      const normalizedText = norm(text);
+      const normalizedText = normalizeBareProductCapacity(text);
       if (
         /\d+\s*(台|部|件)/.test(normalizedText) &&
         parseProduct(text).quantity !== product.quantity
@@ -395,8 +485,9 @@ function parseProxyText(text) {
     productCandidates,
     quantity: product.quantity,
     storeCodes,
-    storeMode: storeText ? 'selected' : 'city_any',
+    storeMode: storeText || legacyStore ? 'selected' : 'city_any',
     storeCity: city,
+    storeCities: cities,
     billing: storeCodes.length ? generateProxyAddress(storeCodes[0]) : null,
     paymentMethod: normalizeProxyPayment(fields['支付方式'] || '微信'),
     orderSource: fields['订单来源'] || '',
@@ -476,23 +567,56 @@ function validateProxyInput(input, options = {}) {
   if (input.storeMode != null && !['selected', 'city_any'].includes(input.storeMode))
     throw ApiError.badRequest('请选择门店范围');
   result.storeMode = input.storeMode || (input.storeCodes?.length ? 'selected' : 'city_any');
-  result.storeCity = field(input.storeCity || '', '城市', 100);
+  let cities;
+  if (input.storeCities != null) {
+    if (
+      !Array.isArray(input.storeCities) ||
+      !input.storeCities.length ||
+      input.storeCities.some(
+        city => typeof city !== 'string' || !STORES.some(store => store.city === city)
+      )
+    )
+      throw ApiError.badRequest('请确认有效取机城市集合');
+    if (new Set(input.storeCities).size !== input.storeCities.length)
+      throw ApiError.badRequest('取机城市重复，请核对');
+    cities = [...input.storeCities];
+    if (
+      input.storeCity &&
+      JSON.stringify(parseProxyCities(input.storeCity)) !== JSON.stringify(cities)
+    )
+      throw ApiError.badRequest('取机城市字段存在冲突，请核对');
+  } else if (!input.storeCity && (options.existing || options.allowCityInference)) {
+    cities = getProxyStoreCities(input);
+    if (!cities.length) throw ApiError.badRequest('请确认有效取机城市');
+  } else {
+    cities = parseProxyCities(input.storeCity);
+  }
+  result.storeCity = field(cities.join('、'), '城市', 100);
   result.storeCodes =
     Array.isArray(input.storeCodes) && input.storeCodes.length
-      ? input.storeCodes
+      ? [...input.storeCodes]
       : result.storeMode === 'city_any'
-        ? STORES.filter(s => s.city === result.storeCity).map(s => s.code)
+        ? cityStoreCodes(cities)
         : input.storeCodes;
   if (
     !Array.isArray(result.storeCodes) ||
     !result.storeCodes.length ||
     result.storeCodes.length > STORES.length ||
     result.storeCodes.some(
-      code => !STORES.some(s => s.code === code && s.city === result.storeCity)
+      code => !STORES.some(store => store.code === code && cities.includes(store.city))
+    ) ||
+    cities.some(
+      city =>
+        !result.storeCodes.some(code =>
+          STORES.some(store => store.code === code && store.city === city)
+        )
     )
   )
     throw ApiError.badRequest('请确认有效直营店范围');
-  result.storeCodes = [...new Set(result.storeCodes)];
+  if (new Set(result.storeCodes).size !== result.storeCodes.length)
+    throw ApiError.badRequest('取机门店重复，请核对');
+  if (options.expandCityStores && result.storeMode === 'city_any')
+    result.storeCodes = cityStoreCodes(cities);
   const billing = input.billing || generateProxyAddress(result.storeCodes[0]);
   if (!result.storeCodes.includes(billing.referenceStoreCode))
     throw ApiError.badRequest('请选择范围内的账单参考门店并生成地址');
@@ -542,7 +666,7 @@ function generateProxyAddress(code) {
 
 /** 按已核对原公式生成一行软件导入模板。 @param {Object} order 委托 @param {Object} account 账号 @returns {string} 模板 */
 function buildProxyTemplate(order, account) {
-  const d = validateProxyInput(order);
+  const d = validateProxyInput(order, { allowCityInference: true });
   const login = field(account.appleId, '账号', 255);
   const password = field(account.password, '账号密码', 1000);
   const b = d.billing;
@@ -637,6 +761,8 @@ module.exports = {
   parseProduct,
   normalizeProxyProduct,
   parseProxyText,
+  parseProxyCities,
+  getProxyStoreCities,
   extractProxyIdLast4,
   validateProxyInput,
   generateProxyAddress,

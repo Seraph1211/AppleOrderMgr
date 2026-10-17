@@ -135,6 +135,7 @@ describe('代抢二期独立解析及模板字段验收', () => {
       Object.assign(draft, {
         storeCodes: [code],
         storeCity: store.city,
+        storeCities: [store.city],
         storeMode: 'selected',
         billing: input.generateProxyAddress(code),
       });

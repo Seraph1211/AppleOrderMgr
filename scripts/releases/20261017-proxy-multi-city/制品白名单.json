@@ -1,0 +1,8 @@
+{
+  "api": ["src/services/proxyOrderService.js", "src/utils/proxyOrderInput.js"],
+  "frontend": [
+    "frontend/src/pages/ProxyOrders.jsx",
+    "frontend/src/pages/proxyOrders/proxyOrders.css",
+    "frontend/src/pages/proxyOrders/storeScope.js"
+  ]
+}
