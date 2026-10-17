@@ -1,0 +1,5 @@
+FROM apple-order-mgr-api:20261017-log-query-improvements-amd64
+COPY --chown=node:node src/middleware/authMiddleware.js /app/src/middleware/authMiddleware.js
+COPY --chown=node:node src/routes/serverMonitor.js /app/src/routes/serverMonitor.js
+COPY --chown=node:node src/services/monitorLogDownloadTicket.js /app/src/services/monitorLogDownloadTicket.js
+COPY --chown=node:node src/utils/jwtUtils.js /app/src/utils/jwtUtils.js

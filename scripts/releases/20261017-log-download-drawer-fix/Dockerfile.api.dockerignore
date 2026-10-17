@@ -1,0 +1,10 @@
+*
+!src/
+!src/middleware/
+!src/middleware/authMiddleware.js
+!src/routes/
+!src/routes/serverMonitor.js
+!src/services/
+!src/services/monitorLogDownloadTicket.js
+!src/utils/
+!src/utils/jwtUtils.js

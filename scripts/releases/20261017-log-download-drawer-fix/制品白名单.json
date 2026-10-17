@@ -1,0 +1,9 @@
+{
+  "api": [
+    "src/middleware/authMiddleware.js",
+    "src/routes/serverMonitor.js",
+    "src/services/monitorLogDownloadTicket.js",
+    "src/utils/jwtUtils.js"
+  ],
+  "frontend": ["frontend/src/components/MonitorLogs.jsx"]
+}
