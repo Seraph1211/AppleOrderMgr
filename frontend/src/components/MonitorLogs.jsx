@@ -582,7 +582,7 @@ export default function MonitorLogs({ standalone = false }) {
           日志查询
         </Heading>
         <p className="mt-1 text-sm text-gray-500">
-          北京时间 · 最近30天 · 正常在线约1分钟同步 · 原始内容按文件位置保留，长行分段展示
+          北京时间 · 最近90天 · 正常在线约1分钟同步 · 原始内容按文件位置保留，长行分段展示
         </p>
       </div>
       {catalogError && (
@@ -667,7 +667,7 @@ export default function MonitorLogs({ standalone = false }) {
               id="monitor-log-date"
               className="input mt-1 w-full text-base sm:text-sm"
               type="date"
-              min={catalog?.first || day(-29)}
+              min={catalog?.first || day(-89)}
               max={day(0)}
               required
               aria-label="日志日期"

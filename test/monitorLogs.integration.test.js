@@ -373,7 +373,52 @@ const { randomUUID, createHash } = require('crypto');
       service.receiveStates(device.id, { observedAt, instances: [{ ...item, scannedBytes: 201 }] })
     ).rejects.toMatchObject({ statusCode: 400 });
   });
-  test('过期回执、30天清理与90天告警独立，未来日志拒绝', async () => {
+  test('90天能力与首日可写可查，超窗拒绝且清理保留第31至90天', async () => {
+    const response = await fetch(base + '/api/aos-collector/v1/logs/context', { headers });
+    expect((await response.json()).data.retentionDays).toBe(90);
+    const first = policy.retention().first;
+    const previous = new Date(Date.parse(first) - 86400000).toISOString().slice(0, 10);
+    const snapshot = {
+      localId,
+      label: '90天覆盖',
+      state: 'ready',
+      dates: Array.from({ length: 90 }, (_, index) =>
+        new Date(Date.parse(first) + index * 86400000).toISOString().slice(0, 10)
+      ),
+      fileCount: 90,
+      totalBytes: 0,
+      scannedBytes: 0,
+      pending: 0,
+      issues: 0,
+      expired: 0,
+    };
+    await service.receiveStates(device.id, {
+      observedAt: new Date().toISOString(),
+      instances: [snapshot],
+    });
+    await expect(
+      service.receiveStates(device.id, {
+        observedAt: new Date().toISOString(),
+        instances: [{ ...snapshot, dates: [...snapshot.dates, previous] }],
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    const oldest = entry(0, {
+      businessDate: first,
+      loggedAt: `${first}T00:00:00.000Z`,
+    });
+    const expired = entry(1, {
+      businessDate: previous,
+      loggedAt: `${previous}T00:00:00.000Z`,
+    });
+    const result = await service.receive(device.id, { entries: [oldest, expired] });
+    expect(result.accepted).toContain(oldest.id);
+    expect(result.expired).toEqual([expired.id]);
+    await service.cleanup();
+    expect((await service.list(policy.query(params({ date: first })))).items[0].id).toBe(oldest.id);
+    expect(() => policy.query(params({ date: previous }))).toThrow('90');
+  });
+  test('过期回执、90天清理与90天告警独立，未来日志拒绝', async () => {
     const old = entry(0, { businessDate: '2020-01-01', loggedAt: '2019-12-31T16:00:00.000Z' });
     expect((await service.receive(device.id, { entries: [old] })).expired).toEqual([old.id]);
     const fresh = entry(1);

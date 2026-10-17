@@ -163,7 +163,7 @@ async function receiveStates(deviceId, body) {
         )
       )
         throw ApiError.badRequest('采集状态无效');
-      if (!Array.isArray(item.dates) || item.dates.length > 30)
+      if (!Array.isArray(item.dates) || item.dates.length > policy.RETENTION_DAYS)
         throw ApiError.badRequest('覆盖日期无效');
       item.dates.forEach(policy.date);
       for (const key of ['fileCount', 'totalBytes', 'scannedBytes', 'pending', 'issues', 'expired'])
@@ -535,7 +535,7 @@ async function writeExport(prepared, write) {
       : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
   }
 }
-/** 有界清理30天外原文；独立数据库互斥、小批提交及耗时预算。 @returns {Promise<Object>} 清理指标 */
+/** 有界清理90天外原文；独立数据库互斥、小批提交及耗时预算。 @returns {Promise<Object>} 清理指标 */
 async function cleanup() {
   const started = Date.now();
   const budgetMs = Math.max(

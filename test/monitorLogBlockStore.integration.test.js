@@ -442,7 +442,7 @@ const { randomUUID, createHash } = require('crypto');
       await service.list(query({ limit: 2 }))
     );
   });
-  test('30天边界有界回收且不误删首日；预算未追平时保留日分区', async () => {
+  test('90天边界有界回收且不误删首日；预算未追平时保留日分区', async () => {
     const first = policy.retention().first;
     const previous = new Date(Date.parse(first) - 86400000).toISOString().slice(0, 10);
     const old = entry(0, {
@@ -501,7 +501,7 @@ const { randomUUID, createHash } = require('crypto');
     expect((await service.list(query())).items.map(row => row.id)).toEqual([previous.id]);
     expect(await MonitorLogEntry.count()).toBe(1);
   });
-  test('加速模拟完整30天滚动生命周期，每日新块即时可查且逐日回收旧分区', async () => {
+  test('加速模拟完整90天滚动生命周期，每日新块即时可查且逐日回收旧分区', async () => {
     const first = policy.retention().first;
     const day = delta => new Date(Date.parse(first) + delta * 86400000).toISOString().slice(0, 10);
     const rowForDay = delta =>
@@ -510,9 +510,9 @@ const { randomUUID, createHash } = require('crypto');
         fileName: `Log${day(delta).replace(/-/g, '')}_rolling.txt`,
         loggedAt: `${day(delta)}T00:00:00.000Z`,
       });
-    await append(Array.from({ length: 30 }, (_, index) => rowForDay(index)));
-    for (let step = 1; step <= 30; step++) {
-      const fresh = rowForDay(29 + step);
+    await append(Array.from({ length: 90 }, (_, index) => rowForDay(index)));
+    for (let step = 1; step <= 90; step++) {
+      const fresh = rowForDay(89 + step);
       await append([fresh]);
       await sequelize.transaction(async transaction => {
         try {
@@ -524,7 +524,7 @@ const { randomUUID, createHash } = require('crypto');
       const [counts] = await sequelize.query(
         'SELECT count(*)::integer AS count,min(business_date)::text AS first FROM monitor_log_receipts'
       );
-      expect(counts[0]).toEqual({ count: 30, first: day(step) });
+      expect(counts[0]).toEqual({ count: 90, first: day(step) });
       expect((await store.findById(fresh.id)).id).toBe(fresh.id);
     }
   });

@@ -1084,7 +1084,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 ## 完整运行日志查询（2026-09-29）
 
-网站均要求 `monitor.manage`，返回 `Cache-Control: no-store`。日期按北京时间今天及之前29天校验，非法日期、范围、游标返回400，缺资源404。
+网站均要求 `monitor.manage`，返回 `Cache-Control: no-store`。日期按北京时间今天及之前89天校验，非法日期、范围、游标返回400，缺资源404。
 
 - GET `/api/server-monitor/logs/states`：设备、实例和最新完整日志扫描状态；设备凭证和本地路径不返回。兼容未升级设备显示等待接入。
 - GET `/api/server-monitor/logs/accounts?deviceId=&localId=&date=&search=&after=`：指定实例日期的账号编号候选，每页最多100个，返回 items/nextCursor；search 为字面包含。
@@ -1095,7 +1095,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 设备协议使用已有设备认证与解压后1MiB请求限制（完整日志上传使用gzip），`/logs` 独立60次／分钟限流，不消耗原订单及监控请求配额，不接受 body.deviceId。完整日志请求必须带 `X-AOS-Device-Id`，其值必须等于凭证认证设备ID，防止误配凭证把旧队列归到另一设备：
 
 - GET `/api/aos-collector/v1/logs/context`：返回 enabled=true、retentionDays=30，供新版采集器探测服务端能力；旧服务端未支持时保持原订单／监控循环。
-- POST `/api/aos-collector/v1/logs/entries`：`{entries:[...]}`，每批最多200片段。字段 id/localId/fileId/fileName/businessDate/loggedAt/accountNumber/lineNumber/partIndex/byteOffset/message/rawBase64/parseState/contextAt。contextAt为可空的同文件前文排序时间，不冒充原行时间；必须同业务日，原行有时间时两者必须一致。正文每片最多16000字符；同ID或文件位置且同载荷幂等，不同载荷409整批回滚。30天外事件以 expired 回执终结，未来日期拒绝；返回 accepted/expired UUID数组。
+- POST `/api/aos-collector/v1/logs/entries`：`{entries:[...]}`，每批最多200片段。字段 id/localId/fileId/fileName/businessDate/loggedAt/accountNumber/lineNumber/partIndex/byteOffset/message/rawBase64/parseState/contextAt。contextAt为可空的同文件前文排序时间，不冒充原行时间；必须同业务日，原行有时间时两者必须一致。正文每片最多16000字符；同ID或文件位置且同载荷幂等，不同载荷409整批回滚。90天外事件以 expired 回执终结，未来日期拒绝；返回 accepted/expired UUID数组。
 - POST `/api/aos-collector/v1/logs/states`：`{observedAt,instances:[{localId,label,state,dates,fileCount,totalBytes,scannedBytes,pending,issues,expired}]}`，最多20实例。state=ready/catching_up/backpressure/missing/unreadable/error；日期最多30项。旧状态不覆盖新状态。
 
 原始日志属于受限正文，接口错误及应用日志不记录正文。已有告警上报协议保持不变。

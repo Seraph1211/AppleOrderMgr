@@ -1,0 +1,5 @@
+FROM apple-order-mgr-api:20261017-proxy-multi-city-amd64
+COPY --chown=node:node src/routes/aosCollector.js /app/src/routes/aosCollector.js
+COPY --chown=node:node src/routes/serverMonitor.js /app/src/routes/serverMonitor.js
+COPY --chown=node:node src/services/monitorLogPolicy.js /app/src/services/monitorLogPolicy.js
+COPY --chown=node:node src/services/monitorLogService.js /app/src/services/monitorLogService.js

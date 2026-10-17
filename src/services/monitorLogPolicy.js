@@ -2,6 +2,7 @@ const { createHash } = require('crypto');
 const ApiError = require('../utils/ApiError');
 const p = require('./monitorPolicy');
 const DAY_MS = 86400000;
+const RETENTION_DAYS = 90;
 const ENTRY_FIELDS = [
   'id',
   'localId',
@@ -18,10 +19,13 @@ const ENTRY_FIELDS = [
   'parseState',
   'contextAt',
 ];
-/** 北京时间最近30个自然日边界。 @param {Date} now 当前时间 @returns {Object} 边界 */
+/** 北京时间最近90个自然日边界。 @param {Date} now 当前时间 @returns {Object} 边界 */
 function retention(now = new Date()) {
   const today = new Date(+now + 8 * 3600000).toISOString().slice(0, 10);
-  return { today, first: new Date(Date.parse(today) - 29 * DAY_MS).toISOString().slice(0, 10) };
+  return {
+    today,
+    first: new Date(Date.parse(today) - (RETENTION_DAYS - 1) * DAY_MS).toISOString().slice(0, 10),
+  };
 }
 /** 严格自然日验证。 @param {string} value 日期 @returns {string} 日期 */
 function date(value) {
@@ -126,7 +130,7 @@ function query(value, now = new Date()) {
   const bounds = retention(now);
   const day = date(value.date);
   if (day < bounds.first || day > bounds.today)
-    throw ApiError.badRequest('仅可查询最近30个北京时间日期');
+    throw ApiError.badRequest(`仅可查询最近${RETENTION_DAYS}个北京时间日期`);
   const result = {
     deviceId: p.uuid(value.deviceId).toLowerCase(),
     localId: p.uuid(value.localId).toLowerCase(),
@@ -155,4 +159,4 @@ function query(value, now = new Date()) {
     value.cursor == null || value.cursor === '' ? '' : p.shortText(value.cursor, 2000);
   return result;
 }
-module.exports = { retention, date, instant, digest, literalSearch, entry, query };
+module.exports = { RETENTION_DAYS, retention, date, instant, digest, literalSearch, entry, query };

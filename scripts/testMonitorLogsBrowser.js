@@ -154,6 +154,7 @@ async function main() {
               contextPageRequests += 1;
               data = {
                 anchorId: row.id,
+                scope: url.searchParams.get('scope'),
                 direction,
                 hasMore: false,
                 items: Array.from({ length: 5 }, (_, index) => ({
@@ -167,6 +168,7 @@ async function main() {
               const scope = url.searchParams.get('scope');
               data = {
                 anchorId: row.id,
+                scope,
                 direction: null,
                 hasMoreBefore: true,
                 hasMoreAfter: true,

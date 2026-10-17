@@ -18,8 +18,8 @@ const sample = () => ({
   contextAt: null,
 });
 describe('完整日志协议边界', () => {
-  test('30个北京时间自然日及午夜切换', () => {
-    expect(p.retention(now)).toEqual({ today: '2026-09-29', first: '2026-08-31' });
+  test('90个北京时间自然日及午夜切换', () => {
+    expect(p.retention(now)).toEqual({ today: '2026-09-29', first: '2026-07-02' });
     expect(p.retention(new Date('2026-09-28T15:59:59Z')).today).toBe('2026-09-28');
     expect(p.retention(new Date('2026-09-28T16:00:00Z')).today).toBe('2026-09-29');
   });
@@ -65,9 +65,11 @@ describe('完整日志协议边界', () => {
   test('查询限制和字面通配符', () => {
     const query = { deviceId: randomUUID(), localId: randomUUID(), date: '2026-09-29' };
     expect(p.query(query, now).limit).toBe(50);
+    for (const date of ['2026-07-02', '2026-08-30', '2026-08-31'])
+      expect(p.query({ ...query, date }, now).date).toBe(date);
     expect(p.query({ ...query, account: '__unassigned__' }, now).account).toBe('__unassigned__');
     for (const change of [
-      { date: '2026-08-30' },
+      { date: '2026-07-01' },
       { date: '2026-09-30' },
       { date: '2026-02-30' },
       { fromTime: '24:00:00' },

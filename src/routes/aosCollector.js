@@ -5,6 +5,7 @@ const rateLimit = require('express-rate-limit');
 const { AosRecord } = require('../models');
 const repo = require('../services/ingestionRepository');
 const aos = require('../services/aosIngestionService');
+const { RETENTION_DAYS } = require('../services/monitorLogPolicy');
 const management = require('../services/ingestionManagementService');
 const ApiError = require('../utils/ApiError');
 const asyncHandler = require('../utils/asyncHandler');
@@ -53,7 +54,7 @@ router.use('/logs', limiter(60), (req, _res, next) => {
 });
 router.get(
   '/logs/context',
-  respond(() => ({ enabled: true, retentionDays: 30 }))
+  respond(() => ({ enabled: true, retentionDays: RETENTION_DAYS }))
 );
 router.post(
   '/logs/entries',
