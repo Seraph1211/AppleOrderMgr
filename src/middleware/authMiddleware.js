@@ -3,6 +3,7 @@ const { User } = require('../models');
 const { getActiveSessions } = require('../utils/accountSessions');
 const logger = require('../utils/logger');
 const permissionService = require('../services/permissionService');
+const monitorLogDownloadTicket = require('../services/monitorLogDownloadTicket');
 
 /**
  * 认证中间件
@@ -20,7 +21,12 @@ const permissionService = require('../services/permissionService');
 async function authenticate(req, res, next) {
   try {
     // 从请求头中提取 token
-    const token = extractTokenFromHeader(req);
+    const headerToken = extractTokenFromHeader(req);
+    const downloadToken =
+      !headerToken && monitorLogDownloadTicket.isDownloadRequest(req)
+        ? monitorLogDownloadTicket.readCookie(req)
+        : null;
+    const token = headerToken || downloadToken;
 
     if (!token) {
       logger.warn('认证失败：缺少 token', {
@@ -38,7 +44,11 @@ async function authenticate(req, res, next) {
     // 验证 token
     const decoded = verifyToken(token);
 
-    if (!decoded) {
+    const scopedTokenInvalid = Boolean(
+      (downloadToken && decoded?.purpose !== monitorLogDownloadTicket.PURPOSE) ||
+      (!downloadToken && decoded?.purpose)
+    );
+    if (!decoded || scopedTokenInvalid) {
       logger.warn('认证失败：token 无效或已过期', {
         path: req.path,
         method: req.method,
@@ -120,6 +130,11 @@ async function authenticate(req, res, next) {
       permissions,
       permissionsVersion: user.permissionsVersion,
       orderAccess: user.orderAccess,
+    };
+    req.authContext = {
+      source: downloadToken ? 'download-cookie' : 'authorization-header',
+      purpose: decoded.purpose || null,
+      scope: decoded.scope || null,
     };
 
     logger.debug('用户认证成功', {

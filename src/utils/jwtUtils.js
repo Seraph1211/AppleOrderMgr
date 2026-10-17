@@ -67,6 +67,36 @@ function generateToken(payload) {
 }
 
 /**
+ * 生成短期、限定用途的 JWT。
+ * @param {Object} payload - 已由调用方验证的限定用途载荷
+ * @param {number|string} expiresIn - jsonwebtoken 支持的有效期
+ * @returns {string} 签名后的限定用途 token
+ */
+function generateScopedToken(payload, expiresIn) {
+  try {
+    if (!payload?.userId || !payload?.sessionId || !payload?.purpose) {
+      throw new Error('生成限定用途 token 需要 userId、sessionId 和 purpose 参数');
+    }
+    const token = jwt.sign({ ...payload, iat: Math.floor(Date.now() / 1000) }, getJwtSecret(), {
+      expiresIn,
+    });
+    logger.info('限定用途 JWT token 生成成功', {
+      userId: payload.userId,
+      purpose: payload.purpose,
+      expiresIn,
+    });
+    return token;
+  } catch (error) {
+    logger.error('限定用途 JWT token 生成失败', {
+      error: error.message,
+      userId: payload?.userId,
+      purpose: payload?.purpose,
+    });
+    throw error;
+  }
+}
+
+/**
  * 验证 JWT token 有效性
  * @param {string} token - JWT token
  * @returns {Object|null} 解码后的 payload，验证失败返回 null
@@ -149,6 +179,7 @@ function decodeToken(token) {
 
 module.exports = {
   generateToken,
+  generateScopedToken,
   verifyToken,
   extractTokenFromHeader,
   decodeToken,

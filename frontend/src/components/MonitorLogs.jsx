@@ -430,25 +430,16 @@ export default function MonitorLogs({ standalone = false }) {
     setExporting(true);
     setNotice('');
     try {
-      const blob = await client.get(`${BASE}/export`, {
-        params: {
-          deviceId: filters.deviceId,
-          localId: filters.localId,
-          date: filters.date,
-        },
-        responseType: 'blob',
-        timeout: 0,
-      });
-      const objectUrl = URL.createObjectURL(blob);
-      const safe = value => value.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
-      const link = document.createElement('a');
-      link.href = objectUrl;
-      link.download = `AOS日志_${filters.date}_${safe(chosenDevice?.name || '服务器')}_${safe(activeInstance?.label || '实例')}.log`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(objectUrl);
-      setNotice('当天日志已导出');
+      const params = {
+        deviceId: filters.deviceId,
+        localId: filters.localId,
+        date: filters.date,
+      };
+      await client.post(`${BASE}/export-ticket`, params);
+      const query = new URLSearchParams(params);
+      const apiBase = String(client.defaults.baseURL || '/api').replace(/\/$/, '');
+      window.location.assign(`${apiBase}${BASE}/export?${query}`);
+      setNotice('下载已开始，请在浏览器下载列表查看');
     } catch (e) {
       setNotice(e.message || '日志导出失败');
     } finally {
@@ -1024,7 +1015,7 @@ export default function MonitorLogs({ standalone = false }) {
       </div>
       {drawerOpen && selected && (
         <div
-          className="fixed inset-0 z-50 flex justify-end bg-gray-900/20"
+          className="fixed inset-0 z-50 !m-0 flex justify-end bg-gray-900/20"
           onClick={event => {
             if (event.target === event.currentTarget) setDrawerOpen(false);
           }}
@@ -1050,7 +1041,7 @@ export default function MonitorLogs({ standalone = false }) {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="min-h-0 flex-1 space-y-4 overflow-auto p-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
                 <dt className="text-gray-500">日志时间</dt>
                 <dd>{time(selected.loggedAt)}</dd>
@@ -1099,7 +1090,7 @@ export default function MonitorLogs({ standalone = false }) {
                   </details>
                 )}
               </div>
-              <div className="space-y-2">
+              <div className="flex min-h-72 flex-1 flex-col gap-2">
                 <h4 className="text-sm font-medium">上下文 · 上下滑动继续查看</h4>
                 <div className="flex flex-wrap gap-2">
                   <button
@@ -1135,7 +1126,7 @@ export default function MonitorLogs({ standalone = false }) {
                     role="region"
                     aria-label="上下文日志阅读区"
                     tabIndex={0}
-                    className="h-[52dvh] min-h-64 overflow-auto overscroll-contain rounded border border-gray-200"
+                    className="min-h-64 flex-1 overflow-auto overscroll-contain rounded border border-gray-200"
                     onScroll={event => {
                       const element = event.currentTarget;
                       if (element.scrollTop < 160) loadContext('before');

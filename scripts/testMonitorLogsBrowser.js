@@ -38,6 +38,8 @@ async function main() {
       let accountFail = false;
       let listRequests = 0;
       let contextPageRequests = 0;
+      let exportTicketRequests = 0;
+      let exportTicketBody = null;
       let exportRequests = 0;
       let exportQuery = null;
       let allowed = true;
@@ -78,7 +80,14 @@ async function main() {
             return;
           }
           let data;
-          if (url.pathname === '/api/server-monitor/logs/export') {
+          if (url.pathname === '/api/server-monitor/logs/export-ticket') {
+            exportTicketRequests += 1;
+            exportTicketBody = JSON.parse(route.request().postData());
+            await route.fulfill({
+              json: { success: true, data: { expiresInSeconds: 60 } },
+            });
+            return;
+          } else if (url.pathname === '/api/server-monitor/logs/export') {
             exportRequests += 1;
             exportQuery = Object.fromEntries(url.searchParams);
             await route.fulfill({
@@ -246,13 +255,22 @@ async function main() {
       await chooseSelect('软件实例', localId, '软件实例1');
       await panel.getByRole('button', { name: '选择第1条日志', exact: true }).waitFor();
       const downloadPromise = page.waitForEvent('download');
+      const exportRequestPromise = page.waitForRequest(
+        request =>
+          request.method() === 'GET' &&
+          new URL(request.url()).pathname === '/api/server-monitor/logs/export'
+      );
       await panel.getByRole('button', { name: '导出当天日志', exact: true }).click();
       const download = await downloadPromise;
+      await exportRequestPromise;
+      assert.equal(exportTicketRequests, 1);
       assert.equal(exportRequests, 1);
+      assert.deepEqual(Object.keys(exportTicketBody).sort(), ['date', 'deviceId', 'localId']);
       assert.deepEqual(Object.keys(exportQuery).sort(), ['date', 'deviceId', 'localId']);
       assert.equal(exportQuery.deviceId, deviceId);
-      assert.match(download.suggestedFilename(), /^AOS日志_/);
-      await panel.getByText('当天日志已导出', { exact: true }).waitFor();
+      assert.equal(download.suggestedFilename(), 'synthetic.log');
+      assert.equal(fs.readFileSync(await download.path(), 'utf8'), '导出合成日志\n');
+      await panel.getByText('下载已开始，请在浏览器下载列表查看', { exact: true }).waitFor();
       assert.equal(await page.evaluate(() => window.logInjected), undefined);
       const reader = panel.getByRole('region', { name: '日志阅读区', exact: true });
       const first = panel.getByRole('button', { name: '选择第1条日志', exact: true });
@@ -326,6 +344,16 @@ async function main() {
       assert.equal(listRequests, beforeContextRetry, '重试上下文不重新查询主列表');
       const contextReader = detail.getByRole('region', { name: '上下文日志阅读区' });
       assert.equal(await contextReader.locator('tbody tr').count(), 201);
+      const detailBox = await detail.boundingBox();
+      assert.equal(detailBox.y, 0, '详情侧栏从视口顶部开始');
+      assert.equal(detailBox.height, page.viewportSize().height, '详情侧栏占满视口高度');
+      if (!mobile) {
+        const contextBox = await contextReader.boundingBox();
+        assert(
+          Math.abs(contextBox.y + contextBox.height - (detailBox.y + detailBox.height)) < 40,
+          '桌面上下文阅读区应填满详情侧栏底部'
+        );
+      }
       await contextReader.evaluate(element => {
         element.scrollTop = 0;
         element.dispatchEvent(new Event('scroll'));
@@ -489,7 +517,7 @@ async function main() {
         await panel.getByRole('button', { name: '详情与上下文' }).tap();
         await detail.getByText('上下文合成日志 [128]', { exact: true }).waitFor();
         await page.setViewportSize({ width: 375, height: 500 });
-        await detail.locator('.flex-1').evaluate(element => {
+        await detail.locator(':scope > .flex-1').evaluate(element => {
           element.scrollTop = element.scrollHeight;
         });
         assert(await detail.getByRole('button', { name: '关闭日志详情' }).isVisible());

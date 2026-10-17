@@ -4,6 +4,7 @@ const { requirePermission } = require('../middleware/authMiddleware');
 const asyncHandler = require('../utils/asyncHandler');
 const service = require('../services/monitorService');
 const logs = require('../services/monitorLogService');
+const downloadTicket = require('../services/monitorLogDownloadTicket');
 const notifications = require('../services/monitorNotificationService');
 const router = express.Router();
 router.use(requirePermission('monitor.manage'));
@@ -14,7 +15,7 @@ router.use((_req, res, next) => {
 function respond(work) {
   return asyncHandler(async (req, res) => {
     try {
-      res.json({ success: true, data: await work(req) });
+      res.json({ success: true, data: await work(req, res) });
     } catch (error) {
       logger.debug('监控操作未完成', { errorCode: error.code || error.name });
       throw error;
@@ -49,10 +50,34 @@ router.get(
   '/logs/accounts',
   respond(req => logs.accounts(req.query))
 );
+router.post(
+  '/logs/export-ticket',
+  respond(async (req, res) => {
+    const prepared = await logs.prepareExport(req.body);
+    res.cookie(downloadTicket.COOKIE_NAME, downloadTicket.issue(req.user, prepared.query), {
+      ...downloadTicket.cookieOptions(),
+    });
+    return { expiresInSeconds: downloadTicket.EXPIRES_IN_SECONDS };
+  })
+);
 router.get(
   '/logs/export',
   asyncHandler(async (req, res) => {
+    if (
+      req.authContext?.source === 'download-cookie' &&
+      !downloadTicket.matches(req.authContext, req.query)
+    ) {
+      return res.status(403).json({
+        success: false,
+        error: { code: 'DOWNLOAD_SCOPE_MISMATCH', message: '下载凭证与日志范围不一致' },
+      });
+    }
     const prepared = await logs.prepareExport(req.query);
+    if (req.authContext?.source === 'download-cookie') {
+      const clearOptions = downloadTicket.cookieOptions();
+      delete clearOptions.maxAge;
+      res.clearCookie(downloadTicket.COOKIE_NAME, clearOptions);
+    }
     res.set({
       'Content-Type': 'text/plain; charset=utf-8',
       'Content-Disposition': `attachment; filename="${prepared.fileName}"`,
