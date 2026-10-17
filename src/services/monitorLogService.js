@@ -16,6 +16,8 @@ const blockCompactor = require('./monitorLogBlockCompactor');
 const ORDER = 'sort_at, file_id, byte_offset, id';
 const TUPLE = '(sort_at, file_id, byte_offset, id)';
 const MARK = '(:anchorAt::timestamptz, :anchorFile::uuid, :anchorOffset::bigint, :anchorId::uuid)';
+const CONTEXT_PAGE_SIZE = 100;
+const EXPORT_PAGE_SIZE = 100;
 const fail = error => {
   logger.debug('完整日志操作未完成', { errorCode: error.code || error.name });
 };
@@ -278,6 +280,38 @@ async function select(clauses, replacements, direction = 'ASC', limit = 50) {
       : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
   }
 }
+function findAnchor(id, compressed) {
+  return compressed
+    ? blockStore.findById(id.toLowerCase())
+    : MonitorLogEntry.findByPk(id.toLowerCase());
+}
+function sameContext(anchor, candidate, scope) {
+  return (
+    candidate &&
+    candidate.deviceId === anchor.deviceId &&
+    candidate.localId === anchor.localId &&
+    candidate.businessDate === anchor.businessDate &&
+    (scope !== 'account' || candidate.accountNumber === anchor.accountNumber)
+  );
+}
+async function surroundingPage(query, anchor, direction, limit, compressed) {
+  let rows;
+  if (compressed) rows = await blockStore.select(query, anchor, direction, limit + 1);
+  else {
+    const { clauses, replacements } = filters(query);
+    Object.assign(replacements, anchorValues(anchor));
+    rows = await select(
+      [...clauses, `${TUPLE} ${direction === 'ASC' ? '>' : '<'} ${MARK}`],
+      replacements,
+      direction,
+      limit + 1
+    );
+  }
+  const hasMore = rows.length > limit;
+  const items = rows.slice(0, limit);
+  if (direction === 'DESC') items.reverse();
+  return { items: items.map(safe), hasMore };
+}
 /** 查询完整日志，绑定过滤条件的游标避免串页。 @param {Object} input 查询 @returns {Promise<Object>} 分页 */
 async function list(input) {
   try {
@@ -374,12 +408,18 @@ async function accounts(input) {
       : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
   }
 }
-/** 同实例同日账号或实例上下文。 @param {string} id 片段ID @param {Object} input 范围 @returns {Promise<Object>} 上下文 */
+/** 同实例同日账号或实例上下文，支持以边界事件双向翻页。 @param {string} id 片段ID @param {Object} input 范围 @returns {Promise<Object>} 上下文 */
 async function context(id, input) {
   try {
     p.uuid(id);
-    p.fields(input, ['scope']);
+    p.fields(input, ['scope', 'cursor', 'direction', 'limit']);
     if (!['account', 'instance'].includes(input.scope)) throw ApiError.badRequest('上下文范围无效');
+    if (input.direction && !['before', 'after'].includes(input.direction))
+      throw ApiError.badRequest('上下文方向无效');
+    if (Boolean(input.cursor) !== Boolean(input.direction))
+      throw ApiError.badRequest('上下文游标与方向必须同时提供');
+    const limit = p.integer(Number(input.limit ?? CONTEXT_PAGE_SIZE), 1, CONTEXT_PAGE_SIZE);
+    const cursorId = input.cursor ? p.uuid(input.cursor).toLowerCase() : '';
     const legacyAnchor = await MonitorLogEntry.findByPk(id);
     const candidate = legacyAnchor || (await blockStore.findById(id.toLowerCase()));
     const compressed =
@@ -390,37 +430,104 @@ async function context(id, input) {
       throw ApiError.notFound();
     if (input.scope === 'account' && !anchor.accountNumber)
       throw ApiError.badRequest('该日志未识别账号，请查看实例上下文');
-    const { clauses, replacements } = filters({
+    const query = {
       deviceId: anchor.deviceId,
       localId: anchor.localId,
       date: anchor.businessDate,
       account: input.scope === 'account' ? anchor.accountNumber : '',
-    });
-    Object.assign(replacements, anchorValues(anchor));
-    let before;
-    let after;
-    if (compressed) {
-      const query = {
-        deviceId: anchor.deviceId,
-        localId: anchor.localId,
-        date: anchor.businessDate,
-        account: input.scope === 'account' ? anchor.accountNumber : '',
+    };
+    if (cursorId) {
+      const cursor = await findAnchor(cursorId, compressed);
+      if (!sameContext(anchor, cursor, input.scope))
+        throw ApiError.badRequest('上下文游标已过期，请重新打开详情');
+      const direction = input.direction === 'before' ? 'DESC' : 'ASC';
+      const page = await surroundingPage(query, cursor, direction, limit, compressed);
+      return {
+        anchorId: id,
+        scope: input.scope,
+        direction: input.direction,
+        items: page.items,
+        hasMore: page.hasMore,
       };
-      [before, after] = await Promise.all([
-        blockStore.select(query, anchor, 'DESC', 20),
-        blockStore.select(query, anchor, 'ASC', 20),
-      ]);
-    } else {
-      [before, after] = await Promise.all([
-        select([...clauses, `${TUPLE} < ${MARK}`], replacements, 'DESC', 20),
-        select([...clauses, `${TUPLE} > ${MARK}`], replacements, 'ASC', 20),
-      ]);
     }
+    const [before, after] = await Promise.all([
+      surroundingPage(query, anchor, 'DESC', limit, compressed),
+      surroundingPage(query, anchor, 'ASC', limit, compressed),
+    ]);
     return {
       anchorId: id,
       scope: input.scope,
-      items: [...before.reverse(), anchor, ...after].map(safe),
+      direction: null,
+      items: [...before.items, safe(anchor), ...after.items],
+      hasMoreBefore: before.hasMore,
+      hasMoreAfter: after.hasMore,
     };
+  } catch (error) {
+    fail(error);
+    throw error instanceof ApiError
+      ? error
+      : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
+  }
+}
+/** 准备单实例单日流式导出，首批先读取以便在响应头发送前失败。 @param {Object} input 范围 @returns {Promise<Object>} 导出状态 */
+async function prepareExport(input) {
+  try {
+    p.fields(input, ['deviceId', 'localId', 'date']);
+    const query = policy.query(input);
+    const compressed = (await blockStore.mode(query.deviceId, query.localId)) === 'blocks';
+    const pageFilters = filters(query);
+    const rows = compressed
+      ? await blockStore.select(query, null, 'ASC', EXPORT_PAGE_SIZE)
+      : await select(pageFilters.clauses, pageFilters.replacements, 'ASC', EXPORT_PAGE_SIZE);
+    return {
+      query,
+      compressed,
+      rows,
+      fileName: `aos-${query.date}-${query.deviceId.slice(0, 8)}-${query.localId.slice(0, 8)}.log`,
+    };
+  } catch (error) {
+    fail(error);
+    throw error instanceof ApiError
+      ? error
+      : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
+  }
+}
+/** 有界分页写出全天原文；write 返回 false 时停止，避免客户端断开后继续扫描。 @param {Object} prepared 导出状态 @param {Function} write 写入函数 @returns {Promise<Object>} 导出指标 */
+async function writeExport(prepared, write) {
+  const started = Date.now();
+  let rows = prepared.rows;
+  let exported = 0;
+  let anchor = null;
+  try {
+    while (rows.length) {
+      for (const row of rows) {
+        if ((await write(row.message)) === false)
+          return { exported, aborted: true, durationMs: Date.now() - started };
+        exported++;
+      }
+      anchor = rows.at(-1);
+      if (rows.length < EXPORT_PAGE_SIZE) break;
+      if (prepared.compressed)
+        rows = await blockStore.select(prepared.query, anchor, 'ASC', EXPORT_PAGE_SIZE);
+      else {
+        const pageFilters = filters(prepared.query);
+        rows = await select(
+          [...pageFilters.clauses, `${TUPLE} > ${MARK}`],
+          { ...pageFilters.replacements, ...anchorValues(anchor) },
+          'ASC',
+          EXPORT_PAGE_SIZE
+        );
+      }
+    }
+    const result = { exported, aborted: false, durationMs: Date.now() - started };
+    logger.info('完整日志导出指标', {
+      ...result,
+      deviceId: prepared.query.deviceId,
+      localId: prepared.query.localId,
+      businessDate: prepared.query.date,
+      storage: prepared.compressed ? 'blocks' : 'rows',
+    });
+    return result;
   } catch (error) {
     fail(error);
     throw error instanceof ApiError
@@ -540,4 +647,14 @@ async function cleanup() {
       : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
   }
 }
-module.exports = { receive, receiveStates, states, list, accounts, context, cleanup };
+module.exports = {
+  receive,
+  receiveStates,
+  states,
+  list,
+  accounts,
+  context,
+  prepareExport,
+  writeExport,
+  cleanup,
+};

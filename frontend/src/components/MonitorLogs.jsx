@@ -1,6 +1,17 @@
 import ResponsiveSelect from './responsiveSelect';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Copy, Maximize2, Minimize2, RefreshCw, Search, ScrollText, X } from 'lucide-react';
+import {
+  CalendarDays,
+  Clock3,
+  Copy,
+  Download,
+  Maximize2,
+  Minimize2,
+  RefreshCw,
+  Search,
+  ScrollText,
+  X,
+} from 'lucide-react';
 import client from '../api/client';
 import MonitorLogAccountSelect from './MonitorLogAccountSelect';
 import { copyDeferredText } from '../utils/copyDeferredText';
@@ -79,7 +90,10 @@ export default function MonitorLogs({ standalone = false }) {
   const [scope, setScope] = useState('account');
   const [context, setContext] = useState(null);
   const [contextError, setContextError] = useState('');
+  const [contextLoading, setContextLoading] = useState(false);
+  const [contextPaging, setContextPaging] = useState('');
   const [contextRefresh, setContextRefresh] = useState(0);
+  const [exporting, setExporting] = useState(false);
   const dialogRef = useRef(null);
   const contextTriggerRef = useRef(null);
   const logScrollRef = useRef(null);
@@ -87,6 +101,9 @@ export default function MonitorLogs({ standalone = false }) {
   const sectionRef = useRef(null);
   const readerPanelRef = useRef(null);
   const expandTriggerRef = useRef(null);
+  const contextScrollRef = useRef(null);
+  const contextInitialRef = useRef(false);
+  const contextPagingRef = useRef('');
   const filterKey = JSON.stringify(filters);
   const activeInstance = catalog?.instances.find(
     row => row.deviceId === filters.deviceId && row.localId === filters.localId
@@ -212,7 +229,10 @@ export default function MonitorLogs({ standalone = false }) {
       ].filter(element => !element.disabled && element.getClientRects().length);
       const first = controls[0];
       const last = controls.at(-1);
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === readerPanelRef.current)) {
+      if (
+        event.shiftKey &&
+        (document.activeElement === first || document.activeElement === readerPanelRef.current)
+      ) {
         event.preventDefault();
         last?.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -287,18 +307,24 @@ export default function MonitorLogs({ standalone = false }) {
   useEffect(() => {
     setContext(null);
     setContextError('');
+    setContextPaging('');
+    contextPagingRef.current = '';
     if (!drawerOpen || !selected) return undefined;
     let active = true;
     const controller = new AbortController();
+    setContextLoading(true);
+    contextInitialRef.current = true;
     async function read() {
       try {
         const response = await client.get(`${BASE}/${selected.id}/context`, {
-          params: { scope },
+          params: { scope, limit: 100 },
           signal: controller.signal,
         });
         if (active) setContext(response.data);
       } catch (e) {
         if (active) setContextError(e.message || '上下文读取失败');
+      } finally {
+        if (active) setContextLoading(false);
       }
     }
     read();
@@ -307,6 +333,20 @@ export default function MonitorLogs({ standalone = false }) {
       controller.abort();
     };
   }, [drawerOpen, selected, scope, contextRefresh]);
+
+  useLayoutEffect(() => {
+    if (!selected || !context || !contextInitialRef.current || !contextScrollRef.current) return;
+    const selectedRow = contextScrollRef.current.querySelector(
+      `[data-context-id="${selected.id}"]`
+    );
+    if (selectedRow) {
+      const scrollBox = contextScrollRef.current.getBoundingClientRect();
+      const rowBox = selectedRow.getBoundingClientRect();
+      contextScrollRef.current.scrollTop +=
+        rowBox.top - scrollBox.top - (scrollBox.height - rowBox.height) / 2;
+    }
+    contextInitialRef.current = false;
+  }, [context, selected]);
 
   useEffect(() => {
     if (!drawerOpen) return undefined;
@@ -321,7 +361,10 @@ export default function MonitorLogs({ standalone = false }) {
       ].filter(element => !element.disabled && element.getClientRects().length);
       const first = controls[0];
       const last = controls.at(-1);
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+      if (
+        event.shiftKey &&
+        (document.activeElement === first || document.activeElement === dialogRef.current)
+      ) {
         event.preventDefault();
         last?.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -370,7 +413,7 @@ export default function MonitorLogs({ standalone = false }) {
       ...current,
       ...draft,
       fromTime: draft.fromTime.length === 5 ? `${draft.fromTime}:00` : draft.fromTime,
-      toTime: draft.toTime.length === 5 ? `${draft.toTime}:00` : draft.toTime,
+      toTime: draft.toTime.length === 5 ? `${draft.toTime}:59` : draft.toTime,
     }));
     setRefresh(value => value + 1);
   }
@@ -380,6 +423,83 @@ export default function MonitorLogs({ standalone = false }) {
       setNotice('日志已复制');
     } catch (e) {
       setNotice(e.message || '复制失败');
+    }
+  }
+  async function exportDay() {
+    if (!filters.deviceId || !filters.localId || exporting) return;
+    setExporting(true);
+    setNotice('');
+    try {
+      const blob = await client.get(`${BASE}/export`, {
+        params: {
+          deviceId: filters.deviceId,
+          localId: filters.localId,
+          date: filters.date,
+        },
+        responseType: 'blob',
+        timeout: 0,
+      });
+      const objectUrl = URL.createObjectURL(blob);
+      const safe = value => value.replace(/[\\/:*?"<>|]/g, '_').slice(0, 60);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `AOS日志_${filters.date}_${safe(chosenDevice?.name || '服务器')}_${safe(activeInstance?.label || '实例')}.log`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(objectUrl);
+      setNotice('当天日志已导出');
+    } catch (e) {
+      setNotice(e.message || '日志导出失败');
+    } finally {
+      setExporting(false);
+    }
+  }
+  async function loadContext(direction) {
+    if (
+      !context ||
+      contextPagingRef.current ||
+      (direction === 'before' ? !context.hasMoreBefore : !context.hasMoreAfter)
+    )
+      return;
+    const cursor = direction === 'before' ? context.items[0]?.id : context.items.at(-1)?.id;
+    if (!cursor) return;
+    contextPagingRef.current = direction;
+    setContextPaging(direction);
+    setContextError('');
+    const scroll = contextScrollRef.current;
+    const previousHeight = scroll?.scrollHeight || 0;
+    const previousTop = scroll?.scrollTop || 0;
+    const requestAnchorId = selected.id;
+    const requestScope = scope;
+    try {
+      const response = await client.get(`${BASE}/${selected.id}/context`, {
+        params: { scope, direction, cursor, limit: 100 },
+      });
+      setContext(current => {
+        if (!current || current.anchorId !== requestAnchorId || current.scope !== requestScope)
+          return current;
+        const known = new Set(current.items.map(row => row.id));
+        const added = response.data.items.filter(row => !known.has(row.id));
+        return {
+          ...current,
+          items:
+            direction === 'before' ? [...added, ...current.items] : [...current.items, ...added],
+          ...(direction === 'before'
+            ? { hasMoreBefore: response.data.hasMore }
+            : { hasMoreAfter: response.data.hasMore }),
+        };
+      });
+      if (direction === 'before')
+        requestAnimationFrame(() => {
+          if (scroll)
+            scroll.scrollTop = previousTop + Math.max(0, scroll.scrollHeight - previousHeight);
+        });
+    } catch (e) {
+      setContextError(e.message || '上下文读取失败');
+    } finally {
+      contextPagingRef.current = '';
+      setContextPaging('');
     }
   }
   function highlighted(message) {
@@ -398,7 +518,11 @@ export default function MonitorLogs({ standalone = false }) {
         className={`w-full border-collapse text-left font-mono text-[13px] leading-[22px] ${wrapLines ? 'table-fixed' : ''}`}
         aria-label={inContext ? '上下文日志列表' : '日志原文列表'}
       >
-        <caption className="sr-only">序号仅表示当前列表位置，原始文件与行号请查看详情。</caption>
+        <caption className="sr-only">
+          {inContext
+            ? '左侧为原始文件行号，选中日志使用浅蓝色标记。'
+            : '序号仅表示当前列表位置，原始文件与行号请查看详情。'}
+        </caption>
         <colgroup>
           <col style={{ width: 48 }} />
           <col />
@@ -410,11 +534,12 @@ export default function MonitorLogs({ standalone = false }) {
               className={`${row.id === selected?.id ? 'bg-primary-50' : 'hover:bg-gray-50'} group`}
             >
               <td className="w-12 select-none py-0.5 pr-2 text-right align-top text-xs text-gray-400">
-                {index + 1}
+                {inContext ? row.lineNumber : index + 1}
               </td>
               <td className="p-0 align-top">
                 {inContext ? (
                   <pre
+                    data-context-id={row.id}
                     className={`px-2 py-0.5 font-mono ${wrapLines ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre'}`}
                   >
                     {highlighted(row.message.replace(/\r?\n$/, '') || '（空行）')}
@@ -495,8 +620,8 @@ export default function MonitorLogs({ standalone = false }) {
         onSubmit={submit}
         className="rounded-lg border border-gray-200 bg-white p-4"
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <label className="text-sm text-gray-600">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12">
+          <label className="text-sm text-gray-600 xl:col-span-3">
             服务器
             <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
@@ -513,7 +638,7 @@ export default function MonitorLogs({ standalone = false }) {
               ))}
             </ResponsiveSelect>
           </label>
-          <label className="text-sm text-gray-600">
+          <label className="text-sm text-gray-600 xl:col-span-3">
             软件实例
             <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
@@ -533,20 +658,40 @@ export default function MonitorLogs({ standalone = false }) {
                 ))}
             </ResponsiveSelect>
           </label>
-          <label className="text-sm text-gray-600">
-            日志日期
+          <div className="text-sm text-gray-600 xl:col-span-3">
+            <label className="flex items-center gap-1" htmlFor="monitor-log-date">
+              <CalendarDays className="h-4 w-4" />
+              日志日期
+            </label>
             <input
+              id="monitor-log-date"
               className="input mt-1 w-full text-base sm:text-sm"
               type="date"
-              min={day(-29)}
+              min={catalog?.first || day(-29)}
               max={day(0)}
               required
               aria-label="日志日期"
               value={filters.date}
               onChange={e => change('date', e.target.value)}
             />
-          </label>
-          <div className="text-sm text-gray-600">
+            <div className="mt-2 flex gap-2">
+              {[
+                ['今天', 0],
+                ['昨天', -1],
+                ['前天', -2],
+              ].map(([label, offset]) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={`rounded-md border px-2 py-1 text-xs ${filters.date === day(offset) ? 'border-primary bg-primary-50 text-primary' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                  onClick={() => change('date', day(offset))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="text-sm text-gray-600 xl:col-span-3">
             <span>账号编号</span>
             <MonitorLogAccountSelect
               value={draft.account === '__unassigned__' ? '' : draft.account}
@@ -573,29 +718,55 @@ export default function MonitorLogs({ standalone = false }) {
               }}
             />
           </div>
-          <label className="text-sm text-gray-600">
-            开始时间
-            <input
-              type="time"
-              step="1"
-              className="input mt-1 w-full text-base sm:text-sm"
-              aria-label="开始时间"
-              value={draft.fromTime}
-              onChange={e => setDraft(value => ({ ...value, fromTime: e.target.value }))}
-            />
-          </label>
-          <label className="text-sm text-gray-600">
-            结束时间
-            <input
-              type="time"
-              step="1"
-              className="input mt-1 w-full text-base sm:text-sm"
-              aria-label="结束时间"
-              value={draft.toTime}
-              onChange={e => setDraft(value => ({ ...value, toTime: e.target.value }))}
-            />
-          </label>
-          <label className="text-sm text-gray-600 sm:col-span-2">
+          <fieldset className="rounded-lg border border-gray-200 bg-gray-50 p-3 sm:col-span-2 xl:col-span-6">
+            <legend className="flex items-center gap-1 px-1 text-sm text-gray-600">
+              <Clock3 className="h-4 w-4" />
+              时间范围
+            </legend>
+            <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
+              <label className="text-xs text-gray-500">
+                开始
+                <input
+                  type="time"
+                  step="60"
+                  className="input mt-1 w-full text-base sm:text-sm"
+                  aria-label="开始时间"
+                  value={draft.fromTime}
+                  onChange={e => setDraft(value => ({ ...value, fromTime: e.target.value }))}
+                />
+              </label>
+              <span className="pb-2 text-gray-400">至</span>
+              <label className="text-xs text-gray-500">
+                结束
+                <input
+                  type="time"
+                  step="60"
+                  className="input mt-1 w-full text-base sm:text-sm"
+                  aria-label="结束时间"
+                  value={draft.toTime}
+                  onChange={e => setDraft(value => ({ ...value, toTime: e.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-2" aria-label="常用时间范围">
+              {[
+                ['全天', '', ''],
+                ['上午', '00:00', '11:59'],
+                ['下午', '12:00', '17:59'],
+                ['晚间', '18:00', '23:59'],
+              ].map(([label, fromTime, toTime]) => (
+                <button
+                  key={label}
+                  type="button"
+                  className={`rounded-md border px-2 py-1 text-xs ${draft.fromTime === fromTime && draft.toTime === toTime ? 'border-primary bg-primary-50 text-primary' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
+                  onClick={() => setDraft(value => ({ ...value, fromTime, toTime }))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </fieldset>
+          <label className="text-sm text-gray-600 sm:col-span-2 xl:col-span-6">
             正文关键词
             <input
               className="input mt-1 w-full text-base sm:text-sm"
@@ -628,6 +799,16 @@ export default function MonitorLogs({ standalone = false }) {
           >
             <Search className="mr-1 h-4 w-4" />
             查询
+          </button>
+          <button
+            type="button"
+            className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
+            disabled={!filters.localId || exporting}
+            onClick={exportDay}
+            title="导出所选服务器、实例和日期的全部日志，不受账号、时间和关键词筛选影响"
+          >
+            <Download className="mr-1 h-4 w-4" />
+            {exporting ? '正在导出…' : '导出当天日志'}
           </button>
           <button
             type="button"
@@ -919,7 +1100,7 @@ export default function MonitorLogs({ standalone = false }) {
                 )}
               </div>
               <div className="space-y-2">
-                <h4 className="text-sm font-medium">上下文 · 同一天前后各20个片段</h4>
+                <h4 className="text-sm font-medium">上下文 · 上下滑动继续查看</h4>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -937,7 +1118,7 @@ export default function MonitorLogs({ standalone = false }) {
                     整个实例上下文
                   </button>
                 </div>
-                {contextError ? (
+                {contextError && !context ? (
                   <p role="alert" className="text-sm text-red-700">
                     {contextError}
                     <button
@@ -949,11 +1130,47 @@ export default function MonitorLogs({ standalone = false }) {
                     </button>
                   </p>
                 ) : context ? (
-                  <div className="overflow-auto rounded border border-gray-200">
+                  <div
+                    ref={contextScrollRef}
+                    role="region"
+                    aria-label="上下文日志阅读区"
+                    tabIndex={0}
+                    className="h-[52dvh] min-h-64 overflow-auto overscroll-contain rounded border border-gray-200"
+                    onScroll={event => {
+                      const element = event.currentTarget;
+                      if (element.scrollTop < 160) loadContext('before');
+                      if (element.scrollHeight - element.scrollTop - element.clientHeight < 240)
+                        loadContext('after');
+                    }}
+                  >
+                    <div className="sticky top-0 z-10 flex justify-center bg-white/95 py-1 text-xs text-gray-500">
+                      {contextPaging === 'before'
+                        ? '正在加载更早上下文…'
+                        : context.hasMoreBefore
+                          ? '向上滑动加载更早上下文'
+                          : '已到最早上下文'}
+                    </div>
                     {rows(context.items, true)}
+                    <div className="sticky bottom-0 z-10 flex justify-center bg-white/95 py-1 text-xs text-gray-500">
+                      {contextPaging === 'after'
+                        ? '正在加载更晚上下文…'
+                        : context.hasMoreAfter
+                          ? '向下滑动加载更晚上下文'
+                          : '已到最新上下文'}
+                    </div>
+                    {contextError && (
+                      <p
+                        role="alert"
+                        className="sticky bottom-6 bg-red-50 px-3 py-2 text-sm text-red-700"
+                      >
+                        {contextError}
+                      </p>
+                    )}
                   </div>
                 ) : (
-                  <p className="p-4 text-sm text-gray-500">正在读取上下文…</p>
+                  <p className="p-4 text-sm text-gray-500">
+                    {contextLoading ? '正在读取上下文…' : '暂无上下文'}
+                  </p>
                 )}
               </div>
             </div>

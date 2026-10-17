@@ -275,24 +275,75 @@ const { randomUUID, createHash } = require('crypto');
     expect(last.nextCursor).toBeNull();
     expect((await service.accounts(params({ search: '100' }))).items).toHaveLength(11);
   });
-  test('账号／实例上下文不混入其他实例，无账号保留原文', async () => {
-    const items = Array.from({ length: 50 }, (_, i) =>
-      entry(i, { accountNumber: i % 2 ? '128' : '129' })
-    );
-    await service.receive(device.id, { entries: [...items, entry(60, { localId: anotherId })] });
-    const account = await service.context(items[25].id, { scope: 'account' });
+  test('账号／实例上下文以选中位置居中并支持双向分页', async () => {
+    const items = Array.from({ length: 250 }, (_, i) => entry(i));
+    await service.receive(device.id, { entries: items.slice(0, 200) });
+    await service.receive(device.id, { entries: items.slice(200) });
+    await service.receive(device.id, { entries: [entry(300, { localId: anotherId })] });
+    const account = await service.context(items[120].id, { scope: 'account' });
+    expect(account.items).toHaveLength(201);
+    expect(account.items[100].id).toBe(items[120].id);
     expect(account.items.every(item => item.accountNumber === '128')).toBe(true);
-    const instance = await service.context(items[25].id, { scope: 'instance' });
-    expect(instance.items).toHaveLength(41);
+    expect(account.hasMoreBefore).toBe(true);
+    expect(account.hasMoreAfter).toBe(true);
+    const before = await service.context(items[120].id, {
+      scope: 'account',
+      direction: 'before',
+      cursor: account.items[0].id,
+      limit: '100',
+    });
+    expect(before.items.map(item => Number(item.byteOffset))).toEqual(
+      Array.from({ length: 20 }, (_, index) => index)
+    );
+    expect(before.hasMore).toBe(false);
+    const after = await service.context(items[120].id, {
+      scope: 'instance',
+      direction: 'after',
+      cursor: account.items.at(-1).id,
+    });
+    expect(after.items.map(item => Number(item.byteOffset))).toEqual(
+      Array.from({ length: 29 }, (_, index) => 221 + index)
+    );
+    expect(after.hasMore).toBe(false);
+    const instance = await service.context(items[120].id, { scope: 'instance' });
     expect(instance.items.every(item => item.localId === localId)).toBe(true);
     const response = await fetch(
-      base + `/api/server-monitor/logs/${items[25].id}/context?scope=instance`,
+      base +
+        `/api/server-monitor/logs/${items[120].id}/context?scope=instance&direction=before&cursor=${instance.items[0].id}&limit=100`,
       { headers: website }
     );
     expect(response.status).toBe(200);
+    expect((await response.json()).data.direction).toBe('before');
+    await expect(
+      service.context(items[120].id, {
+        scope: 'instance',
+        direction: 'before',
+        cursor: randomUUID(),
+      })
+    ).rejects.toMatchObject({ statusCode: 400 });
     await expect(service.context(randomUUID(), { scope: 'account' })).rejects.toMatchObject({
       statusCode: 404,
     });
+  });
+  test('按服务器、实例和日期流式导出完整日志文件', async () => {
+    const items = Array.from({ length: 155 }, (_, index) =>
+      entry(index, { message: index === 77 ? '跨批次长行片段' : `导出日志${index}\n` })
+    );
+    await service.receive(device.id, { entries: items });
+    const response = await fetch(
+      base + '/api/server-monitor/logs/export?' + new URLSearchParams(params()),
+      { headers: website }
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('content-type')).toContain('text/plain');
+    expect(response.headers.get('content-disposition')).toMatch(/^attachment; filename="aos-/);
+    expect(await response.text()).toBe(items.map(item => item.message).join(''));
+    const invalid = await fetch(
+      base + '/api/server-monitor/logs/export?' + new URLSearchParams(params({ account: '128' })),
+      { headers: website }
+    );
+    expect(invalid.status).toBe(400);
   });
   test('新鲜进度覆盖，迟到报告不能倒退，缺失日期不伪装完整', async () => {
     const observedAt = new Date(Date.now() - 1000).toISOString();

@@ -21,6 +21,26 @@ function respond(work) {
     }
   });
 }
+function waitForDrain(res) {
+  return new Promise(resolve => {
+    if (res.destroyed || res.writableEnded) {
+      resolve(false);
+      return;
+    }
+    const finish = writable => {
+      res.off('drain', drained);
+      res.off('close', closed);
+      res.off('error', closed);
+      resolve(writable);
+    };
+    const drained = () => finish(true);
+    const closed = () => finish(false);
+    res.once('drain', drained);
+    res.once('close', closed);
+    res.once('error', closed);
+    if (res.destroyed || res.writableEnded) closed();
+  });
+}
 router.get(
   '/logs/states',
   respond(() => logs.states())
@@ -28,6 +48,23 @@ router.get(
 router.get(
   '/logs/accounts',
   respond(req => logs.accounts(req.query))
+);
+router.get(
+  '/logs/export',
+  asyncHandler(async (req, res) => {
+    const prepared = await logs.prepareExport(req.query);
+    res.set({
+      'Content-Type': 'text/plain; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${prepared.fileName}"`,
+      'X-Content-Type-Options': 'nosniff',
+      'X-Accel-Buffering': 'no',
+    });
+    await logs.writeExport(prepared, async chunk => {
+      if (res.destroyed) return false;
+      return res.write(chunk) || (await waitForDrain(res));
+    });
+    if (!res.destroyed) res.end();
+  })
 );
 router.get(
   '/logs/:id/context',

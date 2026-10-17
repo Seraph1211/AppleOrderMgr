@@ -5,6 +5,7 @@ const path = require('node:path');
 const { chromium } = require('playwright-core');
 const logger = require('../src/utils/logger');
 const logPolicy = require('../src/services/monitorLogPolicy');
+const BASE_URL = process.env.MONITOR_BROWSER_BASE_URL || 'http://127.0.0.1:5173';
 /** 合成浏览器验收，拦截所有API，不访问业务数据。 */
 async function main() {
   let browser;
@@ -36,12 +37,16 @@ async function main() {
       let contextFail = false;
       let accountFail = false;
       let listRequests = 0;
+      let contextPageRequests = 0;
+      let exportRequests = 0;
+      let exportQuery = null;
       let allowed = true;
       const deviceId = '11111111-1111-4111-8111-111111111111';
       const localId = '22222222-2222-4222-8222-222222222222';
       const otherId = '33333333-3333-4333-8333-333333333333';
       const now = new Date().toISOString();
       const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
+      const yesterday = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10);
       const message =
         '2026-09-29 01:40:10.229 [2][128]A47-没有有货的店铺 <script>window.logInjected=true</script>\n';
       const row = {
@@ -68,12 +73,21 @@ async function main() {
         try {
           const url = new URL(route.request().url());
           if (!url.pathname.startsWith('/api/')) {
-            if (url.origin === 'http://127.0.0.1:5173') await route.continue();
+            if (url.origin === BASE_URL) await route.continue();
             else await route.abort();
             return;
           }
           let data;
-          if (url.pathname === '/api/auth/me')
+          if (url.pathname === '/api/server-monitor/logs/export') {
+            exportRequests += 1;
+            exportQuery = Object.fromEntries(url.searchParams);
+            await route.fulfill({
+              body: '导出合成日志\n',
+              contentType: 'text/plain; charset=utf-8',
+              headers: { 'content-disposition': 'attachment; filename="synthetic.log"' },
+            });
+            return;
+          } else if (url.pathname === '/api/auth/me')
             data = {
               id: 9,
               username: 'log-browser-test',
@@ -135,19 +149,39 @@ async function main() {
               });
               return;
             }
-            data = {
-              anchorId: row.id,
-              items: [
-                row,
-                {
+            const direction = url.searchParams.get('direction');
+            if (direction) {
+              contextPageRequests += 1;
+              data = {
+                anchorId: row.id,
+                direction,
+                hasMore: false,
+                items: Array.from({ length: 5 }, (_, index) => ({
                   ...row,
-                  id: 'context-other',
-                  lineNumber: '2',
-                  accountNumber: url.searchParams.get('scope') === 'instance' ? '129' : '128',
-                  message: `上下文合成日志 [${url.searchParams.get('scope') === 'instance' ? '129' : '128'}]\n`,
-                },
-              ],
-            };
+                  id: `context-${direction}-${index}`,
+                  lineNumber: String(direction === 'before' ? index + 1 : 202 + index),
+                  message: `${direction === 'before' ? '更早' : '更晚'}上下文${index}\n`,
+                })),
+              };
+            } else {
+              const scope = url.searchParams.get('scope');
+              data = {
+                anchorId: row.id,
+                direction: null,
+                hasMoreBefore: true,
+                hasMoreAfter: true,
+                items: Array.from({ length: 201 }, (_, index) => ({
+                  ...row,
+                  id: index === 100 ? row.id : `context-initial-${index}`,
+                  lineNumber: String(index + 1),
+                  accountNumber: scope === 'instance' && index === 101 ? '129' : '128',
+                  message:
+                    index === 101
+                      ? `上下文合成日志 [${scope === 'instance' ? '129' : '128'}]\n`
+                      : `上下文初始日志${index}\n`,
+                })),
+              };
+            }
           } else if (url.pathname === '/api/server-monitor/logs') {
             listRequests += 1;
             const query = Object.fromEntries(url.searchParams);
@@ -188,12 +222,35 @@ async function main() {
         }
       });
       await context.addInitScript(() => localStorage.setItem('token', 'synthetic-full-log-token'));
-      await page.goto('http://127.0.0.1:5173/server-monitor');
-      await page.getByRole('tab', { name: '日志查询', exact: true }).click();
+      await page.goto(`${BASE_URL}/server-monitor/logs`);
       const panel = page.getByRole('region', { name: '完整日志查询', exact: true });
-      await panel.getByLabel('服务器', { exact: true }).selectOption(deviceId);
-      await panel.getByLabel('软件实例', { exact: true }).selectOption(localId);
+      const chooseSelect = async (label, value, optionName) => {
+        const control = panel.getByLabel(label, { exact: true });
+        if ((await control.evaluate(element => element.tagName)) === 'SELECT')
+          await control.selectOption(value);
+        else {
+          await control.click();
+          await page
+            .getByRole('dialog', { name: label, exact: true })
+            .getByRole('option', { name: optionName, exact: true })
+            .click();
+          assert.equal(
+            await panel.locator(`select[data-responsive-select="${label}"]`).inputValue(),
+            value
+          );
+        }
+      };
+      await chooseSelect('服务器', deviceId, '测试服务器01');
+      await chooseSelect('软件实例', localId, '软件实例1');
       await panel.getByRole('button', { name: '选择第1条日志', exact: true }).waitFor();
+      const downloadPromise = page.waitForEvent('download');
+      await panel.getByRole('button', { name: '导出当天日志', exact: true }).click();
+      const download = await downloadPromise;
+      assert.equal(exportRequests, 1);
+      assert.deepEqual(Object.keys(exportQuery).sort(), ['date', 'deviceId', 'localId']);
+      assert.equal(exportQuery.deviceId, deviceId);
+      assert.match(download.suggestedFilename(), /^AOS日志_/);
+      await panel.getByText('当天日志已导出', { exact: true }).waitFor();
       assert.equal(await page.evaluate(() => window.logInjected), undefined);
       const reader = panel.getByRole('region', { name: '日志阅读区', exact: true });
       const first = panel.getByRole('button', { name: '选择第1条日志', exact: true });
@@ -265,6 +322,26 @@ async function main() {
       await detail.getByRole('button', { name: '重试上下文' }).click();
       await detail.getByText('上下文合成日志 [128]', { exact: true }).waitFor();
       assert.equal(listRequests, beforeContextRetry, '重试上下文不重新查询主列表');
+      const contextReader = detail.getByRole('region', { name: '上下文日志阅读区' });
+      assert.equal(await contextReader.locator('tbody tr').count(), 201);
+      await contextReader.evaluate(element => {
+        element.scrollTop = 0;
+        element.dispatchEvent(new Event('scroll'));
+      });
+      await detail.getByText('更早上下文0', { exact: true }).waitFor();
+      assert.equal(contextPageRequests, 1);
+      assert.equal(await contextReader.locator('tbody tr').count(), 206);
+      await contextReader.evaluate(element => {
+        element.scrollTop = element.scrollHeight;
+        element.dispatchEvent(new Event('scroll'));
+      });
+      await detail.getByText('更晚上下文0', { exact: true }).waitFor();
+      assert.equal(await contextReader.locator('tbody tr').count(), 211);
+      await page.screenshot({
+        path: path.resolve(`coverage/full-logs-${mode}-context.png`),
+        fullPage: true,
+        animations: 'disabled',
+      });
       await detail.getByText(row.fileName, { exact: true }).waitFor();
       await detail.getByRole('button', { name: '整个实例上下文', exact: true }).click();
       await detail.getByText('上下文合成日志 [129]', { exact: true }).waitFor();
@@ -282,6 +359,22 @@ async function main() {
           .evaluate(element => element === document.activeElement)
       );
       await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
+      await panel.getByRole('button', { name: '昨天', exact: true }).click();
+      assert.equal(await panel.getByLabel('日志日期').inputValue(), yesterday);
+      await panel.getByRole('button', { name: '今天', exact: true }).click();
+      await panel.getByRole('button', { name: '晚间', exact: true }).click();
+      const timeRequest = page.waitForRequest(req => {
+        const url = new URL(req.url());
+        return (
+          url.pathname === '/api/server-monitor/logs' &&
+          url.searchParams.get('fromTime') === '18:00:00' &&
+          url.searchParams.get('toTime') === '23:59:59'
+        );
+      });
+      await panel.getByRole('button', { name: '查询', exact: true }).click();
+      await timeRequest;
+      await first.waitFor();
+      await panel.getByRole('button', { name: '全天', exact: true }).click();
       const accountInput = panel.getByRole('combobox', { name: '账号编号', exact: true });
       await accountInput.click();
       const candidates = page.getByRole('listbox', { name: '账号候选', exact: true });
@@ -361,11 +454,11 @@ async function main() {
       assert.equal(await reader.evaluate(element => element.scrollTop), 0);
       assert(await panel.getByRole('button', { name: '复制选中日志' }).isDisabled());
       assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
-      await panel.getByLabel('软件实例', { exact: true }).selectOption(otherId);
+      await chooseSelect('软件实例', otherId, '软件实例2');
       await panel.getByText('实例二账号128独立日志', { exact: true }).waitFor();
       assert.equal(await reader.locator('tbody tr').count(), 1);
       assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
-      await panel.getByLabel('软件实例', { exact: true }).selectOption(localId);
+      await chooseSelect('软件实例', localId, '软件实例1');
       await first.waitFor();
       fail = true;
       await panel.getByRole('button', { name: '重新查询日志，从头加载', exact: true }).click();

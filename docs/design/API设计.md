@@ -1089,7 +1089,8 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 - GET `/api/server-monitor/logs/states`：设备、实例和最新完整日志扫描状态；设备凭证和本地路径不返回。兼容未升级设备显示等待接入。
 - GET `/api/server-monitor/logs/accounts?deviceId=&localId=&date=&search=&after=`：指定实例日期的账号编号候选，每页最多100个，返回 items/nextCursor；search 为字面包含。
 - GET `/api/server-monitor/logs?deviceId=&localId=&date=&account=&fromTime=&toTime=&keyword=&cursor=&limit=`：必填设备／实例／日期，可选账号（`__unassigned__` 表示未识别）、HH:mm:ss 时间段、字面关键词；limit 默认50、最大100。cursor 缺省或空字符串表示首页；非空游标必须有效并绑定相同筛选。按 sort_at/file_id/byte_offset/id 稳定升序游标分页，返回 items/nextCursor，不承诺历史补采期间结果快照固定。片段按 fileId/lineNumber/partIndex 还原，超长行分段不截断。
-- GET `/api/server-monitor/logs/:id/context?scope=account|instance`：前后各20个片段，限定同设备、实例、业务日；账号上下文要求有已识别账号，实例上下文包含未识别行。
+- GET `/api/server-monitor/logs/export?deviceId=&localId=&date=`：按指定服务器、实例和北京时间日期流式导出全部已入库日志，响应 `text/plain; charset=utf-8` 附件；不接受账号、时间或关键词筛选。服务端按稳定顺序有界分页写出，不把全天内容一次性载入内存；客户端断开后停止继续扫描。导出只包含请求期间可读的数据，历史补采尚未完成时不代表全天完整。
+- GET `/api/server-monitor/logs/:id/context?scope=account|instance&cursor=&direction=&limit=`：首次以选中片段为锚点，默认返回前后各100个片段及 `hasMoreBefore/hasMoreAfter`；继续加载时 cursor 为当前边界事件 UUID，direction 为 `before` 或 `after`，limit 最大100，返回单向 items/hasMore。所有页限定同设备、实例、业务日；账号上下文还要求同一已识别账号，实例上下文包含未识别行。游标越界、过期或与范围不符返回400。
 
 设备协议使用已有设备认证与解压后1MiB请求限制（完整日志上传使用gzip），`/logs` 独立60次／分钟限流，不消耗原订单及监控请求配额，不接受 body.deviceId。完整日志请求必须带 `X-AOS-Device-Id`，其值必须等于凭证认证设备ID，防止误配凭证把旧队列归到另一设备：
 

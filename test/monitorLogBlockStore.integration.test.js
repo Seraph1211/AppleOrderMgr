@@ -385,6 +385,30 @@ const { randomUUID, createHash } = require('crypto');
     const context = await service.context(rows[1].id, { scope: 'account' });
     expect(context.items.map(row => row.id)).toEqual(rows.map(row => row.id));
   });
+  test('压缩存储按多批次流式导出全天原文', async () => {
+    await sequelize.query(
+      "INSERT INTO monitor_log_storage_scopes(device_id,local_id,mode,generation) VALUES(:deviceId,:localId,'blocks',1)",
+      { replacements: { deviceId, localId } }
+    );
+    const rows = Array.from({ length: 155 }, (_, offset) =>
+      entry(offset, { message: offset === 80 ? '无换行长行片段' : `压缩导出${offset}\n` })
+    );
+    const entries = rows.map(row => {
+      const value = { ...row };
+      for (const key of ['deviceId', 'sortAt', 'payloadHash', 'createdAt', 'updatedAt'])
+        delete value[key];
+      return value;
+    });
+    await service.receive(deviceId, { entries });
+    const prepared = await service.prepareExport({ deviceId, localId, date: today });
+    const chunks = [];
+    const result = await service.writeExport(prepared, chunk => {
+      chunks.push(chunk);
+      return true;
+    });
+    expect(result).toMatchObject({ exported: 155, aborted: false });
+    expect(chunks.join('')).toBe(entries.map(row => row.message).join(''));
+  });
   test('设备删除仍级联删除其文件、压缩块、回执与账号目录', async () => {
     const otherDevice = await AosDevice.create({
       id: randomUUID(),
