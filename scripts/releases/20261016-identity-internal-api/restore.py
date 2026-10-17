@@ -1,6 +1,7 @@
 """本地隔离恢复；不访问生产数据库、不开端口、不恢复 AOS 日志数据。"""
 import argparse
 import json
+import subprocess
 import time
 import tarfile
 from pathlib import Path
@@ -17,13 +18,23 @@ def main():
     for name, digest in manifest['files'].items():
         assert sha(backup / name) == digest, 'BACKUP_CHECKSUM_MISMATCH'
     name, database = 'identity-internal-api-release-restore', 'identity_internal_api_release_restore'
-    run(['docker', 'run', '-d', '--name', name, '--network', 'none', '--memory', '1g', '--cpus', '1', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', '-e', 'POSTGRES_DB=' + database, c['restorePostgresImage']], stdout=None)
+    run(
+        ['docker', 'run', '-d', '--name', name, '--network', 'none', '--memory', '1g', '--cpus', '1', '-e', 'POSTGRES_HOST_AUTH_METHOD=trust', '-e', 'POSTGRES_DB=' + database, c['restorePostgresImage']],
+        stdout=subprocess.DEVNULL,
+    )
     ready = False
-    import subprocess
     for _ in range(40):
         if subprocess.call(['docker', 'exec', name, 'pg_isready', '-U', 'postgres', '-d', database], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) == 0:
-            ready = True
-            break
+            # 新初始化的官方 PostgreSQL 镜像会先短暂启动临时服务创建目标库，
+            # 随后关闭并以 PID 1 正式启动。等待第二次 SQL 探测，避免在两次启动之间恢复。
+            time.sleep(2)
+            if subprocess.call(
+                ['docker', 'exec', name, 'psql', '-X', '-qAt', '-v', 'ON_ERROR_STOP=1', '-U', 'postgres', '-d', database, '-c', 'SELECT 1'],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ) == 0:
+                ready = True
+                break
         time.sleep(1)
     assert ready, 'RESTORE_DATABASE_UNAVAILABLE'
     with (backup / 'business.dump').open('rb') as dump, (backup / 'restore.log').open('wb') as log:
