@@ -1,0 +1,5 @@
+*
+!frontend/
+!frontend/src/
+!frontend/src/components/
+!frontend/src/components/MonitorLogs.jsx
