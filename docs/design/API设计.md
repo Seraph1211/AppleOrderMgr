@@ -718,7 +718,7 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 `overview` 继续包含已移除实例（`active=false`、`state=removed`），供网站显式查看历史；默认列表、规则同步统计排除它们。已移除实例的历史接口保持可读，提交处理动作返回409（`MONITOR_INSTANCE_REMOVED`）。规则保存时禁止新增已移除实例范围（400），更新规则允许保留原有旧范围，避免无意扩大为全部实例。
 
-网站 `/api/server-monitor` 全部要求登录和唯一权限 `monitor.manage`，不要求 admin／ingestion 权限。GET `/overview` 返回安全设备、实例与规则；GET `/traffic?from=YYYY-MM-DD&to=YYYY-MM-DD&deviceIds=UUID,UUID` 查询最多 90 个北京时间日，返回按设备、日、小时聚合、收发与采集器正文流量及覆盖秒数；GET `/instances/:id/history?page=1` 返回分页告警及动作。POST `/rules` 新建，PUT `/rules/:id` 更新（expectedVersion 乐观锁），POST `/rules/test` 试匹配（rule、text，不持久化输入）；POST `/instances/:id/actions` 接受 expectedVersion、action=start/ignore/extend/end/complete/note、minutes=15/30/60/120（默认30）、note（最多500字符）。规则包含 name、enabled、mode=any/all、keywords/excludes 字符串数组、windowMinutes=1..60、threshold=1..100000、severity=info/warning/critical、deviceIds/directoryIds UUID 数组；空范围为全部。规则正文放在 config 属性。
+网站 `/api/server-monitor` 全部要求登录。`/logs` 前缀使用可分配权限 `monitor.logs.read`；其余概览、流量、实例、规则和通知接口使用 `monitor.manage`，不要求 admin／ingestion 权限。`monitor.manage` 依赖 `monitor.logs.read`，旧版仅保存 `monitor.manage` 的普通用户继续派生日志读取权限。GET `/overview` 返回安全设备、实例与规则；GET `/traffic?from=YYYY-MM-DD&to=YYYY-MM-DD&deviceIds=UUID,UUID` 查询最多 90 个北京时间日，返回按设备、日、小时聚合、收发与采集器正文流量及覆盖秒数；GET `/instances/:id/history?page=1` 返回分页告警及动作。POST `/rules` 新建，PUT `/rules/:id` 更新（expectedVersion 乐观锁），POST `/rules/test` 试匹配（rule、text，不持久化输入）；POST `/instances/:id/actions` 接受 expectedVersion、action=start/ignore/extend/end/complete/note、minutes=15/30/60/120（默认30）、note（最多500字符）。规则包含 name、enabled、mode=any/all、keywords/excludes 字符串数组、windowMinutes=1..60、threshold=1..100000、severity=info/warning/critical、deviceIds/directoryIds UUID 数组；空范围为全部。规则正文放在 config 属性。
 
 设备独立认证协议新增 GET `/api/aos-collector/v1/monitor/context` 返回 revision 与规则；POST `/monitor/reports` 一批最多 10 份报告，每份包含 id、revision、startedAt、endedAt、traffic（receivedBytes/sentBytes/collectorReceivedBytes/collectorSentBytes/quality）、instances（localId、label、state、files、results：ruleId/count/samples）。字节非负安全整数，quality=complete/gap/unavailable，状态 ready/missing/unreadable/invalid/catching_up；samples 包含 at、file、keywords、lineNumber、message、truncated，每规则最多 3 条，message 为用户确认的未经脱敏原始日志行、最多 4,000 字符。报告有独立 UUID，事务幂等，同 ID 不同载荷409。每设备最多20实例／100规则，请求体仍1MiB。旧采集器无需上传新字段；未知新端点不能阻断原订单采集。监控不受邮件／AOS来源切换影响，但仍受设备启停和身份认证约束。
 
@@ -1084,13 +1084,13 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 ## 完整运行日志查询（2026-09-29）
 
-网站均要求 `monitor.manage`，返回 `Cache-Control: no-store`。日期按北京时间今天及之前89天校验，非法日期、范围、游标返回400，缺资源404。
+网站均要求可授予任意普通用户的 `monitor.logs.read`，返回 `Cache-Control: no-store`。该权限只开放本节 `/logs` 查询、上下文和导出接口，不开放服务器监控管理。日期按北京时间今天及之前89天校验，非法日期、范围、游标返回400，缺资源404。
 
 - GET `/api/server-monitor/logs/states`：设备、实例和最新完整日志扫描状态；设备凭证和本地路径不返回。兼容未升级设备显示等待接入。
 - GET `/api/server-monitor/logs/accounts?deviceId=&localId=&date=&search=&after=`：指定实例日期的账号编号候选，每页最多100个，返回 items/nextCursor；search 为字面包含。
 - GET `/api/server-monitor/logs?deviceId=&localId=&date=&account=&fromTime=&toTime=&keyword=&cursor=&limit=`：必填设备／实例／日期，可选账号（`__unassigned__` 表示未识别）、HH:mm:ss 时间段、字面关键词；limit 默认50、最大100。cursor 缺省或空字符串表示首页；非空游标必须有效并绑定相同筛选。按 sort_at/file_id/byte_offset/id 稳定升序游标分页，返回 items/nextCursor，不承诺历史补采期间结果快照固定。片段按 fileId/lineNumber/partIndex 还原，超长行分段不截断。
 - POST `/api/server-monitor/logs/export-ticket`：body 只接受 `{deviceId,localId,date}`。先验证范围和首批日志可读性，再设置60秒有效、HttpOnly、SameSite=Strict、仅限导出路径的短期 Cookie；生产同时设置 Secure。响应只返回 `expiresInSeconds`，不向前端脚本暴露凭证。
-- GET `/api/server-monitor/logs/export?deviceId=&localId=&date=`：按指定服务器、实例和北京时间日期流式导出全部已入库日志，响应 `text/plain; charset=utf-8` 附件；不接受账号、时间或关键词筛选。支持正常 Bearer 鉴权，或只在该路径读取上一步短期 Cookie；短期凭证必须与三个查询字段完全一致，且下载时重新核对用户、会话和 `monitor.manage`，接受后清除 Cookie。服务端按稳定顺序有界分页写出，浏览器在响应头到达后原生落盘，不把全天内容一次性载入服务端或浏览器内存；客户端断开后停止继续扫描。导出只包含请求期间可读的数据，历史补采尚未完成时不代表全天完整。
+- GET `/api/server-monitor/logs/export?deviceId=&localId=&date=`：按指定服务器、实例和北京时间日期流式导出全部已入库日志，响应 `text/plain; charset=utf-8` 附件；不接受账号、时间或关键词筛选。支持正常 Bearer 鉴权，或只在该路径读取上一步短期 Cookie；短期凭证必须与三个查询字段完全一致，且下载时重新核对用户、会话和 `monitor.logs.read`，接受后清除 Cookie。服务端按稳定顺序有界分页写出，浏览器在响应头到达后原生落盘，不把全天内容一次性载入服务端或浏览器内存；客户端断开后停止继续扫描。导出只包含请求期间可读的数据，历史补采尚未完成时不代表全天完整。
 - GET `/api/server-monitor/logs/:id/context?scope=account|instance&cursor=&direction=&limit=`：首次以选中片段为锚点，默认返回前后各100个片段及 `hasMoreBefore/hasMoreAfter`；继续加载时 cursor 为当前边界事件 UUID，direction 为 `before` 或 `after`，limit 最大100，返回单向 items/hasMore。所有页限定同设备、实例、业务日；账号上下文还要求同一已识别账号，实例上下文包含未识别行。游标越界、过期或与范围不符返回400。
 
 设备协议使用已有设备认证与解压后1MiB请求限制（完整日志上传使用gzip），`/logs` 独立60次／分钟限流，不消耗原订单及监控请求配额，不接受 body.deviceId。完整日志请求必须带 `X-AOS-Device-Id`，其值必须等于凭证认证设备ID，防止误配凭证把旧队列归到另一设备：

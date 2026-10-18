@@ -1,13 +1,13 @@
 const logger = require('../utils/logger');
 const express = require('express');
 const { requirePermission } = require('../middleware/authMiddleware');
+const { PERMISSIONS } = require('../constants/business');
 const asyncHandler = require('../utils/asyncHandler');
 const service = require('../services/monitorService');
 const logs = require('../services/monitorLogService');
 const downloadTicket = require('../services/monitorLogDownloadTicket');
 const notifications = require('../services/monitorNotificationService');
 const router = express.Router();
-router.use(requirePermission('monitor.manage'));
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store');
   next();
@@ -42,6 +42,7 @@ function waitForDrain(res) {
     if (res.destroyed || res.writableEnded) closed();
   });
 }
+router.use('/logs', requirePermission(PERMISSIONS.MONITOR_LOGS_READ));
 router.get(
   '/logs/states',
   respond(() => logs.states())
@@ -99,6 +100,7 @@ router.get(
   '/logs',
   respond(req => logs.list(req.query))
 );
+router.use(requirePermission(PERMISSIONS.MONITOR_MANAGE));
 router.get(
   '/overview',
   respond(() => service.overview())

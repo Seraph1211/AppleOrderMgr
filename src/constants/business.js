@@ -96,6 +96,7 @@ const PERMISSIONS = Object.freeze({
   WECOM_CONFIGURE: 'wecom.configure',
   WECOM_RETRY: 'wecom.retry',
   MONITOR_MANAGE: 'monitor.manage',
+  MONITOR_LOGS_READ: 'monitor.logs.read',
   INGESTION_READ: 'ingestion.read',
   INGESTION_MANAGE: 'ingestion.manage',
   INGESTION_DEVICES_MANAGE: 'ingestion.devices.manage',

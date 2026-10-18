@@ -16,10 +16,13 @@ const rule = {
 describe('服务器监控策略', () => {
   test('单独权限，管理员默认可用', () => {
     expect(PERMISSIONS.MONITOR_MANAGE).toBe('monitor.manage');
+    expect(PERMISSIONS.MONITOR_LOGS_READ).toBe('monitor.logs.read');
     expect(ROLE_PERMISSIONS.admin).toContain('monitor.manage');
-    expect(require('../src/constants/permissionCatalog').ADMIN_RESERVED_PERMISSIONS).not.toContain(
-      'monitor.manage'
-    );
+    expect(ROLE_PERMISSIONS.admin).toContain('monitor.logs.read');
+    const catalog = require('../src/constants/permissionCatalog');
+    expect(catalog.ADMIN_RESERVED_PERMISSIONS).not.toContain('monitor.manage');
+    expect(catalog.ADMIN_RESERVED_PERMISSIONS).not.toContain('monitor.logs.read');
+    expect(catalog.PERMISSION_DEPENDENCIES['monitor.manage']).toContain('monitor.logs.read');
   });
   test('有界关键词、排除外层重复摘要、任一及全部匹配', () => {
     expect(p.validateRule(rule)).toEqual(rule);

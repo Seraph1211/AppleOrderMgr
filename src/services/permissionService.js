@@ -38,7 +38,15 @@ async function getEffectivePermissions(user, options = {}) {
     order: [['permissionCode', 'ASC']],
     transaction: options.transaction,
   });
-  return rows.map(row => row.permissionCode);
+  const permissions = rows.map(row => row.permissionCode);
+  // 旧版 monitor.manage 已包含完整日志读取；派生新权限避免拆分后撤销既有访问。
+  if (
+    permissions.includes(PERMISSIONS.MONITOR_MANAGE) &&
+    !permissions.includes(PERMISSIONS.MONITOR_LOGS_READ)
+  ) {
+    permissions.push(PERMISSIONS.MONITOR_LOGS_READ);
+  }
+  return permissions.sort();
 }
 
 /**
@@ -291,6 +299,7 @@ function resolveAvailableHome(permissions) {
     [PERMISSIONS.INVENTORY_READ, '/inventory-monitor'],
     [PERMISSIONS.STOCK_READ, '/stock'],
     [PERMISSIONS.MONITOR_MANAGE, '/server-monitor'],
+    [PERMISSIONS.MONITOR_LOGS_READ, '/server-monitor/logs'],
     [PERMISSIONS.CHANNELS_READ, '/channels'],
     [PERMISSIONS.PAYMENT_DISPATCH_READ, '/payment-dispatch'],
     [PERMISSIONS.PAYMENT_TASKS_READ_OWN, '/payment-tasks'],

@@ -101,7 +101,7 @@ function ManagementApp() {
                   />
                   <Route
                     path="/server-monitor/logs"
-                    element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerLogs />)}
+                    element={permissionRoute(PERMISSIONS.MONITOR_LOGS_READ, <ServerLogs />)}
                   />
                   <Route
                     path="/identity-verifications"

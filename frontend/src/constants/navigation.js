@@ -131,7 +131,7 @@ export const NAVIGATION_GROUPS = [
         name: '日志查询',
         href: '/server-monitor/logs',
         icon: 'ScrollText',
-        permission: PERMISSIONS.MONITOR_MANAGE,
+        permission: PERMISSIONS.MONITOR_LOGS_READ,
       },
       {
         name: '操作记录',

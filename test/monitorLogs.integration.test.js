@@ -73,7 +73,7 @@ const { randomUUID, createHash } = require('crypto');
       req.user = {
         id: 1,
         role: 'operator',
-        permissions: req.get('x-monitor-permission') === 'yes' ? ['monitor.manage'] : [],
+        permissions: req.get('x-monitor-permission') === 'yes' ? ['monitor.logs.read'] : [],
       };
       next();
     });

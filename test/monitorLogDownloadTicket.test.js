@@ -3,7 +3,7 @@ process.env.JWT_SECRET = 'monitor-log-download-test-secret-1234567890';
 jest.mock('../src/models', () => ({ User: { findByPk: jest.fn() } }));
 jest.mock('../src/services/permissionService', () => ({ getEffectivePermissions: jest.fn() }));
 jest.mock('../src/services/monitorLogService', () => ({
-  prepareExport: jest.fn(async input => ({
+  prepareExport: jest.fn(input => ({
     query: {
       deviceId: input.deviceId,
       localId: input.localId,
@@ -86,7 +86,7 @@ function request(overrides = {}) {
 describe('日志原生下载短期凭证', () => {
   beforeEach(() => {
     User.findByPk.mockResolvedValue(actor);
-    permissionService.getEffectivePermissions.mockResolvedValue(['monitor.manage']);
+    permissionService.getEffectivePermissions.mockResolvedValue(['monitor.logs.read']);
   });
 
   test('凭证只匹配签发时的服务器、实例和日期', () => {
@@ -111,7 +111,7 @@ describe('日志原生下载短期凭证', () => {
     await authenticate(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
-    expect(req.user).toMatchObject({ id: actor.id, sessionId, permissions: ['monitor.manage'] });
+    expect(req.user).toMatchObject({ id: actor.id, sessionId, permissions: ['monitor.logs.read'] });
     expect(req.authContext).toMatchObject({
       source: 'download-cookie',
       purpose: ticket.PURPOSE,
@@ -181,7 +181,7 @@ describe('日志原生下载HTTP链路', () => {
 
   beforeEach(() => {
     User.findByPk.mockResolvedValue(actor);
-    permissionService.getEffectivePermissions.mockResolvedValue(['monitor.manage']);
+    permissionService.getEffectivePermissions.mockResolvedValue(['monitor.logs.read']);
   });
 
   test('Bearer签发Cookie后由浏览器请求原生流式附件并清除Cookie', async () => {
