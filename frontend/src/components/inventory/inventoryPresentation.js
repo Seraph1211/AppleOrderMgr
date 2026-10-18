@@ -6,6 +6,7 @@ export const STATUS = {
   not_sent: '未发送',
   test: '合成测试',
   health: '运行提醒',
+  aos_signal: 'AOS 放货提醒',
   delivery_unknown: '结果未知',
   enabled: '已启用',
   in_stock: '有货',

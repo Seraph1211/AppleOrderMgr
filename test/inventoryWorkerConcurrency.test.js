@@ -7,6 +7,7 @@ jest.mock('../src/services/inventoryService');
 jest.mock('../src/services/inventoryValidationGate');
 jest.mock('../src/services/inventoryCollector');
 jest.mock('../src/services/inventoryNotifier');
+jest.mock('../src/services/aosSignalService');
 jest.mock('../src/services/inventoryDriver');
 jest.mock('../src/services/inventoryMaintenance');
 
@@ -19,6 +20,8 @@ test('Worker 滚动维持三个并发槽，单个请求完成即可补位，退�
     const Collector = require('../src/services/inventoryCollector');
     const Notifier = require('../src/services/inventoryNotifier');
     const Driver = require('../src/services/inventoryDriver');
+    const AosSignals = require('../src/services/aosSignalService');
+    AosSignals.mockImplementation(() => ({ tick: jest.fn().mockResolvedValue() }));
     const Maintenance = require('../src/services/inventoryMaintenance');
     Service.mockImplementation(() => ({ catalog: jest.fn().mockResolvedValue() }));
     let next = 0;

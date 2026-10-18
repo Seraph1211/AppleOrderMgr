@@ -11,6 +11,7 @@ const DEFAULT_CONFIG = Object.freeze({
   dailyBytes: 536870912,
   dailyProxyExtractions: 400,
   notificationsEnabled: false,
+  aosSignalsEnabled: false,
   groupName: '',
   silentStart: '',
   silentEnd: '',
@@ -101,7 +102,7 @@ function validateConfig(value) {
   for (const key of Object.keys(value))
     if (!(key in DEFAULT_CONFIG)) throw ApiError.badRequest(`未知设置：${key}`);
   const config = { ...DEFAULT_CONFIG, ...value };
-  for (const key of ['enabled', 'notificationsEnabled'])
+  for (const key of ['enabled', 'notificationsEnabled', 'aosSignalsEnabled'])
     if (typeof config[key] !== 'boolean') throw ApiError.badRequest('开关必须为布尔值');
   const ranges = {
     intervalSeconds: [60, 3600],

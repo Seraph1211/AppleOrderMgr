@@ -13,6 +13,7 @@ const p = require('./monitorPolicy');
 const policy = require('./monitorLogPolicy');
 const blockStore = require('./monitorLogBlockStore');
 const blockCompactor = require('./monitorLogBlockCompactor');
+const aosSignals = require('./aosSignalService');
 const ORDER = 'sort_at, file_id, byte_offset, id';
 const TUPLE = '(sort_at, file_id, byte_offset, id)';
 const MARK = '(:anchorAt::timestamptz, :anchorFile::uuid, :anchorOffset::bigint, :anchorId::uuid)';
@@ -103,8 +104,16 @@ async function receive(deviceId, body) {
           const legacy = create.filter(row => modes.get(row.localId) !== 'blocks');
           const compressed = create.filter(row => modes.get(row.localId) !== 'rows');
           if (legacy.length) await MonitorLogEntry.bulkCreate(legacy, { transaction });
-          let blockResult = { inserted: 0, blocks: 0 };
+          let blockResult = { inserted: 0, blocks: 0, insertedIds: [] };
           if (compressed.length) blockResult = await blockStore.append(compressed, transaction);
+          const insertedIds = new Set([
+            ...legacy.map(row => row.id),
+            ...(blockResult.insertedIds || []),
+          ]);
+          await aosSignals.enqueue(
+            create.filter(row => insertedIds.has(row.id)),
+            transaction
+          );
           logger.info('完整日志上传指标', {
             storageModes: [...new Set(modes.values())],
             inserted:

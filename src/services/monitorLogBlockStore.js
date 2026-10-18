@@ -191,7 +191,7 @@ async function append(input, transaction) {
       byId.set(row.id, row);
     }
     const rows = [...unique.values()];
-    if (!rows.length) return { inserted: 0, blocks: 0 };
+    if (!rows.length) return { inserted: 0, blocks: 0, insertedIds: [] };
     const files = new Map();
     for (const row of rows) {
       const key = `${row.deviceId}:${row.fileId}`;
@@ -270,7 +270,11 @@ async function append(input, transaction) {
         inserted += chunk.length;
       }
     }
-    return { inserted, blocks };
+    return {
+      inserted,
+      blocks,
+      insertedIds: [...groups.values()].flatMap(group => group.map(row => row.id)),
+    };
   } catch (error) {
     fail(error);
     if (error.name === 'SequelizeUniqueConstraintError')

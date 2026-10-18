@@ -1117,10 +1117,25 @@ function InventoryView({ view = 'latest', mode = 'read' }) {
               <input
                 type="checkbox"
                 checked={draft.notificationsEnabled}
+                disabled={busy}
                 onChange={e => update('notificationsEnabled', e.target.checked)}
               />
               开启自动库存通知（只提醒新事件）
             </label>
+            <div className="space-y-2">
+              <label className="inventory-setting-toggle">
+                <input
+                  type="checkbox"
+                  checked={Boolean(draft.aosSignalsEnabled)}
+                  disabled={busy || loading}
+                  onChange={e => update('aosSignalsEnabled', e.target.checked)}
+                />
+                开启 AOS 放货提醒
+              </label>
+              <p className="text-sm text-gray-500">
+                独立于库存采集和库存通知；共用库存群 Webhook 与静默时段。首次命中立即提醒，此后每三分钟汇总全服务器新命中；已立即提醒的命中不会重复计入。三分钟无新命中则结束本轮，下次命中立即提醒。仅处理近三分钟内、启用后产生的日志；消息含城市、门店、商品及 US01 等来源。
+              </p>
+            </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <label className="text-sm">
                 群名称

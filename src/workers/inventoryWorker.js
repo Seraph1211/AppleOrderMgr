@@ -6,6 +6,7 @@ const { validateEncryptionConfiguration } = require('../utils/fieldEncryption');
 const InventoryService = require('../services/inventoryService');
 const InventoryCollector = require('../services/inventoryCollector');
 const InventoryNotifier = require('../services/inventoryNotifier');
+const AosSignalService = require('../services/aosSignalService');
 const InventoryValidationGate = require('../services/inventoryValidationGate');
 const InventoryDriver = require('../services/inventoryDriver');
 const InventoryMaintenance = require('../services/inventoryMaintenance');
@@ -14,6 +15,7 @@ const service = new InventoryService(models);
 const gate = new InventoryValidationGate(models.sequelize, { production: true });
 const collector = new InventoryCollector(service);
 const notifier = new InventoryNotifier(service);
+const aosSignals = new AosSignalService(service);
 const driver = new InventoryDriver(gate);
 const maintenance = new InventoryMaintenance(service, driver, gate);
 let stopping = false;
@@ -81,8 +83,9 @@ async function main() {
           dispatching = null;
         });
       if (!notifying)
-        notifying = notifier
+        notifying = aosSignals
           .tick()
+          .then(() => notifier.tick())
           .catch(error => {
             logger.error('库存通知周期失败', { errorType: error.name });
           })

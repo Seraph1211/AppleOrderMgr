@@ -18,6 +18,7 @@ const TITLES = {
   first: '初始库存摘要',
   health: '库存监控运行提醒',
   test: '库存机器人合成测试',
+  ['aos_signal']: 'AOS 放货信号',
 };
 
 /** 库存专用投递链路，与订单通知完全分离。 */
@@ -197,9 +198,19 @@ class InventoryNotifier {
             else if (item.destinationId !== settings.destinationId || !settings.webhookCipher)
               reason = 'DESTINATION_CHANGED';
             else if (item.expiresAt <= now) reason = 'EXPIRED';
-            else if (item.kind !== 'test' && !settings.config.notificationsEnabled)
+            else if (
+              item.kind === 'aos_signal' &&
+              (!settings.config.aosSignalsEnabled ||
+                item.aosSignalsSince !== settings.aosSignalsSince)
+            )
+              reason = 'AOS_SIGNALS_DISABLED';
+            else if (
+              !['test', 'aos_signal'].includes(item.kind) &&
+              !settings.config.notificationsEnabled
+            )
               reason = 'NOTIFICATIONS_DISABLED';
             else if (
+              item.kind !== 'aos_signal' &&
               item.rows?.some(
                 row =>
                   displayStatus(
@@ -273,8 +284,12 @@ class InventoryNotifier {
             content += `当前有效覆盖：${current.length} / ${products.size * stores.size} 个组合\n有货：${current.filter(row => row.status === 'in_stock').length} 个组合\n此为当前有效结果，不代表全国完整覆盖或长期稳定。\n`;
           }
           const base = process.env.INVENTORY_PUBLIC_URL;
-          if (base && /^https:\/\/[^\s?#]+$/.test(base))
-            content += `详情（需登录）：${base.replace(/\/$/, '')}/inventory-monitor${first.kind === 'health' ? '/manage?tab=settings' : ''}\n`;
+          if (base && /^https:\/\/[^\s?#]+$/.test(base)) {
+            const path = first.kind === 'aos_signal'
+              ? '/server-monitor/logs'
+              : `/inventory-monitor${first.kind === 'health' ? '/manage?tab=settings' : ''}`;
+            content += `详情（需登录）：${base.replace(/\/$/, '')}${path}\n`;
+          }
           if (!batch.length) {
             await this.s.put(
               'InventoryDelivery',
@@ -358,6 +373,9 @@ class InventoryNotifier {
             settings.testedDestination = claim.destinationId;
           if (result.pause && settings.destinationId === claim.destinationId) {
             settings.config.notificationsEnabled = false;
+            settings.config.aosSignalsEnabled = false;
+            settings.aosSignalsSince = null;
+            state.aosSignals = null;
             settings.version += 1;
           }
           return { count: next.length, status: result.status };

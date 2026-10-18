@@ -251,6 +251,39 @@ class InventoryService {
         try {
           if (input.version !== settings.version)
             throw ApiError.conflict('设置已被修改，请刷新后重试');
+          if (input.config.aosSignalsEnabled === undefined)
+            config.aosSignalsEnabled = settings.config.aosSignalsEnabled;
+          const aosTargetChanged = webhook !== undefined;
+          if (
+            config.aosSignalsEnabled &&
+            (!settings.config.aosSignalsEnabled || aosTargetChanged)
+          ) {
+            if (
+              aosTargetChanged ||
+              !settings.webhookCipher ||
+              settings.testedDestination !== settings.destinationId
+            )
+              throw ApiError.badRequest('请先保存 Webhook 并成功发送合成测试，再开启 AOS 放货信号');
+            settings.aosSignalsSince = now;
+            state.aosSignals = null;
+          }
+          if (!config.aosSignalsEnabled || aosTargetChanged) {
+            state.aosSignals = null;
+            settings.aosSignalsSince = null;
+            const pendingAos = await this.rows('InventoryDelivery', {
+              transaction,
+              where: { 'body.kind': 'aos_signal', 'body.status': 'pending' },
+            });
+            await this.put(
+              'InventoryDelivery',
+              pendingAos.map(row => ({
+                ...row,
+                status: 'skipped',
+                errorCode: aosTargetChanged ? 'DESTINATION_CHANGED' : 'AOS_SIGNALS_DISABLED',
+              })),
+              transaction
+            );
+          }
           if (
             config.intervalSeconds < 300 &&
             (!state.rampReady || (state.lastRiskAt || 0) > now - 1800000)
