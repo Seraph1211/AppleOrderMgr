@@ -98,3 +98,9 @@ npm run collector:package -- /path/AosCollector.exe /secure/signing-private.pem 
 全量查询位于网站“服务器监控 → 日志查询”，详细保留、上下文、缺口和容量边界见 [服务器监控](../docs/design/服务器监控.md#完整运行日志查询2026-09-29已发布)。生产 API 和网站已发布，启用的美国设备按签名更新机制升级；历史补采与离线设备边界见[发布记录](../docs/archive/2026-09/2026-09-29-AOS完整日志生产发布与采集器升级记录.md)。旧客户端可继续使用原接口。
 
 构建仍使用 .NET 10，`dotnet restore collector/AosCollector.Windows -r win-x64 --locked-mode` 后执行 `dotnet build collector/AosCollector.Windows -c Release -r win-x64 --no-restore`。Core锁文件包含win-x64；跨平台测试可复制collector源码到独立临时目录，以真实路径（macOS用 `/private/tmp`）还原和执行，不能为本机测试改写生产锁文件。`dotnet run --project collector/AosCollector.Tests -- --full-logs-only` 执行完整日志专项，其余验收入口保持。
+
+## 1.3.1 近90天自动补采
+
+完整运行日志扫描与本地待传过期窗口统一为最近90个北京时间自然日（今天及前89天）。升级后后台服务自动启动扫描和上传，无需人工选日期、重置配置或清队列；每30秒复查，后来放回原目录的历史文件也可补采。当天和历史各8MiB扫描预算、单文件2MiB、128MiB队列反压及历史预留容量保持。
+
+保留有效游标、设备身份、目录UUID及未确认事件；已确认文件不会因普通重启重发。旧1.3.0已清理的30天外游标不能恢复，相关源文件重新发现时按新文件版本保存，可能与服务端仍留存的旧版本重叠。未保留在已配置目录的原始文件无法凭空补齐；扫描字节完成和平台可靠接收分别核验，待传0也不证明本机缺失文件的日期完整。
