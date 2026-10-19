@@ -152,8 +152,34 @@ function hasLocation(item) {
   return ['city', 'storeCode', 'storeName'].every(key => item[key] && item[key] !== UNKNOWN);
 }
 
+/** 回退旧Worker只更新groups时冻结当前计数；无法归属的旧命中不猜锚点。 */
+function ensureAssociation(window) {
+  if (!window.association) return window;
+  const association = window.association;
+  const baseline = structuredClone(association.frozenGroups || {});
+  for (const reference of association.refs) addGroup(baseline, reference.item);
+  const counts = groups => {
+    const sources = new Map();
+    let total = 0;
+    for (const group of Object.values(groups)) {
+      total += group.count;
+      for (const [key, source] of Object.entries(group.sources))
+        sources.set(key, (sources.get(key) || 0) + source.count);
+    }
+    return JSON.stringify([total, [...sources.entries()].sort(([a], [b]) => a.localeCompare(b))]);
+  };
+  if (counts(window.groups) !== counts(baseline))
+    window.association = {
+      ...association,
+      refs: [],
+      frozenGroups: structuredClone(window.groups),
+    };
+  return window;
+}
+
 /** 保存有界脱敏锚点；超限部分冻结原分组，但仍保留全部来源与计数。 */
 function addAssociation(window, anchor, item, context) {
+  ensureAssociation(window);
   const association = window.association || {
     version: 1,
     refs: [],
@@ -281,6 +307,7 @@ module.exports = {
   observation,
   addGroup,
   hasLocation,
+  ensureAssociation,
   addAssociation,
   refreshAssociation,
   content,

@@ -111,6 +111,7 @@ class AosSignalService {
   async reconcile(context, deliveries) {
     try {
       const { transaction, state } = context;
+      if (state.aosSignals) policy.ensureAssociation(state.aosSignals);
       const pending =
         deliveries ||
         (await this.s.rows('InventoryDelivery', {

@@ -527,6 +527,88 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       throw new Error('claim前晚到reset截止验收失败', { cause: error });
     }
   });
+
+  test('旧Worker只写groups后升级时冻结基线并保留后续摘要计数', async () => {
+    try {
+      const base = now;
+      await feedTimed(
+        0,
+        [
+          { text: '消息20110501', offset: 1, loggedAt: base + 1000 },
+          {
+            text: '商品: iPhone Duo 512GB 星光白色 x 1, RMB 17,999',
+            offset: 2,
+            loggedAt: base + 1500,
+          },
+          {
+            text: '取货信息: 取货日期待付款完成后确定',
+            offset: 3,
+            loggedAt: base + 2000,
+          },
+        ],
+        base + 2500
+      );
+      now = base + 2500;
+      await signals.tick();
+
+      await feedTimed(
+        0,
+        [{ text: '取货信息: 取货日期待付款完成后确定', offset: 4, loggedAt: base + 3000 }],
+        base + 3500
+      );
+      now = base + 3500;
+      await signals.tick();
+      let runtime = await models.InventoryRuntime.findByPk('main');
+      expect(runtime.body.aosSignals.association.refs).toHaveLength(1);
+      const initialCount = Object.values(runtime.body.aosSignals.groups).reduce(
+        (sum, row) => sum + row.count,
+        0
+      );
+      expect(initialCount).toBe(1);
+
+      // Emulate the previous worker version: it increments groups and knows nothing about refs.
+      const downgradedState = structuredClone(runtime.body);
+      const legacyItem = {
+        ...downgradedState.aosSignals.association.refs[0].item,
+        observedAt: base + 4000,
+      };
+      policy.addGroup(downgradedState.aosSignals.groups, legacyItem);
+      await runtime.update({ body: downgradedState });
+
+      await feedTimed(
+        0,
+        [{ text: '取货信息: 取货日期待付款完成后确定', offset: 5, loggedAt: base + 4000 }],
+        base + 5000
+      );
+      now = base + 5000;
+      await signals.tick();
+      runtime = await models.InventoryRuntime.findByPk('main');
+      const window = runtime.body.aosSignals;
+      const windowCount = Object.values(window.groups).reduce((sum, row) => sum + row.count, 0);
+      const frozenCount = Object.values(window.association.frozenGroups).reduce(
+        (sum, row) => sum + row.count,
+        0
+      );
+      expect(windowCount).toBe(3);
+      expect(frozenCount).toBe(2);
+      expect(window.association.refs).toHaveLength(1);
+
+      now = base + 182500;
+      await signals.tick();
+      const rows = await deliveries();
+      const summary = rows.find(item => item.content.includes('3分钟汇总'));
+      const immediate = rows.find(item => item.content.includes('首次信号'));
+      expect(rows.filter(item => item.content.includes('首次信号'))).toHaveLength(1);
+      expect(summary.content).toContain('3次命中（非库存数量）');
+      const group = Object.values(summary.aosGroups)[0];
+      expect(group.count).toBe(3);
+      const sourceCount = Object.values(group.sources).reduce((sum, item) => sum + item.count, 0);
+      expect(sourceCount).toBe(3);
+      expect(Object.values(immediate.aosGroups)[0].count).toBe(1);
+    } catch (error) {
+      throw new Error('新旧Worker状态回退验收失败', { cause: error });
+    }
+  });
   /* eslint-enable no-magic-numbers */
 
   test('AOS信号独立于库存采集和库存通知，共用静默时段并按新鲜有效期跳过', async () => {
