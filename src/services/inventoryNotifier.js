@@ -7,6 +7,8 @@ const { decrypt } = require('../utils/fieldEncryption');
 const { sendText } = require('./wecomTransport');
 const robotBudget = require('./wecomRobotBudget');
 const { isSilent, displayStatus } = require('./inventoryPolicy');
+const AosSignalService = require('./aosSignalService');
+const aosSignalPolicy = require('./aosSignalPolicy');
 const {
   VERSION,
   healthObservation,
@@ -152,12 +154,16 @@ class InventoryNotifier {
             { type: QueryTypes.SELECT, transaction }
           );
           await this.reconcileHealth({ transaction, state, settings, now }, guard?.body);
-          const queue = await this.s.rows('InventoryDelivery', {
+          let queue = await this.s.rows('InventoryDelivery', {
             transaction,
             where: { 'body.status': 'pending' },
             order: [['createdAt', 'ASC']],
             limit: 500,
           });
+          queue = await new AosSignalService(this.s).reconcile(
+            { transaction, state, settings, now },
+            queue
+          );
           const snapshots = new Map(
             (await this.s.rows('InventorySnapshot', { transaction })).map(r => [r.id, r])
           );
@@ -230,6 +236,13 @@ class InventoryNotifier {
               continue;
             }
             if (item.notBefore > now || (item.kind !== 'test' && isSilent(settings.config, now)))
+              continue;
+            if (
+              item.kind === 'aos_signal' &&
+              item.aosImmediate &&
+              item.aosContextDeadline > now &&
+              !Object.values(item.aosGroups || {}).every(aosSignalPolicy.hasLocation)
+            )
               continue;
             if (item.kind === 'first') {
               const round = rounds.get(item.rows[0].roundId);

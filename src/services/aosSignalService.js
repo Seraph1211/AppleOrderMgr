@@ -1,4 +1,5 @@
 const { randomUUID } = require('crypto');
+const { isDeepStrictEqual } = require('util');
 const { Op, QueryTypes } = require('sequelize');
 const policy = require('./aosSignalPolicy');
 const inventoryFailure = require('../utils/inventoryFailure');
@@ -43,7 +44,7 @@ class AosSignalService {
   }
 
   /** 生成单条概览，保存全部分组明细供投递历史查询。 */
-  async queue(groups, context, immediate, from, to) {
+  async queue(groups, context, immediate, from, to, association) {
     try {
       if (!Object.keys(groups).length) return;
       const { transaction, settings, now } = context;
@@ -57,6 +58,10 @@ class AosSignalService {
             destinationId: settings.destinationId,
             aosSignalsSince: settings.aosSignalsSince,
             aosGroups: groups,
+            aosImmediate: immediate,
+            ...(association ? { aosAssociation: association } : {}),
+            // 完整首次不等待；若出站前晚到边界使门店失效，仍使用原接收时间截止。
+            ...(immediate ? { aosContextDeadline: from + policy.LOCATION_WAIT_MS } : {}),
             windowFrom: Math.min(...Object.values(groups).map(row => row.firstAt)),
             windowTo: Math.max(...Object.values(groups).map(row => row.lastAt)),
             receivedWindowFrom: from,
@@ -81,7 +86,14 @@ class AosSignalService {
       const window = state.aosSignals;
       if (!window || at < window.until) return;
       if (Object.keys(window.groups).length && now - window.until <= policy.WINDOW_MS)
-        await this.queue(window.groups, context, false, window.from, window.until);
+        await this.queue(
+          window.groups,
+          context,
+          false,
+          window.from,
+          window.until,
+          window.association
+        );
       if (!Object.keys(window.groups).length || at >= window.until + policy.WINDOW_MS)
         state.aosSignals = null;
       else
@@ -90,6 +102,96 @@ class AosSignalService {
           until: window.until + policy.WINDOW_MS,
           groups: {},
         };
+    } catch (error) {
+      throw inventoryFailure(error);
+    }
+  }
+
+  /** 锁内批量复核尚未出站的引用；同时纳入已提交但尚未被tick消费的晚到上下文。 */
+  async reconcile(context, deliveries) {
+    try {
+      const { transaction, state } = context;
+      const pending =
+        deliveries ||
+        (await this.s.rows('InventoryDelivery', {
+          transaction,
+          where: { 'body.kind': 'aos_signal', 'body.status': 'pending' },
+          order: [['createdAt', 'ASC']],
+          limit: 500,
+        }));
+      const candidates = pending.filter(
+        row => row.kind === 'aos_signal' && row.status === 'pending' && row.aosAssociation
+      );
+      const associations = [
+        state.aosSignals?.association,
+        ...candidates.map(row => row.aosAssociation),
+      ].filter(Boolean);
+      const keys = [
+        ...new Set(
+          associations.flatMap(value => value.refs.map(reference => reference.anchor.taskKey))
+        ),
+      ];
+      if (!keys.length) return pending;
+      const [stored, inbox] = await Promise.all([
+        this.s.m.AosSignalContext.findAll({
+          where: { id: { [Op.in]: keys } },
+          transaction,
+        }),
+        this.s.m.AosSignalInbox.findAll({
+          where: { 'body.taskKey': { [Op.in]: keys } },
+          order: [
+            ['createdAt', 'ASC'],
+            ['id', 'ASC'],
+          ],
+          limit: 1000,
+          transaction,
+        }),
+      ]);
+      const contexts = new Map(stored.map(row => [row.id, row.body]));
+      const additions = new Map();
+      for (const row of inbox) {
+        const entry = { id: row.id, ...row.body };
+        if (!additions.has(entry.taskKey)) additions.set(entry.taskKey, []);
+        additions.get(entry.taskKey).push(entry);
+      }
+      for (const [key, entries] of additions) {
+        const previous = contexts.get(key);
+        // 未有设备档案的任务仍等正常tick建档，不能从客户端推测来源。
+        // 复核临时合并最多1000条inbox，不能先按100条截尾而丢掉本次晚到的旧偏移。
+        if (previous)
+          contexts.set(key, {
+            ...previous,
+            events: [...(previous.events || []), ...entries.filter(row => row.kind !== 'anchor')],
+          });
+      }
+      if (state.aosSignals?.association) {
+        state.aosSignals = {
+          ...state.aosSignals,
+          ...policy.refreshAssociation(state.aosSignals.association, contexts),
+        };
+      }
+      const updated = candidates.map(row => {
+        const { association, groups } = policy.refreshAssociation(row.aosAssociation, contexts);
+        return {
+          ...row,
+          aosAssociation: association,
+          aosGroups: groups,
+          content: policy.content(groups, row.aosImmediate),
+          windowFrom: Math.min(...Object.values(groups).map(group => group.firstAt)),
+          windowTo: Math.max(...Object.values(groups).map(group => group.lastAt)),
+        };
+      });
+      // JSONB忽略键顺序和undefined；无变化的待发消息不重复写入updated_at。
+      const changed = updated.filter(
+        (row, index) =>
+          !isDeepStrictEqual(
+            JSON.parse(JSON.stringify(row)),
+            JSON.parse(JSON.stringify(candidates[index]))
+          )
+      );
+      await this.s.put('InventoryDelivery', changed, transaction);
+      const byId = new Map(updated.map(row => [row.id, row]));
+      return pending.map(row => byId.get(row.id) || row);
     } catch (error) {
       throw inventoryFailure(error);
     }
@@ -195,6 +297,7 @@ class AosSignalService {
             settings.webhookCipher &&
             settings.testedDestination === settings.destinationId;
           if (!enabled) state.aosSignals = null;
+          if (enabled) await this.reconcile(context);
           const anchors = entries
             .filter(row => row.kind === 'anchor')
             .sort((a, b) => a.receivedAt - b.receivedAt || a.byteOffset - b.byteOffset);
@@ -214,19 +317,21 @@ class AosSignalService {
             await this.advance(context, anchor.receivedAt);
             const item = policy.observation(task, anchor);
             if (!state.aosSignals) {
+              const first = policy.addAssociation({ groups: {} }, anchor, item, task);
               await this.queue(
-                policy.addGroup({}, item),
+                first.groups,
                 context,
                 true,
                 anchor.receivedAt,
-                anchor.receivedAt
+                anchor.receivedAt,
+                first.association
               );
               state.aosSignals = {
                 from: anchor.receivedAt,
                 until: anchor.receivedAt + policy.WINDOW_MS,
                 groups: {},
               };
-            } else policy.addGroup(state.aosSignals.groups, item);
+            } else policy.addAssociation(state.aosSignals, anchor, item, task);
           }
           if (enabled) await this.advance(context, now);
           if (queue.length)
