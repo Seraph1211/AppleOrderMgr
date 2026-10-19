@@ -266,9 +266,13 @@ function content(groups, immediate) {
   const head = `${immediate ? '首次信号' : '3分钟汇总'}：${rows.reduce((n, row) => n + row.count, 0)}次命中（非库存数量）\n`;
   const timestamps = rows.flatMap(row => [row.firstAt, row.lastAt]).filter(Number.isFinite);
   const clock = value => new Date(value + 8 * 3600000).toISOString().slice(0, 23).replace('T', ' ');
-  const times = timestamps.length
-    ? `日志时间（北京）：${clock(Math.min(...timestamps))}～${clock(Math.max(...timestamps))}\n`
-    : '';
+  let times = '';
+  if (timestamps.length) {
+    const [startDate, startTime] = clock(Math.min(...timestamps)).split(' ');
+    const [endDate, endTime] = clock(Math.max(...timestamps)).split(' ');
+    const end = startDate === endDate ? endTime : `${endDate} ${endTime}`;
+    times = `日志时间：${startDate} ${startTime} ～ ${end}\n`;
+  }
   const sourceCodes = new Map([...sources.keys()].map((key, index) => [key, `S${index + 1}`]));
   const sourceText = `来源：${[...sources.values()].map(row => `${sourceCodes.get(row.key)} ${shorten(row.server, 12)}/${shorten(row.instance, 10)} ${row.count}次`).join('；')}\n`;
   let text = head + times;

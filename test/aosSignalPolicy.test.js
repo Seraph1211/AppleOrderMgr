@@ -177,8 +177,50 @@ test('11来源的100字标签仍一条有效概览，时间与每组来源对应
     });
   const text = policy.content(groups, false);
   expect(Buffer.byteLength(text)).toBeLessThan(1500);
-  expect(text).toContain('日志时间（北京）：2026-10-19 08:00:00.001～2026-10-19 08:00:00.011');
+  expect(text).toContain('日志时间：2026-10-19 08:00:00.001 ～ 08:00:00.011');
   expect(text).toContain('S1×1');
   expect(text).toContain('S11×1');
   for (let i = 1; i <= 11; i++) expect(text).toContain(`心蓝${String(i).padStart(2, '0')}`);
+});
+
+test.each([
+  [
+    '2026-10-19T21:49:40.244+08:00',
+    '2026-10-19T21:49:40.244+08:00',
+    '日志时间：2026-10-19 21:49:40.244 ～ 21:49:40.244',
+  ],
+  [
+    '2026-10-19T21:49:40.244+08:00',
+    '2026-10-19T21:52:39.123+08:00',
+    '日志时间：2026-10-19 21:49:40.244 ～ 21:52:39.123',
+  ],
+  [
+    '2026-10-19T23:59:59.999+08:00',
+    '2026-10-20T00:00:00.001+08:00',
+    '日志时间：2026-10-19 23:59:59.999 ～ 2026-10-20 00:00:00.001',
+  ],
+])('日志时间按北京时间保留毫秒，同日省略结束日期、跨日保留：%s', (from, to, expected) => {
+  const groups = {};
+  const item = {
+    city: '大连',
+    storeCode: 'R-SYNTHETIC',
+    storeName: 'Apple 大连恒隆广场',
+    model: 'iPhone Duo',
+    color: '星光白色',
+    capacity: '512G',
+    source: { key: 's1', server: 'US09', instance: '心蓝11' },
+  };
+  // 反向加入，证明展示取真实最早／最晚时间，不依赖写入顺序。
+  policy.addGroup(groups, { ...item, observedAt: Date.parse(to) });
+  policy.addGroup(groups, { ...item, observedAt: Date.parse(from) });
+  for (const immediate of [true, false]) {
+    const text = policy.content(groups, immediate);
+    expect(text.split('\n').find(value => value.startsWith('日志时间'))).toBe(expected);
+    expect(text).not.toContain('日志时间（北京）');
+    expect(text).toContain('2次命中（非库存数量）');
+  }
+});
+
+test('没有有效日志时间时不生成空时间行', () => {
+  expect(policy.content({}, true)).not.toContain('日志时间');
 });

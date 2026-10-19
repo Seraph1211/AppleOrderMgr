@@ -193,6 +193,6 @@ describe('AOS 放货信号独立验收：真实语法及防串联', () => {
     expect(text).toContain('S2 US10/心蓝11 1次');
     expect(text).toContain('北京 · Apple 王府井 · iPhone Duo 星光白色 512G：1次（S1×1）');
     expect(text).toContain('深圳 · Apple 深圳万象城 · iPhone Duo 夜空色 256G：1次（S2×1）');
-    expect(text).toContain('2026-10-19 03:58:00.000～2026-10-19 04:00:00.000');
+    expect(text).toContain('日志时间：2026-10-19 03:58:00.000 ～ 04:00:00.000');
   });
 });
