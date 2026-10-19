@@ -26,6 +26,13 @@
 .monitor-log-drawer {
   width: min(90vw, 1600px);
 }
+.monitor-log-row-selected > td {
+  background-color: #eff6ff;
+}
+.monitor-log-row-selected > td:first-child {
+  box-shadow: inset 3px 0 0 #1e3a8a;
+  color: #1e3a8a;
+}
 .monitor-log-metadata {
   position: absolute;
   z-index: 30;

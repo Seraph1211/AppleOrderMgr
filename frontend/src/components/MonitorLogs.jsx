@@ -530,46 +530,51 @@ export default function MonitorLogs({ standalone = false }) {
           <col />
         </colgroup>
         <tbody>
-          {items.map((row, index) => (
-            <tr
-              key={row.id}
-              className={`${row.id === selected?.id ? 'bg-primary-50' : 'hover:bg-gray-50'} group`}
-            >
-              <td className="w-12 select-none py-0.5 pr-2 text-right align-top text-xs text-gray-400">
-                {inContext ? row.lineNumber : index + 1}
-              </td>
-              <td className="p-0 align-top">
-                {inContext ? (
-                  <pre
-                    data-context-id={row.id}
-                    className={`px-2 py-0.5 font-mono ${wrapLines ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre'}`}
-                  >
-                    {highlighted(row.message.replace(/\r?\n$/, '') || '（空行）')}
-                  </pre>
-                ) : (
-                  <button
-                    type="button"
-                    aria-label={`选择第${index + 1}条日志`}
-                    aria-pressed={selected?.id === row.id}
-                    className="block w-full select-text px-2 py-3 sm:py-0.5 text-left text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
-                    onClick={() => {
-                      setSelected(row);
-                      setNotice('');
-                    }}
-                  >
-                    <span
-                      className={`block ${wrapLines ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre'}`}
+          {items.map((row, index) => {
+            const isSelected = String(row.id) === String(selected?.id);
+            return (
+              <tr
+                key={row.id}
+                data-context-id={inContext ? row.id : undefined}
+                data-selected={isSelected ? 'true' : 'false'}
+                aria-selected={inContext ? isSelected : undefined}
+                className={`group ${isSelected ? 'monitor-log-row-selected' : 'hover:bg-gray-50'}`}
+              >
+                <td className="w-12 select-none py-0.5 pr-2 text-right align-top text-xs text-gray-400">
+                  {inContext ? row.lineNumber : index + 1}
+                </td>
+                <td className="p-0 align-top">
+                  {inContext ? (
+                    <pre
+                      className={`px-2 py-0.5 font-mono ${wrapLines ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre'}`}
                     >
                       {highlighted(row.message.replace(/\r?\n$/, '') || '（空行）')}
-                    </span>
-                    {PARSE[row.parseState] && (
-                      <span className="ml-2 text-xs text-amber-700">[{PARSE[row.parseState]}]</span>
-                    )}
-                  </button>
-                )}
-              </td>
-            </tr>
-          ))}
+                    </pre>
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={`选择第${index + 1}条日志`}
+                      aria-pressed={isSelected}
+                      className="block w-full select-text px-2 py-3 text-left text-gray-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary sm:py-0.5"
+                      onClick={() => {
+                        setSelected(row);
+                        setNotice('');
+                      }}
+                    >
+                      <span
+                        className={`block ${wrapLines ? 'whitespace-pre-wrap break-words [overflow-wrap:anywhere]' : 'whitespace-pre'}`}
+                      >
+                        {highlighted(row.message.replace(/\r?\n$/, '') || '（空行）')}
+                      </span>
+                      {PARSE[row.parseState] && (
+                        <span className="ml-2 text-xs text-amber-700">[{PARSE[row.parseState]}]</span>
+                      )}
+                    </button>
+                  )}
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     );
@@ -621,7 +626,7 @@ export default function MonitorLogs({ standalone = false }) {
         className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4"
       >
         <div className="grid min-w-0 grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-12">
-          <label className="min-w-0 text-sm text-gray-600 xl:col-span-3">
+          <label className="min-w-0 text-sm text-gray-600 xl:col-span-2">
             服务器
             <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
@@ -638,7 +643,7 @@ export default function MonitorLogs({ standalone = false }) {
               ))}
             </ResponsiveSelect>
           </label>
-          <label className="min-w-0 text-sm text-gray-600 xl:col-span-3">
+          <label className="min-w-0 text-sm text-gray-600 xl:col-span-2">
             软件实例
             <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
@@ -658,7 +663,7 @@ export default function MonitorLogs({ standalone = false }) {
                 ))}
             </ResponsiveSelect>
           </label>
-          <div className="min-w-0 text-sm text-gray-600 xl:col-span-3">
+          <div className="min-w-0 text-sm text-gray-600 xl:col-span-2">
             <span>账号编号</span>
             <MonitorLogAccountSelect
               value={draft.account === '__unassigned__' ? '' : draft.account}
@@ -685,18 +690,7 @@ export default function MonitorLogs({ standalone = false }) {
               }}
             />
           </div>
-          <label className="min-w-0 text-sm text-gray-600 xl:col-span-3">
-            正文关键词
-            <input
-              className="input mt-1 w-full text-base sm:text-sm"
-              maxLength={200}
-              placeholder="例如：加入购物车、店铺编号"
-              aria-label="正文关键词"
-              value={draft.keyword}
-              onChange={e => setDraft(value => ({ ...value, keyword: e.target.value }))}
-            />
-          </label>
-          <div className="min-w-0 text-sm text-gray-600 sm:col-span-2 xl:col-span-8">
+          <div className="min-w-0 text-sm text-gray-600 xl:col-span-6">
             <span className="mb-1 block">
               日志时间范围 <span className="text-xs text-gray-400">（北京时间）</span>
             </span>
@@ -713,7 +707,18 @@ export default function MonitorLogs({ standalone = false }) {
               }}
             />
           </div>
-          <label className="inline-flex min-h-8 items-center gap-2 text-sm text-gray-600 sm:col-span-2 xl:col-span-4">
+          <label className="min-w-0 text-sm text-gray-600 xl:col-span-8">
+            正文关键词
+            <input
+              className="input mt-1 w-full text-base sm:text-sm"
+              maxLength={200}
+              placeholder="例如：加入购物车、店铺编号"
+              aria-label="正文关键词"
+              value={draft.keyword}
+              onChange={e => setDraft(value => ({ ...value, keyword: e.target.value }))}
+            />
+          </label>
+          <label className="inline-flex min-h-8 items-center gap-2 text-sm text-gray-600 xl:col-span-4">
             <input
               type="checkbox"
               checked={draft.account === '__unassigned__'}

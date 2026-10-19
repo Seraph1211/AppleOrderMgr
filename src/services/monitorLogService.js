@@ -301,12 +301,13 @@ function findAnchor(id, compressed) {
     ? blockStore.findById(id.toLowerCase())
     : MonitorLogEntry.findByPk(id.toLowerCase());
 }
-function sameContext(anchor, candidate, scope) {
+function sameContext(anchor, candidate, scope, bounds) {
   return (
     candidate &&
     candidate.deviceId === anchor.deviceId &&
     candidate.localId === anchor.localId &&
-    candidate.businessDate === anchor.businessDate &&
+    candidate.businessDate >= bounds.first &&
+    candidate.businessDate <= bounds.today &&
     (scope !== 'account' || candidate.accountNumber === anchor.accountNumber)
   );
 }
@@ -435,7 +436,7 @@ async function accounts(input) {
       : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
   }
 }
-/** 同实例同日账号或实例上下文，支持以边界事件双向翻页。 @param {string} id 片段ID @param {Object} input 范围 @returns {Promise<Object>} 上下文 */
+/** 同实例90日内连续账号或实例上下文，支持以边界事件双向翻页。 @param {string} id 片段ID @param {Object} input 范围 @returns {Promise<Object>} 上下文 */
 async function context(id, input) {
   try {
     p.uuid(id);
@@ -460,12 +461,13 @@ async function context(id, input) {
     const query = {
       deviceId: anchor.deviceId,
       localId: anchor.localId,
-      date: anchor.businessDate,
+      startDate: first,
+      endDate: today,
       account: input.scope === 'account' ? anchor.accountNumber : '',
     };
     if (cursorId) {
       const cursor = await findAnchor(cursorId, compressed);
-      if (!sameContext(anchor, cursor, input.scope))
+      if (!sameContext(anchor, cursor, input.scope, { first, today }))
         throw ApiError.badRequest('上下文游标已过期，请重新打开详情');
       const direction = input.direction === 'before' ? 'DESC' : 'ASC';
       const page = await surroundingPage(query, cursor, direction, limit, compressed);

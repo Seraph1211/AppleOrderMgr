@@ -186,11 +186,31 @@ const { randomUUID, createHash } = require('crypto');
       expect(old.rows[0].id).toBe(rows[0].id);
     });
 
-    test('导出断开立即停止、上下文仍限制锚点当天', async () => {
+    test('导出断开立即停止、上下文独立于列表日期并跨午夜续载', async () => {
       const result = await service.writeExport(await service.prepareExport(range), () => false);
       expect(result).toMatchObject({ exported: 0, aborted: true });
       const context = await service.context(rows[8].id, { scope: 'instance' });
-      expect(context.items.every(row => row.businessDate === yesterday)).toBe(true);
+      expect(context.items.some(row => row.businessDate === yesterday)).toBe(true);
+      let cursor = context.items.at(-1).id;
+      let hasMore = context.hasMoreAfter;
+      const dates = new Set(context.items.map(row => row.businessDate));
+      const maxPages = Math.ceil(rows.length / 100);
+      let pages = 0;
+      while (hasMore) {
+        expect(pages).toBeLessThan(maxPages);
+        pages++;
+
+        const page = await service.context(rows[8].id, {
+          scope: 'instance',
+          cursor,
+          direction: 'after',
+          limit: 100,
+        });
+        page.items.forEach(row => dates.add(row.businessDate));
+        if (page.items.length) cursor = page.items.at(-1).id;
+        hasMore = page.hasMore;
+      }
+      expect([...dates].sort()).toEqual([yesterday, today]);
     });
   });
 });

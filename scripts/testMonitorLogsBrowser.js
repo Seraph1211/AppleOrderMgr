@@ -5,6 +5,56 @@ const path = require('node:path');
 const { chromium } = require('playwright-core');
 const logger = require('../src/utils/logger');
 const BASE_URL = process.env.MONITOR_BROWSER_BASE_URL;
+const OUTPUT_DIR = path.resolve(process.env.MONITOR_BROWSER_ARTIFACT_DIR || 'coverage');
+const ROW_ID = '44444444-4444-4444-8444-444444444444';
+
+function beijingTimestamp(date, time) {
+  return new Date(`${date}T${time}+08:00`).toISOString();
+}
+
+function contextTimestamp(date, index) {
+  return new Date(Date.parse(`${date}T23:59:30+08:00`) + (index - 100) * 100).toISOString();
+}
+
+function contextMessage(timestamp, label) {
+  const date = new Date(timestamp);
+  const beijing = new Intl.DateTimeFormat('sv-SE', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hourCycle: 'h23',
+  }).format(date);
+  return `${beijing}.${date.toISOString().slice(20, 23)} [2][128]${label}\n`;
+}
+
+async function assertContextAnchorSelected(reader, rowId) {
+  const anchor = reader.locator(`tr[data-context-id="${rowId}"]`);
+  await anchor.waitFor();
+  const style = await anchor.evaluate(element => {
+    const cells = Array.from(element.querySelectorAll(':scope > td'));
+    return {
+      selected: element.getAttribute('data-selected'),
+      ariaSelected: element.getAttribute('aria-selected'),
+      backgrounds: cells.map(
+        cell => cell.ownerDocument.defaultView.getComputedStyle(cell).backgroundColor
+      ),
+      shadows: cells.map(cell => cell.ownerDocument.defaultView.getComputedStyle(cell).boxShadow),
+    };
+  });
+  assert.equal(style.selected, 'true', '上下文锚点身份保持选中');
+  assert.equal(style.ariaSelected, 'true', '上下文锚点暴露选中语义');
+  assert(
+    style.backgrounds.length > 0 &&
+      style.backgrounds.every(color => color === 'rgb(239, 246, 255)'),
+    `锚点每个td应渲染浅蓝背景：${style.backgrounds.join(', ')}`
+  );
+  assert(style.shadows[0]?.includes('rgb(30, 58, 138)'), '锚点首格应渲染蓝色强调线');
+}
+
 /** 合成浏览器验收，拦截所有API，不访问业务数据。 */
 async function main() {
   let browser;
@@ -18,15 +68,17 @@ async function main() {
       executablePath: process.env.MONITOR_BROWSER_EXECUTABLE,
       headless: true,
     });
-    fs.mkdirSync(path.resolve('coverage'), { recursive: true });
-    for (const mode of ['desktop', 'portrait', 'mobile']) {
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    for (const mode of ['desktop', 'wide', 'portrait', 'mobile']) {
       const mobile = mode === 'mobile';
       const context = await browser.newContext({
         viewport: mobile
           ? { width: 375, height: 740 }
           : mode === 'portrait'
             ? { width: 1080, height: 1920 }
-            : { width: 1440, height: 1000 },
+            : mode === 'wide'
+              ? { width: 1920, height: 1080 }
+              : { width: 1440, height: 1000 },
         isMobile: mobile,
         hasTouch: mobile,
         serviceWorkers: 'block',
@@ -52,15 +104,16 @@ async function main() {
       const now = new Date().toISOString();
       const today = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
       const yesterday = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10);
-      const message =
-        '2026-09-29 01:40:10.229 [2][128]A47-没有有货的店铺 <script>window.logInjected=true</script>\n';
+      const twoDaysAgo = new Date(Date.parse(today) - 2 * 86400000).toISOString().slice(0, 10);
+      const anchorAt = contextTimestamp(yesterday, 100);
+      const message = `${contextMessage(anchorAt, 'A47-没有有货的店铺').trimEnd()} <script>window.logInjected=true</script>\n`;
       const row = {
-        id: '44444444-4444-4444-8444-444444444444',
+        id: ROW_ID,
         deviceId,
         localId,
         fileId: '55555555-5555-4555-8555-555555555555',
-        fileName: 'Log20260929_123.txt',
-        loggedAt: now,
+        fileName: `Log${yesterday.replaceAll('-', '')}_123.txt`,
+        loggedAt: anchorAt,
         lineNumber: '1',
         partIndex: 0,
         accountNumber: '128',
@@ -162,6 +215,9 @@ async function main() {
               return;
             }
             const direction = url.searchParams.get('direction');
+            assert.equal(url.searchParams.has('date'), false, '上下文翻页不受主列表日期限制');
+            assert.equal(url.searchParams.has('startAt'), false, '上下文翻页不携带主列表起始时间');
+            assert.equal(url.searchParams.has('endAt'), false, '上下文翻页不携带主列表结束时间');
             if (direction) {
               contextPageRequests += 1;
               data = {
@@ -173,7 +229,40 @@ async function main() {
                   ...row,
                   id: `context-${direction}-${index}`,
                   lineNumber: String(direction === 'before' ? index + 1 : 202 + index),
-                  message: `${direction === 'before' ? '更早' : '更晚'}上下文${index}\n`,
+                  loggedAt:
+                    direction === 'before'
+                      ? [
+                        beijingTimestamp(twoDaysAgo, '23:58:00'),
+                        beijingTimestamp(twoDaysAgo, '23:59:00'),
+                        beijingTimestamp(yesterday, '00:00:01'),
+                        beijingTimestamp(yesterday, '23:40:00'),
+                        beijingTimestamp(yesterday, '23:42:00'),
+                      ][index]
+                      : [
+                        beijingTimestamp(yesterday, '23:59:50'),
+                        beijingTimestamp(yesterday, '23:59:59'),
+                        beijingTimestamp(today, '00:00:01'),
+                        beijingTimestamp(today, '00:01:00'),
+                        beijingTimestamp(today, '00:02:00'),
+                      ][index],
+                  message: contextMessage(
+                    direction === 'before'
+                      ? [
+                        beijingTimestamp(twoDaysAgo, '23:58:00'),
+                        beijingTimestamp(twoDaysAgo, '23:59:00'),
+                        beijingTimestamp(yesterday, '00:00:01'),
+                        beijingTimestamp(yesterday, '23:40:00'),
+                        beijingTimestamp(yesterday, '23:42:00'),
+                      ][index]
+                      : [
+                        beijingTimestamp(yesterday, '23:59:50'),
+                        beijingTimestamp(yesterday, '23:59:59'),
+                        beijingTimestamp(today, '00:00:01'),
+                        beijingTimestamp(today, '00:01:00'),
+                        beijingTimestamp(today, '00:02:00'),
+                      ][index],
+                    `${direction === 'before' ? '更早' : '更晚'}上下文${index}`
+                  ),
                 })),
               };
             } else {
@@ -189,10 +278,16 @@ async function main() {
                   id: index === 100 ? row.id : `context-initial-${index}`,
                   lineNumber: String(index + 1),
                   accountNumber: scope === 'instance' && index === 101 ? '129' : '128',
+                  loggedAt: contextTimestamp(yesterday, index),
                   message:
-                    index === 101
-                      ? `上下文合成日志 [${scope === 'instance' ? '129' : '128'}]\n`
-                      : `上下文初始日志${index}\n`,
+                    index === 100
+                      ? row.message
+                      : contextMessage(
+                        contextTimestamp(yesterday, index),
+                        index === 101
+                          ? `上下文合成日志 [${scope === 'instance' ? '129' : '128'}]`
+                          : `上下文初始日志${index}`
+                      ),
                 })),
               };
             }
@@ -270,8 +365,18 @@ async function main() {
       await exportRequestPromise;
       assert.equal(exportTicketRequests, 1);
       assert.equal(exportRequests, 1);
-      assert.deepEqual(Object.keys(exportTicketBody).sort(), ['deviceId', 'endAt', 'localId', 'startAt']);
-      assert.deepEqual(Object.keys(exportQuery).sort(), ['deviceId', 'endAt', 'localId', 'startAt']);
+      assert.deepEqual(Object.keys(exportTicketBody).sort(), [
+        'deviceId',
+        'endAt',
+        'localId',
+        'startAt',
+      ]);
+      assert.deepEqual(Object.keys(exportQuery).sort(), [
+        'deviceId',
+        'endAt',
+        'localId',
+        'startAt',
+      ]);
       assert.equal(exportQuery.deviceId, deviceId);
       assert.equal(exportQuery.localId, localId);
       assert.equal(exportQuery.startAt, exportTicketBody.startAt);
@@ -348,10 +453,15 @@ async function main() {
       const beforeContextRetry = listRequests;
       contextFail = false;
       await detail.getByRole('button', { name: '重试上下文' }).click();
-      await detail.getByText('上下文合成日志 [128]', { exact: true }).waitFor();
+      await detail.getByText(/上下文合成日志 \[128\]/).waitFor();
       assert.equal(listRequests, beforeContextRetry, '重试上下文不重新查询主列表');
       const contextReader = detail.getByRole('region', { name: '上下文日志阅读区' });
       assert.equal(await contextReader.locator('tbody tr').count(), 201);
+      await assertContextAnchorSelected(contextReader, ROW_ID);
+      assert(
+        (await contextReader.getByText(new RegExp(`${yesterday} 23:59:30`)).count()) > 0,
+        '上下文原文显示锚点的北京时间'
+      );
       const detailBox = await detail.boundingBox();
       assert.equal(detailBox.y, 0, '详情侧栏从视口顶部开始');
       assert.equal(detailBox.height, page.viewportSize().height, '详情侧栏占满视口高度');
@@ -366,29 +476,67 @@ async function main() {
         element.scrollTop = 0;
         element.dispatchEvent(new Event('scroll'));
       });
-      await detail.getByText('更早上下文0', { exact: true }).waitFor();
+      await detail.getByText(/更早上下文0/).waitFor();
+      await assertContextAnchorSelected(contextReader, ROW_ID);
+      assert(
+        (await contextReader.getByText(new RegExp(`${twoDaysAgo} 23:58:00`)).count()) > 0,
+        '向上加载显示两天前的合成日志原文时间'
+      );
+      if (mode === 'desktop') {
+        await contextReader.evaluate(element => {
+          element.scrollTop = 0;
+          element.dispatchEvent(new Event('scroll'));
+        });
+        await page.screenshot({
+          path: path.join(OUTPUT_DIR, 'full-logs-context-before-boundary.png'),
+          fullPage: false,
+          animations: 'disabled',
+        });
+      }
       assert.equal(contextPageRequests, 1);
       assert.equal(await contextReader.locator('tbody tr').count(), 206);
       await contextReader.evaluate(element => {
         element.scrollTop = element.scrollHeight;
         element.dispatchEvent(new Event('scroll'));
       });
-      await detail.getByText('更晚上下文0', { exact: true }).waitFor();
+      await detail.getByText(/更晚上下文0/).waitFor();
+      await assertContextAnchorSelected(contextReader, ROW_ID);
+      assert(
+        (await contextReader.getByText(new RegExp(`${today} 00:00:01`)).count()) > 0,
+        '向下加载显示今天午夜后的合成日志原文时间'
+      );
+      if (mode === 'desktop') {
+        await page.screenshot({
+          path: path.join(OUTPUT_DIR, 'full-logs-context-after-boundary.png'),
+          fullPage: false,
+          animations: 'disabled',
+        });
+      }
       assert.equal(await contextReader.locator('tbody tr').count(), 211);
       await page.screenshot({
-        path: path.resolve(`coverage/full-logs-${mode}-context.png`),
+        path: path.join(OUTPUT_DIR, `full-logs-${mode}-context.png`),
         fullPage: true,
+        animations: 'disabled',
+      });
+      await page.screenshot({
+        path: path.join(OUTPUT_DIR, `full-logs-${mode}-context-viewport.png`),
+        fullPage: false,
         animations: 'disabled',
       });
       const infoButton = detail.getByRole('button', { name: '查看日志元信息', exact: true });
       await infoButton.hover();
       const metadata = page.getByRole('dialog', { name: '日志元信息', exact: true });
       await metadata.getByText(row.fileName, { exact: true }).waitFor();
+      await assertContextAnchorSelected(contextReader, ROW_ID);
       await page.keyboard.press('Escape');
       await metadata.waitFor({ state: 'hidden' });
       assert(await detail.isVisible(), '关闭元信息不应关闭详情侧栏');
       await detail.getByRole('button', { name: '整个实例上下文', exact: true }).click();
-      await detail.getByText('上下文合成日志 [129]', { exact: true }).waitFor();
+      await detail.getByText(/上下文合成日志 \[129\]/).waitFor();
+      await assertContextAnchorSelected(contextReader, ROW_ID);
+      await detail.getByRole('button', { name: '该账号上下文', exact: true }).click();
+      await detail.getByText(/上下文合成日志 \[128\]/).waitFor();
+      await assertContextAnchorSelected(contextReader, ROW_ID);
       await page.keyboard.press('Escape');
       assert.equal(await detail.count(), 0);
       assert.equal(await reader.evaluate(element => element.scrollTop), readingTop);
@@ -441,7 +589,7 @@ async function main() {
         '账号下拉不得越过屏幕边缘'
       );
       await page.screenshot({
-        path: path.resolve(`coverage/full-logs-${mode}-accounts.png`),
+        path: path.join(OUTPUT_DIR, `full-logs-${mode}-accounts.png`),
         fullPage: true,
         animations: 'disabled',
       });
@@ -483,7 +631,19 @@ async function main() {
       assert.equal(await accountInput.inputValue(), '');
       await accountInput.click();
       await candidates.getByRole('option', { name: '001', exact: true }).waitFor();
-      await panel.getByLabel('正文关键词', { exact: true }).click();
+      if (mode === 'portrait') {
+        const popupBox = await candidates.locator('..').boundingBox();
+        assert(
+          popupBox.y >= 0 && popupBox.y + popupBox.height <= page.viewportSize().height + 1,
+          '竖屏候选浮层应保持在视口内'
+        );
+        await page.screenshot({
+          path: path.join(OUTPUT_DIR, 'full-logs-portrait-account-popup.png'),
+          fullPage: false,
+          animations: 'disabled',
+        });
+      }
+      await panel.getByRole('heading', { name: '日志查询', exact: true }).click();
       assert.equal(await candidates.count(), 0, '点外部收起');
       await panel.getByText('仅查看未识别账号的日志', { exact: true }).click();
       assert(await accountInput.isDisabled());
@@ -516,7 +676,10 @@ async function main() {
       assert.equal(await reader.locator('tbody tr').count(), 0);
       fail = false;
       empty = true;
-      await panel.locator('form#log-query-filters').getByRole('button', { name: '重新查询', exact: true }).click();
+      await panel
+        .locator('form#log-query-filters')
+        .getByRole('button', { name: '重新查询', exact: true })
+        .click();
       await panel.getByText('当前条件下没有已上传的日志', { exact: false }).waitFor();
       empty = false;
       assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
@@ -535,7 +698,7 @@ async function main() {
       if (mobile) {
         await first.tap();
         await panel.getByRole('button', { name: '详情与上下文' }).tap();
-        await detail.getByText('上下文合成日志 [128]', { exact: true }).waitFor();
+        await detail.getByText(/上下文合成日志 \[128\]/).waitFor();
         await page.setViewportSize({ width: 375, height: 500 });
         await detail.locator(':scope > .flex-1').evaluate(element => {
           element.scrollTop = element.scrollHeight;
@@ -591,7 +754,7 @@ async function main() {
       );
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({
-        path: path.resolve(`coverage/full-logs-${mode}.png`),
+        path: path.join(OUTPUT_DIR, `full-logs-${mode}.png`),
         fullPage: true,
         animations: 'disabled',
       });
