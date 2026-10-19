@@ -39,6 +39,14 @@ async function getEffectivePermissions(user, options = {}) {
     transaction: options.transaction,
   });
   const permissions = rows.map(row => row.permissionCode);
+  if (permissions.includes(PERMISSIONS.MONITOR_MANAGE)) {
+    for (const code of [
+      PERMISSIONS.MONITOR_NOTIFICATIONS_READ,
+      PERMISSIONS.MONITOR_NOTIFICATIONS_CONFIGURE,
+      PERMISSIONS.MONITOR_NOTIFICATIONS_RETRY,
+    ])
+      if (!permissions.includes(code)) permissions.push(code);
+  }
   // 旧版 monitor.manage 已包含完整日志读取；派生新权限避免拆分后撤销既有访问。
   if (
     permissions.includes(PERMISSIONS.MONITOR_MANAGE) &&
@@ -299,6 +307,7 @@ function resolveAvailableHome(permissions) {
     [PERMISSIONS.INVENTORY_READ, '/inventory-monitor'],
     [PERMISSIONS.STOCK_READ, '/stock'],
     [PERMISSIONS.MONITOR_MANAGE, '/server-monitor'],
+    [PERMISSIONS.MONITOR_NOTIFICATIONS_READ, '/server-monitor'],
     [PERMISSIONS.MONITOR_LOGS_READ, '/server-monitor/logs'],
     [PERMISSIONS.CHANNELS_READ, '/channels'],
     [PERMISSIONS.PAYMENT_DISPATCH_READ, '/payment-dispatch'],

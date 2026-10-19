@@ -35,7 +35,6 @@ const paymentDispatchRouter = require('./routes/paymentDispatch');
 
 const { sequelize } = require('./models');
 const emailService = require('./services/emailService');
-const monitorNotificationSender = require('./services/monitorNotificationSender');
 const paymentDispatchScheduler = require('./services/paymentDispatchScheduler');
 const identityVerificationRunner = require('./services/identityVerificationRunner');
 const ingestionScheduler = require('./services/ingestionScheduler');
@@ -177,7 +176,6 @@ const server = app.listen(DEFAULT_PORT, () => {
   if (process.env.RUN_WORKERS_IN_API === 'true') {
     try {
       emailService.startEmailService();
-      monitorNotificationSender.start();
       logger.info('邮件监听服务启动请求已发送');
     } catch (error) {
       logger.error('邮件监听服务启动失败', { error: error.message });
@@ -212,7 +210,6 @@ function shutdown(signal) {
       await proxyStopped;
       await monitorStopped;
       await emailService.stopEmailService();
-      await monitorNotificationSender.stop();
       await require('./repositories/quoteSourceRepository').closeQuoteSourcePool();
       await sequelize.close();
       logger.info('数据库连接已关闭');

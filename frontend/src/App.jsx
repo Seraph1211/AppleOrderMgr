@@ -29,6 +29,7 @@ import IdentityVerifications from './pages/IdentityVerifications';
 import PublicIphone18Quotes from './pages/PublicIphone18Quotes';
 import Iphone18QuotePricing from './pages/Iphone18QuotePricing';
 import { PERMISSIONS } from './constants/permissions';
+import { useAuth } from './contexts/AuthContext';
 
 const Stock = lazy(() => import('./pages/Stock'));
 
@@ -48,6 +49,14 @@ function stockPage(element) {
 
 function permissionRoute(permission, element) {
   return <ProtectedRoute requiredPermission={permission}>{element}</ProtectedRoute>;
+}
+
+function ServerMonitorRoute() {
+  const { can } = useAuth();
+  if (can(PERMISSIONS.MONITOR_MANAGE) || can(PERMISSIONS.MONITOR_NOTIFICATIONS_READ)) {
+    return <ServerMonitor />;
+  }
+  return permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerMonitor />);
 }
 
 function ManagementApp() {
@@ -97,7 +106,7 @@ function ManagementApp() {
                   />
                   <Route
                     path="/server-monitor"
-                    element={permissionRoute(PERMISSIONS.MONITOR_MANAGE, <ServerMonitor />)}
+                    element={<ServerMonitorRoute />}
                   />
                   <Route
                     path="/server-monitor/logs"

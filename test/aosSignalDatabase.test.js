@@ -3,6 +3,7 @@ const { Sequelize } = require('sequelize');
 const inventoryMigration = require('../migrations/20261002000002-create-inventory-monitor');
 const validationMigration = require('../migrations/20261002000001-create-inventory-validation');
 const signalMigration = require('../migrations/20261019000001-create-aos-signal-queue');
+const budgetFixture = require('./helpers/monitorNotificationBudgetFixture');
 const InventoryService = require('../src/services/inventoryService');
 const InventoryNotifier = require('../src/services/inventoryNotifier');
 const AosSignalService = require('../src/services/aosSignalService');
@@ -79,6 +80,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
       await validationMigration.up(db.getQueryInterface(), Sequelize);
       await inventoryMigration.up(db.getQueryInterface(), Sequelize);
       await signalMigration.up(db.getQueryInterface(), Sequelize);
+      await budgetFixture.up(db);
       m = { sequelize: db };
       for (const name of names) m[name] = require(`../src/models/${name}`)(db);
       m.AosDevice = {
@@ -98,6 +100,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
     try {
       now = Date.now();
       for (const name of names) await m[name].destroy({ truncate: true });
+      await budgetFixture.reset(db);
       await m.InventoryRuntime.create({ id: 'main', body: {} });
       await m.InventorySetting.create({
         id: 'main',
@@ -118,6 +121,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
   });
   afterAll(async () => {
     try {
+      await budgetFixture.down(db);
       await signalMigration.down(db.getQueryInterface());
       await inventoryMigration.down(db.getQueryInterface());
       await validationMigration.down(db.getQueryInterface());

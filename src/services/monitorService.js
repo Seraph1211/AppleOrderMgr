@@ -8,7 +8,6 @@ const {
   MonitorTraffic,
   MonitorAlert,
   MonitorAction,
-  MonitorNotificationDelivery,
 } = require('../models');
 const ApiError = require('../utils/ApiError');
 const logger = require('../utils/logger');
@@ -369,6 +368,14 @@ async function receive(deviceId, body, now = new Date()) {
               .filter(r => applicable.some(rule => rule.id === r.ruleId))
               .map(r => ({
                 ...r,
+                ruleVersion: applicable.find(rule => rule.id === r.ruleId).version,
+                clearSince: (() => {
+                  const rule = applicable.find(item => item.id === r.ruleId);
+                  const previous = instance.snapshot?.results?.find(item => item.ruleId === r.ruleId);
+                  if (!valid || r.count >= rule.threshold) return null;
+                  const continuous = instance.snapshot?.state === 'ready' && previous?.ruleVersion === rule.version && previous?.clearSince && instance.observedAt && new Date(report.endedAt) - new Date(instance.observedAt) <= 90000;
+                  return continuous ? previous.clearSince : report.endedAt;
+                })(),
                 samples: r.samples.map(s => ({
                   at: s.at,
                   file: s.file,
@@ -646,29 +653,7 @@ async function traffic(query) {
  */
 async function cleanup() {
   try {
-    const before = new Date(Date.now() - RETENTION_MS);
-    await sequelize.transaction(async transaction => {
-      try {
-        await sequelize.query(
-          "SELECT pg_advisory_xact_lock(hashtext('server-monitor-retention'))",
-          { transaction }
-        );
-        await MonitorTraffic.destroy({ where: { endedAt: { [Op.lt]: before } }, transaction });
-        await MonitorAction.destroy({ where: { createdAt: { [Op.lt]: before } }, transaction });
-        await MonitorAlert.destroy({ where: { lastSeenAt: { [Op.lt]: before } }, transaction });
-        await MonitorNotificationDelivery.destroy({
-          where: { createdAt: { [Op.lt]: before } },
-          transaction,
-        });
-        await MonitorInstance.update(
-          { snapshot: {}, handling: {} },
-          { where: { observedAt: { [Op.lt]: before } }, transaction }
-        );
-      } catch (error) {
-        logger.debug('监控操作未完成', { errorCode: error.code || error.name });
-        throw error;
-      }
-    });
+    await require('./monitorNotificationRetention').cleanup();
     await require('./monitorLogService').cleanup();
   } catch (error) {
     logger.warn('监控历史清理未完成', { errorCode: error.name });

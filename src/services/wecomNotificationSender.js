@@ -10,6 +10,7 @@ const transport = require('./wecomTransport');
 const paymentCode = require('./paymentCodeService');
 const content = require('./wecomNotificationContent');
 const SEND_INTERVAL_MS = 3334;
+const robotBudget = require('./wecomRobotBudget');
 const LEASE_MS = 120000;
 const TEST_MESSAGE = '企微新订单通知连接测试：此为合成测试消息，不包含真实订单或付款链接。';
 
@@ -170,6 +171,20 @@ async function authorize(row, now) {
         return null;
       }
       const webhook = decrypt(setting.webhookCipher);
+      const budget = await robotBudget.reserve(webhook, 'orders', transaction, now);
+      if (!budget.allowed) {
+        await current.update(
+          {
+            status: 'pending',
+            notBefore: budget.retryAt,
+            leaseToken: null,
+            leaseUntil: null,
+            version: current.version + 1,
+          },
+          { transaction }
+        );
+        return null;
+      }
       await setting.update(
         { nextSendAt: new Date(+now + SEND_INTERVAL_MS) },
         { transaction, silent: true }

@@ -2,6 +2,7 @@ const { Sequelize } = require('sequelize');
 const validationMigration = require('../migrations/20261002000001-create-inventory-validation');
 const migration = require('../migrations/20261002000002-create-inventory-monitor');
 const timeIndexes = require('../migrations/20261002000003-add-inventory-time-indexes');
+const budgetFixture = require('./helpers/monitorNotificationBudgetFixture');
 const InventoryService = require('../src/services/inventoryService');
 const InventoryCollector = require('../src/services/inventoryCollector');
 const InventoryNotifier = require('../src/services/inventoryNotifier');
@@ -57,6 +58,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       await validationMigration.up(db.getQueryInterface(), Sequelize);
       await migration.up(db.getQueryInterface(), Sequelize);
       await timeIndexes.up(db.getQueryInterface());
+      await budgetFixture.up(db);
       m = { sequelize: db };
       for (const name of names) m[name] = require(`../src/models/${name}`)(db);
       service = new InventoryService(m);
@@ -68,6 +70,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
   beforeEach(async () => {
     try {
       for (const name of names) await m[name].destroy({ where: {}, truncate: true });
+      await budgetFixture.reset(db);
       await db.query("UPDATE inventory_validation_state SET body = '{}'::jsonb");
       await m.InventoryRuntime.create({ id: 'main', body: { seeded: true } });
       await m.InventorySetting.create({
@@ -83,6 +86,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
   afterAll(async () => {
     try {
       if (db) {
+        await budgetFixture.down(db);
         await timeIndexes.down(db.getQueryInterface());
         await migration.down(db.getQueryInterface());
         await validationMigration.down(db.getQueryInterface());
@@ -707,6 +711,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       };
       const age = async () => {
         try {
+          await budgetFixture.elapse(db, 121000);
           const runtime = await m.InventoryRuntime.findByPk('main');
           await change({
             healthAlerts: { ...runtime.body.healthAlerts, since: Date.now() - 121000 },
@@ -758,6 +763,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       await one.tick();
       expect(send).toHaveBeenCalledTimes(2);
       // 普通故障合并窗口不妨碍新严重故障立即提醒。
+      await budgetFixture.elapse(db, 3334);
       await db.query(
         'UPDATE inventory_validation_state SET body = \'{"pausedReason":"INVALID_STRUCTURE"}\'::jsonb'
       );
@@ -820,6 +826,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       expect((await m.InventoryDelivery.findByPk(inFlight.id)).body.status).toBe('unknown');
       await db.query("UPDATE inventory_validation_state SET body = '{}'::jsonb");
       await notifier.health();
+      await budgetFixture.elapse(db, 121000);
       runtime = await m.InventoryRuntime.findByPk('main');
       await runtime.update({
         body: {
@@ -867,6 +874,7 @@ suite('完整库存模块真实 PostgreSQL 事务（仅隔离测试库）', () =
       await db.query(
         'UPDATE inventory_validation_state SET body = \'{"pausedReason":"TEST_PAUSE"}\'::jsonb'
       );
+      await budgetFixture.elapse(db, 3334);
       await notifier.tick();
       expect(send).toHaveBeenCalledTimes(2);
       expect(send.mock.calls[1][1]).toContain('需要人工处理');

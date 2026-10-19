@@ -42,6 +42,7 @@
     "test:browser:product-filters": "node scripts/testProductFiltersBrowser.js",
     "test:browser:quote-pricing": "node test/browser/quotePricingAcceptance.cjs",
     "start:wecom-worker": "node src/workers/wecomNotificationWorker.js",
+    "start:monitor-notification-worker": "node src/workers/monitorNotificationWorker.js",
     "inventory:validate": "node scripts/validateInventorySource.js",
     "inventory:preflight": "node scripts/measureInventoryCoverage.js",
     "start:inventory-worker": "node src/workers/inventoryWorker.js",

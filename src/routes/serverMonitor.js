@@ -1,12 +1,13 @@
 const logger = require('../utils/logger');
 const express = require('express');
-const { requirePermission } = require('../middleware/authMiddleware');
+const { requirePermission, requireAnyPermission } = require('../middleware/authMiddleware');
 const { PERMISSIONS } = require('../constants/business');
 const asyncHandler = require('../utils/asyncHandler');
 const service = require('../services/monitorService');
 const logs = require('../services/monitorLogService');
 const downloadTicket = require('../services/monitorLogDownloadTicket');
 const notifications = require('../services/monitorNotificationService');
+const notificationQueries = require('../services/monitorNotificationQueries');
 const router = express.Router();
 router.use((_req, res, next) => {
   res.set('Cache-Control', 'no-store');
@@ -100,6 +101,63 @@ router.get(
   '/logs',
   respond(req => logs.list(req.query))
 );
+const notificationRead = requireAnyPermission([
+  PERMISSIONS.MONITOR_MANAGE,
+  PERMISSIONS.MONITOR_NOTIFICATIONS_READ,
+]);
+const notificationConfigure = requireAnyPermission([
+  PERMISSIONS.MONITOR_MANAGE,
+  PERMISSIONS.MONITOR_NOTIFICATIONS_CONFIGURE,
+]);
+const notificationRetry = requireAnyPermission([
+  PERMISSIONS.MONITOR_MANAGE,
+  PERMISSIONS.MONITOR_NOTIFICATIONS_RETRY,
+]);
+router.get(
+  '/notifications/channels',
+  notificationRead,
+  respond(() => notifications.channels())
+);
+router.put(
+  '/notifications/channels/:channel',
+  notificationConfigure,
+  respond(req => notifications.saveChannel(req.user.id, req.params.channel, req.body))
+);
+router.post(
+  '/notifications/channels/:channel/test',
+  notificationConfigure,
+  respond(req => notifications.queueTest(req.params.channel, req.body))
+);
+router.post(
+  '/notifications/channels/:channel/current-summary',
+  notificationConfigure,
+  respond(req => notificationQueries.currentSummary(req.params.channel, req.body))
+);
+router.get(
+  '/notifications/health',
+  notificationRead,
+  respond(() => notificationQueries.health())
+);
+router.get(
+  '/notifications/deliveries',
+  notificationRead,
+  respond(req => notificationQueries.deliveries(req.query))
+);
+router.get(
+  '/notifications/deliveries/:id',
+  notificationRead,
+  respond(req => notificationQueries.detail(req.params.id))
+);
+router.post(
+  '/notifications/deliveries/:id/retry',
+  notificationRetry,
+  respond(req => notificationQueries.mutate(req.user.id, req.params.id, req.body))
+);
+router.post(
+  '/notifications/deliveries/:id/cancel',
+  notificationRetry,
+  respond(req => notificationQueries.mutate(req.user.id, req.params.id, req.body, true))
+);
 router.use(requirePermission(PERMISSIONS.MONITOR_MANAGE));
 router.get(
   '/overview',
@@ -139,6 +197,6 @@ router.post(
 );
 router.get(
   '/notifications/history',
-  respond(req => notifications.history(Number(req.query.page || 1)))
+  respond(req => notificationQueries.history(Number(req.query.page || 1)))
 );
 module.exports = router;

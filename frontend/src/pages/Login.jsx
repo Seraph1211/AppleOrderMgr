@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Apple, Lock, User } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import client from '../api/client';
@@ -8,6 +8,7 @@ import { MIN_PASSWORD_LENGTH } from '../constants/auth';
 
 export default function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useAuth();
 
   const [formData, setFormData] = useState({
@@ -110,7 +111,11 @@ export default function Login() {
           formData.rememberMe
         );
 
-        navigate(user.availableHome || '/profile', { replace: true });
+        const returnTo = location.state?.from;
+        const returnPath = returnTo
+          ? `${returnTo.pathname || '/'}${returnTo.search || ''}${returnTo.hash || ''}`
+          : user.availableHome || '/profile';
+        navigate(returnPath, { replace: true });
       } else {
         setAlertModal({
           title: '登录失败',

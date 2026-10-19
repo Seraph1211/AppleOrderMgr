@@ -24,6 +24,10 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  MonitorNotificationChannel: require('./MonitorNotificationChannel')(sequelize),
+  MonitorNotificationLink: require('./MonitorNotificationLink')(sequelize),
+  NotificationWorkerState: require('./NotificationWorkerState')(sequelize),
+  WecomRobotBudget: require('./WecomRobotBudget')(sequelize),
   StockSetting: require('./StockSetting')(sequelize),
   StockProduct: require('./StockProduct')(sequelize),
   StockParty: require('./StockParty')(sequelize),

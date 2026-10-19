@@ -170,6 +170,18 @@ services:
     restart: unless-stopped
     stop_grace_period: 20s
 
+  monitor-notification-worker:
+    <<: *backend-service
+    profiles: ['monitor-notifications']
+    command: npm run start:monitor-notification-worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    stop_grace_period: 45s
+
   order-mail-worker:
     <<: *backend-service
     profiles: ['order-mail']

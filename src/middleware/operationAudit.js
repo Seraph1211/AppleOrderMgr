@@ -2,6 +2,7 @@ const { OperationLog } = require('../models');
 const logger = require('../utils/logger');
 
 const MODULE_LABELS = {
+  'server-monitor': '服务器监控',
   inventory: '库存监控',
   'mail-contacts': '邮件联系人',
   'wecom-notifications': '企微订单通知',
@@ -156,6 +157,16 @@ function operationAudit(req, res, next) {
   res.end = function (...args) {
     if (recorded) return this;
     recorded = true;
+    const pollingPaths = new Set([
+      '/api/server-monitor/overview',
+      '/api/server-monitor/traffic',
+      '/api/server-monitor/notifications/channels',
+      '/api/server-monitor/notifications/health',
+      '/api/server-monitor/notifications/deliveries',
+      '/api/server-monitor/notifications/history',
+    ]);
+    if (req.method === 'GET' && res.statusCode < 400 && req.user && pollingPaths.has(path))
+      return end.apply(this, args);
     const actor = req.user || req.auditActor;
     const attemptedUsername =
       path === '/api/auth/login' &&

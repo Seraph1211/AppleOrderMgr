@@ -714,7 +714,29 @@ API 变更同时更新 Router、Controller、前端调用和测试。当前表�
 
 ## 服务器监控契约（2026-09-15）
 
-通知设置响应增加 `updatedAt`（ISO时间），用于显示服务端已保存状态。保存 `enabled=false` 时事务内将 pending/sending 投递标记 skipped；仅 `sendRecovery=false` 时只取消 recovery 类型。重启用不恢复旧队列；已进入SMTP的邮件无法撤回，最终发送结果仍如实记录。
+通知设置响应增加 `updatedAt`（ISO时间），用于显示服务端已保存状态。保存 `enabled=false` 时事务内将未出站 pending/sending 投递标记 skipped；仅 `sendRecovery=false` 时只取消 recovery 类型。重启用不恢复旧队列；已进入SMTP的邮件无法撤回，最终发送结果仍如实记录。
+
+### 双通道通知增量契约（2026-10-19）
+
+以下路径以 `/api/server-monitor/notifications` 为前缀，均登录且 no-store，统一响应 `{success:true,data}`。`monitor.notifications.read` 读取，`monitor.notifications.configure` 保存／测试／当前摘要，`monitor.notifications.retry` 重试／取消；现有 `monitor.manage` 兼容允许。`monitor.logs.read` 不授予通知读写权限。失败401/403、资源404、非法400；版本冲突409 `CONCURRENT_MODIFICATION`、旧目标／停用／事件失效409 `NOTIFICATION_SCOPE_CHANGED`、未知未确认400 `UNKNOWN_ACK_REQUIRED`。
+
+| 方法／路径 | 请求与响应 data |
+| --- | --- |
+| GET `/channels` | `{channels:ChannelDto[]}`，固定email/wecom两行 |
+| PUT `/channels/:channel` | `{expectedVersion,enabled,sendRecovery,recipients?,targetName?,webhook?,policy?}`；返回ChannelDto。邮件填写recipients，企微填写targetName／webhook，空webhook保持；替换需原通道及本次都停用 |
+| POST `/channels/:channel/test` | `{requestKey:UUID}`；返回 `{deliveryId,status}`。自动关闭仍可合成测试，无有效目标400 |
+| POST `/channels/:channel/current-summary` | `{preview:true}`只读，返回 `{preview:{text,eventCount}}`；发送为 `{preview:false,requestKey:UUID,expectedVersion}`，返回 `{deliveryId,status,eventCount}`，空摘要不入队 |
+| GET `/deliveries` | channel/status/deviceId/eventId/dateFrom/dateTo/cursor/limit筛选；limit默认30最多100；`{rows:DeliveryDto[],nextCursor:string|null}`，稳定createdAt／id倒序游标 |
+| GET `/deliveries/:id` | DeliveryDto，加 `events:[{eventId,category,at,instanceLabel,ruleName,hitCount,originalUnknown}]` 和 `relatedDeliveries:DeliveryDto[]`（同事件跨通道，最多100条） |
+| POST `/deliveries/:id/retry` | `{expectedVersion,acknowledgeUnknown?}`；仅failed/unknown且最新目标有效可重试，unknown须true；返回DeliveryDto |
+| POST `/deliveries/:id/cancel` | `{expectedVersion,reason}`；仅未出站任务；返回DeliveryDto |
+| GET `/health` | `{channels:[{channel,heartbeatAt,lastAcceptedAt,pausedReason,pendingCount,overdueCount,oldestDueAt,failedCount,unknownCount}],coverage:{healthEvents:false,noNewLogs:false,externalWatchdog:false}}` |
+
+ChannelDto：`channel,enabled,version,targetVersion,policyVersion,targetName,configured,sendRecovery,pausedReason,enabledAt,lastTest:{status,at,deliveryId}|null,lastAcceptedAt,updatedAt,policy`；邮件额外`recipients,smtp`（旧脱敏结构）。企微policy默认`{warningWindowMinutes:3,infoEnabled:false,recoveryMinutes:2,criticalReminderMinutes:[15,30,60],warningReminderMinutes:60,dailySummaryEnabled:false}`。服务端限制策略范围并不回传Webhook／密文／指纹。DeliveryDto：`id,channel,targetName,targetVersion,category,severity,status,notBefore,attempts,errorCode,lastError,sentAt,createdAt,version,eventCount,eventIds,waitReason,recipientResults`；status accepted仅表示接口接受。邮件逐收件人结果不含认证信息。
+
+旧settings/test/history保留邮件适配；省略新字段不覆盖企微配置。历史sent读取映射accepted。成功的精确GET概览、流量、channels、health和deliveries列表不写业务操作审计；失败鉴权仍审计，日志查询、上下文、下载等敏感读取始终审计。
+
+邮件ChannelDto.policy返回实际固定值 warningWindowMinutes=10、recoveryMinutes=10、infoEnabled=true、criticalReminderMinutes=[]、warningReminderMinutes=null、dailySummaryEnabled=false；邮件保存不接受policy。仅企微策略可保存。健康每通道另返回 `staleAfterSeconds=90`、`heartbeatStale`、`state=not_started/healthy/stale/paused/backlog`；分别表示未启动、心跳及队列正常、心跳超时、目标暂停、到期积压。详情事件最多1000项、relatedDeliveries最多100条；列表只在数据库聚合eventCount，eventIds最多100项，不读取日志或全量payload。日期筛选使用北京时间起日含、止日次日不含。
 
 `overview` 继续包含已移除实例（`active=false`、`state=removed`），供网站显式查看历史；默认列表、规则同步统计排除它们。已移除实例的历史接口保持可读，提交处理动作返回409（`MONITOR_INSTANCE_REMOVED`）。规则保存时禁止新增已移除实例范围（400），更新规则允许保留原有旧范围，避免无意扩大为全部实例。
 

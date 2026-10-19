@@ -3,6 +3,7 @@ const { Sequelize } = require('sequelize');
 const validationMigration = require('../migrations/20261002000001-create-inventory-validation');
 const inventoryMigration = require('../migrations/20261002000002-create-inventory-monitor');
 const signalMigration = require('../migrations/20261019000001-create-aos-signal-queue');
+const robotBudgetFixture = require('./helpers/monitorNotificationBudgetFixture');
 const InventoryService = require('../src/services/inventoryService');
 const InventoryNotifier = require('../src/services/inventoryNotifier');
 const AosSignalService = require('../src/services/aosSignalService');
@@ -115,6 +116,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       await validationMigration.up(db.getQueryInterface(), Sequelize);
       await inventoryMigration.up(db.getQueryInterface(), Sequelize);
       await signalMigration.up(db.getQueryInterface(), Sequelize);
+      await robotBudgetFixture.up(db);
       models = { sequelize: db };
       for (const name of names) models[name] = require(`../src/models/${name}`)(db);
       models.AosDevice = { findAll: () => Promise.resolve(devices) };
@@ -129,6 +131,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
     try {
       now = Date.parse('2026-10-19T12:00:00+08:00');
       for (const name of names) await models[name].destroy({ truncate: true });
+      await robotBudgetFixture.reset(db);
       await models.InventoryRuntime.create({ id: 'main', body: {} });
       await models.InventorySetting.create({
         id: 'main',
@@ -151,6 +154,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
   afterAll(async () => {
     try {
       if (db) {
+        await robotBudgetFixture.down(db);
         await signalMigration.down(db.getQueryInterface());
         await inventoryMigration.down(db.getQueryInterface());
         await validationMigration.down(db.getQueryInterface());

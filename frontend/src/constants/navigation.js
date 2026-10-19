@@ -126,6 +126,10 @@ export const NAVIGATION_GROUPS = [
         icon: 'TrendingUp',
         exact: true,
         permission: PERMISSIONS.MONITOR_MANAGE,
+        anyPermissions: [
+          PERMISSIONS.MONITOR_MANAGE,
+          PERMISSIONS.MONITOR_NOTIFICATIONS_READ,
+        ],
       },
       {
         name: '日志查询',
@@ -149,7 +153,11 @@ export function getVisibleNavigationGroups(user, can) {
   return NAVIGATION_GROUPS.map(group => ({
     ...group,
     children: group.children.filter(item =>
-      item.adminOnly ? user?.role === 'admin' : can(item.permission)
+      item.adminOnly
+        ? user?.role === 'admin'
+        : item.anyPermissions
+          ? item.anyPermissions.some(can)
+          : can(item.permission)
     ),
   })).filter(group => group.children.length > 0);
 }

@@ -4,7 +4,6 @@ import {
   Activity,
   CalendarDays,
   Filter,
-  Mail,
   Plus,
   RefreshCw,
   Save,
@@ -21,8 +20,12 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
+import { useLocation } from 'react-router-dom';
 import client from '../api/client';
 import TagMultiSelect from '../components/TagMultiSelect';
+import ServerMonitorNotifications from '../components/serverMonitorNotifications';
+import { useAuth } from '../contexts/AuthContext';
+import { PERMISSIONS } from '../constants/permissions';
 
 const BASE = '/server-monitor';
 const TODAY = () => new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
@@ -53,19 +56,6 @@ const HANDLING = {
   ended: '静默已结束',
 };
 const SEVERITY = { info: '提醒', warning: '警告', critical: '严重' };
-const NOTIFICATION_CATEGORY = {
-  alert: '异常告警',
-  recovery: '恢复通知',
-  reminder: '静默到期提醒',
-  test: '测试邮件',
-};
-const DELIVERY_STATUS = {
-  pending: '等待发送',
-  sending: '发送中',
-  sent: '已发送',
-  skipped: '已跳过',
-  failed: '发送失败',
-};
 const blankRule = () => ({
   name: '',
   enabled: true,
@@ -159,7 +149,14 @@ function LogSamples({ samples = [] }) {
 
 /** 服务器流量、实例告警和规则管理，唯一权限由路由及服务端共同校验。 */
 export default function ServerMonitor() {
-  const [tab, setTab] = useState('traffic');
+  const { can } = useAuth();
+  const location = useLocation();
+  const canManage = can(PERMISSIONS.MONITOR_MANAGE);
+  const canReadNotifications =
+    can(PERMISSIONS.MONITOR_NOTIFICATIONS_READ) || canManage;
+  const eventIdParam = new URLSearchParams(location.search).get('eventId');
+  const isValidEventId = Boolean(eventIdParam && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(eventIdParam));
+  const [tab, setTab] = useState(canManage && !eventIdParam ? 'traffic' : 'notifications');
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -186,11 +183,11 @@ export default function ServerMonitor() {
   const [minutes, setMinutes] = useState(30);
   const [note, setNote] = useState('');
   const [notice, setNotice] = useState('');
-  const [notificationForm, setNotificationForm] = useState(null);
-  const [notificationHistory, setNotificationHistory] = useState(null);
-  const [notificationPage, setNotificationPage] = useState(1);
   const detailRef = useRef(null);
   const mounted = useRef(true);
+  useEffect(() => {
+    if (eventIdParam) setTab('notifications');
+  }, [eventIdParam]);
   useEffect(() => {
     mounted.current = true;
     return () => {
@@ -198,6 +195,7 @@ export default function ServerMonitor() {
     };
   }, []);
   const load = useCallback(async () => {
+    if (!canManage) return;
     try {
       setRefreshing(true);
       const response = await client.get(`${BASE}/overview`);
@@ -210,31 +208,25 @@ export default function ServerMonitor() {
     } finally {
       if (mounted.current) setRefreshing(false);
     }
-  }, []);
+  }, [canManage]);
   const selectionKey = deviceIds.join(',');
   useEffect(() => {
     setTrafficPage(1);
   }, [from, to, selectionKey, granularity]);
   useEffect(() => {
-    load();
-    const timer = setInterval(load, 15000);
-    return () => clearInterval(timer);
-  }, [load]);
+    if (canManage && tab !== 'notifications') load();
+    const refresh = () => {
+      if (canManage && tab !== 'notifications' && document.visibilityState === 'visible') load();
+    };
+    const timer = setInterval(refresh, 15000);
+    document.addEventListener('visibilitychange', refresh);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
+    };
+  }, [canManage, load, tab]);
   useEffect(() => {
-    const setting = data?.notificationSettings;
-    if (!setting) return;
-    setNotificationForm(current =>
-      !current || current.version !== setting.version
-        ? {
-            enabled: setting.enabled,
-            recipients: setting.recipients.join('\n'),
-            sendRecovery: setting.sendRecovery,
-            version: setting.version,
-          }
-        : current
-    );
-  }, [data?.notificationSettings]);
-  useEffect(() => {
+    if (!canManage || tab !== 'traffic') return undefined;
     let active = true;
     const controller = new AbortController();
     async function read() {
@@ -258,13 +250,18 @@ export default function ServerMonitor() {
       }
     }
     read();
-    const timer = setInterval(read, 60000);
+    const refresh = () => {
+      if (document.visibilityState === 'visible' && tab === 'traffic') read();
+    };
+    const timer = setInterval(refresh, 60000);
+    document.addEventListener('visibilitychange', refresh);
     return () => {
       active = false;
       controller.abort();
       clearInterval(timer);
+      document.removeEventListener('visibilitychange', refresh);
     };
-  }, [from, to, selectionKey]);
+  }, [canManage, from, to, selectionKey, tab]);
   useEffect(() => {
     if (!detailId) return undefined;
     let active = true;
@@ -282,21 +279,6 @@ export default function ServerMonitor() {
       active = false;
     };
   }, [detailId, page, notice]);
-  useEffect(() => {
-    if (tab !== 'notifications') return undefined;
-    let active = true;
-    client
-      .get(`${BASE}/notifications/history`, { params: { page: notificationPage } })
-      .then(response => {
-        if (active) setNotificationHistory(response.data);
-      })
-      .catch(e => {
-        if (active) setError(e.message || '邮件投递历史读取失败');
-      });
-    return () => {
-      active = false;
-    };
-  }, [tab, notificationPage, notice]);
   useEffect(() => {
     if (detailId) detailRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, [detailId]);
@@ -444,18 +426,20 @@ export default function ServerMonitor() {
             <Activity className="w-5 h-5" />
             服务器监控
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            北京时间 · 告警历史90天 · {actionable} 个实例待核实
-          </p>
+          {canManage && (
+            <p className="text-sm text-gray-500 mt-1">
+              北京时间 · 告警历史90天 · {actionable} 个实例待核实
+            </p>
+          )}
         </div>
-        <button
+        {canManage && <button
           className="btn btn-secondary inline-flex items-center gap-1"
           onClick={load}
           disabled={refreshing}
         >
           <RefreshCw className="w-4 h-4 mr-1" />
           {refreshing ? '刷新中…' : '刷新状态'}
-        </button>
+        </button>}
       </div>
       {error && (
         <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">
@@ -472,12 +456,17 @@ export default function ServerMonitor() {
         role="tablist"
         aria-label="服务器监控功能"
       >
-        {[
-          ['traffic', '流量统计'],
-          ['instances', '实例监控'],
-          ['rules', '告警规则'],
-          ['notifications', '通知设置'],
-        ].map(([id, label]) => (
+        {(canManage
+          ? [
+              ['traffic', '流量统计'],
+              ['instances', '实例监控'],
+              ['rules', '告警规则'],
+              ['notifications', '通知设置'],
+            ]
+          : canReadNotifications
+            ? [['notifications', '通知设置']]
+            : []
+        ).map(([id, label]) => (
           <button
             key={id}
             type="button"
@@ -497,7 +486,9 @@ export default function ServerMonitor() {
           </button>
         ))}
       </div>
-      {!data && !error && <p className="p-8 text-center text-gray-500">正在读取监控数据…</p>}
+      {canManage && tab !== 'notifications' && !data && !error && (
+        <p className="p-8 text-center text-gray-500">正在读取监控数据…</p>
+      )}
       {tab === 'traffic' && (
         <>
           <section className="card hover:shadow-sm">
@@ -1170,164 +1161,14 @@ export default function ServerMonitor() {
           </Table>
         </>
       )}
-      {tab === 'notifications' && notificationForm && (
-        <div className="space-y-4">
-          <section className="card space-y-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="flex items-center gap-2 font-semibold text-gray-900">
-                  <Mail className="h-5 w-5 text-primary" /> 邮件通知
-                </h2>
-                <p className="mt-1 text-sm text-gray-500">
-                  发件账号：{data.notificationSettings.smtp.sender} ·{' '}
-                  {data.notificationSettings.smtp.reusedFromOrderMailbox
-                    ? '已复用订单邮箱'
-                    : '使用独立 SMTP 配置'}
-                </p>
-              </div>
-              <span
-                className={`badge ${
-                  data.notificationSettings.smtp.configured ? 'badge-success' : 'badge-warning'
-                }`}
-              >
-                {data.notificationSettings.smtp.configured ? '发件配置正常' : '发件配置不完整'}
-              </span>
-            </div>
-            <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900">
-              严重告警立即发送；警告按服务器合并 10 分钟内发送；提醒按服务器每小时汇总。
-              同一持续告警不重复发送，人工处理或临时忽略期间停止待发告警，静默到期仍异常时提醒一次。
-            </div>
-            <p className="text-sm text-gray-600" role="status">
-              已保存状态：{data.notificationSettings.enabled ? '邮件通知已启用' : '邮件通知已关闭'}
-              {data.notificationSettings.updatedAt &&
-                ` · 更新于 ${formatTime(data.notificationSettings.updatedAt)}`}
-              {!data.notificationSettings.enabled &&
-                '。待发邮件已取消；已交给邮件服务商的邮件可能延迟到达。'}
-            </p>
-            {(notificationForm.enabled !== data.notificationSettings.enabled ||
-              notificationForm.sendRecovery !== data.notificationSettings.sendRecovery ||
-              words(notificationForm.recipients).join('\n') !==
-                data.notificationSettings.recipients.join('\n')) && (
-              <p className="text-sm text-amber-700">有未保存的修改，点击“保存设置”后生效。</p>
-            )}
-            <form
-              className="space-y-4"
-              onSubmit={event => {
-                event.preventDefault();
-                perform(async () => {
-                  const response = await client.put(`${BASE}/notifications/settings`, {
-                    enabled: notificationForm.enabled,
-                    recipients: words(notificationForm.recipients),
-                    sendRecovery: notificationForm.sendRecovery,
-                    expectedVersion: notificationForm.version,
-                  });
-                  setData(current => ({ ...current, notificationSettings: response.data }));
-                  setNotice(
-                    response.data.enabled
-                      ? '邮件通知设置已保存。'
-                      : '邮件通知已关闭，待发邮件已取消。'
-                  );
-                });
-              }}
-            >
-              <fieldset disabled={busy} className="space-y-4">
-                <div className="flex flex-wrap gap-6">
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={notificationForm.enabled}
-                      onChange={event =>
-                        setNotificationForm(value => ({ ...value, enabled: event.target.checked }))
-                      }
-                    />
-                    启用邮件通知
-                  </label>
-                  <label className="flex items-center gap-2 text-sm text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={notificationForm.sendRecovery}
-                      onChange={event =>
-                        setNotificationForm(value => ({
-                          ...value,
-                          sendRecovery: event.target.checked,
-                        }))
-                      }
-                    />
-                    发送恢复通知
-                  </label>
-                </div>
-                <Field label="收件邮箱（每行一个，最多 20 个）">
-                  <textarea
-                    className="input min-h-28 max-w-2xl font-mono"
-                    value={notificationForm.recipients}
-                    onChange={event =>
-                      setNotificationForm(value => ({ ...value, recipients: event.target.value }))
-                    }
-                    placeholder="ops@example.com"
-                  />
-                </Field>
-                <div className="flex flex-wrap gap-3">
-                  <button className="btn btn-primary inline-flex items-center gap-1" type="submit">
-                    <Save className="h-4 w-4" /> 保存设置
-                  </button>
-                  <button
-                    className="btn btn-secondary"
-                    type="button"
-                    disabled={!data.notificationSettings.enabled || !notificationForm.enabled}
-                    onClick={() =>
-                      perform(async () => {
-                        await client.post(`${BASE}/notifications/test`);
-                        setNotice('测试邮件已进入发送队列。');
-                      })
-                    }
-                  >
-                    发送测试邮件
-                  </button>
-                </div>
-              </fieldset>
-            </form>
-          </section>
-          <section className="space-y-3">
-            <h2 className="font-semibold text-gray-900">最近投递记录</h2>
-            <Table
-              headers={['创建时间', '类型 / 级别', '事件数', '状态', '发送时间', '失败原因']}
-              empty={!notificationHistory?.rows.length}
-            >
-              {notificationHistory?.rows.map(item => (
-                <tr key={item.id}>
-                  <Cell>{formatTime(item.createdAt)}</Cell>
-                  <Cell>
-                    {NOTIFICATION_CATEGORY[item.category] || item.category} /{' '}
-                    {SEVERITY[item.severity] || item.severity}
-                  </Cell>
-                  <Cell>{item.eventCount}</Cell>
-                  <Cell>{DELIVERY_STATUS[item.status] || item.status}</Cell>
-                  <Cell>{formatTime(item.sentAt)}</Cell>
-                  <Cell>{item.lastError || '—'}</Cell>
-                </tr>
-              ))}
-            </Table>
-            <div className="flex items-center gap-3">
-              <button
-                className="btn btn-secondary"
-                disabled={notificationPage <= 1}
-                onClick={() => setNotificationPage(value => value - 1)}
-              >
-                上一页
-              </button>
-              <span>第 {notificationPage} 页</span>
-              <button
-                className="btn btn-secondary"
-                disabled={
-                  !notificationHistory || notificationPage * 30 >= notificationHistory.count
-                }
-                onClick={() => setNotificationPage(value => value + 1)}
-              >
-                下一页
-              </button>
-            </div>
-          </section>
-        </div>
+      {tab === 'notifications' && (
+        <ServerMonitorNotifications
+          onNotice={setNotice}
+          canConfigure={can(PERMISSIONS.MONITOR_NOTIFICATIONS_CONFIGURE) || canManage}
+          canRetry={can(PERMISSIONS.MONITOR_NOTIFICATIONS_RETRY) || canManage}
+          initialEventId={isValidEventId ? eventIdParam : ''}
+          invalidEventId={Boolean(eventIdParam && !isValidEventId)}
+        />
       )}
     </div>
   );

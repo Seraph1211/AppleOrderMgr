@@ -29,13 +29,22 @@ function validateWebhook(value) {
 }
 /** 发送固定文本并返回脱敏结果，不向日志传播 Axios 原始错误。 @param {string} webhook 地址 @param {string} content 内容 @returns {Promise<Object>} 结果 */
 async function sendText(webhook, content) {
+  return await sendMessage(webhook, content, 'text', MAX_TEXT_BYTES);
+}
+
+/** 发送监控Markdown，保留相同安全传输分类。 @param {string} webhook 地址 @param {string} content 正文 @returns {Promise<Object>} 回执 */
+async function sendMarkdown(webhook, content) {
+  return await sendMessage(webhook, content, 'markdown', 3500);
+}
+
+async function sendMessage(webhook, content, type, maxBytes) {
   try {
     const url = validateWebhook(webhook);
-    if (Buffer.byteLength(content, 'utf8') > MAX_TEXT_BYTES)
+    if (Buffer.byteLength(content, 'utf8') > maxBytes)
       return { status: 'failed', errorCode: 'TEXT_TOO_LONG' };
     const response = await axios.post(
       url,
-      { msgtype: 'text', text: { content } },
+      { msgtype: type, [type]: { content } },
       {
         timeout: 10000,
         maxRedirects: 0,
@@ -62,4 +71,4 @@ async function sendText(webhook, content) {
     return { status: 'unknown', errorCode: 'TRANSPORT_UNKNOWN' };
   }
 }
-module.exports = { validateWebhook, sendText };
+module.exports = { validateWebhook, sendText, sendMarkdown };

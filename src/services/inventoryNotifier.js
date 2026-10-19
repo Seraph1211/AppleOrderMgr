@@ -5,6 +5,7 @@ const { Op, QueryTypes } = require('sequelize');
 const ApiError = require('../utils/ApiError');
 const { decrypt } = require('../utils/fieldEncryption');
 const { sendText } = require('./wecomTransport');
+const robotBudget = require('./wecomRobotBudget');
 const { isSilent, displayStatus } = require('./inventoryPolicy');
 const {
   VERSION,
@@ -285,9 +286,10 @@ class InventoryNotifier {
           }
           const base = process.env.INVENTORY_PUBLIC_URL;
           if (base && /^https:\/\/[^\s?#]+$/.test(base)) {
-            const path = first.kind === 'aos_signal'
-              ? '/server-monitor/logs'
-              : `/inventory-monitor${first.kind === 'health' ? '/manage?tab=settings' : ''}`;
+            const path =
+              first.kind === 'aos_signal'
+                ? '/server-monitor/logs'
+                : `/inventory-monitor${first.kind === 'health' ? '/manage?tab=settings' : ''}`;
             content += `详情（需登录）：${base.replace(/\/$/, '')}${path}\n`;
           }
           if (!batch.length) {
@@ -299,6 +301,16 @@ class InventoryNotifier {
             return null;
           }
           const batchId = randomUUID();
+          // 合成内存仓库没有数据库事务；真实PG路径始终预约共享机器人预算。
+          if (transaction?.LOCK) {
+            const budget = await robotBudget.reserve(
+              decrypt(settings.webhookCipher),
+              'inventory',
+              transaction,
+              new Date(now)
+            );
+            if (!budget.allowed) return null;
+          }
           await this.s.put(
             'InventoryDelivery',
             batch.map(r => ({

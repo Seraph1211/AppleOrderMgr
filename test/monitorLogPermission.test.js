@@ -71,6 +71,9 @@ describe('完整日志独立权限', () => {
     await expect(getEffectivePermissions({ id: 7, role: 'operator' })).resolves.toEqual([
       PERMISSIONS.MONITOR_LOGS_READ,
       PERMISSIONS.MONITOR_MANAGE,
+      PERMISSIONS.MONITOR_NOTIFICATIONS_CONFIGURE,
+      PERMISSIONS.MONITOR_NOTIFICATIONS_READ,
+      PERMISSIONS.MONITOR_NOTIFICATIONS_RETRY,
     ]);
   });
 
