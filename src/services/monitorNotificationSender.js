@@ -200,7 +200,10 @@ async function authorize(row, now = new Date()) {
   try {
     return await transactionWork(async transaction => {
       const setting = await service.lockedChannel(row.channel, transaction);
-      const legacy = row.channel === 'email' ? await Legacy.findByPk(1, { transaction, lock: transaction.LOCK.UPDATE }) : null;
+      const legacy =
+        row.channel === 'email'
+          ? await Legacy.findByPk(1, { transaction, lock: transaction.LOCK.UPDATE })
+          : null;
       const current = await Delivery.findByPk(row.id, {
         transaction,
         lock: transaction.LOCK.UPDATE,
@@ -216,14 +219,42 @@ async function authorize(row, now = new Date()) {
       let reason = !validScope(setting, current) ? 'SCOPE_CHANGED' : null;
       if (row.channel === 'email') {
         const recipients = values => JSON.stringify([...(values || [])].sort());
-        if (recipients(current.recipientSnapshot) !== recipients(setting.recipients) || recipients(current.recipientSnapshot) !== recipients(legacy?.recipients) || (current.category !== 'test' && (!legacy?.enabled || (current.category === 'recovery' && !legacy.sendRecovery)))) reason = 'LEGACY_SETTINGS_CHANGED';
+        if (
+          recipients(current.recipientSnapshot) !== recipients(setting.recipients) ||
+          recipients(current.recipientSnapshot) !== recipients(legacy?.recipients) ||
+          (current.category !== 'test' &&
+            (!legacy?.enabled || (current.category === 'recovery' && !legacy.sendRecovery)))
+        )
+          reason = 'LEGACY_SETTINGS_CHANGED';
       }
       let events = [];
       if (!reason) events = await state.validEvents(current, now, transaction);
-      if (!reason && !events.length && current.category === 'recovery' && +new Date(current.expiresAt) > +now) {
-        const candidates = await sequelize.query('SELECT 1 FROM monitor_notification_events e JOIN monitor_alerts a ON a.id::text=e.payload->>\'alertId\' JOIN monitor_instances i ON i.id=a.instance_id JOIN monitor_rules r ON r.id=a.rule_id WHERE e.delivery_id=:id AND a.status=\'recovered\' AND i.active AND r.version=a.rule_version AND r.config->>\'enabled\'=\'true\' AND NOT EXISTS(SELECT 1 FROM monitor_alerts active WHERE active.instance_id=a.instance_id AND active.rule_id=a.rule_id AND active.status=\'active\') LIMIT 1', { replacements: { id: current.id }, type: require('sequelize').QueryTypes.SELECT, transaction });
+      if (
+        !reason &&
+        !events.length &&
+        current.category === 'recovery' &&
+        +new Date(current.expiresAt) > +now
+      ) {
+        const candidates = await sequelize.query(
+          "SELECT 1 FROM monitor_notification_events e JOIN monitor_alerts a ON a.id::text=e.payload->>'alertId' JOIN monitor_instances i ON i.id=a.instance_id JOIN monitor_rules r ON r.id=a.rule_id WHERE e.delivery_id=:id AND a.status='recovered' AND i.active AND r.version=a.rule_version AND r.config->>'enabled'='true' AND NOT EXISTS(SELECT 1 FROM monitor_alerts active WHERE active.instance_id=a.instance_id AND active.rule_id=a.rule_id AND active.status='active') LIMIT 1",
+          {
+            replacements: { id: current.id },
+            type: require('sequelize').QueryTypes.SELECT,
+            transaction,
+          }
+        );
         if (candidates.length) {
-          await current.update({ status: 'pending', notBefore: new Date(+now + 30000), waitReason: 'RECOVERY_OBSERVING', leaseToken: null, leaseUntil: null, version: current.version + 1 }, { transaction });
+          await current.update(
+            {
+              status: 'pending',
+              notBefore: new Date(+now + 30000),
+              waitReason: 'RECOVERY_OBSERVING',
+              leaseToken: null,
+              leaseUntil: null,
+              version: current.version + 1,
+            },
+            { transaction }
+          );
           return null;
         }
       }
@@ -246,8 +277,18 @@ async function authorize(row, now = new Date()) {
         ) {
           // 旧内容取消，每十分钟最多一份服务恢复摘要；保持全部关联事实。
           const key = `restart:${Math.floor(+now / 600000)}`;
-          const previous = await Event.findOne({ where: { channel: 'wecom', targetVersion: setting.targetVersion, eventKey: { [Op.like]: `${key}:%` } }, order: [['createdAt', 'ASC']], transaction });
-          let summary = previous ? await Delivery.findByPk(previous.deliveryId, { transaction }) : null;
+          const previous = await Event.findOne({
+            where: {
+              channel: 'wecom',
+              targetVersion: setting.targetVersion,
+              eventKey: { [Op.like]: `${key}:%` },
+            },
+            order: [['createdAt', 'ASC']],
+            transaction,
+          });
+          let summary = previous
+            ? await Delivery.findByPk(previous.deliveryId, { transaction })
+            : null;
           // 一个恢复窗口已出站的摘要不再追加；其余旧事件显式留站内为suppressed。
           if (summary && summary.status !== 'pending') return null;
           for (const [index, event] of events.entries()) {
@@ -277,10 +318,40 @@ async function authorize(row, now = new Date()) {
       if (current.category === 'recovery') {
         // 同批恢复各自完成连续观察，尚未成熟的事实移交新批次，不能随已成熟项被suppressed。
         const includedIds = events.map(event => event.notificationEventId);
-        const deferred = await sequelize.query('SELECT e.id FROM monitor_notification_events e JOIN monitor_alerts a ON a.id::text=e.payload->>\'alertId\' JOIN monitor_instances i ON i.id=a.instance_id JOIN monitor_rules r ON r.id=a.rule_id WHERE e.delivery_id=:deliveryId AND e.id NOT IN (:ids) AND a.status=\'recovered\' AND i.active AND r.version=a.rule_version AND r.config->>\'enabled\'=\'true\' AND NOT EXISTS(SELECT 1 FROM monitor_alerts active WHERE active.instance_id=a.instance_id AND active.rule_id=a.rule_id AND active.status=\'active\') LIMIT 1000', { replacements: { deliveryId: current.id, ids: includedIds }, type: require('sequelize').QueryTypes.SELECT, transaction });
+        const deferred = await sequelize.query(
+          "SELECT e.id FROM monitor_notification_events e JOIN monitor_alerts a ON a.id::text=e.payload->>'alertId' JOIN monitor_instances i ON i.id=a.instance_id JOIN monitor_rules r ON r.id=a.rule_id WHERE e.delivery_id=:deliveryId AND e.id NOT IN (:ids) AND a.status='recovered' AND i.active AND r.version=a.rule_version AND r.config->>'enabled'='true' AND NOT EXISTS(SELECT 1 FROM monitor_alerts active WHERE active.instance_id=a.instance_id AND active.rule_id=a.rule_id AND active.status='active') LIMIT 1000",
+          {
+            replacements: { deliveryId: current.id, ids: includedIds },
+            type: require('sequelize').QueryTypes.SELECT,
+            transaction,
+          }
+        );
         if (deferred.length) {
-          const batch = await Delivery.create({ id: randomUUID(), channel: current.channel, targetVersion: current.targetVersion, policyVersion: current.policyVersion, targetName: current.targetName, deviceId: current.deviceId, category: 'recovery', severity: current.severity, status: 'pending', notBefore: new Date(+now + 30000), recipientSnapshot: current.recipientSnapshot, recipientResults: {}, attempts: 0, priority: current.priority, version: 1, expiresAt: current.expiresAt }, { transaction });
-          await Event.update({ deliveryId: batch.id }, { where: { id: { [Op.in]: deferred.map(item => item.id) } }, transaction });
+          const batch = await Delivery.create(
+            {
+              id: randomUUID(),
+              channel: current.channel,
+              targetVersion: current.targetVersion,
+              policyVersion: current.policyVersion,
+              targetName: current.targetName,
+              deviceId: current.deviceId,
+              category: 'recovery',
+              severity: current.severity,
+              status: 'pending',
+              notBefore: new Date(+now + 30000),
+              recipientSnapshot: current.recipientSnapshot,
+              recipientResults: {},
+              attempts: 0,
+              priority: current.priority,
+              version: 1,
+              expiresAt: current.expiresAt,
+            },
+            { transaction }
+          );
+          await Event.update(
+            { deliveryId: batch.id },
+            { where: { id: { [Op.in]: deferred.map(item => item.id) } }, transaction }
+          );
         }
       }
       let webhook;
@@ -348,8 +419,7 @@ function mailResult(response, error, recipients) {
   );
   const code = Number(error?.responseCode);
   const safeTemporary =
-    ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED'].includes(error?.code) ||
-    (code >= 400 && code < 500);
+    ['ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED'].includes(error?.code) || (code >= 400 && code < 500);
   const permanent = code >= 500 || ['EAUTH', 'EENVELOPE'].includes(error?.code);
   for (const email of recipients) {
     const rejectedError = response?.rejectedErrors?.find(
@@ -482,7 +552,9 @@ async function finish(row, result, now = new Date()) {
         },
         { transaction }
       );
-      return result.pause && current.targetVersion === setting.targetVersion ? { targetVersion: current.targetVersion, errorCode: result.errorCode } : null;
+      return result.pause && current.targetVersion === setting.targetVersion
+        ? { targetVersion: current.targetVersion, errorCode: result.errorCode }
+        : null;
     });
     if (paused) {
       // 独立事务按固定通道顺序取锁，防止与事件入队形成反向死锁。
@@ -490,9 +562,26 @@ async function finish(row, result, now = new Date()) {
         const email = await service.lockedChannel('email', transaction);
         const wecom = await service.lockedChannel('wecom', transaction);
         const source = row.channel === 'wecom' ? wecom : email;
-        if (source.targetVersion !== paused.targetVersion || source.pausedReason !== paused.errorCode) return;
+        if (
+          source.targetVersion !== paused.targetVersion ||
+          source.pausedReason !== paused.errorCode
+        )
+          return;
         const other = row.channel === 'wecom' ? email : wecom;
-        if (other.enabled && !other.pausedReason) await service.enqueueForChannel(other, { category: 'summary', severity: 'critical', systemNotice: true, title: `${row.channel === 'wecom' ? '企业微信' : '邮件'}监控通道因目标明确拒绝已暂停，请到网站检查通知设置。错误码：${result.errorCode}`, at: now }, `channel-failure:${row.channel}:${row.targetVersion}`, transaction, now);
+        if (other.enabled && !other.pausedReason)
+          await service.enqueueForChannel(
+            other,
+            {
+              category: 'summary',
+              severity: 'critical',
+              systemNotice: true,
+              title: `${row.channel === 'wecom' ? '企业微信' : '邮件'}监控通道因目标明确拒绝已暂停，请到网站检查通知设置。错误码：${result.errorCode}`,
+              at: now,
+            },
+            `channel-failure:${row.channel}:${row.targetVersion}`,
+            transaction,
+            now
+          );
       });
     }
   } catch (error) {
@@ -511,7 +600,7 @@ async function processOne(now = new Date(), options = {}) {
     let result;
     if (row.channel === 'wecom') {
       try {
-        result = await (options.send || transport.sendMarkdown)(
+        result = await (options.send || transport.sendText)(
           authorization.webhook,
           authorization.message.text
         );

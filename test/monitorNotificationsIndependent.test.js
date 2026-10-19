@@ -14,9 +14,6 @@ jest.mock('../src/services/wecomTransport', () => ({
   sendText: jest.fn(() => {
     throw new Error('独立验收禁止真实企微出站');
   }),
-  sendMarkdown: jest.fn(() => {
-    throw new Error('独立验收禁止真实企微出站');
-  }),
 }));
 jest.mock('nodemailer', () => ({
   createTransport: jest.fn(() => {
@@ -1504,7 +1501,7 @@ suite('独立验收：服务器监控双通道事务与出站（真实 PostgreSQ
     }
   });
 
-  test('SEC-01：超长多字节摘要不超过3500字节，名称不能注入外链或提及', () => {
+  test('SEC-01：超长多字节纯文本摘要不超过2048字节，名称不能注入外链或提及', () => {
     const content = require('../src/services/monitorNotificationContent');
     const message = content.build(
       { category: 'alert' },
@@ -1517,9 +1514,13 @@ suite('独立验收：服务器监控双通道事务与出站（真实 PostgreSQ
         at: now,
       }))
     );
-    expect(Buffer.byteLength(message.text, 'utf8')).toBeLessThanOrEqual(3500);
+    expect(Buffer.byteLength(message.text, 'utf8')).toBeLessThanOrEqual(content.MAX_BYTES);
     expect(message.text).not.toMatch(/evil\.example|<@|synthetic-secret/);
     expect(message.text).toContain('https://monitor.example.test/server-monitor');
+    expect(message.text).not.toMatch(/^\s*###/m);
+    expect(message.text).not.toMatch(/\[[^\]]+\]\(https:\/\//);
+    expect(message.text).toContain('服务器：');
+    expect(message.text).toContain('事件：');
     expect(message.text).toContain('其余');
   });
 });
