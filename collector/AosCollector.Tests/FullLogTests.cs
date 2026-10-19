@@ -125,9 +125,16 @@ internal static class FullLogTests
       check(scanner.Scan(directory, "utf-8", now).State == "ready" && store.FullLogCounts().Pending == 0, "历史回执清空后完成补采，复扫无重复事件");
       Write("2026-09-14", "restored");
       scanner.Scan(directory, "utf-8", now);
-      check(store.PendingFullLogs().Single().FileName == "Log20260914_restored.txt", "已完成后新放回的历史文件自动补采");
-      scanner.Scan(directory, "utf-8", now.AddDays(1));
-      check(store.PendingFullLogs().All(e => e.BusinessDate != "2026-07-23"), "午夜滚动不会重新采集窗口外原文件");
+      var restored = store.PendingFullLogs().Single();
+      check(restored.FileName == "Log20260914_restored.txt", "已完成后新放回的历史文件自动补采");
+      var dayNinetyPending = new FullLogEntry(Guid.NewGuid().ToString(), directory.DirectoryId, Guid.NewGuid().ToString(), "Log20260723_pending.txt", "2026-07-23", null, null, 1, 0, 0, "第90天未回执原文\n", null, "unparsed");
+      store.CommitFullLogs("day-90-pending", new(dayNinetyPending.FileId, 0, 16, "", 16, 0, 2, 0, null, null, "unparsed", null, null, 0), [dayNinetyPending], "2026-07-23");
+      Write("2026-07-24");
+      var nextDay = scanner.Scan(directory, "utf-8", now.AddDays(1));
+      var afterMidnight = store.PendingFullLogs();
+      check(!nextDay.Dates.Contains("2026-07-23") && nextDay.Dates.Contains("2026-07-24"), "午夜滚动后旧首日退出扫描日期，新首日仍在窗口");
+      check(nextDay.Expired > 0 && !afterMidnight.Any(e => e.Id == dayNinetyPending.Id), "跨出90天窗口的未确认事件过期并计数");
+      check(afterMidnight.Any(e => e.Id == restored.Id && e.BusinessDate == "2026-09-14"), "窗口内后来恢复的历史事件继续保留");
     }
   }
   public static async Task RunAsync(Action<bool, string> check, string root)
