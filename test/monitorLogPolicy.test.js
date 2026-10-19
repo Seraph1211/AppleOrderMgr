@@ -85,4 +85,32 @@ describe('完整日志协议边界', () => {
       expect(() => p.query({ ...query, ...change }, now)).toThrow();
     expect(p.literalSearch('a%_\\')).toBe('%a\\%\\_\\\\%');
   });
+  test('北京时间完整起止秒跨日、90天范围和禁止歧义混用', () => {
+    const query = {
+      deviceId: randomUUID(),
+      localId: randomUUID(),
+      startAt: '2026-09-28T23:59:59',
+      endAt: '2026-09-29T00:00:00',
+    };
+    expect(p.query(query, now)).toMatchObject({ startDate: '2026-09-28', endDate: '2026-09-29' });
+    expect(
+      p.query({ ...query, startAt: '2026-07-02T00:00:00', endAt: '2026-09-29T23:59:59' }, now)
+        .startDate
+    ).toBe('2026-07-02');
+    for (const change of [
+      { startAt: '2026-07-01T23:59:59' },
+      { endAt: '2026-09-30T00:00:00' },
+      { startAt: '2026-09-29T00:00:01' },
+      { endAt: undefined },
+      { startAt: '2026-02-30T00:00:00' },
+      { startAt: '2026-09-28T24:00:00' },
+      { startAt: '2026-09-28T23:59' },
+      { endAt: '2026-09-29T00:00:00Z' },
+      { date: '2026-09-29' },
+      { fromTime: '' },
+      { toTime: '00:00:00' },
+    ])
+      expect(() => p.query({ ...query, ...change }, now)).toThrow();
+    expect(() => p.dateRange('2026-09-29', '2026-09-28', now)).toThrow();
+  });
 });

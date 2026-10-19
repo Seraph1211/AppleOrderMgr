@@ -499,6 +499,12 @@ function matches(row, query, anchor, direction) {
       Date.parse(row.loggedAt) >= Date.parse(`${query.date}T${query.toTime}+08:00`) + 1000)
   )
     return false;
+  if (
+    query.startAt &&
+    (Date.parse(row.sortAt) < Date.parse(`${query.startAt}+08:00`) ||
+      Date.parse(row.sortAt) >= Date.parse(`${query.endAt}+08:00`) + 1000)
+  )
+    return false;
   if (query.keyword && !row.message.includes(query.keyword)) return false;
   if (anchor && (direction === 'ASC' ? compare(row, anchor) <= 0 : compare(row, anchor) >= 0))
     return false;
@@ -520,7 +526,9 @@ async function selectSnapshot(query, anchor, direction, limit, transaction) {
       query = { ...query, keyword: Buffer.from(query.keyword, 'utf8').toString('utf8') };
     const prefix = direction === 'ASC' ? 'min' : 'max';
     const op = direction === 'ASC' ? '>' : '<';
-    const clauses = ['b.device_id=:deviceId', 'b.local_id=:localId', 'b.business_date=:date'];
+    const clauses = ['b.device_id=:deviceId', 'b.local_id=:localId'];
+    if (query.startDate) clauses.push('b.business_date BETWEEN :startDate AND :endDate');
+    else clauses.push('b.business_date=:date');
     const replacements = { ...query };
     const accountJoin = query.account
       ? `JOIN monitor_log_block_accounts a
@@ -529,6 +537,14 @@ async function selectSnapshot(query, anchor, direction, limit, transaction) {
     const bound = query.account ? 'a' : 'b';
     if (query.account)
       replacements.accountValue = query.account === '__unassigned__' ? '' : query.account;
+    if (query.startAt) {
+      replacements.startBound = `${query.startAt}+08:00`;
+      replacements.endBound = new Date(Date.parse(`${query.endAt}+08:00`) + 1000).toISOString();
+      clauses.push(
+        'b.max_sort_at >= :startBound::timestamptz',
+        'b.min_sort_at < :endBound::timestamptz'
+      );
+    }
     if (query.fromTime) {
       replacements.fromAt = `${query.date}T${query.fromTime}+08:00`;
       clauses.push('b.max_sort_at >= :fromAt::timestamptz');
@@ -650,7 +666,7 @@ async function accounts(query, input) {
     const clauses = [
       'device_id=:deviceId',
       'local_id=:localId',
-      'business_date=:date',
+      query.startDate ? 'business_date BETWEEN :startDate AND :endDate' : 'business_date=:date',
       "account_number<>''",
     ];
     const replacements = { ...query };

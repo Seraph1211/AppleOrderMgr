@@ -4,13 +4,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright-core');
 const logger = require('../src/utils/logger');
-const logPolicy = require('../src/services/monitorLogPolicy');
-const BASE_URL = process.env.MONITOR_BROWSER_BASE_URL || 'http://127.0.0.1:5173';
+const BASE_URL = process.env.MONITOR_BROWSER_BASE_URL;
 /** 合成浏览器验收，拦截所有API，不访问业务数据。 */
 async function main() {
   let browser;
   try {
+    if (!BASE_URL) throw new Error('必须通过 MONITOR_BROWSER_BASE_URL 指定隔离前端地址');
     if (!process.env.MONITOR_BROWSER_EXECUTABLE) throw new Error('需要专用浏览器可执行文件');
+    const base = new URL(BASE_URL);
+    if (!['127.0.0.1', 'localhost', '::1'].includes(base.hostname))
+      throw new Error('MONITOR_BROWSER_BASE_URL 只允许本机隔离前端');
     browser = await chromium.launch({
       executablePath: process.env.MONITOR_BROWSER_EXECUTABLE,
       headless: true,
@@ -101,7 +104,7 @@ async function main() {
               id: 9,
               username: 'log-browser-test',
               role: 'operator',
-              permissions: allowed ? ['monitor.manage'] : [],
+              permissions: allowed ? ['monitor.manage', 'monitor.logs.read'] : [],
               availableHome: allowed ? '/server-monitor' : '/profile',
             };
           else if (url.pathname === '/api/server-monitor/overview')
@@ -198,7 +201,9 @@ async function main() {
             const query = Object.fromEntries(url.searchParams);
             assert.notEqual(query.cursor, '', '首页请求应省略空游标');
             assert.equal(Number(query.limit), 100, '每次加载100个片段');
-            logPolicy.query(query);
+            assert.match(query.startAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+            assert.match(query.endAt, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/);
+            assert(query.startAt <= query.endAt, '起始时间不得晚于结束时间');
             if (fail) {
               await route.fulfill({
                 status: 503,
@@ -260,14 +265,17 @@ async function main() {
           request.method() === 'GET' &&
           new URL(request.url()).pathname === '/api/server-monitor/logs/export'
       );
-      await panel.getByRole('button', { name: '导出当天日志', exact: true }).click();
+      await panel.getByRole('button', { name: '导出范围日志', exact: true }).click();
       const download = await downloadPromise;
       await exportRequestPromise;
       assert.equal(exportTicketRequests, 1);
       assert.equal(exportRequests, 1);
-      assert.deepEqual(Object.keys(exportTicketBody).sort(), ['date', 'deviceId', 'localId']);
-      assert.deepEqual(Object.keys(exportQuery).sort(), ['date', 'deviceId', 'localId']);
+      assert.deepEqual(Object.keys(exportTicketBody).sort(), ['deviceId', 'endAt', 'localId', 'startAt']);
+      assert.deepEqual(Object.keys(exportQuery).sort(), ['deviceId', 'endAt', 'localId', 'startAt']);
       assert.equal(exportQuery.deviceId, deviceId);
+      assert.equal(exportQuery.localId, localId);
+      assert.equal(exportQuery.startAt, exportTicketBody.startAt);
+      assert.equal(exportQuery.endAt, exportTicketBody.endAt);
       assert.equal(download.suggestedFilename(), 'synthetic.log');
       assert.equal(fs.readFileSync(await download.path(), 'utf8'), '导出合成日志\n');
       await panel.getByText('下载已开始，请在浏览器下载列表查看', { exact: true }).waitFor();
@@ -372,7 +380,13 @@ async function main() {
         fullPage: true,
         animations: 'disabled',
       });
-      await detail.getByText(row.fileName, { exact: true }).waitFor();
+      const infoButton = detail.getByRole('button', { name: '查看日志元信息', exact: true });
+      await infoButton.hover();
+      const metadata = page.getByRole('dialog', { name: '日志元信息', exact: true });
+      await metadata.getByText(row.fileName, { exact: true }).waitFor();
+      await page.keyboard.press('Escape');
+      await metadata.waitFor({ state: 'hidden' });
+      assert(await detail.isVisible(), '关闭元信息不应关闭详情侧栏');
       await detail.getByRole('button', { name: '整个实例上下文', exact: true }).click();
       await detail.getByText('上下文合成日志 [129]', { exact: true }).waitFor();
       await page.keyboard.press('Escape');
@@ -389,22 +403,28 @@ async function main() {
           .evaluate(element => element === document.activeElement)
       );
       await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
-      await panel.getByRole('button', { name: '昨天', exact: true }).click();
-      assert.equal(await panel.getByLabel('日志日期').inputValue(), yesterday);
-      await panel.getByRole('button', { name: '今天', exact: true }).click();
-      await panel.getByRole('button', { name: '晚间', exact: true }).click();
+      const rangeButton = panel.getByRole('button', { name: /^日志时间范围：/ });
+      await rangeButton.click();
+      const rangeDialog = page.getByRole('dialog', { name: '日志时间范围选择', exact: true });
+      const startInput = rangeDialog.getByLabel('开始日期和时间', { exact: true });
+      const endInput = rangeDialog.getByLabel('结束日期和时间', { exact: true });
+      const beforePresetQuery = listRequests;
+      await rangeDialog.getByRole('button', { name: '昨天', exact: true }).click();
+      assert.equal(await startInput.inputValue(), `${yesterday}T00:00`);
+      assert.equal(await endInput.inputValue(), `${yesterday}T23:59:59`);
+      await rangeDialog.getByRole('button', { name: '应用时间范围', exact: true }).click();
+      assert.equal(listRequests, beforePresetQuery, '应用日期草稿不应提前查询');
       const timeRequest = page.waitForRequest(req => {
         const url = new URL(req.url());
         return (
           url.pathname === '/api/server-monitor/logs' &&
-          url.searchParams.get('fromTime') === '18:00:00' &&
-          url.searchParams.get('toTime') === '23:59:59'
+          url.searchParams.get('startAt') === `${yesterday}T00:00:00` &&
+          url.searchParams.get('endAt') === `${yesterday}T23:59:59`
         );
       });
       await panel.getByRole('button', { name: '查询', exact: true }).click();
       await timeRequest;
       await first.waitFor();
-      await panel.getByRole('button', { name: '全天', exact: true }).click();
       const accountInput = panel.getByRole('combobox', { name: '账号编号', exact: true });
       await accountInput.click();
       const candidates = page.getByRole('listbox', { name: '账号候选', exact: true });
@@ -496,7 +516,7 @@ async function main() {
       assert.equal(await reader.locator('tbody tr').count(), 0);
       fail = false;
       empty = true;
-      await panel.getByRole('button', { name: '重新查询', exact: true }).click();
+      await panel.locator('form#log-query-filters').getByRole('button', { name: '重新查询', exact: true }).click();
       await panel.getByText('当前条件下没有已上传的日志', { exact: false }).waitFor();
       empty = false;
       assert(await panel.getByLabel('服务器', { exact: true }).isVisible());

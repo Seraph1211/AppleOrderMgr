@@ -1,0 +1,55 @@
+.monitor-log-range {
+  min-width: 0;
+}
+.monitor-log-range-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+  color: #1e3a8a;
+  border-color: #bfdbfe;
+  background: #eff6ff;
+}
+.monitor-log-range-popover {
+  position: fixed;
+  z-index: 80;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgb(15 23 42 / 14%);
+}
+.monitor-log-drawer {
+  width: min(90vw, 1600px);
+}
+.monitor-log-metadata {
+  position: absolute;
+  z-index: 30;
+  top: 100%;
+  left: 0;
+  width: min(480px, calc(100vw - 32px));
+  padding-top: 8px;
+}
+.monitor-log-metadata-content {
+  max-height: calc(100dvh - 100px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 16px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: white;
+  box-shadow: 0 12px 32px rgb(15 23 42 / 14%);
+}
+@media (max-width: 639px) {
+  .monitor-log-drawer {
+    width: 100%;
+  }
+  .monitor-log-range-popover .btn,
+  .monitor-log-range-trigger {
+    min-height: 44px;
+  }
+}

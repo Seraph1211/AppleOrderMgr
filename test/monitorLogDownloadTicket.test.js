@@ -7,7 +7,7 @@ jest.mock('../src/services/monitorLogService', () => ({
     query: {
       deviceId: input.deviceId,
       localId: input.localId,
-      date: input.date,
+      ...(input.startAt ? { startAt: input.startAt, endAt: input.endAt } : { date: input.date }),
     },
     rows: [],
     fileName: 'aos-synthetic.log',
@@ -102,6 +102,25 @@ describe('日志原生下载短期凭证', () => {
     ).toBe(false);
   });
 
+  test('跨日短期凭证绑定完整秒范围且拒绝缺失或额外字段', () => {
+    const range = {
+      deviceId: scope.deviceId,
+      localId: scope.localId,
+      startAt: '2026-10-16T23:59:59',
+      endAt: '2026-10-17T00:00:00',
+    };
+    const auth = { source: 'download-cookie', ...verifyToken(ticket.issue(actor, range)) };
+    expect(ticket.matches(auth, range)).toBe(true);
+    for (const change of [
+      { endAt: '2026-10-17T00:00:01' },
+      { startAt: undefined },
+      { date: scope.date },
+      { account: '1' },
+    ])
+      expect(ticket.matches(auth, { ...range, ...change })).toBe(false);
+    expect(ticket.matches(auth, scope)).toBe(false);
+  });
+
   test('原生下载入口用HttpOnly Cookie重新校验有效会话和权限', async () => {
     const value = ticket.issue(actor, scope);
     const req = request({ headers: { cookie: `${ticket.COOKIE_NAME}=${value}` } });
@@ -184,7 +203,15 @@ describe('日志原生下载HTTP链路', () => {
     permissionService.getEffectivePermissions.mockResolvedValue(['monitor.logs.read']);
   });
 
-  test('Bearer签发Cookie后由浏览器请求原生流式附件并清除Cookie', async () => {
+  test.each([
+    scope,
+    {
+      deviceId: scope.deviceId,
+      localId: scope.localId,
+      startAt: '2026-10-16T23:59:59',
+      endAt: '2026-10-17T00:00:00',
+    },
+  ])('Bearer签发Cookie后由浏览器请求原生流式附件并清除Cookie %j', async downloadScope => {
     const bearer = generateToken({
       userId: actor.id,
       username: actor.username,
@@ -197,7 +224,7 @@ describe('日志原生下载HTTP链路', () => {
         Authorization: `Bearer ${bearer}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(scope),
+      body: JSON.stringify(downloadScope),
     });
     expect(authorized.status).toBe(200);
     expect(await authorized.json()).toEqual({
@@ -210,9 +237,12 @@ describe('日志原生下载HTTP链路', () => {
     expect(setCookie).toContain('HttpOnly');
     expect(setCookie).toContain('SameSite=Strict');
 
-    const downloaded = await fetch(`${base}${ticket.COOKIE_PATH}?${new URLSearchParams(scope)}`, {
-      headers: { Cookie: setCookie.split(';')[0] },
-    });
+    const downloaded = await fetch(
+      `${base}${ticket.COOKIE_PATH}?${new URLSearchParams(downloadScope)}`,
+      {
+        headers: { Cookie: setCookie.split(';')[0] },
+      }
+    );
     expect(downloaded.status).toBe(200);
     expect(downloaded.headers.get('content-disposition')).toBe(
       'attachment; filename="aos-synthetic.log"'

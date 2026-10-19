@@ -114,12 +114,34 @@ function entry(value) {
     throw ApiError.badRequest('有效日志时间与排序时间不一致');
   return item;
 }
-/** 验证查询；固定实例、业务日和有界分页。 @param {Object} value 输入 @param {Date} now 当前时间 @returns {Object} 标准查询 */
+/** 校验起止日期，限定最近90个北京时间自然日。 @param {string} start 起日 @param {string} end 止日 @param {Date} now 当前时间 @returns {Object} 日期范围 */
+function dateRange(start, end, now = new Date()) {
+  const bounds = retention(now);
+  const startDate = date(start);
+  const endDate = date(end);
+  if (startDate > endDate) throw ApiError.badRequest('开始日期不能晚于结束日期');
+  if (startDate < bounds.first || endDate > bounds.today)
+    throw ApiError.badRequest(`仅可查询最近${RETENTION_DAYS}个北京时间日期`);
+  return { startDate, endDate };
+}
+/** 严格的北京时间秒输入。 @param {string} value 时间 @returns {string} 原值 */
+function localDateTime(value) {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d$/.test(value)
+  )
+    throw ApiError.badRequest('日志起止时间无效');
+  date(value.slice(0, 10));
+  return value;
+}
+/** 验证查询；固定实例、日期范围和有界分页。 @param {Object} value 输入 @param {Date} now 当前时间 @returns {Object} 标准查询 */
 function query(value, now = new Date()) {
   p.fields(value, [
     'deviceId',
     'localId',
     'date',
+    'startAt',
+    'endAt',
     'account',
     'fromTime',
     'toTime',
@@ -127,15 +149,22 @@ function query(value, now = new Date()) {
     'cursor',
     'limit',
   ]);
-  const bounds = retention(now);
-  const day = date(value.date);
-  if (day < bounds.first || day > bounds.today)
-    throw ApiError.badRequest(`仅可查询最近${RETENTION_DAYS}个北京时间日期`);
+  const rangeMode = value.startAt !== undefined || value.endAt !== undefined;
   const result = {
     deviceId: p.uuid(value.deviceId).toLowerCase(),
     localId: p.uuid(value.localId).toLowerCase(),
-    date: day,
   };
+  if (rangeMode) {
+    if (['date', 'fromTime', 'toTime'].some(key => value[key] !== undefined))
+      throw ApiError.badRequest('日志日期与起止时间不能混用');
+    result.startAt = localDateTime(value.startAt);
+    result.endAt = localDateTime(value.endAt);
+    if (result.startAt > result.endAt) throw ApiError.badRequest('开始时间不能晚于结束时间');
+    Object.assign(result, dateRange(result.startAt.slice(0, 10), result.endAt.slice(0, 10), now));
+  } else {
+    result.date = date(value.date);
+    dateRange(result.date, result.date, now);
+  }
   if (value.account && value.account !== '__unassigned__' && !/^\d{1,64}$/.test(value.account))
     throw ApiError.badRequest('账号编号无效');
   if (value.account != null && typeof value.account !== 'string')
@@ -159,4 +188,14 @@ function query(value, now = new Date()) {
     value.cursor == null || value.cursor === '' ? '' : p.shortText(value.cursor, 2000);
   return result;
 }
-module.exports = { RETENTION_DAYS, retention, date, instant, digest, literalSearch, entry, query };
+module.exports = {
+  RETENTION_DAYS,
+  retention,
+  date,
+  dateRange,
+  instant,
+  digest,
+  literalSearch,
+  entry,
+  query,
+};

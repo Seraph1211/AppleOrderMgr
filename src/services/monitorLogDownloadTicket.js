@@ -37,7 +37,7 @@ function isDownloadRequest(req) {
   return req.method === 'GET' && String(req.originalUrl || '').split('?')[0] === COOKIE_PATH;
 }
 
-/** 签发仅限一个实例、一个日期的短期下载凭证。 @param {Object} user 当前用户 @param {Object} query 标准日志范围 @returns {string} */
+/** 签发仅限一个实例和指定日期范围的短期下载凭证。 @param {Object} user 当前用户 @param {Object} query 标准日志范围 @returns {string} */
 function issue(user, query) {
   return generateScopedToken(
     {
@@ -49,7 +49,7 @@ function issue(user, query) {
       scope: {
         deviceId: query.deviceId,
         localId: query.localId,
-        date: query.date,
+        ...(query.startAt ? { startAt: query.startAt, endAt: query.endAt } : { date: query.date }),
       },
     },
     EXPIRES_IN_SECONDS
@@ -60,8 +60,12 @@ function issue(user, query) {
 function matches(auth, input) {
   if (auth?.source !== 'download-cookie' || auth?.purpose !== PURPOSE) return false;
   const keys = Object.keys(input || {}).sort();
-  if (keys.join(',') !== 'date,deviceId,localId') return false;
-  return ['deviceId', 'localId', 'date'].every(key => auth.scope?.[key] === input[key]);
+  const expectedKeys = Object.keys(auth.scope || {}).sort();
+  if (!['date,deviceId,localId', 'deviceId,endAt,localId,startAt'].includes(keys.join(',')))
+    return false;
+  return (
+    keys.join(',') === expectedKeys.join(',') && keys.every(key => auth.scope[key] === input[key])
+  );
 }
 
 module.exports = {

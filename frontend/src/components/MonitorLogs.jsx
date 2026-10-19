@@ -1,8 +1,6 @@
 import ResponsiveSelect from './responsiveSelect';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  CalendarDays,
-  Clock3,
   Copy,
   Download,
   Maximize2,
@@ -14,12 +12,18 @@ import {
 } from 'lucide-react';
 import client from '../api/client';
 import MonitorLogAccountSelect from './MonitorLogAccountSelect';
+import MonitorLogRangeFilter from './monitorLogRangeFilter';
+import MonitorLogMetadata from './monitorLogMetadata';
+import {
+  describeLogRange,
+  logDay,
+  logRangePreset,
+  validateLogRange,
+} from '../utils/monitorLogRange';
 import { copyDeferredText } from '../utils/copyDeferredText';
 
 const BASE = '/server-monitor/logs';
 const PAGE_SIZE = 100;
-const day = offset =>
-  new Date(Date.now() + 8 * 3600000 + offset * 86400000).toISOString().slice(0, 10);
 const time = value =>
   value
     ? new Date(value).toLocaleString('zh-CN', {
@@ -51,10 +55,8 @@ const size = bytes => `${(Number(bytes || 0) / 1048576).toFixed(2)} MiB`;
 const initial = () => ({
   deviceId: '',
   localId: '',
-  date: day(0),
+  ...logRangePreset(),
   account: '',
-  fromTime: '',
-  toTime: '',
   keyword: '',
 });
 
@@ -66,12 +68,12 @@ export default function MonitorLogs({ standalone = false }) {
   const [filters, setFilters] = useState(initial);
   const [draft, setDraft] = useState({
     account: '',
-    fromTime: '',
-    toTime: '',
+    ...logRangePreset(),
     keyword: '',
   });
   const [accounts, setAccounts] = useState([]);
   const [accountError, setAccountError] = useState('');
+  const [rangeError, setRangeError] = useState('');
   const [accountsLoading, setAccountsLoading] = useState(false);
   const [accountAfter, setAccountAfter] = useState('');
   const [accountNext, setAccountNext] = useState(null);
@@ -277,7 +279,8 @@ export default function MonitorLogs({ standalone = false }) {
           params: {
             deviceId: filters.deviceId,
             localId: filters.localId,
-            date: filters.date,
+            startDate: draft.startAt.slice(0, 10),
+            endDate: draft.endAt.slice(0, 10),
             search: draft.account === '__unassigned__' ? '' : draft.account,
             after: accountAfter,
           },
@@ -302,7 +305,15 @@ export default function MonitorLogs({ standalone = false }) {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [filters.deviceId, filters.localId, filters.date, draft.account, accountAfter, refresh]);
+  }, [
+    filters.deviceId,
+    filters.localId,
+    draft.startAt,
+    draft.endAt,
+    draft.account,
+    accountAfter,
+    refresh,
+  ]);
 
   useEffect(() => {
     setContext(null);
@@ -354,6 +365,7 @@ export default function MonitorLogs({ standalone = false }) {
     document.body.style.overflow = 'hidden';
     dialogRef.current?.focus({ preventScroll: true });
     function handleKey(event) {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') setDrawerOpen(false);
       if (event.key !== 'Tab') return;
       const controls = [
@@ -408,13 +420,11 @@ export default function MonitorLogs({ standalone = false }) {
   }
   function submit(event) {
     event.preventDefault();
+    const validation = validateLogRange(draft.startAt, draft.endAt, catalog?.first);
+    setRangeError(validation);
+    if (validation) return;
     resetReader();
-    setFilters(current => ({
-      ...current,
-      ...draft,
-      fromTime: draft.fromTime.length === 5 ? `${draft.fromTime}:00` : draft.fromTime,
-      toTime: draft.toTime.length === 5 ? `${draft.toTime}:59` : draft.toTime,
-    }));
+    setFilters(current => ({ ...current, ...draft }));
     setRefresh(value => value + 1);
   }
   async function copy(text) {
@@ -425,7 +435,7 @@ export default function MonitorLogs({ standalone = false }) {
       setNotice(e.message || '复制失败');
     }
   }
-  async function exportDay() {
+  async function exportRange() {
     if (!filters.deviceId || !filters.localId || exporting) return;
     setExporting(true);
     setNotice('');
@@ -433,7 +443,8 @@ export default function MonitorLogs({ standalone = false }) {
       const params = {
         deviceId: filters.deviceId,
         localId: filters.localId,
-        date: filters.date,
+        startAt: filters.startAt,
+        endAt: filters.endAt,
       };
       await client.post(`${BASE}/export-ticket`, params);
       const query = new URLSearchParams(params);
@@ -564,7 +575,7 @@ export default function MonitorLogs({ standalone = false }) {
     );
   }
   return (
-    <section ref={sectionRef} className="space-y-4" aria-label="完整日志查询">
+    <section ref={sectionRef} className="min-w-0 space-y-3" aria-label="完整日志查询">
       <div>
         <Heading
           className={`flex items-center gap-2 text-gray-900 ${standalone ? 'text-2xl font-bold' : 'text-lg font-semibold'}`}
@@ -573,7 +584,7 @@ export default function MonitorLogs({ standalone = false }) {
           日志查询
         </Heading>
         <p className="mt-1 text-sm text-gray-500">
-          北京时间 · 最近90天 · 正常在线约1分钟同步 · 原始内容按文件位置保留，长行分段展示
+          北京时间 · 支持跨天查询 · 最近90天日志 · 在线约1分钟同步
         </p>
       </div>
       {catalogError && (
@@ -588,11 +599,9 @@ export default function MonitorLogs({ standalone = false }) {
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <p className="min-w-0 break-words text-gray-600">
           {chosenDevice?.name || '未选择服务器'} / {activeInstance?.label || '未选择实例'} ·{' '}
-          {filters.date}
+          {describeLogRange(filters.startAt, filters.endAt)}
           {filters.account &&
             ` · 账号 ${filters.account === '__unassigned__' ? '未识别' : filters.account}`}
-          {(filters.fromTime || filters.toTime) &&
-            ` · ${filters.fromTime || '00:00:00'}—${filters.toTime || '23:59:59'}`}
           {filters.keyword && ` · 关键词：${filters.keyword}`}
         </p>
         <button
@@ -609,10 +618,10 @@ export default function MonitorLogs({ standalone = false }) {
         id="log-query-filters"
         hidden={!filtersOpen}
         onSubmit={submit}
-        className="rounded-lg border border-gray-200 bg-white p-4"
+        className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4"
       >
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-12">
-          <label className="text-sm text-gray-600 xl:col-span-3">
+        <div className="grid min-w-0 grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-12">
+          <label className="min-w-0 text-sm text-gray-600 xl:col-span-3">
             服务器
             <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
@@ -629,7 +638,7 @@ export default function MonitorLogs({ standalone = false }) {
               ))}
             </ResponsiveSelect>
           </label>
-          <label className="text-sm text-gray-600 xl:col-span-3">
+          <label className="min-w-0 text-sm text-gray-600 xl:col-span-3">
             软件实例
             <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
@@ -649,40 +658,7 @@ export default function MonitorLogs({ standalone = false }) {
                 ))}
             </ResponsiveSelect>
           </label>
-          <div className="text-sm text-gray-600 xl:col-span-3">
-            <label className="flex items-center gap-1" htmlFor="monitor-log-date">
-              <CalendarDays className="h-4 w-4" />
-              日志日期
-            </label>
-            <input
-              id="monitor-log-date"
-              className="input mt-1 w-full text-base sm:text-sm"
-              type="date"
-              min={catalog?.first || day(-89)}
-              max={day(0)}
-              required
-              aria-label="日志日期"
-              value={filters.date}
-              onChange={e => change('date', e.target.value)}
-            />
-            <div className="mt-2 flex gap-2">
-              {[
-                ['今天', 0],
-                ['昨天', -1],
-                ['前天', -2],
-              ].map(([label, offset]) => (
-                <button
-                  key={label}
-                  type="button"
-                  className={`rounded-md border px-2 py-1 text-xs ${filters.date === day(offset) ? 'border-primary bg-primary-50 text-primary' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                  onClick={() => change('date', day(offset))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div className="text-sm text-gray-600 xl:col-span-3">
+          <div className="min-w-0 text-sm text-gray-600 xl:col-span-3">
             <span>账号编号</span>
             <MonitorLogAccountSelect
               value={draft.account === '__unassigned__' ? '' : draft.account}
@@ -709,55 +685,7 @@ export default function MonitorLogs({ standalone = false }) {
               }}
             />
           </div>
-          <fieldset className="rounded-lg border border-gray-200 bg-gray-50 p-3 sm:col-span-2 xl:col-span-6">
-            <legend className="flex items-center gap-1 px-1 text-sm text-gray-600">
-              <Clock3 className="h-4 w-4" />
-              时间范围
-            </legend>
-            <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-2">
-              <label className="text-xs text-gray-500">
-                开始
-                <input
-                  type="time"
-                  step="60"
-                  className="input mt-1 w-full text-base sm:text-sm"
-                  aria-label="开始时间"
-                  value={draft.fromTime}
-                  onChange={e => setDraft(value => ({ ...value, fromTime: e.target.value }))}
-                />
-              </label>
-              <span className="pb-2 text-gray-400">至</span>
-              <label className="text-xs text-gray-500">
-                结束
-                <input
-                  type="time"
-                  step="60"
-                  className="input mt-1 w-full text-base sm:text-sm"
-                  aria-label="结束时间"
-                  value={draft.toTime}
-                  onChange={e => setDraft(value => ({ ...value, toTime: e.target.value }))}
-                />
-              </label>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2" aria-label="常用时间范围">
-              {[
-                ['全天', '', ''],
-                ['上午', '00:00', '11:59'],
-                ['下午', '12:00', '17:59'],
-                ['晚间', '18:00', '23:59'],
-              ].map(([label, fromTime, toTime]) => (
-                <button
-                  key={label}
-                  type="button"
-                  className={`rounded-md border px-2 py-1 text-xs ${draft.fromTime === fromTime && draft.toTime === toTime ? 'border-primary bg-primary-50 text-primary' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}
-                  onClick={() => setDraft(value => ({ ...value, fromTime, toTime }))}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </fieldset>
-          <label className="text-sm text-gray-600 sm:col-span-2 xl:col-span-6">
+          <label className="min-w-0 text-sm text-gray-600 xl:col-span-3">
             正文关键词
             <input
               className="input mt-1 w-full text-base sm:text-sm"
@@ -768,22 +696,44 @@ export default function MonitorLogs({ standalone = false }) {
               onChange={e => setDraft(value => ({ ...value, keyword: e.target.value }))}
             />
           </label>
+          <div className="min-w-0 text-sm text-gray-600 sm:col-span-2 xl:col-span-8">
+            <span className="mb-1 block">
+              日志时间范围 <span className="text-xs text-gray-400">（北京时间）</span>
+            </span>
+            <MonitorLogRangeFilter
+              startAt={draft.startAt}
+              endAt={draft.endAt}
+              first={catalog?.first || logDay(-89)}
+              onChange={range => {
+                setDraft(value => ({ ...value, ...range }));
+                setRangeError('');
+                setAccounts([]);
+                setAccountAfter('');
+                setAccountNext(null);
+              }}
+            />
+          </div>
+          <label className="inline-flex min-h-8 items-center gap-2 text-sm text-gray-600 sm:col-span-2 xl:col-span-4">
+            <input
+              type="checkbox"
+              checked={draft.account === '__unassigned__'}
+              onChange={e => {
+                setDraft(value => ({
+                  ...value,
+                  account: e.target.checked ? '__unassigned__' : '',
+                }));
+                setAccountAfter('');
+              }}
+            />
+            仅查看未识别账号的日志
+          </label>
         </div>
-        <label className="mt-3 inline-flex items-center gap-2 text-sm text-gray-600">
-          <input
-            type="checkbox"
-            checked={draft.account === '__unassigned__'}
-            onChange={e => {
-              setDraft(value => ({
-                ...value,
-                account: e.target.checked ? '__unassigned__' : '',
-              }));
-              setAccountAfter('');
-            }}
-          />
-          仅查看未识别账号的日志
-        </label>
-        <div className="mt-4 flex flex-wrap gap-2">
+        {rangeError && (
+          <p role="alert" className="mt-2 text-sm text-red-700">
+            {rangeError}
+          </p>
+        )}
+        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
           <button
             className="btn btn-primary inline-flex items-center justify-center min-h-11 sm:min-h-0"
             disabled={!filters.localId || loading}
@@ -795,23 +745,25 @@ export default function MonitorLogs({ standalone = false }) {
             type="button"
             className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
             disabled={!filters.localId || exporting}
-            onClick={exportDay}
-            title="导出所选服务器、实例和日期的全部日志，不受账号、时间和关键词筛选影响"
+            onClick={exportRange}
+            title="导出已查询时间范围内该实例的全部原文，不受账号和关键词筛选影响"
           >
             <Download className="mr-1 h-4 w-4" />
-            {exporting ? '正在导出…' : '导出当天日志'}
+            {exporting ? '正在导出…' : '导出范围日志'}
           </button>
           <button
             type="button"
             className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
             onClick={() => {
-              setDraft({ account: '', fromTime: '', toTime: '', keyword: '' });
+              const defaults = { ...logRangePreset(), account: '', keyword: '' };
+              setDraft(defaults);
+              setRangeError('');
+              setAccountAfter('');
+              setAccountNext(null);
+              setAccounts([]);
               setFilters(value => ({
                 ...value,
-                account: '',
-                fromTime: '',
-                toTime: '',
-                keyword: '',
+                ...defaults,
               }));
               reload();
             }}
@@ -825,9 +777,12 @@ export default function MonitorLogs({ standalone = false }) {
             onClick={reload}
           >
             <RefreshCw className="mr-1 h-4 w-4" />
-            重新查询（从头）
+            重新查询
           </button>
         </div>
+        <p className="mt-2 text-xs text-gray-400">
+          导出使用已查询的时间范围，包含该实例全部原文，不受账号和关键词影响。
+        </p>
       </form>
       {filters.localId && (
         <details
@@ -856,9 +811,11 @@ export default function MonitorLogs({ standalone = false }) {
               </p>
               <p>本机现存日期：{snapshot.dates?.join('、') || '无'}。</p>
               <p>
-                {snapshot.dates?.includes(filters.date)
-                  ? '文件存在不代表当天完整。补采可能插入较早日志，补采结束后请重新查询。'
-                  : '所选日期未发现现存文件；已删除历史无法从本机补采。'}
+                {snapshot.dates?.some(
+                  date => date >= filters.startAt.slice(0, 10) && date <= filters.endAt.slice(0, 10)
+                )
+                  ? '文件存在不代表范围内日志完整。补采可能插入较早日志，补采结束后请重新查询。'
+                  : '所选范围未发现现存文件；已删除历史无法从本机补采。'}
               </p>
             </div>
           )}
@@ -877,11 +834,10 @@ export default function MonitorLogs({ standalone = false }) {
         {readingExpanded && (
           <div className="shrink-0 border-b border-gray-200 px-3 py-2 text-sm text-gray-600">
             <span className="mr-2 font-semibold text-gray-900">专注阅读</span>
-            {chosenDevice?.name} / {activeInstance?.label} · {filters.date}
+            {chosenDevice?.name} / {activeInstance?.label} ·{' '}
+            {describeLogRange(filters.startAt, filters.endAt)}
             {filters.account &&
               ` · 账号 ${filters.account === '__unassigned__' ? '未识别' : filters.account}`}
-            {(filters.fromTime || filters.toTime) &&
-              ` · ${filters.fromTime || '00:00:00'}—${filters.toTime || '23:59:59'}`}
             {filters.keyword && ` · 关键词：${filters.keyword}`}
           </div>
         )}
@@ -1026,12 +982,19 @@ export default function MonitorLogs({ standalone = false }) {
             role="dialog"
             aria-modal="true"
             aria-labelledby="log-detail-title"
-            className="flex h-[100dvh] w-full max-w-3xl flex-col bg-white shadow-xl"
+            className="monitor-log-drawer flex h-[100dvh] min-w-0 flex-col bg-white shadow-xl"
           >
             <div className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
-              <h3 id="log-detail-title" className="font-semibold text-gray-900">
-                日志详情与上下文
-              </h3>
+              <div className="relative flex min-w-0 items-center gap-1">
+                <h3 id="log-detail-title" className="font-semibold text-gray-900">
+                  日志详情与上下文
+                </h3>
+                <MonitorLogMetadata
+                  selected={selected}
+                  displayTime={time(selected.loggedAt)}
+                  parseDescription={PARSE[selected.parseState]}
+                />
+              </div>
               <button
                 type="button"
                 aria-label="关闭日志详情"
@@ -1041,58 +1004,9 @@ export default function MonitorLogs({ standalone = false }) {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-4">
-              <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
-                <dt className="text-gray-500">日志时间</dt>
-                <dd>{time(selected.loggedAt)}</dd>
-                <dt className="text-gray-500">账号</dt>
-                <dd>{selected.accountNumber ?? '未识别'}</dd>
-                <dt className="text-gray-500">来源文件</dt>
-                <dd className="break-all">{selected.fileName}</dd>
-                <dt className="text-gray-500">原始位置</dt>
-                <dd>
-                  第 {selected.lineNumber} 行 · 第 {selected.partIndex + 1} 段
-                </dd>
-                <dt className="text-gray-500">文件版本</dt>
-                <dd className="break-all font-mono text-xs">{selected.fileId}</dd>
-                {PARSE[selected.parseState] && (
-                  <>
-                    <dt className="text-gray-500">格式说明</dt>
-                    <dd className="text-amber-700">{PARSE[selected.parseState]}</dd>
-                  </>
-                )}
-              </dl>
-              <div>
-                <div className="mb-2 flex items-center justify-between">
-                  <h4 className="text-sm font-medium">选中原文</h4>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => copy(selected.message)}
-                  >
-                    复制原文
-                  </button>
-                </div>
-                <pre className="max-h-64 overflow-auto rounded border border-gray-200 bg-gray-50 p-2 font-mono text-[13px] leading-6 whitespace-pre-wrap break-words [overflow-wrap:anywhere]">
-                  {highlighted(selected.message || '（空片段）')}
-                </pre>
-                <p role="status" className="mt-1 text-xs text-primary">
-                  {notice}
-                </p>
-                {selected.rawBase64 && (
-                  <details className="mt-2 text-xs">
-                    <summary className="cursor-pointer text-amber-700">
-                      查看原始字节（Base64）
-                    </summary>
-                    <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all">
-                      {selected.rawBase64}
-                    </pre>
-                  </details>
-                )}
-              </div>
-              <div className="flex min-h-72 flex-1 flex-col gap-2">
-                <h4 className="text-sm font-medium">上下文 · 上下滑动继续查看</h4>
-                <div className="flex flex-wrap gap-2">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-hidden p-3 sm:p-4">
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     className={`btn ${scope === 'account' ? 'btn-primary' : 'btn-secondary'}`}
@@ -1109,6 +1023,22 @@ export default function MonitorLogs({ standalone = false }) {
                     整个实例上下文
                   </button>
                 </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary inline-flex items-center gap-1"
+                  onClick={() => copy(selected.message)}
+                >
+                  <Copy className="h-4 w-4" />
+                  复制原文
+                </button>
+              </div>
+              <div className="flex shrink-0 flex-wrap justify-between gap-1 text-xs text-gray-500">
+                <p>上下滑动继续查看 · 选中日志以浅蓝色标记</p>
+                <p role="status" className="text-primary">
+                  {notice}
+                </p>
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col">
                 {contextError && !context ? (
                   <p role="alert" className="text-sm text-red-700">
                     {contextError}
@@ -1126,7 +1056,7 @@ export default function MonitorLogs({ standalone = false }) {
                     role="region"
                     aria-label="上下文日志阅读区"
                     tabIndex={0}
-                    className="min-h-64 flex-1 overflow-auto overscroll-contain rounded border border-gray-200"
+                    className="min-h-0 flex-1 overflow-auto overscroll-contain rounded-lg border border-gray-200"
                     onScroll={event => {
                       const element = event.currentTarget;
                       if (element.scrollTop < 160) loadContext('before');

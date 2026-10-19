@@ -246,10 +246,17 @@ async function states() {
   }
 }
 function filters(query) {
-  const clauses = ['device_id=:deviceId', 'local_id=:localId', 'business_date=:date'];
+  const clauses = ['device_id=:deviceId', 'local_id=:localId'];
+  if (query.startDate) clauses.push('business_date BETWEEN :startDate AND :endDate');
+  else clauses.push('business_date=:date');
   const replacements = { ...query };
   if (query.account === '__unassigned__') clauses.push('account_number IS NULL');
   else if (query.account) clauses.push('account_number=:account');
+  if (query.startAt) {
+    clauses.push('sort_at >= :startBound::timestamptz', 'sort_at < :endBound::timestamptz');
+    replacements.startBound = `${query.startAt}+08:00`;
+    replacements.endBound = new Date(Date.parse(`${query.endAt}+08:00`) + 1000).toISOString();
+  }
   if (query.fromTime) {
     clauses.push('logged_at >= :fromAt::timestamptz');
     replacements.fromAt = `${query.date}T${query.fromTime}+08:00`;
@@ -347,14 +354,18 @@ async function list(input) {
             id: cursor.id,
             deviceId: query.deviceId,
             localId: query.localId,
-            businessDate: query.date,
+            businessDate: query.startDate
+              ? { [Op.between]: [query.startDate, query.endDate] }
+              : query.date,
           },
         });
       if (
         !anchor ||
         anchor.deviceId !== query.deviceId ||
         anchor.localId !== query.localId ||
-        anchor.businessDate !== query.date
+        (query.startDate
+          ? anchor.businessDate < query.startDate || anchor.businessDate > query.endDate
+          : anchor.businessDate !== query.date)
       )
         throw ApiError.badRequest('日志游标已过期，请重新查询');
       blockAnchor = anchor;
@@ -382,12 +393,19 @@ async function list(input) {
 /** 分页账号候选，不扫描其他实例。 @param {Object} input 筛选 @returns {Promise<Object>} 编号列表 */
 async function accounts(input) {
   try {
-    p.fields(input, ['deviceId', 'localId', 'date', 'search', 'after']);
-    const query = policy.query({
-      deviceId: input.deviceId,
-      localId: input.localId,
-      date: input.date,
-    });
+    p.fields(input, ['deviceId', 'localId', 'date', 'startDate', 'endDate', 'search', 'after']);
+    const rangeMode = input.startDate !== undefined || input.endDate !== undefined;
+    if (rangeMode && input.date !== undefined)
+      throw ApiError.badRequest('日志日期与日期范围不能混用');
+    let query;
+    if (rangeMode) {
+      query = {
+        deviceId: p.uuid(input.deviceId).toLowerCase(),
+        localId: p.uuid(input.localId).toLowerCase(),
+        ...policy.dateRange(input.startDate, input.endDate),
+      };
+    } else
+      query = policy.query({ deviceId: input.deviceId, localId: input.localId, date: input.date });
     const { clauses, replacements } = filters(query);
     clauses.push('account_number IS NOT NULL');
     if (input.search) {
@@ -478,10 +496,10 @@ async function context(id, input) {
       : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
   }
 }
-/** 准备单实例单日流式导出，首批先读取以便在响应头发送前失败。 @param {Object} input 范围 @returns {Promise<Object>} 导出状态 */
+/** 准备单实例范围流式导出，首批先读取以便在响应头发送前失败。 @param {Object} input 范围 @returns {Promise<Object>} 导出状态 */
 async function prepareExport(input) {
   try {
-    p.fields(input, ['deviceId', 'localId', 'date']);
+    p.fields(input, ['deviceId', 'localId', 'date', 'startAt', 'endAt']);
     const query = policy.query(input);
     const compressed = (await blockStore.mode(query.deviceId, query.localId)) === 'blocks';
     const pageFilters = filters(query);
@@ -492,7 +510,7 @@ async function prepareExport(input) {
       query,
       compressed,
       rows,
-      fileName: `aos-${query.date}-${query.deviceId.slice(0, 8)}-${query.localId.slice(0, 8)}.log`,
+      fileName: `aos-${query.date || `${query.startAt.replace(/:/g, '-')}_${query.endAt.replace(/:/g, '-')}`}-${query.deviceId.slice(0, 8)}-${query.localId.slice(0, 8)}.log`,
     };
   } catch (error) {
     fail(error);
@@ -501,7 +519,7 @@ async function prepareExport(input) {
       : new ApiError(503, 'FULL_LOG_TEMPORARY', '日志服务暂时不可用，请稍后重试');
   }
 }
-/** 有界分页写出全天原文；write 返回 false 时停止，避免客户端断开后继续扫描。 @param {Object} prepared 导出状态 @param {Function} write 写入函数 @returns {Promise<Object>} 导出指标 */
+/** 有界分页写出范围原文；write 返回 false 时停止，避免客户端断开后继续扫描。 @param {Object} prepared 导出状态 @param {Function} write 写入函数 @returns {Promise<Object>} 导出指标 */
 async function writeExport(prepared, write) {
   const started = Date.now();
   let rows = prepared.rows;
@@ -534,6 +552,8 @@ async function writeExport(prepared, write) {
       deviceId: prepared.query.deviceId,
       localId: prepared.query.localId,
       businessDate: prepared.query.date,
+      startAt: prepared.query.startAt,
+      endAt: prepared.query.endAt,
       storage: prepared.compressed ? 'blocks' : 'rows',
     });
     return result;
