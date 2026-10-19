@@ -34,6 +34,21 @@ function contextMessage(timestamp, label) {
 async function assertContextAnchorSelected(reader, rowId) {
   const anchor = reader.locator(`tr[data-context-id="${rowId}"]`);
   await anchor.waitFor();
+  await reader.page().waitForFunction(
+    id => {
+      const row = document.querySelector(`tr[data-context-id="${id}"]`);
+      if (!row || row.getAttribute('data-selected') !== 'true') return false;
+      const cells = Array.from(row.querySelectorAll(':scope > td'));
+      const styles = cells.map(cell => cell.ownerDocument.defaultView.getComputedStyle(cell));
+      return (
+        cells.length > 0 &&
+        styles.every(style => style.backgroundColor === 'rgb(239, 246, 255)') &&
+        styles[0].boxShadow.includes('rgb(30, 58, 138)')
+      );
+    },
+    rowId,
+    { timeout: 3000 }
+  );
   const style = await anchor.evaluate(element => {
     const cells = Array.from(element.querySelectorAll(':scope > td'));
     return {
@@ -53,6 +68,79 @@ async function assertContextAnchorSelected(reader, rowId) {
     `锚点每个td应渲染浅蓝背景：${style.backgrounds.join(', ')}`
   );
   assert(style.shadows[0]?.includes('rgb(30, 58, 138)'), '锚点首格应渲染蓝色强调线');
+}
+
+async function assertLogFilterGeometry(page, panel, mode) {
+  const controls = [
+    panel.getByLabel('服务器', { exact: true }),
+    panel.getByLabel('软件实例', { exact: true }),
+    panel.getByRole('combobox', { name: '账号编号', exact: true }),
+    panel.getByRole('button', { name: /^日志时间范围：/ }),
+    panel.getByLabel('正文关键词', { exact: true }),
+  ];
+  const boxes = await Promise.all(controls.map(control => control.boundingBox()));
+  const gridBox = await panel.locator('#log-query-filters > div').first().boundingBox();
+  const viewport = page.viewportSize();
+  const labels = ['服务器', '实例', '账号', '时间范围', '关键词'];
+  boxes.forEach((box, index) => {
+    assert(box, `${labels[index]}控件必须可见`);
+    assert(box.height >= 34 && box.height <= 54, `${labels[index]}控件高度须在34–54px`);
+    assert(
+      box.x >= gridBox.x - 1 && box.x + box.width <= gridBox.x + gridBox.width + 1,
+      `${labels[index]}控件不得溢出筛选区域`
+    );
+  });
+  assert(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= document.defaultView.innerWidth + 1
+    ),
+    '筛选行不得造成页面横向溢出'
+  );
+  if (viewport.width >= 1280) {
+    assert(
+      Math.max(...boxes.map(box => box.y)) - Math.min(...boxes.map(box => box.y)) <= 3,
+      '宽屏五框位于同一行且顶部对齐'
+    );
+    assert(
+      Math.max(...boxes.map(box => box.height)) - Math.min(...boxes.map(box => box.height)) <= 3,
+      '宽屏五框控件高度对齐'
+    );
+    assert(boxes.every(box => box.width / gridBox.width >= 0.1), '宽屏五框宽度合理');
+    assert(boxes[3].width / gridBox.width >= 0.15, '宽屏时间范围文字有可读宽度');
+    assert(boxes[4].width / gridBox.width >= 0.15, '宽屏关键词有可读宽度');
+    assert(boxes.every((box, index) => index === 0 || boxes[index - 1].x < box.x), '宽屏字段顺序正确');
+  } else if (viewport.width >= 640) {
+    assert(Math.abs(boxes[0].y - boxes[1].y) < 4, '中等屏服务器和实例同排');
+    assert(Math.abs(boxes[2].y - boxes[3].y) < 4, '中等屏账号和时间范围同排');
+    assert(boxes[0].x < boxes[1].x && boxes[2].x < boxes[3].x, '中等屏字段顺序正确');
+    assert(boxes[4].y > boxes[3].y, '中等屏关键词自然换行');
+    assert(boxes.every(box => box.width / gridBox.width >= 0.38), '中等屏字段保持可读宽度');
+  } else {
+    assert(boxes.every(box => box.width / gridBox.width >= 0.85), '手机五框占满可用行宽');
+    assert(
+      boxes.every((box, index) => index === 0 || box.y > boxes[index - 1].y),
+      '手机五框按字段顺序逐行排列'
+    );
+  }
+  const rangeButton = controls[3];
+  const rangeLabel = await rangeButton.getAttribute('aria-label');
+  const visibleText = await rangeButton.locator('span').first().evaluate(element => ({
+    text: element.innerText,
+    clientWidth: element.clientWidth,
+    scrollWidth: element.scrollWidth,
+    clientHeight: element.clientHeight,
+    scrollHeight: element.scrollHeight,
+  }));
+  assert.equal(visibleText.text, rangeLabel.replace(/^日志时间范围：/, ''), '范围文字完整可见');
+  assert(visibleText.scrollWidth <= visibleText.clientWidth + 1, '范围文字不横向裁切');
+  assert(visibleText.scrollHeight <= visibleText.clientHeight + 1, '范围文字不纵向裁切');
+  if (mode === 'desktop' || mode === 'wide') {
+    await page.screenshot({
+      path: path.join(OUTPUT_DIR, `full-logs-${mode}-filter-row.png`),
+      fullPage: false,
+      animations: 'disabled',
+    });
+  }
 }
 
 /** 合成浏览器验收，拦截所有API，不访问业务数据。 */
@@ -354,6 +442,7 @@ async function main() {
       await chooseSelect('服务器', deviceId, '测试服务器01');
       await chooseSelect('软件实例', localId, '软件实例1');
       await panel.getByRole('button', { name: '选择第1条日志', exact: true }).waitFor();
+      await assertLogFilterGeometry(page, panel, mode);
       const downloadPromise = page.waitForEvent('download');
       const exportRequestPromise = page.waitForRequest(
         request =>

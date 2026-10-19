@@ -1,6 +1,23 @@
 .monitor-log-range {
   min-width: 0;
 }
+.monitor-log-filter-form {
+  container: monitor-log-filter / inline-size;
+}
+.monitor-log-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 12px;
+}
+.monitor-log-filter-field {
+  min-width: 0;
+}
+.monitor-log-filter-grid .input,
+.monitor-log-filter-grid .responsive-select-trigger,
+.monitor-log-filter-grid .monitor-log-range-trigger {
+  min-height: 38px;
+}
 .monitor-log-range-trigger {
   display: flex;
   width: 100%;
@@ -9,6 +26,27 @@
   color: #1e3a8a;
   border-color: #bfdbfe;
   background: #eff6ff;
+}
+@container monitor-log-filter (min-width: 640px) {
+  .monitor-log-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .monitor-log-filter-field:last-child {
+    grid-column: 1 / -1;
+  }
+}
+@container monitor-log-filter (min-width: 1080px) {
+  .monitor-log-filter-grid {
+    grid-template-columns:
+      minmax(8rem, 0.8fr)
+      minmax(9rem, 0.9fr)
+      minmax(9.5rem, 1fr)
+      minmax(26rem, 2.3fr)
+      minmax(12rem, 1.3fr);
+  }
+  .monitor-log-filter-field:last-child {
+    grid-column: auto;
+  }
 }
 .monitor-log-range-popover {
   position: fixed;
@@ -52,6 +90,11 @@
   box-shadow: 0 12px 32px rgb(15 23 42 / 14%);
 }
 @media (max-width: 639px) {
+  .monitor-log-filter-grid .input,
+  .monitor-log-filter-grid .responsive-select-trigger,
+  .monitor-log-filter-grid .monitor-log-range-trigger {
+    min-height: 44px;
+  }
   .monitor-log-drawer {
     width: 100%;
   }

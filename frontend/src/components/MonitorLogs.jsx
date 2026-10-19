@@ -623,10 +623,10 @@ export default function MonitorLogs({ standalone = false }) {
         id="log-query-filters"
         hidden={!filtersOpen}
         onSubmit={submit}
-        className="rounded-xl border border-gray-200 bg-white p-3 sm:p-4"
+        className="monitor-log-filter-form rounded-xl border border-gray-200 bg-white p-3 sm:p-4"
       >
-        <div className="grid min-w-0 grid-cols-1 items-end gap-3 sm:grid-cols-2 xl:grid-cols-12">
-          <label className="min-w-0 text-sm text-gray-600 xl:col-span-2">
+        <div className="monitor-log-filter-grid">
+          <label className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
             服务器
             <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
@@ -643,7 +643,7 @@ export default function MonitorLogs({ standalone = false }) {
               ))}
             </ResponsiveSelect>
           </label>
-          <label className="min-w-0 text-sm text-gray-600 xl:col-span-2">
+          <label className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
             软件实例
             <ResponsiveSelect
               className="input mt-1 w-full text-base sm:text-sm"
@@ -663,7 +663,7 @@ export default function MonitorLogs({ standalone = false }) {
                 ))}
             </ResponsiveSelect>
           </label>
-          <div className="min-w-0 text-sm text-gray-600 xl:col-span-2">
+          <div className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
             <span>账号编号</span>
             <MonitorLogAccountSelect
               value={draft.account === '__unassigned__' ? '' : draft.account}
@@ -690,7 +690,7 @@ export default function MonitorLogs({ standalone = false }) {
               }}
             />
           </div>
-          <div className="min-w-0 text-sm text-gray-600 xl:col-span-6">
+          <div className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
             <span className="mb-1 block">
               日志时间范围 <span className="text-xs text-gray-400">（北京时间）</span>
             </span>
@@ -707,7 +707,7 @@ export default function MonitorLogs({ standalone = false }) {
               }}
             />
           </div>
-          <label className="min-w-0 text-sm text-gray-600 xl:col-span-8">
+          <label className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
             正文关键词
             <input
               className="input mt-1 w-full text-base sm:text-sm"
@@ -718,27 +718,13 @@ export default function MonitorLogs({ standalone = false }) {
               onChange={e => setDraft(value => ({ ...value, keyword: e.target.value }))}
             />
           </label>
-          <label className="inline-flex min-h-8 items-center gap-2 text-sm text-gray-600 xl:col-span-4">
-            <input
-              type="checkbox"
-              checked={draft.account === '__unassigned__'}
-              onChange={e => {
-                setDraft(value => ({
-                  ...value,
-                  account: e.target.checked ? '__unassigned__' : '',
-                }));
-                setAccountAfter('');
-              }}
-            />
-            仅查看未识别账号的日志
-          </label>
         </div>
         {rangeError && (
           <p role="alert" className="mt-2 text-sm text-red-700">
             {rangeError}
           </p>
         )}
-        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+        <div className="monitor-log-filter-actions mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
           <button
             className="btn btn-primary inline-flex items-center justify-center min-h-11 sm:min-h-0"
             disabled={!filters.localId || loading}
@@ -784,6 +770,20 @@ export default function MonitorLogs({ standalone = false }) {
             <RefreshCw className="mr-1 h-4 w-4" />
             重新查询
           </button>
+          <label className="inline-flex min-h-11 items-center gap-2 text-sm text-gray-600 sm:min-h-0 sm:ml-auto">
+            <input
+              type="checkbox"
+              checked={draft.account === '__unassigned__'}
+              onChange={e => {
+                setDraft(value => ({
+                  ...value,
+                  account: e.target.checked ? '__unassigned__' : '',
+                }));
+                setAccountAfter('');
+              }}
+            />
+            仅查看未识别账号的日志
+          </label>
         </div>
         <p className="mt-2 text-xs text-gray-400">
           导出使用已查询的时间范围，包含该实例全部原文，不受账号和关键词影响。

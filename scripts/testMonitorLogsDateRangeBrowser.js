@@ -63,6 +63,21 @@ function contextEdgeTimes(direction, twoDaysAgo, yesterday, today) {
 async function assertSelectedContextHighlight(reader, rowId) {
   const anchor = reader.locator(`tr[data-context-id="${rowId}"]`);
   await anchor.waitFor();
+  await reader.page().waitForFunction(
+    id => {
+      const row = document.querySelector(`tr[data-context-id="${id}"]`);
+      if (!row || row.getAttribute('data-selected') !== 'true') return false;
+      const cells = Array.from(row.querySelectorAll(':scope > td'));
+      const styles = cells.map(cell => cell.ownerDocument.defaultView.getComputedStyle(cell));
+      return (
+        cells.length > 0 &&
+        styles.every(style => style.backgroundColor === 'rgb(239, 246, 255)') &&
+        styles[0].boxShadow.includes('rgb(30, 58, 138)')
+      );
+    },
+    rowId,
+    { timeout: 3000 }
+  );
   const style = await anchor.evaluate(element => {
     const cells = Array.from(element.querySelectorAll(':scope > td'));
     return {
@@ -89,7 +104,7 @@ async function assertSelectedContextHighlight(reader, rowId) {
 
 async function assertFilterLayout(page, panel) {
   const rangeButton = panel.getByRole('button', { name: /^日志时间范围：/ });
-  const rangeBox = await rangeButton.locator('xpath=..').boundingBox();
+  const rangeBox = await rangeButton.boundingBox();
   const rangeLabel = await rangeButton.getAttribute('aria-label');
   const rangeText = rangeButton.locator('span').first();
   const rangeTextLayout = await rangeText.evaluate(element => ({
@@ -99,16 +114,30 @@ async function assertFilterLayout(page, panel) {
     clientHeight: element.clientHeight,
     scrollHeight: element.scrollHeight,
   }));
-  const keywordBox = await panel
-    .getByLabel('正文关键词', { exact: true })
-    .locator('xpath=..')
-    .boundingBox();
+  const controls = [
+    panel.getByLabel('服务器', { exact: true }),
+    panel.getByLabel('软件实例', { exact: true }),
+    panel.getByRole('combobox', { name: '账号编号', exact: true }),
+    rangeButton,
+    panel.getByLabel('正文关键词', { exact: true }),
+  ];
+  const boxes = await Promise.all(controls.map(control => control.boundingBox()));
+  const [serverBox, instanceBox, accountBox, , keywordBox] = boxes;
   const checkboxBox = await panel
     .locator('#log-query-filters label')
     .filter({ hasText: '仅查看未识别账号的日志' })
     .boundingBox();
   const gridBox = await panel.locator('#log-query-filters > div').first().boundingBox();
   const viewport = page.viewportSize();
+  const names = ['服务器', '实例', '账号', '时间范围', '关键词'];
+  boxes.forEach((box, index) => {
+    assert(box, `${names[index]}控件必须可见并可测量`);
+    assert(box.height >= 34 && box.height <= 54, `${names[index]}控件高度须在34–54px`);
+    assert(
+      box.x >= gridBox.x - 1 && box.x + box.width <= gridBox.x + gridBox.width + 1,
+      `${names[index]}控件须处于筛选布局范围内`
+    );
+  });
   assert(
     rangeBox.x >= 0 && rangeBox.x + rangeBox.width <= viewport.width + 1,
     '范围控件不得横向溢出'
@@ -137,23 +166,51 @@ async function assertFilterLayout(page, panel) {
     '筛选布局不得造成页面横向溢出'
   );
   if (viewport.width >= 1280) {
-    assert(Math.abs(rangeBox.width / gridBox.width - 0.5) < 0.06, '桌面范围控件占6/12列');
-    assert(keywordBox.width / gridBox.width > 0.62, '桌面关键词控件占8/12列');
+    assert(
+      Math.max(...boxes.map(box => box.y)) - Math.min(...boxes.map(box => box.y)) <= 3,
+      '宽屏五个控件顶部对齐并位于同一行'
+    );
+    assert(
+      Math.max(...boxes.map(box => box.height)) - Math.min(...boxes.map(box => box.height)) <= 3,
+      '宽屏五个控件高度对齐'
+    );
+    assert(boxes.every(box => box.width / gridBox.width >= 0.1), '宽屏五框均保持合理宽度');
+    assert(rangeBox.width / gridBox.width >= 0.15, '宽屏时间范围保留完整文字宽度');
+    assert(keywordBox.width / gridBox.width >= 0.15, '宽屏关键词保留可读宽度');
+    assert(
+      boxes.every((box, index) => index === 0 || boxes[index - 1].x < box.x),
+      '宽屏五框按服务器、实例、账号、时间范围、关键词从左至右排列'
+    );
     assert(checkboxBox.width / gridBox.width < 0.5, '桌面未识别账号控件保持紧凑宽度');
-    assert(rangeBox.y < keywordBox.y, '桌面时间范围位于关键词上方');
-    assert(Math.abs(keywordBox.y - checkboxBox.y) < 80, '关键词和未识别账号位于同一排');
-    assert(keywordBox.x < checkboxBox.x, '桌面关键词位于未识别账号控件左侧');
+    assert(Math.abs(keywordBox.y - checkboxBox.y) < 80, '关键词和未识别账号位于同一操作排');
   } else if (viewport.width >= 640) {
-    assert(rangeBox.width > gridBox.width * 0.4, '竖屏时间范围应保持可读宽度');
-    assert(keywordBox.width > gridBox.width * 0.4, '竖屏关键词应保持可读宽度');
-    assert(rangeBox.y < keywordBox.y, '竖屏时间范围排在关键词之前');
-    assert(Math.abs(keywordBox.y - checkboxBox.y) < 80, '竖屏关键词和未识别账号位于同一排');
-    assert(keywordBox.x < checkboxBox.x, '竖屏关键词位于未识别账号控件左侧');
+    assert(
+      Math.abs(serverBox.y - instanceBox.y) < 4 && Math.abs(accountBox.y - rangeBox.y) < 4,
+      '中等屏服务器/实例、账号/时间范围按两列对齐'
+    );
+    assert(serverBox.x < instanceBox.x && accountBox.x < rangeBox.x, '中等屏字段顺序正确');
+    assert(keywordBox.y > rangeBox.y, '中等屏关键词自然换到后续行');
+    assert(boxes.every(box => box.width / gridBox.width >= 0.38), '中等屏控件保持可读宽度');
   } else {
-    assert(rangeBox.width > gridBox.width * 0.85, '窄屏时间范围控件占满可用行宽');
-    assert(keywordBox.width > gridBox.width * 0.85, '窄屏关键词控件占满可用行宽');
-    assert(rangeBox.y < keywordBox.y, '窄屏时间范围排在关键词之前');
+    assert(boxes.every(box => box.width / gridBox.width >= 0.85), '窄屏五框占满可用行宽');
+    assert(
+      boxes.every((box, index) => index === 0 || box.y > boxes[index - 1].y),
+      '窄屏五框按字段顺序逐行排列'
+    );
   }
+  logger.info('日志筛选五框实测几何', {
+    viewport: `${viewport.width}x${viewport.height}`,
+    gridWidth: Math.round(gridBox.width),
+    fields: boxes.map((box, index) => ({
+      name: ['服务器', '实例', '账号', '时间范围', '关键词'][index],
+      x: Math.round(box.x),
+      y: Math.round(box.y),
+      width: Math.round(box.width),
+      height: Math.round(box.height),
+    })),
+    fullRangeText: rangeTextLayout.text,
+    rangeTextHeight: `${rangeTextLayout.clientHeight}/${rangeTextLayout.scrollHeight}`,
+  });
 }
 
 async function chooseSelect(page, panel, label, value, optionName) {
@@ -176,7 +233,8 @@ async function runViewport(browser, mode) {
   if (mobile) viewport = { width: 375, height: 740 };
   else if (mode === 'portrait') viewport = { width: 1080, height: 1920 };
   else if (mode === 'standard') viewport = { width: 1440, height: 1000 };
-  else viewport = { width: 1920, height: 1080 };
+  else if (mode === 'desktop') viewport = { width: 1920, height: 1080 };
+  else viewport = { width: 3440, height: 1440 };
   const context = await browser.newContext({
     viewport,
     isMobile: mobile,
@@ -333,7 +391,7 @@ async function runViewport(browser, mode) {
     assert.equal(listQueries.at(-1).endAt?.slice(0, 10), today);
     await page.screenshot({
       path: path.join(OUTPUT_DIR, `date-range-${mode}-main.png`),
-      fullPage: true,
+      fullPage: false,
       animations: 'disabled',
     });
 
@@ -362,6 +420,12 @@ async function runViewport(browser, mode) {
     assert.equal(crossDayQuery.localId, LOCAL_ID);
     assert.equal(crossDayQuery.account || undefined, undefined);
     assert.equal(crossDayQuery.keyword || undefined, undefined);
+    await assertFilterLayout(page, panel);
+    await page.screenshot({
+      path: path.join(OUTPUT_DIR, `date-range-${mode}-cross-day-filters.png`),
+      fullPage: false,
+      animations: 'disabled',
+    });
 
     await rangeButton.click();
     await rangeDialog.getByRole('button', { name: '最近24小时', exact: true }).click();
@@ -543,8 +607,8 @@ async function runViewport(browser, mode) {
     assert(contextQueries.some(query => query.direction === 'before'));
     assert(contextQueries.some(query => query.direction === 'after'));
 
-    const scopeChange = page.waitForRequest(request => {
-      const url = new URL(request.url());
+    const scopeChange = page.waitForResponse(response => {
+      const url = new URL(response.url());
       return url.pathname.endsWith('/context') && url.searchParams.get('scope') === 'instance';
     });
     await drawer.getByRole('button', { name: '整个实例上下文', exact: true }).click();
@@ -610,7 +674,7 @@ async function main() {
     }
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     browser = await chromium.launch({ executablePath: EXECUTABLE, headless: true });
-    for (const mode of ['standard', 'desktop', 'portrait', 'mobile'])
+    for (const mode of ['standard', 'desktop', 'ultrawide', 'portrait', 'mobile'])
       await runViewport(browser, mode);
     logger.info('完整日志日期范围浏览器合成验收通过', { outputDir: OUTPUT_DIR });
   } catch (error) {
