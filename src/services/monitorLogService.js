@@ -311,23 +311,39 @@ function sameContext(anchor, candidate, scope, bounds) {
     (scope !== 'account' || candidate.accountNumber === anchor.accountNumber)
   );
 }
+/** 按业务日有界读取上下文；sortAt 由已校验的同日时间或该日零点生成。 */
 async function surroundingPage(query, anchor, direction, limit, compressed) {
-  let rows;
-  if (compressed) rows = await blockStore.select(query, anchor, direction, limit + 1);
-  else {
-    const { clauses, replacements } = filters(query);
-    Object.assign(replacements, anchorValues(anchor));
-    rows = await select(
-      [...clauses, `${TUPLE} ${direction === 'ASC' ? '>' : '<'} ${MARK}`],
-      replacements,
-      direction,
-      limit + 1
-    );
+  try {
+    const rows = [];
+    const step = direction === 'ASC' ? 86400000 : -86400000;
+    let day = anchor.businessDate;
+    while (day >= query.startDate && day <= query.endDate && rows.length <= limit) {
+      const dayQuery = { ...query, date: day };
+      delete dayQuery.startDate;
+      delete dayQuery.endDate;
+      const dayAnchor = day === anchor.businessDate ? anchor : null;
+      const take = limit + 1 - rows.length;
+      let dailyRows;
+      if (compressed) dailyRows = await blockStore.select(dayQuery, dayAnchor, direction, take);
+      else {
+        const { clauses, replacements } = filters(dayQuery);
+        if (dayAnchor) {
+          clauses.push(`${TUPLE} ${direction === 'ASC' ? '>' : '<'} ${MARK}`);
+          Object.assign(replacements, anchorValues(dayAnchor));
+        }
+        dailyRows = await select(clauses, replacements, direction, take);
+      }
+      rows.push(...dailyRows);
+      day = new Date(Date.parse(day) + step).toISOString().slice(0, 10);
+    }
+    const hasMore = rows.length > limit;
+    const items = rows.slice(0, limit);
+    if (direction === 'DESC') items.reverse();
+    return { items: items.map(safe), hasMore };
+  } catch (error) {
+    fail(error);
+    throw error;
   }
-  const hasMore = rows.length > limit;
-  const items = rows.slice(0, limit);
-  if (direction === 'DESC') items.reverse();
-  return { items: items.map(safe), hasMore };
 }
 /** 查询完整日志，绑定过滤条件的游标避免串页。 @param {Object} input 查询 @returns {Promise<Object>} 分页 */
 async function list(input) {

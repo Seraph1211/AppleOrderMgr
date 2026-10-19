@@ -305,6 +305,112 @@ const { randomUUID, createHash } = require('crypto');
       ).toBe(anchor.id);
     });
 
+    test('当日凑齐lookahead即停止，仅以日期等值查询当前日候选', async () => {
+      const anchor = row(anchorDay, 500);
+      const sameDay = [100, 200, 300, 400, 600, 700, 800, 900].map(offset =>
+        row(anchorDay, offset)
+      );
+      await save([row(day(-7)), ...sameDay, anchor, row(day(-1))]);
+      const spy = jest.spyOn(sequelize, 'query');
+      try {
+        for (const direction of ['before', 'after']) {
+          spy.mockClear();
+          const result = await service.context(anchor.id, {
+            scope: 'instance',
+            cursor: anchor.id,
+            direction,
+            limit: 2,
+          });
+          const expected = sorted(
+            sameDay.filter(item =>
+              direction === 'before'
+                ? store.compare(item, anchor) < 0
+                : store.compare(item, anchor) > 0
+            )
+          );
+          expect(result.items.map(item => item.id)).toEqual(
+            (direction === 'before' ? expected.slice(-2) : expected.slice(0, 2)).map(
+              item => item.id
+            )
+          );
+          expect(result.hasMore).toBe(true);
+          const selects = spy.mock.calls.filter(
+            ([sql]) =>
+              typeof sql === 'string' &&
+              (mode === 'rows'
+                ? sql.includes('FROM monitor_log_entries WHERE')
+                : sql.includes('FROM monitor_log_blocks b '))
+          );
+          expect(selects).toHaveLength(1);
+          expect(selects[0][1].replacements).toMatchObject({ date: anchorDay });
+          expect(selects[0][1].replacements.startDate).toBeUndefined();
+          expect(selects[0][1].replacements.endDate).toBeUndefined();
+          expect(selects[0][0]).not.toContain('BETWEEN');
+        }
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    test('边界日恰好limit仍跨空日寻找lookahead，双向续页不丢远日片段', async () => {
+      const anchor = row(anchorDay, 500);
+      const before = [row(anchorDay, 100), row(anchorDay, 200)];
+      const after = [row(anchorDay, 600), row(anchorDay, 700)];
+      const older = row(day(-4));
+      const newer = row(today);
+      await save([older, ...before, anchor, ...after, newer]);
+      for (const [direction, expected, remote] of [
+        ['before', before, older],
+        ['after', after, newer],
+      ]) {
+        const first = await service.context(anchor.id, {
+          scope: 'instance',
+          cursor: anchor.id,
+          direction,
+          limit: 2,
+        });
+        expect(first.items.map(item => item.id)).toEqual(expected.map(item => item.id));
+        expect(first.hasMore).toBe(true);
+        const next = await service.context(anchor.id, {
+          scope: 'instance',
+          direction,
+          limit: 2,
+          cursor: direction === 'before' ? first.items[0].id : first.items.at(-1).id,
+        });
+        expect(next.items.map(item => item.id)).toEqual([remote.id]);
+        expect(next.hasMore).toBe(false);
+        expect(next.anchorId).toBe(anchor.id);
+      }
+    });
+
+    test('前后恰好100片段且其余日期为空，终页不误报hasMore', async () => {
+      const before = Array.from({ length: 100 }, (_, index) => row(day(-3), index));
+      const anchor = row(anchorDay);
+      const after = Array.from({ length: 100 }, (_, index) => row(day(-1), index));
+      await save([...before, anchor, ...after]);
+      const initial = await service.context(anchor.id, { scope: 'account' });
+      expect(initial.items.map(item => item.id)).toEqual(
+        [...before, anchor, ...after].map(item => item.id)
+      );
+      expect(initial.hasMoreBefore).toBe(false);
+      expect(initial.hasMoreAfter).toBe(false);
+      for (const [direction, expected] of [
+        ['before', before],
+        ['after', after],
+      ]) {
+        const page = await service.context(anchor.id, {
+          scope: 'account',
+          cursor: anchor.id,
+          direction,
+          limit: 100,
+        });
+        expect(page.items.map(item => item.id)).toEqual(expected.map(item => item.id));
+        expect(page.items).toHaveLength(100);
+        expect(page.hasMore).toBe(false);
+        expect(page.anchorId).toBe(anchor.id);
+      }
+    });
+
     test('90日首尾包含、过期与未来锚点404，过期游标400且不越界', async () => {
       const first = policy.retention().first;
       const previous = new Date(Date.parse(first) - 86400000).toISOString().slice(0, 10);
