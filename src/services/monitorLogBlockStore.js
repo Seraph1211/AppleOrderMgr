@@ -28,7 +28,8 @@ const ROW_FIELDS = [
   'createdAt',
   'updatedAt',
 ];
-const fail = error => logger.warn('压缩日志操作失败', { errorCode: error.code || error.name });
+const errorCode = error => error.original?.code || error.parent?.code || error.code || error.name;
+const fail = error => logger.warn('压缩日志操作失败', { errorCode: errorCode(error) });
 const digestBytes = value => createHash('sha256').update(value).digest();
 /** 按原时间/UUID/偏移排序。 @param {Object} a 记录 @param {Object} b 记录 @returns {number} 顺序 */
 function compare(a, b) {
@@ -511,7 +512,7 @@ function matches(row, query, anchor, direction) {
   return true;
 }
 /** 候选块按精确边界归并；重叠候选必须读取。 @param {Object} query 筛选 @param {Object} anchor 锚点 @param {string} direction 顺序 @param {number} limit 数量 @returns {Promise<Object[]>} 片段 */
-async function selectSnapshot(query, anchor, direction, limit, transaction) {
+async function selectSnapshotDay(query, anchor, direction, limit, transaction) {
   const started = Date.now();
   let decoded = 0;
   try {
@@ -638,6 +639,54 @@ async function selectSnapshot(query, anchor, direction, limit, transaction) {
     throw error;
   }
 }
+/** 按业务日期读取范围，所有日期共用调用方的只读快照事务。 @param {Object} query 筛选 @param {Object} anchor 锚点 @param {string} direction 顺序 @param {number} limit 数量 @param {Object} transaction 快照事务 @returns {Promise<Object[]>} 完整片段 */
+async function selectSnapshot(query, anchor, direction, limit, transaction) {
+  try {
+    if (!query.startDate)
+      return await selectSnapshotDay(query, anchor, direction, limit, transaction);
+    if (
+      !['ASC', 'DESC'].includes(direction) ||
+      !Number.isInteger(limit) ||
+      limit < 1 ||
+      limit > 101
+    )
+      throw new Error('日志查询内部边界无效');
+
+    policy.date(query.startDate);
+    policy.date(query.endDate);
+    if (query.startDate > query.endDate) throw new Error('日志查询内部日期范围无效');
+    if (anchor) {
+      policy.date(anchor.businessDate);
+      if (anchor.businessDate < query.startDate || anchor.businessDate > query.endDate)
+        throw new Error('日志查询内部锚点无效');
+    }
+
+    let day = anchor?.businessDate || (direction === 'ASC' ? query.startDate : query.endDate);
+    const endDate = direction === 'ASC' ? query.endDate : query.startDate;
+    const step = direction === 'ASC' ? 1 : -1;
+    const rows = [];
+    while (direction === 'ASC' ? day <= endDate : day >= endDate) {
+      const dayQuery = { ...query, date: day };
+      delete dayQuery.startDate;
+      delete dayQuery.endDate;
+      const dailyRows = await selectSnapshotDay(
+        dayQuery,
+        day === anchor?.businessDate ? anchor : null,
+        direction,
+        limit - rows.length,
+        transaction
+      );
+      rows.push(...dailyRows);
+      if (rows.length >= limit) break;
+      day = new Date(Date.parse(`${day}T00:00:00Z`) + step * 86400000).toISOString().slice(0, 10);
+    }
+    // 入库校验要求 loggedAt/contextAt 属于 businessDate，逐日拼接即保持全局顺序。
+    return rows.slice(0, limit);
+  } catch (error) {
+    fail(error);
+    throw error;
+  }
+}
 /** 多批候选保持只读快照，防止压实移动块后漏查。 @param {Object} query 筛选 @param {Object} anchor 锚点 @param {string} direction 顺序 @param {number} limit 数量 @returns {Promise<Object[]>} 完整片段 */
 async function select(query, anchor = null, direction = 'ASC', limit = 50) {
   try {
@@ -650,7 +699,7 @@ async function select(query, anchor = null, direction = 'ASC', limit = 50) {
           });
           return await selectSnapshot(query, anchor, direction, limit, transaction);
         } catch (error) {
-          logger.debug('完整日志快照读取未完成', { errorCode: error.code || error.name });
+          logger.debug('完整日志快照读取未完成', { errorCode: errorCode(error) });
           throw error;
         }
       }
