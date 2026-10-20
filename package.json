@@ -18,6 +18,8 @@
     "format": "prettier --write \"**/*.{js,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,json,md}\"",
     "docs:check": "npm run docs:check:links && npm run docs:check:schema",
+    "release:frontend": "python3 scripts/productionFrontendGate.py",
+    "test:release:frontend": "python3 -B -m unittest discover -s test -p 'productionFrontendGate_test.py' -v",
     "security:verify-vendor": "node scripts/verifyVendor.js",
     "db:init": "node scripts/initDatabase.js",
     "db:migrate": "sequelize-cli db:migrate",

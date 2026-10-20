@@ -10,6 +10,7 @@ Apple 订单管理系统已有 React 管理台、Express API、PostgreSQL/Sequel
 - 保留其他未提交工作；不为文档整理改变业务代码、数据库或线上状态。提交、推送、生产写入等遵循当前会话授权。
 
 - 生产发布备份和恢复演练排除 AOS 监控日志明细及原始日志文件；其余业务数据仍须备份并验证迁移，不删除生产日志。具体命令与范围见[生产环境部署指南](docs/deployment/生产环境部署指南.md#发布前备份和演练)。
+- 所有生产发布（含仅 API 增量）使用 `scripts/productionFrontendGate.py`：公开树 `prepare`，正式服务切换前以实际 Nginx 用户 `check`，版本指针通过 `switch` 切换并验证网页与资源，失败回退。禁止临时脚本直接切换 `current` 绕过门禁；命令和业务回退边界见[生产切换顺序](docs/deployment/生产环境部署指南.md#生产切换顺序)。
 
 ## 开发前必读
 

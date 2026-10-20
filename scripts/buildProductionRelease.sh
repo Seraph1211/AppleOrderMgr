@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
+
+command -v python3 >/dev/null || { echo '生产前端门禁需要 Python 3.6+' >&2; exit 1; }
 
 if [[ "$(git branch --show-current)" != "main" ]]; then
   echo "必须在本地 main 分支构建生产制品" >&2
@@ -55,6 +58,11 @@ frontend_container="$(docker create "$frontend_image")"
 docker cp "$frontend_container:/app/dist/." "$release_dir/frontend/"
 docker rm "$frontend_container" >/dev/null
 frontend_container=""
+
+# 显式 chmod 不受调用方 umask 077 影响；只处理公开树，不放宽私密文件。
+python3 scripts/productionFrontendGate.py prepare "$release_dir" >&2
+python3 scripts/productionFrontendGate.py check "$release_dir" --permissions-only >&2
+cp scripts/productionFrontendGate.py "$release_dir/productionFrontendGate.py"
 
 docker save "$runtime_image" "$migrator_image" | gzip -9 > "$release_dir/images.tar.gz"
 cp docker-compose.prod.yml "$release_dir/docker-compose.prod.yml"

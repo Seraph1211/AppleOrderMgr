@@ -24,6 +24,7 @@ jobs:
       - run: npm run lint -- --quiet
       - run: npm test -- --runInBand
       - run: npm run docs:check
+      - run: npm run test:release:frontend
       - run: npm audit --audit-level=high
 
   frontend:
