@@ -175,6 +175,32 @@ const { randomUUID, createHash } = require('crypto');
         .map(row => row.id)
     );
   });
+  test('关键词跨64块空批次、同毫秒游标及账号目录正反向均完整', async () => {
+    const rows = Array.from({ length: 66 }, (_, offset) =>
+      entry(offset, {
+        loggedAt: new Date(at).toISOString(),
+        message: offset === 0 || offset === 65 ? '批次目标' : '普通内容',
+      })
+    );
+    for (const row of rows) await append([row]);
+    const otherAccount = entry(66, { accountNumber: '128', message: '批次目标' });
+    await append([otherAccount]);
+    const scoped = query({ account: '00128', keyword: '批次目标' });
+    expect((await store.select(scoped, rows[0], 'ASC', 10)).map(row => row.id)).toEqual([
+      rows[65].id,
+    ]);
+    expect((await store.select(scoped, rows[65], 'DESC', 10)).map(row => row.id)).toEqual([
+      rows[0].id,
+    ]);
+    expect((await store.select(scoped, null, 'ASC', 10)).map(row => row.id)).toEqual([
+      rows[0].id,
+      rows[65].id,
+    ]);
+    expect(
+      (await store.select(query({ keyword: '批次目标' }), rows[0], 'ASC', 10)).map(row => row.id)
+    ).toEqual([rows[65].id, otherAccount.id]);
+    expect(await store.select(query({ keyword: '完全不存在的词' }), null, 'DESC', 10)).toEqual([]);
+  });
   test('关键词签名无漏检；字面通配符、emoji、单字、双字及跨片段边界', async () => {
     const messages = [
       'Alpha %_\\ 中文🙂完整',
