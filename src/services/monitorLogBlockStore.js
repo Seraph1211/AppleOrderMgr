@@ -511,10 +511,42 @@ function matches(row, query, anchor, direction) {
     return false;
   return true;
 }
+/** 依据块的精确账号/时间边界排除不可能命中的关键词候选。 @param {Object} block 元数据 @param {Object} query 查询 @param {Object} anchor 锚点 @param {string} direction 顺序 @returns {boolean} 是否可能命中 */
+function mayContainRangeMatch(block, query, anchor, direction) {
+  const min = {
+    sortAt: block.candidate_min_at,
+    fileId: block.candidate_min_file,
+    byteOffset: block.candidate_min_offset,
+  };
+  const max = {
+    sortAt: block.candidate_max_at,
+    fileId: block.candidate_max_file,
+    byteOffset: block.candidate_max_offset,
+  };
+  if (query.startAt) {
+    const startAt = Date.parse(`${query.startAt}+08:00`);
+    const endAt = Date.parse(`${query.endAt}+08:00`) + 1000;
+    if (Date.parse(max.sortAt) < startAt || Date.parse(min.sortAt) >= endAt) return false;
+  }
+  if (query.fromTime) {
+    const fromAt = Date.parse(`${query.date}T${query.fromTime}+08:00`);
+    if (Date.parse(max.sortAt) < fromAt) return false;
+  }
+  if (query.toTime) {
+    const toAt = Date.parse(`${query.date}T${query.toTime}+08:00`) + 1000;
+    if (Date.parse(min.sortAt) >= toAt) return false;
+  }
+  if (anchor) {
+    if (direction === 'ASC' ? compare(max, anchor) <= 0 : compare(min, anchor) >= 0) return false;
+  }
+  return true;
+}
 /** 候选块按精确边界归并；重叠候选必须读取。 @param {Object} query 筛选 @param {Object} anchor 锚点 @param {string} direction 顺序 @param {number} limit 数量 @returns {Promise<Object[]>} 片段 */
 async function selectSnapshotDay(query, anchor, direction, limit, transaction) {
   const started = Date.now();
   let decoded = 0;
+  let metadataPages = 0;
+  let payloadBatches = 0;
   try {
     if (
       !['ASC', 'DESC'].includes(direction) ||
@@ -538,38 +570,45 @@ async function selectSnapshotDay(query, anchor, direction, limit, transaction) {
     const bound = query.account ? 'a' : 'b';
     if (query.account)
       replacements.accountValue = query.account === '__unassigned__' ? '' : query.account;
+    const keywordClauses = [];
+    const keywordReplacements = {};
     if (query.startAt) {
       replacements.startBound = `${query.startAt}+08:00`;
       replacements.endBound = new Date(Date.parse(`${query.endAt}+08:00`) + 1000).toISOString();
-      clauses.push(
-        'b.max_sort_at >= :startBound::timestamptz',
-        'b.min_sort_at < :endBound::timestamptz'
-      );
+      if (!query.keyword)
+        clauses.push(
+          'b.max_sort_at >= :startBound::timestamptz',
+          'b.min_sort_at < :endBound::timestamptz'
+        );
     }
     if (query.fromTime) {
       replacements.fromAt = `${query.date}T${query.fromTime}+08:00`;
-      clauses.push('b.max_sort_at >= :fromAt::timestamptz');
+      if (!query.keyword) clauses.push('b.max_sort_at >= :fromAt::timestamptz');
     }
     if (query.toTime) {
       replacements.toAt = new Date(
         Date.parse(`${query.date}T${query.toTime}+08:00`) + 1000
       ).toISOString();
-      clauses.push('b.min_sort_at < :toAt::timestamptz');
+      if (!query.keyword) clauses.push('b.min_sort_at < :toAt::timestamptz');
     }
     if (query.keyword) {
-      replacements.mask = signature([query.keyword], true);
-      clauses.push('(b.signature & :mask::bit(8192))=:mask::bit(8192)');
+      keywordReplacements.mask = signature([query.keyword], true);
+      keywordClauses.push('(b.signature & :mask::bit(8192))=:mask::bit(8192)');
       const repeated = repeatFilter.repeatQuery(query.keyword);
       if (repeated) {
-        Object.assign(replacements, { repeatKey: repeated.key, repeatCount: repeated.repeats });
-        clauses.push(
+        Object.assign(keywordReplacements, {
+          repeatKey: repeated.key,
+          repeatCount: repeated.repeats,
+        });
+        keywordClauses.push(
           "(b.repeat_limits IS NULL OR jsonb_typeof(b.repeat_limits)<>'object' OR coalesce((b.repeat_limits ->> :repeatKey)::integer,0)>=:repeatCount)"
         );
       }
     }
     if (anchor) {
       const other = direction === 'ASC' ? 'max' : 'min';
-      clauses.push(`(${bound}.${other}_sort_at,${bound}.${other}_file_id,${bound}.${other}_byte_offset)
+      if (!query.keyword)
+        clauses.push(`(${bound}.${other}_sort_at,${bound}.${other}_file_id,${bound}.${other}_byte_offset)
         ${op} (:anchorAt::timestamptz,:anchorFile::uuid,:anchorOffset::bigint)`);
       Object.assign(replacements, {
         anchorAt: new Date(anchor.sortAt).toISOString(),
@@ -582,25 +621,72 @@ async function selectSnapshotDay(query, anchor, direction, limit, transaction) {
     let done = false;
     while (!done) {
       const paging = [...clauses];
+      const pageId = query.keyword && query.account ? 'a.block_id' : 'b.id';
       if (after) {
-        paging.push(`(${bound}.${prefix}_sort_at,${bound}.${prefix}_file_id,${bound}.${prefix}_byte_offset,b.id)
+        paging.push(`(${bound}.${prefix}_sort_at,${bound}.${prefix}_file_id,${bound}.${prefix}_byte_offset,${pageId})
           ${op} (:afterAt::timestamptz,:afterFile::uuid,:afterOffset::bigint,:afterId::bigint)`);
         Object.assign(replacements, after);
       }
-      const blocks = await sequelize.query(
-        `SELECT b.*,${bound}.${prefix}_sort_at AS boundary_at,
+      const orderBy = `ORDER BY ${bound}.${prefix}_sort_at ${direction},${bound}.${prefix}_file_id ${direction},
+        ${bound}.${prefix}_byte_offset ${direction},${pageId} ${direction} LIMIT 64`;
+      const keywordMetadataClauses = [
+        `${bound}.device_id=:deviceId`,
+        `${bound}.local_id=:localId`,
+        `${bound}.business_date=:date`,
+      ];
+      if (query.account) keywordMetadataClauses.push('a.account_number=:accountValue');
+      if (query.keyword && after) keywordMetadataClauses.push(paging.at(-1));
+      const keywordMetadataFrom = query.account
+        ? 'monitor_log_block_accounts a'
+        : 'monitor_log_blocks b';
+      const selectSql = query.keyword
+        ? `SELECT ${query.account ? 'a.business_date' : 'b.business_date'} AS business_date,
+        ${pageId} AS id,${bound}.${prefix}_sort_at AS boundary_at,
+        ${bound}.${prefix}_file_id AS boundary_file,${bound}.${prefix}_byte_offset AS boundary_offset,
+        ${bound}.min_sort_at AS candidate_min_at,${bound}.min_file_id AS candidate_min_file,
+        ${bound}.min_byte_offset AS candidate_min_offset,${bound}.max_sort_at AS candidate_max_at,
+        ${bound}.max_file_id AS candidate_max_file,${bound}.max_byte_offset AS candidate_max_offset
+        FROM ${keywordMetadataFrom} WHERE ${keywordMetadataClauses.join(' AND ')} ${orderBy}`
+        : `SELECT b.*,${bound}.${prefix}_sort_at AS boundary_at,
         ${bound}.${prefix}_file_id AS boundary_file,${bound}.${prefix}_byte_offset AS boundary_offset
-        FROM monitor_log_blocks b ${accountJoin} WHERE ${paging.join(' AND ')}
-        ORDER BY ${bound}.${prefix}_sort_at ${direction},${bound}.${prefix}_file_id ${direction},
-        ${bound}.${prefix}_byte_offset ${direction},b.id ${direction} LIMIT 64`,
-        { replacements, transaction, type: QueryTypes.SELECT }
-      );
+        FROM monitor_log_blocks b ${accountJoin} WHERE ${paging.join(' AND ')} ${orderBy}`;
+      const blocks = await sequelize.query(selectSql, {
+        replacements,
+        transaction,
+        type: QueryTypes.SELECT,
+      });
+      if (query.keyword) metadataPages += 1;
       if (!blocks.length) break;
-      for (const block of blocks) {
+      let payloadById = null;
+      if (query.keyword) {
+        const candidates = blocks.filter(block =>
+          mayContainRangeMatch(block, query, anchor, direction)
+        );
+        let payloadBlocks = [];
+        if (candidates.length) {
+          payloadBatches += 1;
+          payloadBlocks = await sequelize.query(
+            `SELECT b.* FROM monitor_log_blocks b WHERE b.business_date=:payloadDate
+              AND b.id IN (:payloadIds)
+              AND ${keywordClauses.join(' AND ')}`,
+            {
+              replacements: {
+                payloadDate: query.date,
+                payloadIds: candidates.map(block => block.id),
+                ...keywordReplacements,
+              },
+              transaction,
+              type: QueryTypes.SELECT,
+            }
+          );
+        }
+        payloadById = new Map(payloadBlocks.map(block => [String(block.id), block]));
+      }
+      for (const metadata of blocks) {
         const boundary = {
-          sortAt: block.boundary_at,
-          fileId: block.boundary_file,
-          byteOffset: block.boundary_offset,
+          sortAt: metadata.boundary_at,
+          fileId: metadata.boundary_file,
+          byteOffset: metadata.boundary_offset,
         };
         if (
           result.length >= limit &&
@@ -611,6 +697,8 @@ async function selectSnapshotDay(query, anchor, direction, limit, transaction) {
           done = true;
           break;
         }
+        const block = payloadById ? payloadById.get(String(metadata.id)) : metadata;
+        if (!block) continue;
         const rows = await readBlock(block, query.keyword);
         decoded++;
         result.push(...rows.filter(row => matches(row, query, anchor, direction)));
@@ -630,6 +718,8 @@ async function selectSnapshotDay(query, anchor, direction, limit, transaction) {
       storage: 'blocks',
       durationMs: Date.now() - started,
       decodedBlocks: decoded,
+      metadataPages,
+      payloadBatches,
       returned: result.length,
       keyword: !!query.keyword,
     });
@@ -697,6 +787,8 @@ async function select(query, anchor = null, direction = 'ASC', limit = 50) {
           await sequelize.query("SET TRANSACTION READ ONLY; SET LOCAL statement_timeout='5s'", {
             transaction,
           });
+          // 仅在当前只读事务内降低全量排序的计划偏好；不保证固定计划，也不限制所有排序。
+          if (query.keyword) await sequelize.query("SET LOCAL enable_sort='off'", { transaction });
           return await selectSnapshot(query, anchor, direction, limit, transaction);
         } catch (error) {
           logger.debug('完整日志快照读取未完成', { errorCode: errorCode(error) });

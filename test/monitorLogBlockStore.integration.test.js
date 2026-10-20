@@ -246,7 +246,8 @@ const { randomUUID, createHash } = require('crypto');
     const readSpy = jest.spyOn(sequelize, 'query').mockImplementation(async (sql, options) => {
       try {
         const result = await originalQuery(sql, options);
-        if (sql.includes('AS boundary_at')) candidates += result.length;
+        if (sql.startsWith('SELECT b.* FROM monitor_log_blocks b WHERE'))
+          candidates += result.length;
         return result;
       } catch (error) {
         throw new Error(`周期候选查询失败:${error.name}`);
