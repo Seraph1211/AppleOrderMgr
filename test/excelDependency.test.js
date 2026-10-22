@@ -595,6 +595,9 @@ describe('Excel 会话与导出安全回归（模型桩，无数据库）', () =
   });
 
   test.each([
+    ['PAYMENT_DUE_STORED_ORDER', '待付款'],
+    ['PAYMENT_RECEIVED', '已付款'],
+    ['PAYMENT_DUE_STORED_ORDER | PAYMENT_RECEIVED | NEW_STATUS', '待付款 | 已付款 | NEW_STATUS'],
     ['READY_FOR_PICKUP | RETURN_STARTED', '可取货 | 已发起退货'],
     ['PICKUP_READY | CANCELED | PICK_UP_CANCELLED', '可取货 | 已取消 | 取货已取消'],
     ['UNKNOWN_STATUS', 'UNKNOWN_STATUS'],
