@@ -1,0 +1,70 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "passed": true,
+      "writes": 7,
+      "inlineDropdown": true,
+      "keyboard": true,
+      "persistence": true,
+      "failureRecovery": true,
+      "conflictRecovery": true,
+      "longTag": true,
+      "readOnly": true
+    },
+    {
+      "width": 375,
+      "height": 1000,
+      "passed": true,
+      "writes": 7,
+      "inlineDropdown": true,
+      "keyboard": true,
+      "persistence": true,
+      "failureRecovery": true,
+      "conflictRecovery": true,
+      "longTag": true,
+      "readOnly": true
+    },
+    {
+      "width": 1920,
+      "height": 1080,
+      "passed": true,
+      "writes": 7,
+      "inlineDropdown": true,
+      "keyboard": true,
+      "persistence": true,
+      "failureRecovery": true,
+      "conflictRecovery": true,
+      "longTag": true,
+      "readOnly": true
+    },
+    {
+      "width": 768,
+      "height": 1000,
+      "passed": true,
+      "writes": 7,
+      "inlineDropdown": true,
+      "keyboard": true,
+      "persistence": true,
+      "failureRecovery": true,
+      "conflictRecovery": true,
+      "longTag": true,
+      "readOnly": true
+    },
+    {
+      "width": 1080,
+      "height": 1920,
+      "passed": true,
+      "writes": 7,
+      "inlineDropdown": true,
+      "keyboard": true,
+      "persistence": true,
+      "failureRecovery": true,
+      "conflictRecovery": true,
+      "longTag": true,
+      "readOnly": true
+    }
+  ]
+}

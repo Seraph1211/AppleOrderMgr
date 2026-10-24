@@ -1,0 +1,732 @@
+diff --git a/src/models/index.js b/src/models/index.js
+--- a/src/models/index.js
++++ b/src/models/index.js
+@@ -80,0 +81 @@
++  MonitorResourceTag: require('./MonitorResourceTag')(sequelize),
+diff --git a/src/models/MonitorResourceTag.js b/src/models/MonitorResourceTag.js
+new file mode 100644
+--- /dev/null
++++ b/src/models/MonitorResourceTag.js
+@@ -0,0 +1,15 @@
++const { DataTypes } = require('sequelize');
++
++/** 人工服务器／实例标签，独立于采集器状态。 @param {Object} sequelize 连接 @returns {Object} 模型 */
++module.exports = sequelize =>
++  sequelize.define(
++    'MonitorResourceTag',
++    {
++      id: { type: DataTypes.UUID, primaryKey: true, allowNull: false },
++      deviceId: { type: DataTypes.UUID, allowNull: false, field: 'device_id' },
++      localId: { type: DataTypes.UUID, allowNull: true, field: 'local_id' },
++      tag: { type: DataTypes.STRING(100), allowNull: false, defaultValue: '' },
++      version: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 },
++    },
++    { tableName: 'monitor_resource_tags', underscored: true, timestamps: true }
++  );
+diff --git a/src/routes/serverMonitor.js b/src/routes/serverMonitor.js
+--- a/src/routes/serverMonitor.js
++++ b/src/routes/serverMonitor.js
+@@ -7,0 +8 @@
++const tags = require('../services/monitorResourceTagService');
+@@ -49 +50,6 @@
+-  respond(() => logs.states())
++  respond(() => tags.states())
++);
++router.put(
++  '/logs/tags',
++  requirePermission('monitor.manage'),
++  respond(req => tags.save(req.user.id, req.body))
+diff --git a/src/services/monitorResourceTagService.js b/src/services/monitorResourceTagService.js
+new file mode 100644
+--- /dev/null
++++ b/src/services/monitorResourceTagService.js
+@@ -0,0 +1,117 @@
++const { randomUUID } = require('crypto');
++const {
++  sequelize,
++  AosDevice,
++  MonitorInstance,
++  MonitorLogState,
++  MonitorResourceTag,
++} = require('../models');
++const ApiError = require('../utils/ApiError');
++const logger = require('../utils/logger');
++const policy = require('./monitorPolicy');
++const logs = require('./monitorLogService');
++
++const resourceKey = (deviceId, localId) => `${deviceId}:${localId || ''}`;
++const plain = row => (row.toJSON ? row.toJSON() : row);
++
++/** 日志目录附加人工标签，无 N+1，不暴露设备凭证。 @returns {Promise<Object>} 目录 */
++async function states() {
++  try {
++    const [catalog, rows] = await Promise.all([logs.states(), MonitorResourceTag.findAll()]);
++    const tags = new Map(rows.map(row => [resourceKey(row.deviceId, row.localId), row]));
++    const tagged = (row, deviceId, localId) => {
++      const tag = tags.get(resourceKey(deviceId, localId));
++      return { ...plain(row), tag: tag?.tag || '', tagVersion: tag?.version || 0 };
++    };
++    return {
++      ...catalog,
++      devices: catalog.devices.map(row => tagged(row, row.id, null)),
++      instances: catalog.instances.map(row => tagged(row, row.deviceId, row.localId)),
++    };
++  } catch (error) {
++    logger.warn('监控标签目录读取失败', { errorCode: error.code || error.name });
++    throw error;
++  }
++}
++
++/**
++ * 持久化单个资源标签，使用事务锁及版本检查防止覆盖他人编辑。
++ * @param {number} actorId 操作用户
++ * @param {Object} body 资源、标签及期望版本
++ * @returns {Promise<Object>} 保存后的标签与版本
++ */
++async function save(actorId, body) {
++  try {
++    policy.fields(body, ['deviceId', 'localId', 'tag', 'expectedVersion']);
++    const deviceId = policy.uuid(body.deviceId).toLowerCase();
++    const localId = body.localId == null ? null : policy.uuid(body.localId).toLowerCase();
++    const tag = policy.shortText(body.tag, 100, true);
++    if (
++      [...body.tag].some(character => {
++        const code = character.charCodeAt(0);
++        return code < 32 || code === 127 || code === 8232 || code === 8233;
++      })
++    )
++      throw ApiError.badRequest('标签须为单行文本');
++    const expectedVersion = policy.integer(body.expectedVersion, 0, 2147483646);
++    return await sequelize.transaction(async transaction => {
++      try {
++        await sequelize.query('SELECT pg_advisory_xact_lock(hashtext(:resourceKey))', {
++          replacements: { resourceKey: `monitor-tag:${resourceKey(deviceId, localId)}` },
++          transaction,
++        });
++        const device = await AosDevice.findByPk(deviceId, {
++          attributes: ['id'],
++          transaction,
++          lock: transaction.LOCK.KEY_SHARE,
++        });
++        if (!device) throw ApiError.notFound('服务器不存在');
++        if (localId) {
++          const where = { deviceId, localId };
++          const configured = await MonitorInstance.findOne({
++            where,
++            attributes: ['id'],
++            transaction,
++          });
++          const observed =
++            configured ||
++            (await MonitorLogState.findOne({
++              where,
++              attributes: ['id'],
++              transaction,
++            }));
++          if (!observed) throw ApiError.notFound('实例不存在');
++        }
++        let row = await MonitorResourceTag.findOne({
++          where: { deviceId, localId },
++          transaction,
++          lock: transaction.LOCK.UPDATE,
++        });
++        if ((row?.version || 0) !== expectedVersion)
++          throw new ApiError(409, 'CONCURRENT_MODIFICATION', '标签已被修改，请重新读取后再保存');
++        if (row) await row.update({ tag, version: row.version + 1 }, { transaction });
++        else
++          row = await MonitorResourceTag.create(
++            {
++              id: randomUUID(),
++              deviceId,
++              localId,
++              tag,
++              version: 1,
++            },
++            { transaction }
++          );
++        logger.info('监控人工标签已保存', { actorId, deviceId, localId, version: row.version });
++        return { deviceId, localId, tag: row.tag, tagVersion: row.version };
++      } catch (error) {
++        logger.warn('监控标签保存失败', { actorId, errorCode: error.code || error.name });
++        throw error;
++      }
++    });
++  } catch (error) {
++    logger.warn('监控标签请求未完成', { actorId, errorCode: error.code || error.name });
++    throw error;
++  }
++}
++
++module.exports = { states, save };
+diff --git a/frontend/src/components/MonitorLogs.jsx b/frontend/src/components/MonitorLogs.jsx
+--- a/frontend/src/components/MonitorLogs.jsx
++++ b/frontend/src/components/MonitorLogs.jsx
+@@ -1 +1,3 @@
+-import ResponsiveSelect from './responsiveSelect';
++import MonitorResourceSelect from './monitorResourceSelect';
++import MonitorLogTags from './monitorLogTags';
++import { useAuth } from '../contexts/AuthContext';
+@@ -64,0 +67,3 @@
++  const { can } = useAuth();
++  const canManageTags = can('monitor.manage');
++  const [tagsOpen, setTagsOpen] = useState(false);
+@@ -112,0 +118,10 @@
++  const displayResource = (name, tag) => tag ? `${name} · ${tag}` : name;
++  function updateTag(saved) {
++    setCatalog(current => current && ({
++      ...current,
++      devices: current.devices.map(row => !saved.localId && row.id === saved.deviceId
++        ? { ...row, tag: saved.tag, tagVersion: saved.tagVersion } : row),
++      instances: current.instances.map(row => saved.localId && row.deviceId === saved.deviceId && row.localId === saved.localId
++        ? { ...row, tag: saved.tag, tagVersion: saved.tagVersion } : row),
++    }));
++  }
+@@ -606 +621 @@
+-          {chosenDevice?.name || '未选择服务器'} / {activeInstance?.label || '未选择实例'} ·{' '}
++          {displayResource(chosenDevice?.name, chosenDevice?.tag) || '未选择服务器'} / {displayResource(activeInstance?.label, activeInstance?.tag) || '未选择实例'} ·{' '}
+@@ -627,0 +643,10 @@
++        {canManageTags && <div className="mb-3 flex justify-end">
++          <button type="button" className="btn btn-secondary min-h-11 sm:min-h-0"
++            aria-expanded={tagsOpen} aria-controls="log-tag-management"
++            disabled={!catalog} onClick={() => setTagsOpen(current => !current)}>
++            {tagsOpen ? '收起标签管理' : '标签管理'}
++          </button>
++        </div>}
++        {canManageTags && tagsOpen && <div id="log-tag-management" className="mb-4">
++          <MonitorLogTags catalog={catalog} onSaved={updateTag} onCatalog={setCatalog} />
++        </div>}
+@@ -629,37 +654,13 @@
+-          <label className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
+-            服务器
+-            <ResponsiveSelect
+-              className="input mt-1 w-full text-base sm:text-sm"
+-              aria-label="服务器"
+-              value={filters.deviceId}
+-              onChange={e => change('deviceId', e.target.value)}
+-            >
+-              <option value="">请选择服务器</option>
+-              {catalog?.devices.map(device => (
+-                <option key={device.id} value={device.id}>
+-                  {device.name}
+-                  {device.enabled ? '' : '（已停用）'}
+-                </option>
+-              ))}
+-            </ResponsiveSelect>
+-          </label>
+-          <label className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
+-            软件实例
+-            <ResponsiveSelect
+-              className="input mt-1 w-full text-base sm:text-sm"
+-              aria-label="软件实例"
+-              value={filters.localId}
+-              disabled={!filters.deviceId}
+-              onChange={e => change('localId', e.target.value)}
+-            >
+-              <option value="">请选择实例</option>
+-              {catalog?.instances
+-                .filter(item => item.deviceId === filters.deviceId)
+-                .map(item => (
+-                  <option key={item.localId} value={item.localId}>
+-                    {item.label}
+-                    {item.active === false ? '（已移除）' : ''}
+-                  </option>
+-                ))}
+-            </ResponsiveSelect>
+-          </label>
++          <MonitorResourceSelect label="服务器" placeholder="请选择服务器"
++            value={filters.deviceId} onChange={value => change('deviceId', value)}
++            options={(catalog?.devices || []).map(device => ({
++              value: device.id,
++              label: `${displayResource(device.name, device.tag)}${device.enabled ? '' : '（已停用）'}`,
++            }))} />
++          <MonitorResourceSelect label="软件实例" placeholder="请选择实例"
++            value={filters.localId} disabled={!filters.deviceId}
++            onChange={value => change('localId', value)}
++            options={(catalog?.instances || []).filter(item => item.deviceId === filters.deviceId).map(item => ({
++              value: item.localId,
++              label: `${displayResource(item.label, item.tag)}${item.active === false ? '（已移除）' : ''}`,
++            }))} />
+@@ -842 +843 @@
+-            {chosenDevice?.name} / {activeInstance?.label} ·{' '}
++            {displayResource(chosenDevice?.name, chosenDevice?.tag)} / {displayResource(activeInstance?.label, activeInstance?.tag)} ·{' '}
+diff --git a/frontend/src/components/monitorResourceSelect.jsx b/frontend/src/components/monitorResourceSelect.jsx
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/components/monitorResourceSelect.jsx
+@@ -0,0 +1,169 @@
++import { useEffect, useId, useRef, useState } from 'react';
++import { Check, ChevronDown, Search } from 'lucide-react';
++
++/** 服务器／实例单选；展开列表直接占据文档流，桌面与手机使用同一交互。 */
++export default function MonitorResourceSelect({
++  label,
++  placeholder,
++  value,
++  options,
++  disabled,
++  onChange,
++}) {
++  const [open, setOpen] = useState(false);
++  const [search, setSearch] = useState('');
++  const [active, setActive] = useState(-1);
++  const rootRef = useRef(null);
++  const triggerRef = useRef(null);
++  const searchRef = useRef(null);
++  const id = useId();
++  const keyword = search.normalize('NFKC').trim().toLocaleLowerCase('zh-CN');
++  const choices = [{ value: '', label: placeholder }, ...options].filter(option =>
++    option.label.normalize('NFKC').toLocaleLowerCase('zh-CN').includes(keyword)
++  );
++  const selected = options.find(option => option.value === value);
++  useEffect(() => {
++    setOpen(false);
++    setSearch('');
++  }, [disabled, value]);
++  useEffect(() => {
++    if (!open) return undefined;
++    function outside(event) {
++      if (!rootRef.current?.contains(event.target)) setOpen(false);
++    }
++    document.addEventListener('pointerdown', outside);
++    return () => document.removeEventListener('pointerdown', outside);
++  }, [open]);
++  useEffect(() => {
++    if (open && active >= 0) {
++      document.getElementById(`${id}-${active}`)?.scrollIntoView({ block: 'nearest' });
++    }
++  }, [open, active, id]);
++  function close() {
++    setOpen(false);
++    triggerRef.current?.focus({ preventScroll: true });
++  }
++  function choose(option) {
++    onChange(option.value);
++    close();
++  }
++  function handleKey(event) {
++    if (event.key === 'Escape') {
++      event.preventDefault();
++      close();
++    } else if (['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
++      if (['Home', 'End'].includes(event.key) && event.target === searchRef.current) return;
++      event.preventDefault();
++      const next =
++        event.key === 'Home'
++          ? 0
++          : event.key === 'End'
++            ? choices.length - 1
++            : event.key === 'ArrowDown'
++              ? Math.min(active + 1, choices.length - 1)
++              : Math.max(active - 1, 0);
++      setActive(next);
++    } else if (event.key === 'Enter') {
++      event.preventDefault();
++      if (active >= 0 && choices[active]) choose(choices[active]);
++    }
++  }
++  return (
++    <div
++      ref={rootRef}
++      className="min-w-0 text-sm text-gray-600"
++      onBlur={event => {
++        if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
++      }}
++    >
++      <span id={`${id}-label`}>{label}</span>
++      <button
++        ref={triggerRef}
++        type="button"
++        disabled={disabled}
++        className="input mt-1 flex min-h-11 w-full items-center gap-2 text-left text-base sm:min-h-0 sm:text-sm"
++        aria-label={label}
++        title={selected?.label || placeholder}
++        aria-haspopup="listbox"
++        aria-expanded={open}
++        aria-controls={open ? `${id}-list` : undefined}
++        onClick={() => {
++          setSearch('');
++          setActive(-1);
++          setOpen(current => !current);
++        }}
++        onKeyDown={event => {
++          if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
++            event.preventDefault();
++            setSearch('');
++            setActive(-1);
++            setOpen(true);
++            requestAnimationFrame(() => searchRef.current?.focus({ preventScroll: true }));
++          } else if (event.key === 'Escape') setOpen(false);
++        }}
++      >
++        <span
++          className={`line-clamp-2 min-w-0 flex-1 break-words ${value ? 'text-gray-900' : 'text-gray-400'}`}
++        >
++          {selected?.label || placeholder}
++        </span>
++        <ChevronDown
++          className={`h-4 w-4 shrink-0 text-gray-500 ${open ? 'rotate-180' : ''}`}
++          aria-hidden="true"
++        />
++      </button>
++      {open && (
++        <div className="mt-1 rounded-lg border border-gray-200 bg-white p-1" onKeyDown={handleKey}>
++          <div className="flex items-center gap-2 border-b border-gray-100 px-2 py-2">
++            <Search className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
++            <input
++              ref={searchRef}
++              className="input min-w-0 w-full text-base sm:text-sm"
++              role="combobox"
++              aria-label={`搜索${label}`}
++              aria-autocomplete="list"
++              aria-controls={`${id}-list`}
++              aria-expanded="true"
++              aria-activedescendant={active >= 0 && choices[active] ? `${id}-${active}` : undefined}
++              placeholder="搜索名称、编号或标签"
++              value={search}
++              onChange={event => {
++                setSearch(event.target.value);
++                setActive(-1);
++              }}
++            />
++          </div>
++          <div
++            id={`${id}-list`}
++            role="listbox"
++            aria-labelledby={`${id}-label`}
++            className="max-h-64 overflow-y-auto overflow-x-hidden py-1"
++          >
++            {choices.map((option, index) => (
++              <button
++                key={option.value}
++                id={`${id}-${index}`}
++                type="button"
++                role="option"
++                aria-selected={option.value === value}
++                tabIndex={-1}
++                className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base sm:min-h-0 sm:text-sm ${option.value === value || active === index ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'}`}
++                onClick={() => choose(option)}
++              >
++                <span className="min-w-0 flex-1 break-words">{option.label}</span>
++                {option.value === value && (
++                  <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
++                )}
++              </button>
++            ))}
++            {!choices.length && (
++              <p className="px-3 py-4 text-sm text-gray-500" role="status">
++                无匹配选项
++              </p>
++            )}
++          </div>
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/frontend/src/components/monitorLogTags.jsx b/frontend/src/components/monitorLogTags.jsx
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/components/monitorLogTags.jsx
+@@ -0,0 +1,213 @@
++import { useEffect, useState } from 'react';
++import { RefreshCw, Save, X } from 'lucide-react';
++import client from '../api/client';
++
++function TagRow({ resource, onSaved, onCatalog }) {
++  const [draft, setDraft] = useState(resource.tag || '');
++  const [version, setVersion] = useState(resource.tagVersion || 0);
++  const [editing, setEditing] = useState(false);
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState('');
++  const [conflict, setConflict] = useState(false);
++  const [notice, setNotice] = useState('');
++  useEffect(() => {
++    if (!editing) {
++      setDraft(resource.tag || '');
++      setVersion(resource.tagVersion || 0);
++    }
++  }, [resource.tag, resource.tagVersion, editing]);
++  async function save(tag) {
++    setBusy(true);
++    setError('');
++    setNotice('');
++    try {
++      const response = await client.put('/server-monitor/logs/tags', {
++        deviceId: resource.deviceId,
++        localId: resource.localId,
++        tag,
++        expectedVersion: version,
++      });
++      onSaved(response.data);
++      setDraft(response.data.tag);
++      setVersion(response.data.tagVersion);
++      setEditing(false);
++      setConflict(false);
++      setNotice(response.data.tag ? '已保存' : '已清空');
++    } catch (failure) {
++      setError(failure.message || '标签保存失败');
++      setConflict(failure.code === 'CONCURRENT_MODIFICATION');
++    } finally {
++      setBusy(false);
++    }
++  }
++  async function reload() {
++    setBusy(true);
++    try {
++      const response = await client.get('/server-monitor/logs/states');
++      const latest = resource.localId
++        ? response.data.instances.find(
++            item => item.deviceId === resource.deviceId && item.localId === resource.localId
++          )
++        : response.data.devices.find(item => item.id === resource.deviceId);
++      if (!latest) throw new Error('资源已不存在，请刷新页面');
++      onCatalog(response.data);
++      setVersion(latest.tagVersion || 0);
++      setConflict(false);
++      setError('');
++      setNotice(`最新标签：${latest.tag || '未设置'}；已保留当前输入，请确认后保存`);
++    } catch (failure) {
++      setError(failure.message || '重新读取失败');
++    } finally {
++      setBusy(false);
++    }
++  }
++  return (
++    <tr className="border-t border-gray-100">
++      <td className="whitespace-nowrap px-3 py-3 align-top text-gray-600">
++        {resource.localId ? '实例' : '服务器'}
++      </td>
++      <td className="min-w-44 max-w-xs break-words px-3 py-3 align-top text-gray-900">
++        {resource.name}
++        {resource.status && <span className="ml-1 text-gray-500">{resource.status}</span>}
++      </td>
++      <td className="px-3 py-2 align-top">
++        <input
++          aria-label={`${resource.name}标签`}
++          className="input min-h-11 w-full min-w-40 text-base sm:min-h-0 sm:text-sm"
++          maxLength={100}
++          placeholder="未设置标签"
++          disabled={busy}
++          value={draft}
++          onKeyDown={event => {
++            if (event.key === 'Enter') {
++              event.preventDefault();
++              if (!busy && draft.trim() !== (resource.tag || '')) save(draft);
++            }
++          }}
++          onChange={event => {
++            setDraft(event.target.value);
++            setEditing(true);
++            setNotice('');
++          }}
++        />
++        {error && (
++          <p role="alert" className="mt-1 text-xs text-red-700">
++            {error}
++          </p>
++        )}
++        {notice && (
++          <p role="status" className="mt-1 max-w-md break-words text-xs text-gray-600">
++            {notice}
++          </p>
++        )}
++      </td>
++      <td className="px-3 py-2 align-top">
++        <div className="flex flex-wrap gap-2">
++          <button
++            type="button"
++            className="btn btn-primary inline-flex min-h-11 items-center gap-1 whitespace-nowrap sm:min-h-0"
++            disabled={busy || draft.trim() === (resource.tag || '')}
++            onClick={() => save(draft)}
++          >
++            <Save className="h-4 w-4" aria-hidden="true" />
++            {busy ? '处理中…' : '保存'}
++          </button>
++          <button
++            type="button"
++            className="btn btn-secondary inline-flex min-h-11 items-center gap-1 whitespace-nowrap sm:min-h-0"
++            disabled={busy || !(resource.tag || draft)}
++            onClick={() => save('')}
++          >
++            <X className="h-4 w-4" aria-hidden="true" />
++            清空
++          </button>
++          {conflict && (
++            <button
++              type="button"
++              className="btn btn-secondary inline-flex min-h-11 items-center gap-1 whitespace-nowrap sm:min-h-0"
++              disabled={busy}
++              onClick={reload}
++            >
++              <RefreshCw className="h-4 w-4" aria-hidden="true" />
++              重新读取
++            </button>
++          )}
++        </div>
++      </td>
++    </tr>
++  );
++}
++
++/** 服务器与实例人工标签表格；逐行保存，冲突时保留草稿。 */
++export default function MonitorLogTags({ catalog, onSaved, onCatalog }) {
++  const [search, setSearch] = useState('');
++  const resources = (catalog?.devices || []).flatMap(device => [
++    {
++      ...device,
++      name: device.name,
++      deviceId: device.id,
++      localId: null,
++      status: device.enabled ? '' : '（已停用）',
++    },
++    ...(catalog.instances || [])
++      .filter(item => item.deviceId === device.id)
++      .map(item => ({
++        ...item,
++        name: `${device.name} / ${item.label}`,
++        status: item.active === false ? '（已移除）' : '',
++      })),
++  ]);
++  const keyword = search.normalize('NFKC').trim().toLocaleLowerCase('zh-CN');
++  const filtered = resources.filter(item =>
++    `${item.name} ${item.tag || ''}`.normalize('NFKC').toLocaleLowerCase('zh-CN').includes(keyword)
++  );
++  return (
++    <section
++      role="region"
++      aria-label="服务器与实例标签管理"
++      className="rounded-lg border border-gray-200 bg-white p-4"
++    >
++      <h3 className="font-semibold text-gray-900">服务器与实例标签管理</h3>
++      <p className="mt-1 text-sm text-gray-500">
++        每台服务器、每个实例可设置一个标签，最多100字符；保存后在查询下拉框中展示。
++      </p>
++      <input
++        className="input mt-3 w-full text-base sm:max-w-sm sm:text-sm"
++        aria-label="搜索标签管理资源"
++        placeholder="搜索服务器、实例或标签"
++        value={search}
++        onKeyDown={event => {
++          if (event.key === 'Enter') event.preventDefault();
++        }}
++        onChange={event => setSearch(event.target.value)}
++      />
++      <div className="mt-3 max-h-96 overflow-auto">
++        <table className="w-full min-w-[720px] text-left text-sm">
++          <thead className="bg-gray-50 text-gray-600">
++            <tr>
++              <th className="whitespace-nowrap px-3 py-2 font-medium">类型</th>
++              <th className="px-3 py-2 font-medium">服务器／实例</th>
++              <th className="px-3 py-2 font-medium">标签</th>
++              <th className="px-3 py-2 font-medium">操作</th>
++            </tr>
++          </thead>
++          <tbody>
++            {filtered.map(resource => (
++              <TagRow
++                key={`${resource.deviceId}:${resource.localId || ''}`}
++                resource={resource}
++                onSaved={onSaved}
++                onCatalog={onCatalog}
++              />
++            ))}
++          </tbody>
++        </table>
++        {!filtered.length && (
++          <p role="status" className="p-4 text-center text-sm text-gray-500">
++            {resources.length ? '无匹配资源' : '暂无服务器或实例'}
++          </p>
++        )}
++      </div>
++    </section>
++  );
++}
+diff --git a/frontend/src/components/monitorLogs.css b/frontend/src/components/monitorLogs.css
+--- a/frontend/src/components/monitorLogs.css
++++ b/frontend/src/components/monitorLogs.css
+@@ -40,6 +40,4 @@
+-    grid-template-columns:
+-      minmax(8rem, 0.8fr)
+-      minmax(9rem, 0.9fr)
+-      minmax(9.5rem, 1fr)
+-      minmax(26rem, 2.3fr)
+-      minmax(12rem, 1.3fr);
++    grid-template-columns: repeat(3, minmax(0, 1fr));
++  }
++  .monitor-log-filter-grid > :nth-child(4) {
++    grid-column: span 2;
+diff --git a/migrations/20261024000001-add-monitor-resource-tags.js b/migrations/20261024000001-add-monitor-resource-tags.js
+new file mode 100644
+--- /dev/null
++++ b/migrations/20261024000001-add-monitor-resource-tags.js
+@@ -0,0 +1,70 @@
++'use strict';
++const logger = require('../src/utils/logger');
++
++/** 独立保存人工标签，不修改日志原文与采集器配置。 */
++module.exports = {
++  async up(queryInterface, Sequelize) {
++    try {
++      await queryInterface.sequelize.transaction(async transaction => {
++        try {
++          const time = {
++            type: Sequelize.DATE,
++            allowNull: false,
++            defaultValue: Sequelize.literal('CURRENT_TIMESTAMP'),
++          };
++          await queryInterface.createTable(
++            'monitor_resource_tags',
++            {
++              id: { type: Sequelize.UUID, primaryKey: true, allowNull: false },
++              device_id: {
++                type: Sequelize.UUID,
++                allowNull: false,
++                references: { model: 'aos_devices', key: 'id' },
++                onDelete: 'CASCADE',
++              },
++              local_id: { type: Sequelize.UUID, allowNull: true },
++              tag: { type: Sequelize.STRING(100), allowNull: false, defaultValue: '' },
++              version: { type: Sequelize.INTEGER, allowNull: false, defaultValue: 1 },
++              created_at: time,
++              updated_at: time,
++            },
++            { transaction }
++          );
++          await queryInterface.addIndex('monitor_resource_tags', ['device_id'], {
++            unique: true,
++            name: 'monitor_resource_tags_device_unique',
++            where: { local_id: null },
++            transaction,
++          });
++          await queryInterface.addIndex('monitor_resource_tags', ['device_id', 'local_id'], {
++            unique: true,
++            name: 'monitor_resource_tags_instance_unique',
++            where: { local_id: { [Sequelize.Op.ne]: null } },
++            transaction,
++          });
++        } catch (error) {
++          logger.warn('人工监控标签迁移失败', { errorCode: error.name });
++          throw error;
++        }
++      });
++    } catch (error) {
++      logger.warn('人工监控标签迁移失败', { errorCode: error.name });
++      throw error;
++    }
++  },
++  async down(queryInterface) {
++    try {
++      await queryInterface.sequelize.transaction(async transaction => {
++        try {
++          await queryInterface.dropTable('monitor_resource_tags', { transaction });
++        } catch (error) {
++          logger.warn('人工监控标签回退失败', { errorCode: error.name });
++          throw error;
++        }
++      });
++    } catch (error) {
++      logger.warn('人工监控标签回退失败', { errorCode: error.name });
++      throw error;
++    }
++  },
++};

@@ -1,0 +1,2 @@
+FROM apple-order-mgr-migrator:20261019T135812Z-b8423620ac9d-amd64
+COPY --chown=node:node migrations/20261024000001-add-monitor-resource-tags.js /app/migrations/20261024000001-add-monitor-resource-tags.js

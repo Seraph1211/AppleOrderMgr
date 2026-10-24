@@ -1052,9 +1052,10 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 
 ## 完整运行日志查询（2026-09-29）
 
-网站均要求 `monitor.manage`，返回 `Cache-Control: no-store`。日期按北京时间今天及之前29天校验，非法日期、范围、游标返回400，缺资源404。
+日志读取沿用现有日志读取权限（当前生产为 `monitor.logs.read`），人工标签写入额外要求 `monitor.manage`，返回 `Cache-Control: no-store`。仅有日志读取权限的用户可见标签，但不显示标签管理入口且不能写入。日期按北京时间今天及之前29天校验，非法日期、范围、游标返回400，缺资源404。
 
-- GET `/api/server-monitor/logs/states`：设备、实例和最新完整日志扫描状态；设备凭证和本地路径不返回。兼容未升级设备显示等待接入。
+- GET `/api/server-monitor/logs/states`：设备、实例和最新完整日志扫描状态；设备和实例均返回人工标签 `tag`（未设置为空字符串）及 `tagVersion`（未设置为0）。设备凭证和本地路径不返回。兼容未升级设备显示等待接入。
+- PUT `/api/server-monitor/logs/tags`：要求 `monitor.manage`，输入 `{deviceId,localId?,tag,expectedVersion}`。省略或传 `null` 的 `localId` 表示服务器，否则定位该服务器下的实例；`tag` 为最多100字符的单行文本，去首尾空格，空字符串清空；不接受未知字段。`expectedVersion` 为最近读取的 `tagVersion`，首次为0。成功返回 `{deviceId,localId,tag,tagVersion}`，并递增版本；并发修改返回409，资源不存在404。允许维护停用服务器、已移除但仍有配置或日志状态的实例。标签独立持久化，不改原名称、编号或采集状态，不随采集器同步和90天日志清理覆盖。
 - GET `/api/server-monitor/logs/accounts?deviceId=&localId=&date=&search=&after=`：指定实例日期的账号编号候选，每页最多100个，返回 items/nextCursor；search 为字面包含。
 - GET `/api/server-monitor/logs?deviceId=&localId=&date=&account=&fromTime=&toTime=&keyword=&cursor=&limit=`：必填设备／实例／日期，可选账号（`__unassigned__` 表示未识别）、HH:mm:ss 时间段、字面关键词；limit 默认50、最大100。cursor 缺省或空字符串表示首页；非空游标必须有效并绑定相同筛选。按 sort_at/file_id/byte_offset/id 稳定升序游标分页，返回 items/nextCursor，不承诺历史补采期间结果快照固定。片段按 fileId/lineNumber/partIndex 还原，超长行分段不截断。
 - GET `/api/server-monitor/logs/:id/context?scope=account|instance`：前后各20个片段，限定同设备、实例、业务日；账号上下文要求有已识别账号，实例上下文包含未识别行。

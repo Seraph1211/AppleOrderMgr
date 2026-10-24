@@ -4,6 +4,7 @@ const { requirePermission } = require('../middleware/authMiddleware');
 const asyncHandler = require('../utils/asyncHandler');
 const service = require('../services/monitorService');
 const logs = require('../services/monitorLogService');
+const tags = require('../services/monitorResourceTagService');
 const notifications = require('../services/monitorNotificationService');
 const router = express.Router();
 router.use(requirePermission('monitor.manage'));
@@ -23,7 +24,12 @@ function respond(work) {
 }
 router.get(
   '/logs/states',
-  respond(() => logs.states())
+  respond(() => tags.states())
+);
+router.put(
+  '/logs/tags',
+  requirePermission('monitor.manage'),
+  respond(req => tags.save(req.user.id, req.body))
 );
 router.get(
   '/logs/accounts',

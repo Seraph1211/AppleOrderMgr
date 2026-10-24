@@ -5,6 +5,15 @@ const path = require('node:path');
 const { chromium } = require('playwright-core');
 const logger = require('../src/utils/logger');
 const logPolicy = require('../src/services/monitorLogPolicy');
+/** 通过真实点击操作日志资源下拉，不绕过交互直接修改表单值。 */
+async function chooseResource(panel, name, value) {
+  try {
+    await panel.getByRole('button', { name, exact: true }).click();
+    await panel.getByRole('option').filter({ hasText: value }).click();
+  } catch (error) {
+    throw new Error(`选择${name}失败：${error.message}`);
+  }
+}
 /** 合成浏览器验收，拦截所有API，不访问业务数据。 */
 async function main() {
   let browser;
@@ -188,11 +197,10 @@ async function main() {
         }
       });
       await context.addInitScript(() => localStorage.setItem('token', 'synthetic-full-log-token'));
-      await page.goto('http://127.0.0.1:5173/server-monitor');
-      await page.getByRole('tab', { name: '日志查询', exact: true }).click();
+      await page.goto('http://127.0.0.1:5173/server-monitor/logs');
       const panel = page.getByRole('region', { name: '完整日志查询', exact: true });
-      await panel.getByLabel('服务器', { exact: true }).selectOption(deviceId);
-      await panel.getByLabel('软件实例', { exact: true }).selectOption(localId);
+      await chooseResource(panel, '服务器', '测试服务器01');
+      await chooseResource(panel, '软件实例', '软件实例1');
       await panel.getByRole('button', { name: '选择第1条日志', exact: true }).waitFor();
       assert.equal(await page.evaluate(() => window.logInjected), undefined);
       const reader = panel.getByRole('region', { name: '日志阅读区', exact: true });
@@ -361,11 +369,11 @@ async function main() {
       assert.equal(await reader.evaluate(element => element.scrollTop), 0);
       assert(await panel.getByRole('button', { name: '复制选中日志' }).isDisabled());
       assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
-      await panel.getByLabel('软件实例', { exact: true }).selectOption(otherId);
+      await chooseResource(panel, '软件实例', '软件实例2');
       await panel.getByText('实例二账号128独立日志', { exact: true }).waitFor();
       assert.equal(await reader.locator('tbody tr').count(), 1);
       assert(await panel.getByLabel('服务器', { exact: true }).isVisible());
-      await panel.getByLabel('软件实例', { exact: true }).selectOption(localId);
+      await chooseResource(panel, '软件实例', '软件实例1');
       await first.waitFor();
       fail = true;
       await panel.getByRole('button', { name: '重新查询日志，从头加载', exact: true }).click();

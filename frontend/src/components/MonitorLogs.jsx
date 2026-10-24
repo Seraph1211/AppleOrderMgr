@@ -1,4 +1,6 @@
-import ResponsiveSelect from './responsiveSelect';
+import MonitorResourceSelect from './monitorResourceSelect';
+import MonitorLogTags from './monitorLogTags';
+import { useAuth } from '../contexts/AuthContext';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Copy, Maximize2, Minimize2, RefreshCw, Search, ScrollText, X } from 'lucide-react';
 import client from '../api/client';
@@ -49,6 +51,9 @@ const initial = () => ({
 
 /** 完整日志筛选与上下文；原文只作为文本渲染。 */
 export default function MonitorLogs({ standalone = false }) {
+  const { can } = useAuth();
+  const canManageTags = can('monitor.manage');
+  const [tagsOpen, setTagsOpen] = useState(false);
   const Heading = standalone ? 'h1' : 'h2';
   const [catalog, setCatalog] = useState(null);
   const [catalogError, setCatalogError] = useState('');
@@ -91,6 +96,16 @@ export default function MonitorLogs({ standalone = false }) {
   const activeInstance = catalog?.instances.find(
     row => row.deviceId === filters.deviceId && row.localId === filters.localId
   );
+  const displayResource = (name, tag) => tag ? `${name} · ${tag}` : name;
+  function updateTag(saved) {
+    setCatalog(current => current && ({
+      ...current,
+      devices: current.devices.map(row => !saved.localId && row.id === saved.deviceId
+        ? { ...row, tag: saved.tag, tagVersion: saved.tagVersion } : row),
+      instances: current.instances.map(row => saved.localId && row.deviceId === saved.deviceId && row.localId === saved.localId
+        ? { ...row, tag: saved.tag, tagVersion: saved.tagVersion } : row),
+    }));
+  }
   const snapshot = activeInstance?.snapshot;
   const chosenDevice = catalog?.devices.find(row => row.id === filters.deviceId);
 
@@ -471,7 +486,7 @@ export default function MonitorLogs({ standalone = false }) {
       {!catalog && !catalogError && <p className="text-gray-500">正在读取服务器与实例…</p>}
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <p className="min-w-0 break-words text-gray-600">
-          {chosenDevice?.name || '未选择服务器'} / {activeInstance?.label || '未选择实例'} ·{' '}
+          {displayResource(chosenDevice?.name, chosenDevice?.tag) || '未选择服务器'} / {displayResource(activeInstance?.label, activeInstance?.tag) || '未选择实例'} ·{' '}
           {filters.date}
           {filters.account &&
             ` · 账号 ${filters.account === '__unassigned__' ? '未识别' : filters.account}`}
@@ -495,44 +510,30 @@ export default function MonitorLogs({ standalone = false }) {
         onSubmit={submit}
         className="rounded-lg border border-gray-200 bg-white p-4"
       >
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <label className="text-sm text-gray-600">
-            服务器
-            <ResponsiveSelect
-              className="input mt-1 w-full text-base sm:text-sm"
-              aria-label="服务器"
-              value={filters.deviceId}
-              onChange={e => change('deviceId', e.target.value)}
-            >
-              <option value="">请选择服务器</option>
-              {catalog?.devices.map(device => (
-                <option key={device.id} value={device.id}>
-                  {device.name}
-                  {device.enabled ? '' : '（已停用）'}
-                </option>
-              ))}
-            </ResponsiveSelect>
-          </label>
-          <label className="text-sm text-gray-600">
-            软件实例
-            <ResponsiveSelect
-              className="input mt-1 w-full text-base sm:text-sm"
-              aria-label="软件实例"
-              value={filters.localId}
-              disabled={!filters.deviceId}
-              onChange={e => change('localId', e.target.value)}
-            >
-              <option value="">请选择实例</option>
-              {catalog?.instances
-                .filter(item => item.deviceId === filters.deviceId)
-                .map(item => (
-                  <option key={item.localId} value={item.localId}>
-                    {item.label}
-                    {item.active === false ? '（已移除）' : ''}
-                  </option>
-                ))}
-            </ResponsiveSelect>
-          </label>
+        {canManageTags && <div className="mb-3 flex justify-end">
+          <button type="button" className="btn btn-secondary min-h-11 sm:min-h-0"
+            aria-expanded={tagsOpen} aria-controls="log-tag-management"
+            disabled={!catalog} onClick={() => setTagsOpen(current => !current)}>
+            {tagsOpen ? '收起标签管理' : '标签管理'}
+          </button>
+        </div>}
+        {canManageTags && tagsOpen && <div id="log-tag-management" className="mb-4">
+          <MonitorLogTags catalog={catalog} onSaved={updateTag} onCatalog={setCatalog} />
+        </div>}
+        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <MonitorResourceSelect label="服务器" placeholder="请选择服务器"
+            value={filters.deviceId} onChange={value => change('deviceId', value)}
+            options={(catalog?.devices || []).map(device => ({
+              value: device.id,
+              label: `${displayResource(device.name, device.tag)}${device.enabled ? '' : '（已停用）'}`,
+            }))} />
+          <MonitorResourceSelect label="软件实例" placeholder="请选择实例"
+            value={filters.localId} disabled={!filters.deviceId}
+            onChange={value => change('localId', value)}
+            options={(catalog?.instances || []).filter(item => item.deviceId === filters.deviceId).map(item => ({
+              value: item.localId,
+              label: `${displayResource(item.label, item.tag)}${item.active === false ? '（已移除）' : ''}`,
+            }))} />
           <label className="text-sm text-gray-600">
             日志日期
             <input
