@@ -1,0 +1,498 @@
+diff --git a/frontend/src/components/MonitorLogs.jsx b/frontend/src/components/MonitorLogs.jsx
+--- a/frontend/src/components/MonitorLogs.jsx
++++ b/frontend/src/components/MonitorLogs.jsx
+@@ -1,0 +2 @@
++import './monitorFilterLayout.css';
+@@ -652,0 +654 @@
++        <div className="monitor-log-filter-scroll" role="region" aria-label="日志筛选条件" tabIndex={0}>
+@@ -657,0 +660,3 @@
++              name: device.name,
++              tag: device.tag,
++              status: device.enabled ? '' : '已停用',
+@@ -664,0 +670,3 @@
++              name: item.label,
++              tag: item.tag,
++              status: item.active === false ? '已移除' : '',
+@@ -667,2 +675,2 @@
+-          <div className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
+-            <span>账号编号</span>
++          <div className="monitor-log-filter-field monitor-filter-account">
++            <span className="monitor-filter-label">账号编号</span>
+@@ -695,2 +703,2 @@
+-            <span className="mb-1 block">
+-              日志时间范围 <span className="text-xs text-gray-400">（北京时间）</span>
++            <span className="monitor-filter-label">
++              时间范围 <span className="text-[11px] font-normal text-gray-400">北京时间</span>
+@@ -712 +720,3 @@
+-            正文关键词
++            <span className="monitor-filter-label">正文关键词</span>
++            <div className="monitor-filter-keyword-control">
++            <Search className="monitor-filter-keyword-icon h-4 w-4" aria-hidden="true" />
+@@ -716 +726 @@
+-              placeholder="例如：加入购物车、店铺编号"
++              placeholder="输入关键词"
+@@ -720,0 +731 @@
++            </div>
+@@ -721,0 +733 @@
++        </div>
+diff --git a/frontend/src/components/monitorLogs.css b/frontend/src/components/monitorLogs.css
+--- a/frontend/src/components/monitorLogs.css
++++ b/frontend/src/components/monitorLogs.css
+@@ -3,45 +2,0 @@
+-}
+-.monitor-log-filter-form {
+-  container: monitor-log-filter / inline-size;
+-}
+-.monitor-log-filter-grid {
+-  display: grid;
+-  grid-template-columns: minmax(0, 1fr);
+-  align-items: stretch;
+-  gap: 12px;
+-}
+-.monitor-log-filter-field {
+-  min-width: 0;
+-}
+-.monitor-log-filter-grid .input,
+-.monitor-log-filter-grid .responsive-select-trigger,
+-.monitor-log-filter-grid .monitor-log-range-trigger {
+-  min-height: 38px;
+-}
+-.monitor-log-range-trigger {
+-  display: flex;
+-  width: 100%;
+-  align-items: center;
+-  gap: 8px;
+-  color: #1e3a8a;
+-  border-color: #bfdbfe;
+-  background: #eff6ff;
+-}
+-@container monitor-log-filter (min-width: 640px) {
+-  .monitor-log-filter-grid {
+-    grid-template-columns: repeat(2, minmax(0, 1fr));
+-  }
+-  .monitor-log-filter-field:last-child {
+-    grid-column: 1 / -1;
+-  }
+-}
+-@container monitor-log-filter (min-width: 1080px) {
+-  .monitor-log-filter-grid {
+-    grid-template-columns: repeat(3, minmax(0, 1fr));
+-  }
+-  .monitor-log-filter-grid > :nth-child(4) {
+-    grid-column: span 2;
+-  }
+-  .monitor-log-filter-field:last-child {
+-    grid-column: auto;
+-  }
+@@ -91,5 +45,0 @@
+-  .monitor-log-filter-grid .input,
+-  .monitor-log-filter-grid .responsive-select-trigger,
+-  .monitor-log-filter-grid .monitor-log-range-trigger {
+-    min-height: 44px;
+-  }
+diff --git a/frontend/src/components/monitorLogRangeFilter.jsx b/frontend/src/components/monitorLogRangeFilter.jsx
+--- a/frontend/src/components/monitorLogRangeFilter.jsx
++++ b/frontend/src/components/monitorLogRangeFilter.jsx
+@@ -23,0 +24,11 @@
++  const completeRange = describeLogRange(startAt, endAt);
++  const start = normalizeLogDateTime(startAt);
++  const end = normalizeLogDateTime(endAt);
++  const compactRange =
++    !start || !end
++      ? '选择日期与时间'
++      : start.slice(0, 4) !== end.slice(0, 4)
++        ? `${start.replace('T', ' ').slice(0, 16)} → ${end.replace('T', ' ').slice(0, 16)}`
++        : start.slice(0, 10) === end.slice(0, 10)
++          ? `${start.slice(5).replace('T', ' ')}–${end.slice(11)}`
++          : `${start.slice(5).replace('T', ' ')} → ${end.slice(5).replace('T', ' ')}`;
+@@ -108 +119,2 @@
+-        aria-label={`日志时间范围：${describeLogRange(startAt, endAt)}`}
++        aria-label={`日志时间范围：${completeRange}`}
++        title={completeRange}
+@@ -121,3 +133 @@
+-        <span className="min-w-0 flex-1 whitespace-normal text-left">
+-          {describeLogRange(startAt, endAt)}
+-        </span>
++        <span className="monitor-log-range-summary">{compactRange}</span>
+diff --git a/frontend/src/components/monitorResourceSelect.jsx b/frontend/src/components/monitorResourceSelect.jsx
+--- a/frontend/src/components/monitorResourceSelect.jsx
++++ b/frontend/src/components/monitorResourceSelect.jsx
+@@ -2,0 +3 @@
++import './monitorResourceSelect.css';
+@@ -74 +75 @@
+-      className="min-w-0 text-sm text-gray-600"
++      className="monitor-resource-select"
+@@ -79 +80,3 @@
+-      <span id={`${id}-label`}>{label}</span>
++      <span id={`${id}-label`} className="monitor-resource-label">
++        {label}
++      </span>
+@@ -84 +87 @@
+-        className="input mt-1 flex min-h-11 w-full items-center gap-2 text-left text-base sm:min-h-0 sm:text-sm"
++        className="input monitor-resource-trigger"
+@@ -105,4 +108,11 @@
+-        <span
+-          className={`line-clamp-2 min-w-0 flex-1 break-words ${value ? 'text-gray-900' : 'text-gray-400'}`}
+-        >
+-          {selected?.label || placeholder}
++        <span className="monitor-resource-trigger-content">
++          <span
++            className={`monitor-resource-trigger-name ${value ? '' : 'monitor-resource-placeholder'}`}
++          >
++            {selected?.name || selected?.label || placeholder}
++          </span>
++          {selected?.tag && (
++            <span className="monitor-resource-trigger-tag" title={selected.tag}>
++              {selected.tag}
++            </span>
++          )}
+@@ -116,2 +126,2 @@
+-        <div className="mt-1 rounded-lg border border-gray-200 bg-white p-1" onKeyDown={handleKey}>
+-          <div className="flex items-center gap-2 border-b border-gray-100 px-2 py-2">
++        <div className="monitor-resource-menu" onKeyDown={handleKey}>
++          <div className="monitor-resource-search">
+@@ -121 +131 @@
+-              className="input min-w-0 w-full text-base sm:text-sm"
++              className="input monitor-resource-search-input"
+@@ -140 +150 @@
+-            className="max-h-64 overflow-y-auto overflow-x-hidden py-1"
++            className="monitor-resource-options"
+@@ -150 +160,3 @@
+-                className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base sm:min-h-0 sm:text-sm ${option.value === value || active === index ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'}`}
++                aria-label={option.label}
++                data-active={active === index}
++                className="monitor-resource-option"
+@@ -153 +165,13 @@
+-                <span className="min-w-0 flex-1 break-words">{option.label}</span>
++                <span className="monitor-resource-option-content">
++                  <span className="monitor-resource-option-name">
++                    {option.name || option.label}
++                  </span>
++                  {(option.tag || option.status) && (
++                    <span className="monitor-resource-option-details">
++                      {option.tag && (
++                        <span className="monitor-resource-option-tag">{option.tag}</span>
++                      )}
++                      {option.status && <span>{option.status}</span>}
++                    </span>
++                  )}
++                </span>
+diff --git a/frontend/src/components/monitorResourceSelect.css b/frontend/src/components/monitorResourceSelect.css
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/components/monitorResourceSelect.css
+@@ -0,0 +1,183 @@
++.monitor-resource-select {
++  min-width: 0;
++  color: #4b5563;
++}
++.monitor-resource-label {
++  display: block;
++  margin-bottom: 5px;
++  font-size: 12px;
++  font-weight: 500;
++  line-height: 18px;
++  color: #6b7280;
++}
++.monitor-resource-select .monitor-resource-trigger {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  width: 100%;
++  height: 36px;
++  min-height: 36px;
++  padding: 0 10px;
++  border: 1px solid #d1d5db;
++  border-radius: 7px;
++  background: white;
++  font-size: 13px;
++  line-height: 20px;
++  text-align: left;
++  box-shadow: none;
++  transition:
++    border-color 150ms,
++    background-color 150ms;
++}
++.monitor-resource-select .monitor-resource-trigger:hover:not(:disabled) {
++  border-color: #93a4be;
++}
++.monitor-resource-select .monitor-resource-trigger:focus-visible {
++  outline: 2px solid #bfdbfe;
++  outline-offset: 1px;
++  border-color: #1e3a8a;
++}
++.monitor-resource-select .monitor-resource-trigger:disabled {
++  background: #f9fafb;
++  color: #9ca3af;
++  cursor: not-allowed;
++}
++.monitor-resource-trigger-content {
++  display: flex;
++  min-width: 0;
++  overflow: hidden;
++  flex: 1;
++  align-items: center;
++  gap: 6px;
++}
++.monitor-resource-trigger-name {
++  min-width: 0;
++  max-width: 100%;
++  flex: 0 0 auto;
++  overflow: hidden;
++  white-space: nowrap;
++  text-overflow: ellipsis;
++  color: #111827;
++}
++.monitor-resource-placeholder {
++  color: #9ca3af;
++}
++.monitor-resource-trigger-tag {
++  min-width: 0;
++  max-width: 30%;
++  flex: 0 1 auto;
++  overflow: hidden;
++  white-space: nowrap;
++  text-overflow: ellipsis;
++  border: 1px solid #dbeafe;
++  border-radius: 4px;
++  background: #eff6ff;
++  padding: 0 4px;
++  font-size: 11px;
++  line-height: 18px;
++  color: #1e3a8a;
++}
++.monitor-resource-menu {
++  margin-top: 5px;
++  padding: 4px;
++  border: 1px solid #dbe3ef;
++  border-radius: 8px;
++  background: white;
++}
++.monitor-resource-search {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++  padding: 3px 8px;
++  border-radius: 5px;
++  background: #f3f4f6;
++}
++.monitor-resource-select .monitor-resource-search-input {
++  width: 100%;
++  min-width: 0;
++  height: 30px;
++  min-height: 30px;
++  border: 0;
++  border-radius: 0;
++  padding: 0;
++  background: transparent;
++  font-size: 13px;
++  color: #111827;
++  outline: none;
++  box-shadow: none;
++}
++.monitor-resource-options {
++  max-height: 256px;
++  overflow-y: auto;
++  overflow-x: hidden;
++  padding-top: 4px;
++}
++.monitor-resource-option {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  width: 100%;
++  min-height: 36px;
++  padding: 7px 8px;
++  border-radius: 5px;
++  color: #374151;
++  text-align: left;
++}
++.monitor-resource-option:hover {
++  background: #f8fafc;
++}
++.monitor-resource-option[data-active='true'],
++.monitor-resource-option[aria-selected='true'] {
++  background: #eff6ff;
++  color: #1e3a8a;
++}
++.monitor-resource-option-content {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  gap: 4px 6px;
++  min-width: 0;
++  flex: 1;
++  font-size: 13px;
++  line-height: 19px;
++  overflow-wrap: anywhere;
++}
++.monitor-resource-option-name {
++  min-width: 0;
++  max-width: 100%;
++  font-weight: 500;
++}
++.monitor-resource-option-details {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 4px 6px;
++  min-width: 0;
++  max-width: 100%;
++  font-size: 11px;
++  line-height: 18px;
++  color: #6b7280;
++}
++.monitor-resource-option-tag {
++  border-radius: 4px;
++  background: #eff6ff;
++  padding: 0 5px;
++  color: #1e3a8a;
++}
++@media (max-width: 767px) {
++  .monitor-resource-select .monitor-resource-trigger {
++    height: 44px;
++    min-height: 44px;
++    font-size: 16px;
++  }
++  .monitor-resource-select .monitor-resource-search-input {
++    min-height: 36px;
++    font-size: 16px;
++  }
++  .monitor-resource-option {
++    min-height: 44px;
++  }
++  .monitor-resource-option-content {
++    font-size: 14px;
++    line-height: 21px;
++  }
++}
+diff --git a/frontend/src/components/monitorFilterLayout.css b/frontend/src/components/monitorFilterLayout.css
+new file mode 100644
+--- /dev/null
++++ b/frontend/src/components/monitorFilterLayout.css
+@@ -0,0 +1,126 @@
++/* 日志筛选：桌面全部条件在同一行，宽度不足仅滚动筛选区。 */
++.monitor-log-filter-form {
++  min-width: 0;
++}
++.monitor-log-filter-scroll {
++  min-width: 0;
++  max-width: 100%;
++  padding: 1px 1px 7px;
++}
++.monitor-log-filter-grid {
++  display: grid;
++  grid-template-columns: minmax(0, 1fr);
++  align-items: start;
++  gap: 12px;
++  min-width: 0;
++}
++.monitor-log-filter-grid > * {
++  min-width: 0;
++  grid-column: auto;
++  color: #6b7280;
++  font-size: 12px;
++  font-weight: 500;
++  line-height: 18px;
++}
++.monitor-log-filter-grid .monitor-filter-label {
++  display: flex;
++  align-items: center;
++  gap: 4px;
++  height: 18px;
++  min-height: 18px;
++  margin-bottom: 5px;
++  font-size: 12px;
++  font-weight: 500;
++  line-height: 18px;
++  white-space: nowrap;
++}
++.monitor-log-filter-grid .input,
++.monitor-log-filter-grid .monitor-log-range-trigger {
++  height: 44px;
++  min-height: 44px;
++  border-color: #d1d5db;
++  border-radius: 7px;
++  font-size: 16px;
++  font-weight: 400;
++  line-height: 20px;
++  box-shadow: none;
++}
++.monitor-log-filter-grid .input {
++  margin-top: 0;
++}
++.monitor-log-filter-grid .input:hover:not(:disabled) {
++  border-color: #93a4be;
++}
++.monitor-log-filter-grid .input:disabled {
++  background: #f9fafb;
++}
++.monitor-log-filter-grid .monitor-filter-account > div {
++  margin-top: 0;
++}
++.monitor-log-filter-grid .monitor-log-range-trigger {
++  display: flex;
++  width: 100%;
++  align-items: center;
++  gap: 7px;
++  padding: 0 10px;
++  color: #374151;
++  background: white;
++  text-align: left;
++}
++.monitor-log-range-summary {
++  min-width: 0;
++  flex: 1;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++  font-variant-numeric: tabular-nums;
++}
++.monitor-filter-keyword-control {
++  position: relative;
++}
++.monitor-filter-keyword-icon {
++  position: absolute;
++  top: 50%;
++  left: 10px;
++  transform: translateY(-50%);
++  pointer-events: none;
++  color: #9ca3af;
++}
++.monitor-log-filter-grid .monitor-filter-keyword-control .input {
++  padding-left: 32px;
++}
++@media (min-width: 768px) {
++  .monitor-log-filter-scroll {
++    overflow-x: auto;
++    overscroll-behavior-x: contain;
++    scrollbar-width: thin;
++    scrollbar-color: #cbd5e1 transparent;
++  }
++  .monitor-log-filter-grid {
++    min-width: 1000px;
++    grid-template-columns:
++      minmax(184px, 1.05fr)
++      minmax(144px, 0.85fr)
++      minmax(144px, 0.85fr)
++      minmax(300px, 1.55fr)
++      minmax(160px, 1fr);
++    column-gap: 10px;
++  }
++  .monitor-log-filter-grid.monitor-log-filter-grid-legacy {
++    min-width: 1200px;
++    grid-template-columns:
++      minmax(184px, 1.05fr)
++      minmax(144px, 0.85fr)
++      minmax(140px, 0.85fr)
++      minmax(144px, 0.85fr)
++      minmax(124px, 0.75fr)
++      minmax(124px, 0.75fr)
++      minmax(160px, 1fr);
++  }
++  .monitor-log-filter-grid .input,
++  .monitor-log-filter-grid .monitor-log-range-trigger {
++    height: 36px;
++    min-height: 36px;
++    font-size: 13px;
++  }
++}

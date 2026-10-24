@@ -1,0 +1,1860 @@
+{
+  "specVersion": "v2-single-row",
+  "passed": true,
+  "results": [
+    {
+      "width": 1366,
+      "height": 1000,
+      "passed": true,
+      "desktopSingleRow": true,
+      "inlineDropdown": true,
+      "fullTagSearchAndSelection": true,
+      "longTagTitle": true,
+      "rangeAccountQuery": true,
+      "crossYearRange": true,
+      "geometries": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 208.015625,
+              "height": 36
+            },
+            {
+              "x": 460.015625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 638.40625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 816.796875,
+              "y": 269,
+              "width": 307.078125,
+              "height": 36
+            },
+            {
+              "x": 1133.875,
+              "y": 269,
+              "width": 198.109375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 208.015625,
+              "height": 36
+            },
+            {
+              "x": 460.015625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 638.40625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 816.796875,
+              "y": 269,
+              "width": 307.078125,
+              "height": 36
+            },
+            {
+              "x": 1133.875,
+              "y": 269,
+              "width": 198.109375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 208.015625,
+              "height": 36
+            },
+            {
+              "x": 460.015625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 638.40625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 816.796875,
+              "y": 269,
+              "width": 307.078125,
+              "height": 36
+            },
+            {
+              "x": 1133.875,
+              "y": 269,
+              "width": 198.109375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 208.015625,
+              "height": 36
+            },
+            {
+              "x": 460.015625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 638.40625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 816.796875,
+              "y": 269,
+              "width": 307.078125,
+              "height": 36
+            },
+            {
+              "x": 1133.875,
+              "y": 269,
+              "width": 198.109375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器与实例已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 208.015625,
+              "height": 36
+            },
+            {
+              "x": 460.015625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 638.40625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 816.796875,
+              "y": 269,
+              "width": 307.078125,
+              "height": 36
+            },
+            {
+              "x": 1133.875,
+              "y": 269,
+              "width": 198.109375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨日账号关键词查询",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 208.015625,
+              "height": 36
+            },
+            {
+              "x": 460.015625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 638.40625,
+              "y": 269,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 816.796875,
+              "y": 269,
+              "width": 307.078125,
+              "height": 36
+            },
+            {
+              "x": 1133.875,
+              "y": 269,
+              "width": 198.109375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "100字长标签已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 357,
+              "width": 208.015625,
+              "height": 36
+            },
+            {
+              "x": 460.015625,
+              "y": 357,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 638.40625,
+              "y": 357,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 816.796875,
+              "y": 357,
+              "width": 307.078125,
+              "height": 36
+            },
+            {
+              "x": 1133.875,
+              "y": 357,
+              "width": 198.109375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨年范围已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 357,
+              "width": 208.015625,
+              "height": 36
+            },
+            {
+              "x": 460.015625,
+              "y": 357,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 638.40625,
+              "y": 357,
+              "width": 168.390625,
+              "height": 36
+            },
+            {
+              "x": 816.796875,
+              "y": 357,
+              "width": 307.078125,
+              "height": 36
+            },
+            {
+              "x": 1133.875,
+              "y": 357,
+              "width": 198.109375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        }
+      ]
+    },
+    {
+      "width": 1440,
+      "height": 1000,
+      "passed": true,
+      "desktopSingleRow": true,
+      "inlineDropdown": true,
+      "fullTagSearchAndSelection": true,
+      "longTagTitle": true,
+      "rangeAccountQuery": true,
+      "crossYearRange": true,
+      "geometries": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 269,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 269,
+              "width": 212.078125,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 269,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 269,
+              "width": 212.078125,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 269,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 269,
+              "width": 212.078125,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 269,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 269,
+              "width": 212.078125,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器与实例已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 269,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 269,
+              "width": 212.078125,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨日账号关键词查询",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 269,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 269,
+              "width": 212.078125,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "100字长标签已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 337,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 337,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 337,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 337,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 337,
+              "width": 212.078125,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨年范围已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 337,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 337,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 337,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 337,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 337,
+              "width": 212.078125,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        }
+      ]
+    },
+    {
+      "width": 1920,
+      "height": 1000,
+      "passed": true,
+      "desktopSingleRow": true,
+      "inlineDropdown": true,
+      "fullTagSearchAndSelection": true,
+      "longTagTitle": true,
+      "rangeAccountQuery": true,
+      "crossYearRange": true,
+      "geometries": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 317.765625,
+              "height": 36
+            },
+            {
+              "x": 569.765625,
+              "y": 269,
+              "width": 257.25,
+              "height": 36
+            },
+            {
+              "x": 837.015625,
+              "y": 269,
+              "width": 257.234375,
+              "height": 36
+            },
+            {
+              "x": 1104.25,
+              "y": 269,
+              "width": 469.09375,
+              "height": 36
+            },
+            {
+              "x": 1583.34375,
+              "y": 269,
+              "width": 302.65625,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 317.765625,
+              "height": 36
+            },
+            {
+              "x": 569.765625,
+              "y": 269,
+              "width": 257.25,
+              "height": 36
+            },
+            {
+              "x": 837.015625,
+              "y": 269,
+              "width": 257.234375,
+              "height": 36
+            },
+            {
+              "x": 1104.25,
+              "y": 269,
+              "width": 469.09375,
+              "height": 36
+            },
+            {
+              "x": 1583.34375,
+              "y": 269,
+              "width": 302.65625,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 317.765625,
+              "height": 36
+            },
+            {
+              "x": 569.765625,
+              "y": 269,
+              "width": 257.25,
+              "height": 36
+            },
+            {
+              "x": 837.015625,
+              "y": 269,
+              "width": 257.234375,
+              "height": 36
+            },
+            {
+              "x": 1104.25,
+              "y": 269,
+              "width": 469.09375,
+              "height": 36
+            },
+            {
+              "x": 1583.34375,
+              "y": 269,
+              "width": 302.65625,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 317.765625,
+              "height": 36
+            },
+            {
+              "x": 569.765625,
+              "y": 269,
+              "width": 257.25,
+              "height": 36
+            },
+            {
+              "x": 837.015625,
+              "y": 269,
+              "width": 257.234375,
+              "height": 36
+            },
+            {
+              "x": 1104.25,
+              "y": 269,
+              "width": 469.09375,
+              "height": 36
+            },
+            {
+              "x": 1583.34375,
+              "y": 269,
+              "width": 302.65625,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器与实例已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 317.765625,
+              "height": 36
+            },
+            {
+              "x": 569.765625,
+              "y": 269,
+              "width": 257.25,
+              "height": 36
+            },
+            {
+              "x": 837.015625,
+              "y": 269,
+              "width": 257.234375,
+              "height": 36
+            },
+            {
+              "x": 1104.25,
+              "y": 269,
+              "width": 469.09375,
+              "height": 36
+            },
+            {
+              "x": 1583.34375,
+              "y": 269,
+              "width": 302.65625,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨日账号关键词查询",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 317.765625,
+              "height": 36
+            },
+            {
+              "x": 569.765625,
+              "y": 269,
+              "width": 257.25,
+              "height": 36
+            },
+            {
+              "x": 837.015625,
+              "y": 269,
+              "width": 257.234375,
+              "height": 36
+            },
+            {
+              "x": 1104.25,
+              "y": 269,
+              "width": 469.09375,
+              "height": 36
+            },
+            {
+              "x": 1583.34375,
+              "y": 269,
+              "width": 302.65625,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "100字长标签已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 337,
+              "width": 317.765625,
+              "height": 36
+            },
+            {
+              "x": 569.765625,
+              "y": 337,
+              "width": 257.25,
+              "height": 36
+            },
+            {
+              "x": 837.015625,
+              "y": 337,
+              "width": 257.234375,
+              "height": 36
+            },
+            {
+              "x": 1104.25,
+              "y": 337,
+              "width": 469.09375,
+              "height": 36
+            },
+            {
+              "x": 1583.34375,
+              "y": 337,
+              "width": 302.65625,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨年范围已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 337,
+              "width": 317.765625,
+              "height": 36
+            },
+            {
+              "x": 569.765625,
+              "y": 337,
+              "width": 257.25,
+              "height": 36
+            },
+            {
+              "x": 837.015625,
+              "y": 337,
+              "width": 257.234375,
+              "height": 36
+            },
+            {
+              "x": 1104.25,
+              "y": 337,
+              "width": 469.09375,
+              "height": 36
+            },
+            {
+              "x": 1583.34375,
+              "y": 337,
+              "width": 302.65625,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        }
+      ]
+    },
+    {
+      "width": 3598,
+      "height": 1800,
+      "passed": true,
+      "desktopSingleRow": true,
+      "inlineDropdown": true,
+      "fullTagSearchAndSelection": true,
+      "longTagTitle": true,
+      "rangeAccountQuery": true,
+      "crossYearRange": true,
+      "geometries": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 269,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 269,
+              "width": 619.234375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 269,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 269,
+              "width": 619.234375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 269,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 269,
+              "width": 619.234375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 269,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 269,
+              "width": 619.234375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器与实例已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 269,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 269,
+              "width": 619.234375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨日账号关键词查询",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 269,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 269,
+              "width": 619.234375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "100字长标签已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 317,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 317,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 317,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 317,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 317,
+              "width": 619.234375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨年范围已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 317,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 317,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 317,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 317,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 317,
+              "width": 619.234375,
+              "height": 36
+            }
+          ],
+          "scrollContainers": []
+        }
+      ]
+    },
+    {
+      "width": 768,
+      "height": 1000,
+      "passed": true,
+      "desktopSingleRow": true,
+      "inlineDropdown": true,
+      "fullTagSearchAndSelection": true,
+      "longTagTitle": true,
+      "rangeAccountQuery": true,
+      "crossYearRange": true,
+      "geometries": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 34,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 228.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 388.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 547.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 857.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 702,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 34,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 228.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 388.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 547.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 857.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 702,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "服务器已选",
+          "boxes": [
+            {
+              "x": 34,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 228.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 388.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 547.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 857.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 702,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 34,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 228.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 388.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 547.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 857.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 702,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "服务器与实例已选",
+          "boxes": [
+            {
+              "x": 34,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 228.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 388.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 547.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 857.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 702,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "跨日账号关键词查询",
+          "boxes": [
+            {
+              "x": -149,
+              "y": 297,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 45.796875,
+              "y": 297,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 205.390625,
+              "y": 297,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 364.984375,
+              "y": 297,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 674.984375,
+              "y": 297,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 702,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "100字长标签已选",
+          "boxes": [
+            {
+              "x": 33,
+              "y": 377,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 227.796875,
+              "y": 377,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 387.390625,
+              "y": 377,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 546.984375,
+              "y": 377,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 856.984375,
+              "y": 377,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 702,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "跨年范围已选",
+          "boxes": [
+            {
+              "x": -79,
+              "y": 377,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 115.796875,
+              "y": 377,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 275.390625,
+              "y": 377,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 434.984375,
+              "y": 377,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 744.984375,
+              "y": 377,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 702,
+              "scrollWidth": 1002
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "width": 375,
+      "height": 1000,
+      "passed": true,
+      "desktopSingleRow": false,
+      "inlineDropdown": true,
+      "fullTagSearchAndSelection": true,
+      "longTagTitle": true,
+      "rangeAccountQuery": true,
+      "crossYearRange": true,
+      "geometries": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 339,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 418,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 497,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 576,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 655,
+              "width": 323,
+              "height": 44
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 339,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 739,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 818,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 897,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 976,
+              "width": 323,
+              "height": 44
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器已选",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 339,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 418,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 497,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 576,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 655,
+              "width": 323,
+              "height": 44
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 339,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 418,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 698,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 777,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 856,
+              "width": 323,
+              "height": 44
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "服务器与实例已选",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 339,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 418,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 497,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 576,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 655,
+              "width": 323,
+              "height": 44
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨日账号关键词查询",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 359,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 438,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 517,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 596,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 675,
+              "width": 323,
+              "height": 44
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "100字长标签已选",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 499,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 578,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 657,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 736,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 815,
+              "width": 323,
+              "height": 44
+            }
+          ],
+          "scrollContainers": []
+        },
+        {
+          "state": "跨年范围已选",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 499,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 578,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 657,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 736,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 815,
+              "width": 323,
+              "height": 44
+            }
+          ],
+          "scrollContainers": []
+        }
+      ]
+    }
+  ]
+}

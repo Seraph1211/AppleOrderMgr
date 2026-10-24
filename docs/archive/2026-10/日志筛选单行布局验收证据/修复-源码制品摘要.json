@@ -1,0 +1,26 @@
+{
+  "specVersion": "v2-single-row",
+  "sourceHashes": {
+    "frontend/src/components/MonitorLogs.jsx": "6b277a4a594820f25a4a0c6b1cfcf53e04f8459321215aebdb6be32e4fbe8717",
+    "frontend/src/components/monitorLogs.css": "f54b4de98ebc58545909ebf6e5aa04ff7b0e46bddce25c8995f0cf67bca5359d",
+    "frontend/src/components/monitorLogRangeFilter.jsx": "6e85f4502f2a1fb5dd11cdd7c67bac9cb34684773517161113c6d7de5959a0aa",
+    "frontend/src/components/monitorResourceSelect.jsx": "4c297d18984d2bff3d439cc5dbfe9a336eba8250299004ea77218effd7b4626d",
+    "frontend/src/components/monitorResourceSelect.css": "46387c3f103ac981e8fca1d13484ee38808afb602ec3effe722f0a267b5353e8",
+    "frontend/src/components/monitorFilterLayout.css": "3f945dbb394c1afffd3d7d529360df496229f8e9b55efee05cd163d6efde8d7f"
+  },
+  "frontendFileHashes": {
+    "assets/Stock-CtHisUEX.js": "5fc5bb48f2ff9659e074a5c9819ff64fbc5f2ff86f41d47d98ef8c84ab69fa0d",
+    "assets/Stock-D6365Qtz.css": "a91f93f2e72b18d799a44cbc18f2204ce3b818cc348cec2455ad5ef6e07219af",
+    "assets/index-84469jgD.js": "d3de843dea10a158cbf88fe1134fea4f1a21a33aae24d2cf975e163542720c71",
+    "assets/index-BSqMgeVX.css": "86bb4b209bd491f1efcbe5e279c12f68999eff9e5a61da6d57f851e3275d3b65",
+    "assets/index-CzFnS5vd.js": "2a06328590ebaa44392889951af4efdf4ad66c0700f5577f9d4c28754dfe4c6d",
+    "assets/index-DD-mKPfg.js": "5522b42cfafb2e78203ee8a01e744e15c2338e0273043a666155c9c75770c518",
+    "assets/jsQR-DMiU3apZ.js": "9b8f61c03f11358d9c63df2ecbd772b755a188ac66f0cb8e4f34613760b65867",
+    "debug.html": "6b7fbea26323ab37180c0822bfeae695f42fd333743ca9babb8f6f6213b9b6ec",
+    "index.html": "fb710d1f98a8d8bc4bb7b485c104750ff0a883e3882590644a0d7e5530c25e50",
+    "templates/apple_ids_import_template.xlsx": "d35963212f1311d186668726f233e72df59b10c28538db4781d0dd27afa6d40b",
+    "templates/recipients_import_template.xlsx": "251052ff1ec8d919e74f1cfa17a7b42b5f58f91f80f32075d316cf317f0858d2"
+  },
+  "sixSourceFilesMatchBuilderImage": true,
+  "testedFrontendMatchesBuildRecord": true
+}

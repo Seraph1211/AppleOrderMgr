@@ -1,0 +1,41 @@
+{
+  "releaseId": "20261024-log-filters-r2",
+  "frontendOnly": true,
+  "baseFrontendImage": "apple-order-mgr-frontend-builder:20261024-log-labels-amd64",
+  "preservedApiImage": "apple-order-mgr-api:20261024-log-labels-amd64",
+  "files": {
+    "frontend/src/components/MonitorLogs.jsx": {
+      "beforeSha256": "a2c52eba8b0e67400926829ce8a13f7c574b47cf3c53938baa74c69fe42507b0",
+      "afterSha256": "6b277a4a594820f25a4a0c6b1cfcf53e04f8459321215aebdb6be32e4fbe8717"
+    },
+    "frontend/src/components/monitorLogs.css": {
+      "beforeSha256": "4c793deb699cabea7d6aa53d49e677c64d2f3e997e0711ce8fdc4825a9287334",
+      "afterSha256": "f54b4de98ebc58545909ebf6e5aa04ff7b0e46bddce25c8995f0cf67bca5359d"
+    },
+    "frontend/src/components/monitorLogRangeFilter.jsx": {
+      "beforeSha256": "2e017f747761c3070c8f9e6b307883fa46531269583c118d771754d1c8b8fa48",
+      "afterSha256": "6e85f4502f2a1fb5dd11cdd7c67bac9cb34684773517161113c6d7de5959a0aa"
+    },
+    "frontend/src/components/monitorResourceSelect.jsx": {
+      "beforeSha256": "6adf97590a6a65e01266184efa9964624d9f44e6ed5fc9593d71cdc7ef8c8a14",
+      "afterSha256": "4c297d18984d2bff3d439cc5dbfe9a336eba8250299004ea77218effd7b4626d"
+    },
+    "frontend/src/components/monitorResourceSelect.css": {
+      "beforeSha256": null,
+      "afterSha256": "46387c3f103ac981e8fca1d13484ee38808afb602ec3effe722f0a267b5353e8"
+    },
+    "frontend/src/components/monitorFilterLayout.css": {
+      "beforeSha256": null,
+      "afterSha256": "3f945dbb394c1afffd3d7d529360df496229f8e9b55efee05cd163d6efde8d7f"
+    }
+  },
+  "noMigrations": true,
+  "protectedState": [
+    "allContainerIdentities",
+    "serverAndInstanceTags",
+    "inventoryConfiguration",
+    "sharedEnvironment",
+    "nginxConfiguration",
+    "migrationRecords"
+  ]
+}

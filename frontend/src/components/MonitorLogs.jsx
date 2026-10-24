@@ -1,4 +1,5 @@
 import MonitorResourceSelect from './monitorResourceSelect';
+import './monitorFilterLayout.css';
 import MonitorLogTags from './monitorLogTags';
 import { useAuth } from '../contexts/AuthContext';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -508,7 +509,7 @@ export default function MonitorLogs({ standalone = false }) {
         id="log-query-filters"
         hidden={!filtersOpen}
         onSubmit={submit}
-        className="rounded-lg border border-gray-200 bg-white p-4"
+        className="monitor-log-filter-form rounded-xl border border-gray-200 bg-white p-3 sm:p-4"
       >
         {canManageTags && <div className="mb-3 flex justify-end">
           <button type="button" className="btn btn-secondary min-h-11 sm:min-h-0"
@@ -520,11 +521,15 @@ export default function MonitorLogs({ standalone = false }) {
         {canManageTags && tagsOpen && <div id="log-tag-management" className="mb-4">
           <MonitorLogTags catalog={catalog} onSaved={updateTag} onCatalog={setCatalog} />
         </div>}
-        <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="monitor-log-filter-scroll" role="region" aria-label="日志筛选条件" tabIndex={0}>
+        <div className="monitor-log-filter-grid monitor-log-filter-grid-legacy">
           <MonitorResourceSelect label="服务器" placeholder="请选择服务器"
             value={filters.deviceId} onChange={value => change('deviceId', value)}
             options={(catalog?.devices || []).map(device => ({
               value: device.id,
+              name: device.name,
+              tag: device.tag,
+              status: device.enabled ? '' : '已停用',
               label: `${displayResource(device.name, device.tag)}${device.enabled ? '' : '（已停用）'}`,
             }))} />
           <MonitorResourceSelect label="软件实例" placeholder="请选择实例"
@@ -532,10 +537,13 @@ export default function MonitorLogs({ standalone = false }) {
             onChange={value => change('localId', value)}
             options={(catalog?.instances || []).filter(item => item.deviceId === filters.deviceId).map(item => ({
               value: item.localId,
+              name: item.label,
+              tag: item.tag,
+              status: item.active === false ? '已移除' : '',
               label: `${displayResource(item.label, item.tag)}${item.active === false ? '（已移除）' : ''}`,
             }))} />
-          <label className="text-sm text-gray-600">
-            日志日期
+          <label className="monitor-log-filter-field">
+            <span className="monitor-filter-label">日志日期</span>
             <input
               className="input mt-1 w-full text-base sm:text-sm"
               type="date"
@@ -547,8 +555,8 @@ export default function MonitorLogs({ standalone = false }) {
               onChange={e => change('date', e.target.value)}
             />
           </label>
-          <div className="text-sm text-gray-600">
-            <span>账号编号</span>
+          <div className="monitor-log-filter-field monitor-filter-account">
+            <span className="monitor-filter-label">账号编号</span>
             <MonitorLogAccountSelect
               value={draft.account === '__unassigned__' ? '' : draft.account}
               options={accounts}
@@ -574,8 +582,8 @@ export default function MonitorLogs({ standalone = false }) {
               }}
             />
           </div>
-          <label className="text-sm text-gray-600">
-            开始时间
+          <label className="monitor-log-filter-field">
+            <span className="monitor-filter-label">开始时间</span>
             <input
               type="time"
               step="1"
@@ -585,8 +593,8 @@ export default function MonitorLogs({ standalone = false }) {
               onChange={e => setDraft(value => ({ ...value, fromTime: e.target.value }))}
             />
           </label>
-          <label className="text-sm text-gray-600">
-            结束时间
+          <label className="monitor-log-filter-field">
+            <span className="monitor-filter-label">结束时间</span>
             <input
               type="time"
               step="1"
@@ -596,17 +604,21 @@ export default function MonitorLogs({ standalone = false }) {
               onChange={e => setDraft(value => ({ ...value, toTime: e.target.value }))}
             />
           </label>
-          <label className="text-sm text-gray-600 sm:col-span-2">
-            正文关键词
+          <label className="monitor-log-filter-field">
+            <span className="monitor-filter-label">正文关键词</span>
+            <div className="monitor-filter-keyword-control">
+            <Search className="monitor-filter-keyword-icon h-4 w-4" aria-hidden="true" />
             <input
               className="input mt-1 w-full text-base sm:text-sm"
               maxLength={200}
-              placeholder="例如：加入购物车、店铺编号"
+              placeholder="输入关键词"
               aria-label="正文关键词"
               value={draft.keyword}
               onChange={e => setDraft(value => ({ ...value, keyword: e.target.value }))}
             />
+            </div>
           </label>
+        </div>
         </div>
         <label className="mt-3 inline-flex items-center gap-2 text-sm text-gray-600">
           <input

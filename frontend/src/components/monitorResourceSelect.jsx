@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { Check, ChevronDown, Search } from 'lucide-react';
+import './monitorResourceSelect.css';
 
 /** 服务器／实例单选；展开列表直接占据文档流，桌面与手机使用同一交互。 */
 export default function MonitorResourceSelect({
@@ -71,17 +72,19 @@ export default function MonitorResourceSelect({
   return (
     <div
       ref={rootRef}
-      className="min-w-0 text-sm text-gray-600"
+      className="monitor-resource-select"
       onBlur={event => {
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
     >
-      <span id={`${id}-label`}>{label}</span>
+      <span id={`${id}-label`} className="monitor-resource-label">
+        {label}
+      </span>
       <button
         ref={triggerRef}
         type="button"
         disabled={disabled}
-        className="input mt-1 flex min-h-11 w-full items-center gap-2 text-left text-base sm:min-h-0 sm:text-sm"
+        className="input monitor-resource-trigger"
         aria-label={label}
         title={selected?.label || placeholder}
         aria-haspopup="listbox"
@@ -102,10 +105,17 @@ export default function MonitorResourceSelect({
           } else if (event.key === 'Escape') setOpen(false);
         }}
       >
-        <span
-          className={`line-clamp-2 min-w-0 flex-1 break-words ${value ? 'text-gray-900' : 'text-gray-400'}`}
-        >
-          {selected?.label || placeholder}
+        <span className="monitor-resource-trigger-content">
+          <span
+            className={`monitor-resource-trigger-name ${value ? '' : 'monitor-resource-placeholder'}`}
+          >
+            {selected?.name || selected?.label || placeholder}
+          </span>
+          {selected?.tag && (
+            <span className="monitor-resource-trigger-tag" title={selected.tag}>
+              {selected.tag}
+            </span>
+          )}
         </span>
         <ChevronDown
           className={`h-4 w-4 shrink-0 text-gray-500 ${open ? 'rotate-180' : ''}`}
@@ -113,12 +123,12 @@ export default function MonitorResourceSelect({
         />
       </button>
       {open && (
-        <div className="mt-1 rounded-lg border border-gray-200 bg-white p-1" onKeyDown={handleKey}>
-          <div className="flex items-center gap-2 border-b border-gray-100 px-2 py-2">
+        <div className="monitor-resource-menu" onKeyDown={handleKey}>
+          <div className="monitor-resource-search">
             <Search className="h-4 w-4 shrink-0 text-gray-400" aria-hidden="true" />
             <input
               ref={searchRef}
-              className="input min-w-0 w-full text-base sm:text-sm"
+              className="input monitor-resource-search-input"
               role="combobox"
               aria-label={`搜索${label}`}
               aria-autocomplete="list"
@@ -137,7 +147,7 @@ export default function MonitorResourceSelect({
             id={`${id}-list`}
             role="listbox"
             aria-labelledby={`${id}-label`}
-            className="max-h-64 overflow-y-auto overflow-x-hidden py-1"
+            className="monitor-resource-options"
           >
             {choices.map((option, index) => (
               <button
@@ -147,10 +157,24 @@ export default function MonitorResourceSelect({
                 role="option"
                 aria-selected={option.value === value}
                 tabIndex={-1}
-                className={`flex min-h-11 w-full items-center gap-2 rounded-md px-3 py-2 text-left text-base sm:min-h-0 sm:text-sm ${option.value === value || active === index ? 'bg-blue-50 text-blue-900' : 'text-gray-700 hover:bg-gray-50'}`}
+                aria-label={option.label}
+                data-active={active === index}
+                className="monitor-resource-option"
                 onClick={() => choose(option)}
               >
-                <span className="min-w-0 flex-1 break-words">{option.label}</span>
+                <span className="monitor-resource-option-content">
+                  <span className="monitor-resource-option-name">
+                    {option.name || option.label}
+                  </span>
+                  {(option.tag || option.status) && (
+                    <span className="monitor-resource-option-details">
+                      {option.tag && (
+                        <span className="monitor-resource-option-tag">{option.tag}</span>
+                      )}
+                      {option.status && <span>{option.status}</span>}
+                    </span>
+                  )}
+                </span>
                 {option.value === value && (
                   <Check className="h-4 w-4 shrink-0" aria-hidden="true" />
                 )}

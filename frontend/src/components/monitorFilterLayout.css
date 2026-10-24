@@ -1,0 +1,126 @@
+/* 日志筛选：桌面全部条件在同一行，宽度不足仅滚动筛选区。 */
+.monitor-log-filter-form {
+  min-width: 0;
+}
+.monitor-log-filter-scroll {
+  min-width: 0;
+  max-width: 100%;
+  padding: 1px 1px 7px;
+}
+.monitor-log-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+.monitor-log-filter-grid > * {
+  min-width: 0;
+  grid-column: auto;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.monitor-log-filter-grid .monitor-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  min-height: 18px;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.monitor-log-filter-grid .input,
+.monitor-log-filter-grid .monitor-log-range-trigger {
+  height: 44px;
+  min-height: 44px;
+  border-color: #d1d5db;
+  border-radius: 7px;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 20px;
+  box-shadow: none;
+}
+.monitor-log-filter-grid .input {
+  margin-top: 0;
+}
+.monitor-log-filter-grid .input:hover:not(:disabled) {
+  border-color: #93a4be;
+}
+.monitor-log-filter-grid .input:disabled {
+  background: #f9fafb;
+}
+.monitor-log-filter-grid .monitor-filter-account > div {
+  margin-top: 0;
+}
+.monitor-log-filter-grid .monitor-log-range-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  color: #374151;
+  background: white;
+  text-align: left;
+}
+.monitor-log-range-summary {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.monitor-filter-keyword-control {
+  position: relative;
+}
+.monitor-filter-keyword-icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #9ca3af;
+}
+.monitor-log-filter-grid .monitor-filter-keyword-control .input {
+  padding-left: 32px;
+}
+@media (min-width: 768px) {
+  .monitor-log-filter-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .monitor-log-filter-grid {
+    min-width: 1000px;
+    grid-template-columns:
+      minmax(184px, 1.05fr)
+      minmax(144px, 0.85fr)
+      minmax(144px, 0.85fr)
+      minmax(300px, 1.55fr)
+      minmax(160px, 1fr);
+    column-gap: 10px;
+  }
+  .monitor-log-filter-grid.monitor-log-filter-grid-legacy {
+    min-width: 1200px;
+    grid-template-columns:
+      minmax(184px, 1.05fr)
+      minmax(144px, 0.85fr)
+      minmax(140px, 0.85fr)
+      minmax(144px, 0.85fr)
+      minmax(124px, 0.75fr)
+      minmax(124px, 0.75fr)
+      minmax(160px, 1fr);
+  }
+  .monitor-log-filter-grid .input,
+  .monitor-log-filter-grid .monitor-log-range-trigger {
+    height: 36px;
+    min-height: 36px;
+    font-size: 13px;
+  }
+}

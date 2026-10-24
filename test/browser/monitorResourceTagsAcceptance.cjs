@@ -197,15 +197,10 @@ async function main() {
           panel.getByRole('textbox', { name: '正文关键词', exact: true }).boundingBox(),
         ]);
         assert(
-          Math.abs(boxes[0].y - boxes[1].y) < 2 && Math.abs(boxes[1].y - boxes[2].y) < 2,
-          '大屏首行服务器／实例／账号三列对齐'
+          Math.max(...boxes.map(box => box.y)) - Math.min(...boxes.map(box => box.y)) <= 0.5,
+          '桌面五项筛选同一行且对齐'
         );
-        assert(boxes[0].width >= 300, '大屏服务器列不应被压成窄列');
-        assert(
-          Math.abs(boxes[3].y - boxes[4].y) < 2 && boxes[3].y > boxes[0].y + 40,
-          '第二行时间范围与关键词对齐'
-        );
-        assert(boxes[3].width > boxes[0].width * 1.8, '时间范围占两列');
+        boxes.forEach(box => assert(Math.abs(box.height - 36) <= 0.5, '桌面筛选控件统一36px'));
       }
       const before = await panel.getByRole('button', { name: '查询', exact: true }).boundingBox();
       await server.click();

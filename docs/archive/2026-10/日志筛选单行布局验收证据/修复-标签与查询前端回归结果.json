@@ -1,0 +1,31 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "width": 1440,
+      "height": 1000,
+      "passed": true,
+      "writes": 7,
+      "inlineDropdown": true,
+      "keyboard": true,
+      "persistence": true,
+      "failureRecovery": true,
+      "conflictRecovery": true,
+      "longTag": true,
+      "readOnly": true
+    },
+    {
+      "width": 375,
+      "height": 1000,
+      "passed": true,
+      "writes": 7,
+      "inlineDropdown": true,
+      "keyboard": true,
+      "persistence": true,
+      "failureRecovery": true,
+      "conflictRecovery": true,
+      "longTag": true,
+      "readOnly": true
+    }
+  ]
+}

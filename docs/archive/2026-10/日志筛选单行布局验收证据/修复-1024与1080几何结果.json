@@ -1,0 +1,362 @@
+{
+  "specVersion": "v2-single-row",
+  "passed": true,
+  "results": [
+    {
+      "width": 1024,
+      "height": 1000,
+      "passed": true,
+      "desktopSingleRow": true,
+      "geometryOnly": true,
+      "localFilterScroll": true,
+      "geometries": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 436.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 596.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 755.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 1065.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 750,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 436.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 596.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 755.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 1065.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 750,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "服务器已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 436.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 596.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 755.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 1065.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 750,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 436.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 596.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 755.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 1065.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 750,
+              "scrollWidth": 1002
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "width": 1080,
+      "height": 1000,
+      "passed": true,
+      "desktopSingleRow": true,
+      "geometryOnly": true,
+      "localFilterScroll": true,
+      "geometries": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 436.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 596.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 755.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 1065.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 806,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 436.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 596.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 755.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 1065.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 806,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "服务器已选",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 436.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 596.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 755.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 1065.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 806,
+              "scrollWidth": 1002
+            }
+          ]
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 184.796875,
+              "height": 36
+            },
+            {
+              "x": 436.796875,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 596.390625,
+              "y": 269,
+              "width": 149.59375,
+              "height": 36
+            },
+            {
+              "x": 755.984375,
+              "y": 269,
+              "width": 300,
+              "height": 36
+            },
+            {
+              "x": 1065.984375,
+              "y": 269,
+              "width": 176,
+              "height": 36
+            }
+          ],
+          "scrollContainers": [
+            {
+              "className": "monitor-log-filter-scroll",
+              "clientWidth": 806,
+              "scrollWidth": 1002
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

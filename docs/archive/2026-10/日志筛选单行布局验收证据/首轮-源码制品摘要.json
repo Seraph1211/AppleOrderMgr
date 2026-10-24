@@ -1,0 +1,24 @@
+{
+  "specVersion": "v2-single-row",
+  "sourceHashes": {
+    "frontend/src/components/MonitorLogs.jsx": "6b277a4a594820f25a4a0c6b1cfcf53e04f8459321215aebdb6be32e4fbe8717",
+    "frontend/src/components/monitorLogs.css": "f54b4de98ebc58545909ebf6e5aa04ff7b0e46bddce25c8995f0cf67bca5359d",
+    "frontend/src/components/monitorLogRangeFilter.jsx": "6e85f4502f2a1fb5dd11cdd7c67bac9cb34684773517161113c6d7de5959a0aa",
+    "frontend/src/components/monitorResourceSelect.jsx": "4c297d18984d2bff3d439cc5dbfe9a336eba8250299004ea77218effd7b4626d",
+    "frontend/src/components/monitorResourceSelect.css": "2351286afbf46cfc78df5795d03320beeafc56fb1606acda4fd8f7f8a4f97f3d",
+    "frontend/src/components/monitorFilterLayout.css": "3b0592d8136683f458ecda4679e0bbb4c1f3eafb0406f85d044e6fb68e502537"
+  },
+  "frontendFileHashes": {
+    "assets/Stock-D6365Qtz.css": "a91f93f2e72b18d799a44cbc18f2204ce3b818cc348cec2455ad5ef6e07219af",
+    "assets/Stock-zeQsO8rP.js": "216e0383df808d7bcc6848741e077426e873f600f1a838cf30eca5c54a0672cb",
+    "assets/index-84469jgD.js": "d3de843dea10a158cbf88fe1134fea4f1a21a33aae24d2cf975e163542720c71",
+    "assets/index-CzFnS5vd.js": "2a06328590ebaa44392889951af4efdf4ad66c0700f5577f9d4c28754dfe4c6d",
+    "assets/index-s4czE3EP.css": "6fd1a356253d0528a111527dd7da2aec26ded5f8c6cfb9525e9c09fe87620034",
+    "assets/index-sBLXwwSo.js": "5807fc904818de2c405ce014fe1d89f4cb4bf1662e88aab07ed5bf1d4bfe7c83",
+    "assets/jsQR-DeVoSqvQ.js": "0cc23848ed245ba76bd283d2ad354b3617f3163581f172c1f7bded8cb7d469d9",
+    "debug.html": "6b7fbea26323ab37180c0822bfeae695f42fd333743ca9babb8f6f6213b9b6ec",
+    "index.html": "717805f02a23e9cb3d10254419ab40064ac35d9dfb67b2bdd052d2d278629298",
+    "templates/apple_ids_import_template.xlsx": "d35963212f1311d186668726f233e72df59b10c28538db4781d0dd27afa6d40b",
+    "templates/recipients_import_template.xlsx": "251052ff1ec8d919e74f1cfa17a7b42b5f58f91f80f32075d316cf317f0858d2"
+  }
+}
