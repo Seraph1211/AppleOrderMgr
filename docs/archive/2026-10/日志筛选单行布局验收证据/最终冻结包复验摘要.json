@@ -1,0 +1,11 @@
+{
+  "passed": true,
+  "specVersion": "v2-single-row",
+  "codeCommit": "d7473b0cce304e07649f7081714865fe0aef7a90",
+  "frontendArchiveSha256": "ca8f8641e4552d9d78f9f2c5b2ea3ee3c2e690a34938389347d4379e23f52146",
+  "manifestSha256": "70986d0781291e86ef3bcf21a837bce6f5afdaa4dd93212b48e631f5c9aceee0",
+  "frontendFileCount": 11,
+  "frontendIndexSha256": "fb710d1f98a8d8bc4bb7b485c104750ff0a883e3882590644a0d7e5530c25e50",
+  "sixSourceHashesMatchFrozenManifest": true,
+  "elevenFrontendFilesMatchTestedPreviewR2": true
+}

@@ -1,0 +1,62 @@
+{
+  "release": "20261024-log-filters-r2",
+  "deployment": {
+    "allContainersUnchanged": 15,
+    "apiAndWorkerContainersUnchanged": true,
+    "attempt": "attempt1",
+    "businessTablesRestored": 118,
+    "deployed": true,
+    "frontendGatePassed": true,
+    "frontendOnly": true,
+    "migrationsRun": false,
+    "release": "20261024-log-filters-r2",
+    "sharedConfigurationUnchanged": true,
+    "sharedDeltaFilesRestored": 0,
+    "sharedFilesReused": 128665,
+    "sharedFilesVerified": 128665,
+    "tagRowsRestored": 22,
+    "tagsAndInventoryUnchanged": true
+  },
+  "databaseBackup": {
+    "backupBytes": 735461119,
+    "backupSha256": "8e9364cc3ba5a7ad239263c351e20b123bea8790a6d90877507f71ea0675d170",
+    "businessTables": 118,
+    "migrations": 88,
+    "aosLogDataExcluded": true
+  },
+  "databaseRestore": {
+    "restored": true,
+    "businessTablesMatched": 118,
+    "businessDigestsMatched": 118,
+    "migrationsMatched": 88,
+    "backupSha256": "8e9364cc3ba5a7ad239263c351e20b123bea8790a6d90877507f71ea0675d170",
+    "aosLogDataExcluded": true,
+    "network": "none",
+    "postgresMajor": 15,
+    "noMigrationsRun": true,
+    "tagRowsRestored": 22,
+    "tagDigestMatched": true
+  },
+  "sharedFilesDelta": {
+    "baseArchiveSha256": "ebc49b7990a89c66931ea3ef5da7c8c8240dbcf924f41f5a7187c3ae3640dc35",
+    "baseBackup": "/var/backups/apple-order-mgr/20261024-log-labels",
+    "baseFilesPreviouslyRestored": 128665,
+    "changedOrAddedFiles": 0,
+    "currentFilesVerified": 128665,
+    "deletedFilesRecorded": 0,
+    "deltaArchiveBytes": 147243,
+    "deltaArchiveSha256": "7d3fb71031aaef658bb611ee39971a25f1892b8287c037c17e11456e3fb23ff2",
+    "deltaFilesRestoredAndVerified": 0,
+    "rawAosExcluded": 0,
+    "reusedBaseVerified": true,
+    "reusedFiles": 128665
+  },
+  "serverEvidenceFileTimesBeijing": {
+    "prepared-summary.json": "2026-10-24T23:59:21.042829+08:00",
+    "attempt1-deployment-summary.json": "2026-10-24T23:59:35.691203+08:00"
+  },
+  "codeCommit": "d7473b0cce304e07649f7081714865fe0aef7a90",
+  "sourceTree": "dca802db5393114e66e2392d28c9cbff4dcebfc8",
+  "frontendArchiveSha256": "ca8f8641e4552d9d78f9f2c5b2ea3ee3c2e690a34938389347d4379e23f52146",
+  "validatedFrontendIndexSha256": "fb710d1f98a8d8bc4bb7b485c104750ff0a883e3882590644a0d7e5530c25e50"
+}
