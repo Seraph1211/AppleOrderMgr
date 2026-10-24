@@ -634,54 +634,56 @@ export default function MonitorLogs({ standalone = false }) {
           </label>
         </div>
         </div>
-        <label className="mt-3 inline-flex items-center gap-2 text-sm text-gray-600">
-          <input
-            type="checkbox"
-            checked={draft.account === '__unassigned__'}
-            onChange={e => {
-              setDraft(value => ({
-                ...value,
-                account: e.target.checked ? '__unassigned__' : '',
-              }));
-              setAccountAfter('');
-            }}
-          />
-          仅查看未识别账号的日志
-        </label>
-        <div className="mt-4 flex flex-wrap gap-2">
-          <button
-            className="btn btn-primary inline-flex items-center justify-center min-h-11 sm:min-h-0"
-            disabled={!filters.localId || loading}
-          >
-            <Search className="mr-1 h-4 w-4" />
-            查询
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
-            onClick={() => {
-              setDraft({ account: '', fromTime: '', toTime: '', keyword: '' });
-              setFilters(value => ({
-                ...value,
-                account: '',
-                fromTime: '',
-                toTime: '',
-                keyword: '',
-              }));
-              reload();
-            }}
-          >
-            清空筛选
-          </button>
-          <button
-            type="button"
-            className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
-            disabled={loading}
-            onClick={reload}
-          >
-            <RefreshCw className="mr-1 h-4 w-4" />
-            重新查询（从头）
-          </button>
+        <div className="monitor-log-filter-actions mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
+          <label className="inline-flex min-h-11 shrink-0 items-center gap-2 text-sm text-gray-600 sm:min-h-[34px]">
+            <input
+              type="checkbox"
+              checked={draft.account === '__unassigned__'}
+              onChange={e => {
+                setDraft(value => ({
+                  ...value,
+                  account: e.target.checked ? '__unassigned__' : '',
+                }));
+                setAccountAfter('');
+              }}
+            />
+            仅查看未识别账号的日志
+          </label>
+          <div role="group" aria-label="日志查询操作" className="flex w-full flex-wrap items-center justify-end gap-2 sm:ml-auto sm:w-auto">
+            <button
+              className="btn btn-primary inline-flex items-center justify-center min-h-11 sm:min-h-0"
+              disabled={!filters.localId || loading}
+            >
+              <Search className="mr-1 h-4 w-4" />
+              查询
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
+              onClick={() => {
+                setDraft({ account: '', fromTime: '', toTime: '', keyword: '' });
+                setFilters(value => ({
+                  ...value,
+                  account: '',
+                  fromTime: '',
+                  toTime: '',
+                  keyword: '',
+                }));
+                reload();
+              }}
+            >
+              清空筛选
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
+              disabled={loading}
+              onClick={reload}
+            >
+              <RefreshCw className="mr-1 h-4 w-4" />
+              重新查询（从头）
+            </button>
+          </div>
         </div>
       </form>
       {filters.localId && (
