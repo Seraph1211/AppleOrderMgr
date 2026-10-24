@@ -1,0 +1,29 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "width": 1440,
+      "passed": true,
+      "devices": 22,
+      "instances": 24,
+      "inlineDropdown": true,
+      "labelsPresent": true,
+      "managerReadOnlyInspection": true,
+      "rangeAndExportEntrancesPreserved": true,
+      "productionWrites": 0,
+      "rawLogsRequested": false
+    },
+    {
+      "width": 375,
+      "passed": true,
+      "devices": 22,
+      "instances": 24,
+      "inlineDropdown": true,
+      "labelsPresent": true,
+      "managerReadOnlyInspection": true,
+      "rangeAndExportEntrancesPreserved": true,
+      "productionWrites": 0,
+      "rawLogsRequested": false
+    }
+  ]
+}
