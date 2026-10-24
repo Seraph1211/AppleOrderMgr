@@ -1,0 +1,51 @@
+diff --git a/frontend/src/components/MonitorLogs.jsx b/frontend/src/components/MonitorLogs.jsx
+--- a/frontend/src/components/MonitorLogs.jsx
++++ b/frontend/src/components/MonitorLogs.jsx
+@@ -628,9 +628,30 @@
+-        <button
+-          type="button"
+-          className="btn btn-secondary shrink-0"
+-          aria-expanded={filtersOpen}
+-          aria-controls="log-query-filters"
+-          onClick={() => setFiltersOpen(value => !value)}
+-        >
+-          {filtersOpen ? '收起筛选' : '修改筛选'}
+-        </button>
++        <div className="ml-auto flex shrink-0 items-center gap-2">
++          {canManageTags && (
++            <button
++              type="button"
++              className="btn btn-secondary min-h-11 shrink-0 whitespace-nowrap sm:min-h-0"
++              aria-expanded={filtersOpen && tagsOpen}
++              aria-controls="log-tag-management"
++              disabled={!catalog}
++              onClick={() => {
++                if (!filtersOpen) {
++                  setFiltersOpen(true);
++                  setTagsOpen(true);
++                } else {
++                  setTagsOpen(current => !current);
++                }
++              }}
++            >
++              {filtersOpen && tagsOpen ? '收起标签管理' : '标签管理'}
++            </button>
++          )}
++          <button
++            type="button"
++            className="btn btn-secondary min-h-11 shrink-0 whitespace-nowrap sm:min-h-0"
++            aria-expanded={filtersOpen}
++            aria-controls="log-query-filters"
++            onClick={() => setFiltersOpen(value => !value)}
++          >
++            {filtersOpen ? '收起筛选' : '修改筛选'}
++          </button>
++        </div>
+@@ -644,7 +664,0 @@
+-        {canManageTags && <div className="mb-3 flex justify-end">
+-          <button type="button" className="btn btn-secondary min-h-11 sm:min-h-0"
+-            aria-expanded={tagsOpen} aria-controls="log-tag-management"
+-            disabled={!catalog} onClick={() => setTagsOpen(current => !current)}>
+-            {tagsOpen ? '收起标签管理' : '标签管理'}
+-          </button>
+-        </div>}

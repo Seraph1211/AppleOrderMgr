@@ -1,0 +1,17 @@
+{
+  "sourceFile": "frontend/src/components/MonitorLogs.jsx",
+  "sourceSha256": "9ae61c292a5bf81a26c8182506466277de4426eb5d3e3d560e3d6cbe3d1eb8ac",
+  "frontendFileHashes": {
+    "assets/Stock-D6365Qtz.css": "a91f93f2e72b18d799a44cbc18f2204ce3b818cc348cec2455ad5ef6e07219af",
+    "assets/Stock-DyCQZxC9.js": "7d52362a955752d6d61108f8d79ec5cfbeb0dd7cd8148d12dd21922fb22bd0dc",
+    "assets/index-84469jgD.js": "d3de843dea10a158cbf88fe1134fea4f1a21a33aae24d2cf975e163542720c71",
+    "assets/index-BSqMgeVX.css": "86bb4b209bd491f1efcbe5e279c12f68999eff9e5a61da6d57f851e3275d3b65",
+    "assets/index-CzFnS5vd.js": "2a06328590ebaa44392889951af4efdf4ad66c0700f5577f9d4c28754dfe4c6d",
+    "assets/index-VMEfXUod.js": "4931e63efc6b33319f237f8633515e7868d8cc081581819c271ea6acaee02791",
+    "assets/jsQR-Ryq1TfST.js": "4ebddcb78fea70af2e69269b8021af28d20fd13d3e4b8f5300ec1f7680226a4a",
+    "debug.html": "6b7fbea26323ab37180c0822bfeae695f42fd333743ca9babb8f6f6213b9b6ec",
+    "index.html": "9cab48a87f5d23aa8cb0c6557254c1e139250d24c6b09f14cbeacc9ac9126439",
+    "templates/apple_ids_import_template.xlsx": "d35963212f1311d186668726f233e72df59b10c28538db4781d0dd27afa6d40b",
+    "templates/recipients_import_template.xlsx": "251052ff1ec8d919e74f1cfa17a7b42b5f58f91f80f32075d316cf317f0858d2"
+  }
+}

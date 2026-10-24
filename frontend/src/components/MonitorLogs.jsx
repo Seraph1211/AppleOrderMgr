@@ -495,15 +495,36 @@ export default function MonitorLogs({ standalone = false }) {
             ` · ${filters.fromTime || '00:00:00'}—${filters.toTime || '23:59:59'}`}
           {filters.keyword && ` · 关键词：${filters.keyword}`}
         </p>
-        <button
-          type="button"
-          className="btn btn-secondary shrink-0"
-          aria-expanded={filtersOpen}
-          aria-controls="log-query-filters"
-          onClick={() => setFiltersOpen(value => !value)}
-        >
-          {filtersOpen ? '收起筛选' : '修改筛选'}
-        </button>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {canManageTags && (
+            <button
+              type="button"
+              className="btn btn-secondary min-h-11 shrink-0 whitespace-nowrap sm:min-h-0"
+              aria-expanded={filtersOpen && tagsOpen}
+              aria-controls="log-tag-management"
+              disabled={!catalog}
+              onClick={() => {
+                if (!filtersOpen) {
+                  setFiltersOpen(true);
+                  setTagsOpen(true);
+                } else {
+                  setTagsOpen(current => !current);
+                }
+              }}
+            >
+              {filtersOpen && tagsOpen ? '收起标签管理' : '标签管理'}
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-secondary min-h-11 shrink-0 whitespace-nowrap sm:min-h-0"
+            aria-expanded={filtersOpen}
+            aria-controls="log-query-filters"
+            onClick={() => setFiltersOpen(value => !value)}
+          >
+            {filtersOpen ? '收起筛选' : '修改筛选'}
+          </button>
+        </div>
       </div>
       <form
         id="log-query-filters"
@@ -511,13 +532,6 @@ export default function MonitorLogs({ standalone = false }) {
         onSubmit={submit}
         className="monitor-log-filter-form rounded-xl border border-gray-200 bg-white p-3 sm:p-4"
       >
-        {canManageTags && <div className="mb-3 flex justify-end">
-          <button type="button" className="btn btn-secondary min-h-11 sm:min-h-0"
-            aria-expanded={tagsOpen} aria-controls="log-tag-management"
-            disabled={!catalog} onClick={() => setTagsOpen(current => !current)}>
-            {tagsOpen ? '收起标签管理' : '标签管理'}
-          </button>
-        </div>}
         {canManageTags && tagsOpen && <div id="log-tag-management" className="mb-4">
           <MonitorLogTags catalog={catalog} onSaved={updateTag} onCatalog={setCatalog} />
         </div>}
