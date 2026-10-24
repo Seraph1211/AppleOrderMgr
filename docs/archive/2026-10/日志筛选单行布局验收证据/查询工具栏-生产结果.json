@@ -1,0 +1,98 @@
+{
+  "passed": true,
+  "realProduction": true,
+  "results": [
+    {
+      "width": 1440,
+      "passed": true,
+      "fourButtonsRightAligned": true,
+      "checkboxLeftOrAbove": true,
+      "dividerRemoved": true,
+      "hintContrast": 4.834490081424352,
+      "queryClearRefreshExportCallbacks": false,
+      "unassignedAndAccountCursorReset": false,
+      "checkboxToggleVerified": true,
+      "controls": [
+        {
+          "x": 242,
+          "y": 255,
+          "width": 222.671875,
+          "height": 36
+        },
+        {
+          "x": 474.671875,
+          "y": 255,
+          "width": 180.265625,
+          "height": 36
+        },
+        {
+          "x": 664.9375,
+          "y": 255,
+          "width": 180.265625,
+          "height": 36
+        },
+        {
+          "x": 855.203125,
+          "y": 255,
+          "width": 328.71875,
+          "height": 36
+        },
+        {
+          "x": 1193.921875,
+          "y": 255,
+          "width": 212.078125,
+          "height": 36
+        }
+      ],
+      "productionWrites": 0,
+      "productionRawRequests": 0
+    },
+    {
+      "width": 375,
+      "passed": true,
+      "fourButtonsRightAligned": true,
+      "checkboxLeftOrAbove": true,
+      "dividerRemoved": true,
+      "hintContrast": 4.834490081424352,
+      "queryClearRefreshExportCallbacks": false,
+      "unassignedAndAccountCursorReset": false,
+      "checkboxToggleVerified": true,
+      "controls": [
+        {
+          "x": 26,
+          "y": 293,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 372,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 451,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 530,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 609,
+          "width": 323,
+          "height": 44
+        }
+      ],
+      "productionWrites": 0,
+      "productionRawRequests": 0
+    }
+  ],
+  "frontendIndexSha256": "d9bb9bb4227335a4cc4af5a909c15aa169537721a7c8a0f44031334f1783dc30",
+  "releaseId": "20261025-log-query-toolbar"
+}
