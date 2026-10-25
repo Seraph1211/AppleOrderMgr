@@ -4,6 +4,7 @@ const logMigration = require('../migrations/20260929000001-add-monitor-full-logs
 const blockMigration = require('../migrations/20261007000001-add-monitor-log-block-storage');
 const repeatMigration = require('../migrations/20261007000002-add-monitor-log-repeat-limits');
 const signalMigration = require('../migrations/20261019000001-create-aos-signal-queue');
+const accountMigration = require('../migrations/20261026000001-create-aos-account-config-index');
 const suite = process.env.AOS_SIGNAL_DATABASE_TEST === '1' ? describe : describe.skip;
 
 suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
@@ -49,6 +50,9 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
         'MonitorLogState',
         'AosSignalInbox',
         'AosSignalContext',
+        'AosAccountRegistry',
+        'AosAccountConfigEvent',
+        'AosAccountIndexState',
       ])
         models[name] = require(`../src/models/${name}`)(db);
       const attributes = Object.fromEntries(
@@ -62,6 +66,7 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
       await blockMigration.up(db.getQueryInterface(), Sequelize);
       await repeatMigration.up(db.getQueryInterface(), Sequelize);
       await signalMigration.up(db.getQueryInterface(), Sequelize);
+      await accountMigration.up(db.getQueryInterface(), Sequelize);
       await models.AosDevice.create({
         id: deviceId,
         name: 'US Server No.9',
@@ -76,7 +81,7 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
   beforeEach(async () => {
     try {
       await db.query(
-        'TRUNCATE monitor_log_entries,monitor_log_receipts,monitor_log_block_accounts,monitor_log_blocks,monitor_log_files,monitor_log_storage_scopes,monitor_log_storage_metrics,aos_signal_inbox RESTART IDENTITY CASCADE'
+        'TRUNCATE monitor_log_entries,monitor_log_receipts,monitor_log_block_accounts,monitor_log_blocks,monitor_log_files,monitor_log_storage_scopes,monitor_log_storage_metrics,aos_signal_inbox,aos_account_config_events,aos_account_registries,aos_account_index_states RESTART IDENTITY CASCADE'
       );
     } catch (error) {
       throw new Error('日志接收隔离重置失败', { cause: error });
@@ -84,6 +89,7 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
   });
   afterAll(async () => {
     try {
+      await accountMigration.down(db.getQueryInterface());
       await signalMigration.down(db.getQueryInterface());
       await repeatMigration.down(db.getQueryInterface());
       await blockMigration.down(db.getQueryInterface());
@@ -164,5 +170,41 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
     await receive(deviceId, { entries: [row] });
     expect(await models.AosSignalInbox.findByPk('expired-synthetic')).toBeNull();
     expect(await models.AosSignalInbox.findByPk(row.id)).not.toBeNull();
+  });
+  test('真实接收历史启动设置仅建索引，旧anchor不因backfill重发，重复batch不反复写registry', async () => {
+    const loggedAt = new Date(Date.now() - 600000).toISOString();
+    const clock = new Date(Date.parse(loggedAt) + 8 * 3600000)
+      .toISOString()
+      .slice(0, 23)
+      .replace('T', ' ');
+    const row = entry(500, {
+      loggedAt,
+      accountNumber: '001',
+      message: `${clock} [2][001]开始下单 iPhone Duo 星光白色 512G(x1)....`,
+    });
+    await receive(deviceId, { entries: [row] });
+    const registry = (await models.AosAccountRegistry.findAll())[0];
+    expect(registry.accountNumber).toBe('001');
+    expect(await models.AosAccountConfigEvent.count()).toBe(1);
+    expect(await models.AosSignalInbox.count()).toBe(0);
+    const updatedAt = registry.updatedAt;
+    await receive(deviceId, { entries: [row] });
+    expect((await registry.reload()).updatedAt).toEqual(updatedAt);
+    expect(await models.AosAccountConfigEvent.count()).toBe(1);
+  });
+
+  test('独立设置索引故障回滚实际日志与通知队列，重试能完整恢复', async () => {
+    const row = entry(700);
+    const failure = jest
+      .spyOn(models.AosAccountConfigEvent, 'bulkCreate')
+      .mockRejectedValueOnce(new Error('synthetic index failure'));
+    await expect(receive(deviceId, { entries: [row] })).rejects.toMatchObject({ statusCode: 503 });
+    failure.mockRestore();
+    expect(await models.MonitorLogEntry.count()).toBe(0);
+    expect(await models.AosSignalInbox.count()).toBe(0);
+    expect(await models.AosAccountRegistry.count()).toBe(0);
+    await receive(deviceId, { entries: [row] });
+    expect(await models.AosAccountConfigEvent.count()).toBe(1);
+    expect(await models.AosSignalInbox.count()).toBe(1);
   });
 });

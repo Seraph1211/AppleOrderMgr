@@ -7,6 +7,7 @@ const InventoryService = require('../services/inventoryService');
 const InventoryCollector = require('../services/inventoryCollector');
 const InventoryNotifier = require('../services/inventoryNotifier');
 const AosSignalService = require('../services/aosSignalService');
+const AosAccountBackfill = require('../services/aosAccountBackfill');
 const InventoryValidationGate = require('../services/inventoryValidationGate');
 const InventoryDriver = require('../services/inventoryDriver');
 const InventoryMaintenance = require('../services/inventoryMaintenance');
@@ -16,6 +17,7 @@ const gate = new InventoryValidationGate(models.sequelize, { production: true })
 const collector = new InventoryCollector(service);
 const notifier = new InventoryNotifier(service);
 const aosSignals = new AosSignalService(service);
+const accountBackfill = new AosAccountBackfill(models);
 const driver = new InventoryDriver(gate);
 const maintenance = new InventoryMaintenance(service, driver, gate);
 let stopping = false;
@@ -23,6 +25,7 @@ let timer;
 const collecting = new Set();
 let dispatching;
 let notifying;
+let indexing;
 async function collect(claim) {
   try {
     const result = await driver.request('inventory', {
@@ -64,7 +67,7 @@ async function stop() {
   clearInterval(timer);
   try {
     await dispatching;
-    await Promise.allSettled([...collecting, notifying]);
+    await Promise.allSettled([...collecting, notifying, indexing]);
     await models.sequelize.close();
   } catch (error) {
     logger.error('库存 Worker 关闭失败', { errorType: error.name });
@@ -82,6 +85,15 @@ async function main() {
         dispatching = dispatch().finally(() => {
           dispatching = null;
         });
+      if (!indexing)
+        indexing = accountBackfill
+          .tick()
+          .catch(error => {
+            logger.warn('AOS账号回填周期失败', { errorCode: error.name });
+          })
+          .finally(() => {
+            indexing = null;
+          });
       if (!notifying)
         notifying = aosSignals
           .tick()

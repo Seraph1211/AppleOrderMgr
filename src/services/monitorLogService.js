@@ -14,6 +14,7 @@ const policy = require('./monitorLogPolicy');
 const blockStore = require('./monitorLogBlockStore');
 const blockCompactor = require('./monitorLogBlockCompactor');
 const aosSignals = require('./aosSignalService');
+const accountConfigs = require('./aosAccountConfigService');
 const ORDER = 'sort_at, file_id, byte_offset, id';
 const TUPLE = '(sort_at, file_id, byte_offset, id)';
 const MARK = '(:anchorAt::timestamptz, :anchorFile::uuid, :anchorOffset::bigint, :anchorId::uuid)';
@@ -110,6 +111,10 @@ async function receive(deviceId, body) {
             ...legacy.map(row => row.id),
             ...(blockResult.insertedIds || []),
           ]);
+          await accountConfigs.ingest(
+            create.filter(row => insertedIds.has(row.id)),
+            transaction
+          );
           await aosSignals.enqueue(
             create.filter(row => insertedIds.has(row.id)),
             transaction

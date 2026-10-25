@@ -248,7 +248,11 @@ class InventoryNotifier {
               item.partial = round?.status !== 'complete';
             }
             if (item.kind === 'aos_signal' && item.aosGroups)
-              item.content = aosSignalPolicy.content(item.aosGroups, item.aosImmediate);
+              item.content = aosSignalPolicy.content(
+                item.aosGroups,
+                item.aosImmediate,
+                item.aosAccountRatio
+              );
             eligible.push(item);
           }
           await this.s.put('InventoryDelivery', skipped, transaction);

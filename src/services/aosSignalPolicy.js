@@ -318,7 +318,9 @@ function sourceContent(rows, budget) {
 }
 
 /** 在手机纯文本层次中展示完整总计；优先商品且明确保留省略数。 */
-function content(groups, immediate) {
+function content(groups, immediate, ratios) {
+  if (!immediate && ratios)
+    return require('./aosAccountRatioContent').formatSummary(groups, ratios);
   const rows = detailRows(Object.values(groups));
   const sources = new Map();
   for (const row of rows)

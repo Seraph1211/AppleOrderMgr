@@ -62,6 +62,9 @@ const models = {
   InventoryDelivery: require('./InventoryDelivery')(sequelize),
   AosSignalInbox: require('./AosSignalInbox')(sequelize),
   AosSignalContext: require('./AosSignalContext')(sequelize),
+  AosAccountRegistry: require('./AosAccountRegistry')(sequelize),
+  AosAccountConfigEvent: require('./AosAccountConfigEvent')(sequelize),
+  AosAccountIndexState: require('./AosAccountIndexState')(sequelize),
 
   ProxyOrder: require('./ProxyOrder')(sequelize),
   ProxyOrderLink: require('./ProxyOrderLink')(sequelize),

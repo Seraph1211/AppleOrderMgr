@@ -3,6 +3,8 @@ const { isDeepStrictEqual } = require('util');
 const { Op, QueryTypes } = require('sequelize');
 const policy = require('./aosSignalPolicy');
 const inventoryFailure = require('../utils/inventoryFailure');
+const accountConfigs = require('./aosAccountConfigService');
+const accountRatios = require('./aosAccountRatioService');
 
 /** 接收事务仅写脱敏队列，不获取库存全局锁。 @param {Object[]} rows 实际新增日志 @param {Object} transaction 日志事务 @returns {Promise<number>} 入队数 */
 async function enqueue(rows, transaction) {
@@ -44,10 +46,15 @@ class AosSignalService {
   }
 
   /** 生成单条概览，保存全部分组明细供投递历史查询。 */
-  async queue(groups, context, immediate, from, to, association) {
+  async queue(groups, context, immediate, from, to, association, accountTracker) {
     try {
       if (!Object.keys(groups).length) return;
       const { transaction, settings, now } = context;
+      const ratioEnabled = Boolean(this.s.m.AosAccountRegistry);
+      const aosAccountRatio =
+        ratioEnabled && !immediate
+          ? await accountRatios.evaluate(accountTracker, this.s.m, transaction)
+          : null;
       await this.s.put(
         'InventoryDelivery',
         [
@@ -59,6 +66,7 @@ class AosSignalService {
             aosSignalsSince: settings.aosSignalsSince,
             aosGroups: groups,
             aosImmediate: immediate,
+            ...(ratioEnabled ? { aosAccountTracker: accountTracker || null, aosAccountRatio } : {}),
             ...(association ? { aosAssociation: association } : {}),
             // 完整首次不等待；若出站前晚到边界使门店失效，仍使用原接收时间截止。
             ...(immediate ? { aosContextDeadline: from + policy.LOCATION_WAIT_MS } : {}),
@@ -66,7 +74,7 @@ class AosSignalService {
             windowTo: Math.max(...Object.values(groups).map(row => row.lastAt)),
             receivedWindowFrom: from,
             receivedWindowTo: to,
-            content: policy.content(groups, immediate),
+            content: policy.content(groups, immediate, aosAccountRatio),
             notBefore: now,
             expiresAt: now + policy.WINDOW_MS,
             attempts: 0,
@@ -92,7 +100,8 @@ class AosSignalService {
           false,
           window.from,
           window.until,
-          window.association
+          window.association,
+          window.accountTracker
         );
       if (!Object.keys(window.groups).length || at >= window.until + policy.WINDOW_MS)
         state.aosSignals = null;
@@ -182,6 +191,20 @@ class AosSignalService {
           windowTo: Math.max(...Object.values(groups).map(group => group.lastAt)),
         };
       });
+      if (this.s.m.AosAccountRegistry) {
+        if (state.aosSignals?.accountTracker)
+          state.aosSignals.accountTracker = accountRatios.refresh(
+            state.aosSignals.accountTracker,
+            state.aosSignals.association
+          );
+        for (const row of updated) {
+          row.aosAccountTracker = accountRatios.refresh(row.aosAccountTracker, row.aosAssociation);
+          row.aosAccountRatio = row.aosImmediate
+            ? null
+            : await accountRatios.evaluate(row.aosAccountTracker, this.s.m, transaction);
+          row.content = policy.content(row.aosGroups, row.aosImmediate, row.aosAccountRatio);
+        }
+      }
       // JSONB忽略键顺序和undefined；无变化的待发消息不重复写入updated_at。
       const changed = updated.filter(
         (row, index) =>
@@ -251,6 +274,18 @@ class AosSignalService {
         try {
           const { transaction, state, settings, now } = context;
           state.aosSignals = state.aosSignals ? structuredClone(state.aosSignals) : null;
+          if (
+            this.s.m.AosAccountRegistry &&
+            state.aosSignals &&
+            Object.keys(state.aosSignals.groups || {}).length &&
+            !state.aosSignals.accountTracker
+          )
+            state.aosSignals.accountTracker = {
+              version: 1,
+              refs: [],
+              snapshots: {},
+              incomplete: 'LEGACY_WINDOW_WITHOUT_ACCOUNT_TRACKER',
+            };
           const queue = await this.s.m.AosSignalInbox.findAll({
             order: [
               ['createdAt', 'ASC'],
@@ -296,9 +331,13 @@ class AosSignalService {
             settings.testedDestination === settings.destinationId;
           if (!enabled) state.aosSignals = null;
           if (enabled) await this.reconcile(context);
-          const anchors = entries
-            .filter(row => row.kind === 'anchor')
-            .sort((a, b) => a.receivedAt - b.receivedAt || a.byteOffset - b.byteOffset);
+          const anchors = (
+            await accountConfigs.attachAccounts(
+              this.s.m,
+              entries.filter(row => row.kind === 'anchor'),
+              transaction
+            )
+          ).sort((a, b) => a.receivedAt - b.receivedAt || a.byteOffset - b.byteOffset);
           for (const anchor of anchors) {
             if (
               !enabled ||
@@ -316,13 +355,16 @@ class AosSignalService {
             const item = policy.observation(task, anchor);
             if (!state.aosSignals) {
               const first = policy.addAssociation({ groups: {} }, anchor, item, task);
+              if (this.s.m.AosAccountRegistry)
+                first.accountTracker = accountRatios.add(null, anchor, item);
               await this.queue(
                 first.groups,
                 context,
                 true,
                 anchor.receivedAt,
                 anchor.receivedAt,
-                first.association
+                first.association,
+                first.accountTracker
               );
               // 首次投递保留独立快照，后续命中和晚到上下文只更新各自关联。
               state.aosSignals = {
@@ -330,7 +372,15 @@ class AosSignalService {
                 from: anchor.receivedAt,
                 until: anchor.receivedAt + policy.WINDOW_MS,
               };
-            } else policy.addAssociation(state.aosSignals, anchor, item, task);
+            } else {
+              policy.addAssociation(state.aosSignals, anchor, item, task);
+              if (this.s.m.AosAccountRegistry)
+                state.aosSignals.accountTracker = accountRatios.add(
+                  state.aosSignals.accountTracker,
+                  anchor,
+                  item
+                );
+            }
           }
           if (enabled) await this.advance(context, now);
           if (queue.length)

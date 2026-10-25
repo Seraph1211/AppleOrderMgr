@@ -68,6 +68,7 @@
     "test:stock:ledger:migration": "jest test/stockLedgerMigration.integration.test.js --runInBand",
     "logs:storage:migrate": "node scripts/monitorLogStorageMigration.js",
     "logs:storage:benchmark": "node scripts/monitorLogStorageBenchmark.js",
+    "logs:accounts:backfill": "node scripts/backfillAosAccountIndex.js",
     "official:collect:http": "node scripts/collectOfficialOrderHttp.js",
     "official:backfill:http": "python3 scripts/officialOrder/runHttpBatch.py",
     "official:backfill:historical-date": "python3 scripts/officialOrder/applyHistoricalDate.py",
