@@ -131,7 +131,7 @@ test('独立格式验收：单来源正文逐行匹配用户示例且不含S编�
     '首次信号｜1次命中｜1家门店\n\n' +
       '深圳 · Apple 前海壹方城\niPhone Duo\n星光白色 · 512G｜1次\n\n' +
       '时间：10-24 19:48:35\n\n' +
-      '来源：US_21 / 心蓝21｜1次\n'
+      '来源：US_21 / 心蓝21｜1次'
   );
 });
 
@@ -161,10 +161,10 @@ test('独立格式验收：多来源按实际明细合计12次、3门店，不�
   );
   const text = policy.content(groups, false);
   expect(text).toContain('3分钟汇总｜12次命中｜3家门店\n');
-  expect(text).toContain('来源：\nUS_12 / 心蓝13｜11次\nUS_21 / 心蓝21｜1次\n');
+  expect(text).toContain('来源：\nUS_12 / 心蓝13｜11次\nUS_21 / 心蓝21｜1次');
   expect(text).toContain('深圳 · Apple 深圳万象城\niPhone Duo\n夜空色 · 1T｜8次\n');
   expect(text).toContain('深圳 · Apple 壹方城\niPhone Duo\n夜空色 · 2T｜3次\n');
-  expect(text).toContain('广州 · Apple 天环广场\niPhone Duo\n星光白色 · 512G｜1次\n');
+  expect(text).toContain('广州 · Apple 天环广场\niPhone Duo\n星光白色 · 512G｜1次');
   expect(text).not.toMatch(/S\d+|非库存数量/);
 });
 
@@ -182,7 +182,7 @@ test.each(['US Server 21', 'US Server No.21', 'US21', 'US_21'])(
   server => {
     expect(
       policy.content(policy.addGroup({}, item({ source: { ...SOURCE, server } })), true)
-    ).toContain('来源：US_21 / 心蓝21｜1次\n');
+    ).toContain('来源：US_21 / 心蓝21｜1次');
   }
 );
 

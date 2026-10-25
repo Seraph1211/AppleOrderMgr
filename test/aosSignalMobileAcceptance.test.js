@@ -156,7 +156,7 @@ function sampleGroups() {
 }
 
 test('手机正文完整匹配用户三门店样例，摘要和详情、时间、来源按确认顺序排列', () => {
-  expect(policy.content(sampleGroups(), false).trim()).toBe(
+  expect(policy.content(sampleGroups(), false)).toBe(
     [
       '3分钟汇总｜12次命中｜3家门店',
       '',

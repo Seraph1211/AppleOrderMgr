@@ -283,8 +283,9 @@ class InventoryNotifier {
                 .join('\n');
             else if (item.kind === 'health' && item.healthKey === 'normal')
               line = `状态：查询通道恢复\n原因：查询通道已连续观察 2 分钟；覆盖范围见当前摘要\n最近成功：${state.lastSuccessAt ? new Date(state.lastSuccessAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚无'}`;
+            if (item.kind === 'aos_signal') line = line.replace(/[\r\n]+$/, '');
             if (Buffer.byteLength(content + line, 'utf8') > 1600) break;
-            content += `${line}\n`;
+            content += item.kind === 'aos_signal' ? line : `${line}\n`;
             batch.push(item);
           }
           if (first.partial) content += '本轮覆盖未完整，仅汇总当前有效结果。\n';

@@ -362,7 +362,7 @@ function content(groups, immediate) {
   const sourceBudget = CONTENT_BYTES - Buffer.byteLength(text, 'utf8') - 2;
   const sourceText = sourceContent(sourceRows, sourceBudget);
   if (sourceText) text += `\n\n${sourceText}`;
-  return `${text}\n`;
+  return text;
 }
 
 module.exports = {
