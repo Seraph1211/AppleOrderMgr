@@ -1178,6 +1178,197 @@ suite('AOS账号比例独立真实PG：旧API协议、索引事务、覆盖及�
     }
   );
 
+  test('receipt页修复：前1000条metadata均日期外或其他local仍推进，后续同file有效块不漏', async () => {
+    let spy;
+    try {
+      const monitorLogs = require('../src/services/monitorLogService');
+      const Backfill = require('../src/services/aosAccountBackfill');
+      const blockStore = require('../src/services/monitorLogBlockStore');
+      const other = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      for (const local of [INSTANCE, other])
+        await db.query(
+          "INSERT INTO monitor_log_storage_scopes(device_id,local_id,mode) VALUES(:device,:local,'blocks')",
+          { replacements: { device: DEVICE, local } }
+        );
+      // 两类无关块也包含真实startup关键字；若先join过滤失效，spy会检出原文解压。
+      const excluded = Array.from({ length: 1000 }, (_, index) => ({
+        ...row('开始下单 iPhone Duo 星光白色 512G(x1)....', {
+          account: index < 500 ? '901' : '902',
+          at: index < 500 ? now - 5 * 86400000 : now - 1000,
+        }),
+        localId: index < 500 ? INSTANCE : other,
+      }));
+      const entries = apiRows([...excluded, ...startup('003', now - 1000)]);
+      for (let offset = 0; offset < entries.length; offset += 200)
+        await monitorLogs.receive(DEVICE, { entries: entries.slice(offset, offset + 200) });
+      await db.query(
+        'TRUNCATE aos_account_registries,aos_account_config_events,aos_account_index_states'
+      );
+      await monitorLogs.receiveStates(DEVICE, captureReport());
+      const fill = new Backfill(models);
+      const state = await models.AosAccountIndexState.findByPk(
+        configPolicy.digest([DEVICE, INSTANCE])
+      );
+      await completeMetadata(fill, state);
+      await fill.save(state, 'running', { fileId: FILE, offset: '-1' });
+      spy = jest.spyOn(blockStore, 'readBlock');
+      const empty = await fill.tick();
+      expect(empty.rows).toBe(0);
+      expect(empty.blocks).toBe(0);
+      expect(spy).not.toHaveBeenCalled();
+      await state.reload();
+      expect(state.body.offset).toBe(String(entries[999].byteOffset));
+      expect(state.body.fileId).toBe(FILE);
+      expect(state.body.scannedReceipts).toBe(1000);
+      expect(await models.AosAccountConfigEvent.count()).toBe(0);
+      const valid = await new Backfill(models).tick();
+      expect(valid.rows).toBe(3);
+      expect(valid.blocks).toBe(1);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy.mock.calls[0][0].local_id).toBe(INSTANCE);
+      expect(String(spy.mock.calls[0][0].business_date)).toBe(entries[1000].businessDate);
+      await state.reload();
+      expect(state.body.offset).toBe(String(entries.at(-1).byteOffset));
+      expect(state.body.scannedReceipts).toBe(1003);
+      expect(await models.AosAccountConfigEvent.count({ where: { accountNumber: '003' } })).toBe(3);
+      expect(await models.AosAccountConfigEvent.count()).toBe(3);
+      for (let index = 0; index < 4; index++) {
+        expect((await new Backfill(models).tick()).failed).not.toBe(true);
+        if ((await state.reload()).status === 'ready') break;
+      }
+      expect(state.status).toBe('ready');
+      expect(await models.AosSignalInbox.count()).toBe(0);
+      expect(await models.InventoryDelivery.count()).toBe(0);
+    } catch (error) {
+      throw new Error('QA_RECEIPT_METADATA_FILTER_PAGE_FAILED', { cause: error });
+    } finally {
+      spy?.mockRestore();
+    }
+  }, 30000);
+
+  test('receipt页修复：一次只解压一块，实际压实后旧offset仍续跑，索引与游标失败同事务回滚后可重试', async () => {
+    let spy;
+    let saveSpy;
+    try {
+      const monitorLogs = require('../src/services/monitorLogService');
+      const Backfill = require('../src/services/aosAccountBackfill');
+      const blockStore = require('../src/services/monitorLogBlockStore');
+      const compactor = require('../src/services/monitorLogBlockCompactor');
+      await db.query(
+        "INSERT INTO monitor_log_storage_scopes(device_id,local_id,mode) VALUES(:device,:local,'blocks')",
+        { replacements: { device: DEVICE, local: INSTANCE } }
+      );
+      const first = apiRows(startup('001', now - 1000), 1000);
+      const second = apiRows(startup('002', now - 500), 2000);
+      await monitorLogs.receive(DEVICE, { entries: first });
+      await monitorLogs.receive(DEVICE, { entries: second });
+      await db.query(
+        'TRUNCATE aos_account_registries,aos_account_config_events,aos_account_index_states'
+      );
+      await monitorLogs.receiveStates(DEVICE, captureReport());
+      const fill = new Backfill(models);
+      const state = await models.AosAccountIndexState.findByPk(
+        configPolicy.digest([DEVICE, INSTANCE])
+      );
+      await completeMetadata(fill, state);
+      await fill.save(state, 'running', { fileId: FILE, offset: '-1' });
+      spy = jest.spyOn(blockStore, 'readBlock');
+      expect((await fill.tick()).blocks).toBe(1);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(await models.AosAccountConfigEvent.count()).toBe(3);
+      expect((await state.reload()).body.offset).toBe(String(first.at(-1).byteOffset));
+      await db.query(
+        'INSERT INTO monitor_log_storage_metrics(name,value) VALUES(\'storage-default\',\'{"mode":"blocks"}\'::jsonb)'
+      );
+      const compacted = await compactor.compact({
+        maxBatches: 1,
+        maxRows: 100,
+        maxSourceBlocks: 10,
+      });
+      expect(compacted.failedBatches).toBe(0);
+      expect(compacted.sourceBlocks).toBe(2);
+      expect(compacted.targetBlocks).toBe(1);
+      spy.mockClear();
+      const realSave = fill.save.bind(fill);
+      saveSpy = jest
+        .spyOn(fill, 'save')
+        .mockImplementation((...args) =>
+          args[3] ? Promise.reject(new Error('QA_CURSOR_COMMIT_FAILED')) : realSave(...args)
+        );
+      expect((await fill.tick()).failed).toBe(true);
+      expect(spy).toHaveBeenCalledTimes(1);
+      expect(await models.AosAccountConfigEvent.count()).toBe(3);
+      expect((await state.reload()).body.offset).toBe(String(first.at(-1).byteOffset));
+      saveSpy.mockRestore();
+      saveSpy = null;
+      await realSave(state, 'running', { retryAfter: null, reason: null });
+      const retried = await new Backfill(models).tick();
+      expect(retried.rows).toBe(3);
+      expect(retried.blocks).toBe(1);
+      expect((await state.reload()).body.offset).toBe(String(second.at(-1).byteOffset));
+      expect(await models.AosAccountConfigEvent.count()).toBe(6);
+      expect(await models.AosAccountConfigEvent.count({ where: { accountNumber: '002' } })).toBe(3);
+      for (let index = 0; index < 4; index++) {
+        expect((await new Backfill(models).tick()).failed).not.toBe(true);
+        if ((await state.reload()).status === 'ready') break;
+      }
+      expect(state.status).toBe('ready');
+      expect(await models.AosAccountConfigEvent.count()).toBe(6);
+      expect(await models.AosSignalInbox.count()).toBe(0);
+    } catch (error) {
+      throw new Error('QA_RECEIPT_COMPACTION_CURSOR_ATOMIC_FAILED', { cause: error });
+    } finally {
+      saveSpy?.mockRestore();
+      spy?.mockRestore();
+    }
+  }, 30000);
+
+  test('receipt页修复：legacy异常startup保留日期与sortAt下界，缺口可由次日完整启动覆盖', async () => {
+    try {
+      const monitorLogs = require('../src/services/monitorLogService');
+      const Backfill = require('../src/services/aosAccountBackfill');
+      const today = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+      const previous = new Date(Date.parse(today) - 86400000).toISOString().slice(0, 10);
+      const at = Date.parse(`${previous}T12:00:00.000+08:00`);
+      const [broken] = apiRows([row('开始下单 iPhone Duo 星光白色 512G(x1)....', { at })]);
+      Object.assign(broken, {
+        loggedAt: null,
+        contextAt: new Date(at).toISOString(),
+        parseState: 'continuation',
+        message: '开始下单 iPhone Duo 星光白色 512G(x1)....\r\n',
+      });
+      await monitorLogs.receive(DEVICE, { entries: [broken] });
+      await monitorLogs.receive(DEVICE, {
+        entries: apiRows(startup('001', Date.parse(`${today}T00:00:00.100+08:00`)), 2000),
+      });
+      await db.query(
+        'TRUNCATE aos_account_registries,aos_account_config_events,aos_account_index_states'
+      );
+      await monitorLogs.receiveStates(DEVICE, captureReport());
+      const state = await models.AosAccountIndexState.findByPk(
+        configPolicy.digest([DEVICE, INSTANCE])
+      );
+      for (let index = 0; index < 12; index++) {
+        expect((await new Backfill(models).tick()).failed).not.toBe(true);
+        if ((await state.reload()).status === 'ready') break;
+      }
+      expect(state.status).toBe('ready');
+      expect(state.body.gaps).toHaveLength(1);
+      expect(state.body.gaps[0].at).toBeNull();
+      expect(Date.parse(state.body.gaps[0].atFrom)).toBe(at);
+      expect(Date.parse(state.body.gaps[0].atTo)).toBe(
+        Date.parse(`${previous}T23:59:59.999+08:00`)
+      );
+      const ratio = await evaluate(trackerFor([{ account: '001', at: now - 100 }]));
+      expect(ratio.numerator).toBe(1);
+      expect(ratio.denominator).toBe(1);
+      expect((await models.MonitorLogEntry.findByPk(broken.id)).loggedAt).toBeNull();
+      expect(await models.AosSignalInbox.count()).toBe(0);
+    } catch (error) {
+      throw new Error('QA_LEGACY_PAGE_GAP_BOUNDS_FAILED', { cause: error });
+    }
+  });
+
   test('实际monitorLogService.receive的200条batch原子入索引，重复不增；Migration缺失受控拒绝并可原样重试', async () => {
     const monitorLogs = require('../src/services/monitorLogService');
     let renamed = false;

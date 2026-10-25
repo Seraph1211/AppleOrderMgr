@@ -262,12 +262,28 @@ class AosAccountBackfill {
   /** 先在短快照复制单块，再在事务外解压；回执游标在压实后仍按原字节位置有效。 @param {Object} state 状态 @returns {Promise<Object>} 有界原文页 */
   async page(state) {
     try {
+      const started = Date.now();
       const { firstDate, lastDate } = dateRange(state.body);
       const copied = await this.m.sequelize.transaction(
         { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ, readOnly: true },
         async transaction => {
           try {
-            await this.m.sequelize.query("SET LOCAL statement_timeout='1500ms'", { transaction });
+            const query = async (sql, options) => {
+              try {
+                const remaining = 2000 - (Date.now() - started);
+                if (remaining <= 0) throw new Error('BACKFILL_PAGE_BUDGET');
+                await this.m.sequelize.query(
+                  "SELECT set_config('statement_timeout',:timeout,true)",
+                  {
+                    replacements: { timeout: `${Math.min(1500, remaining)}ms` },
+                    transaction,
+                  }
+                );
+                return await this.m.sequelize.query(sql, { ...options, transaction });
+              } catch (error) {
+                throw new Error('ACCOUNT_COPY_QUERY_FAILED', { cause: error });
+              }
+            };
             const replacements = {
               deviceId: state.deviceId,
               localId: state.localId,
@@ -280,15 +296,21 @@ class AosAccountBackfill {
               replacements[`sig${index}`] = blockStore.signature([word], true);
               return `(b.signature & :sig${index}::bit(8192))=:sig${index}::bit(8192)`;
             });
-            const legacy = await this.m.sequelize.query(
-              `SELECT id,device_id AS "deviceId",local_id AS "localId",file_id AS "fileId",byte_offset AS "byteOffset",message,logged_at AS "loggedAt",account_number AS "accountNumber",parse_state AS "parseState",part_index AS "partIndex"
+            const legacy = await query(
+              `SELECT id,device_id AS "deviceId",local_id AS "localId",file_id AS "fileId",byte_offset AS "byteOffset",business_date AS "businessDate",sort_at AS "contextAt",message,logged_at AS "loggedAt",account_number AS "accountNumber",parse_state AS "parseState",part_index AS "partIndex"
             FROM monitor_log_entries WHERE device_id=:deviceId AND local_id=:localId AND file_id=:fileId AND business_date BETWEEN :firstDate AND :lastDate AND byte_offset>:offset::bigint ORDER BY byte_offset LIMIT 100`,
               { replacements, type: QueryTypes.SELECT, transaction }
             );
-            const receipts = await this.m.sequelize.query(
-              `SELECT r.id,r.byte_offset AS offset,r.ordinal,b.business_date AS day,b.id AS block_id,(${signatures.join(' OR ')}) AS candidate
-            FROM monitor_log_files f JOIN monitor_log_receipts r ON r.file_key=f.id JOIN monitor_log_blocks b ON b.business_date=r.business_date AND b.id=r.block_id
-            WHERE f.device_id=:deviceId AND f.file_id=:fileId AND b.local_id=:localId AND r.business_date BETWEEN :firstDate AND :lastDate AND b.business_date BETWEEN :firstDate AND :lastDate AND r.byte_offset>:offset::bigint ORDER BY r.byte_offset LIMIT ${PAGE_SIZE}`,
+            const receipts = await query(
+              `WITH receipt_page AS MATERIALIZED (
+              SELECT r.id,r.byte_offset,r.ordinal,r.business_date,r.block_id FROM monitor_log_receipts r
+              WHERE r.file_key=(SELECT id FROM monitor_log_files WHERE device_id=:deviceId AND file_id=:fileId)
+                AND r.byte_offset>:offset::bigint ORDER BY r.byte_offset LIMIT ${PAGE_SIZE}
+            ) SELECT r.id,r.byte_offset AS offset,r.ordinal,b.business_date AS day,b.id AS block_id,
+              CASE WHEN b.id IS NULL THEN false ELSE (${signatures.join(' OR ')}) END AS candidate
+            FROM receipt_page r LEFT JOIN monitor_log_blocks b ON b.business_date=r.business_date AND b.id=r.block_id
+              AND b.business_date BETWEEN :firstDate AND :lastDate AND b.device_id=:deviceId AND b.local_id=:localId
+            ORDER BY r.byte_offset`,
               { replacements, type: QueryTypes.SELECT, transaction }
             );
             let blockId = null;
@@ -306,7 +328,7 @@ class AosAccountBackfill {
             let block = null;
             if (blockId !== null) {
               const receipt = selected.find(row => String(row.block_id) === String(blockId));
-              [block] = await this.m.sequelize.query(
+              [block] = await query(
                 'SELECT * FROM monitor_log_blocks WHERE business_date=:day AND id=:id',
                 {
                   replacements: { day: receipt.day, id: blockId },
