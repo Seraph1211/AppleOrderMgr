@@ -283,6 +283,112 @@ test('普通无货/登录状态不应抹去已证实城市；显式未知门店�
   expect(configPolicy.resolveAccount(unknown.events, NOW).city).toBeUndefined();
 });
 
+// 受限生产证据仅确认四字段[INTEGER,EMPTY,EMPTY,INTEGER]；72/3为替代数字。
+test.each([false, true])(
+  '数字211修复：同毫秒早64bytes的完整numeric形状不污染已知城市，逆序输入=%s',
+  reverse => {
+    const at = NOW - 1000;
+    const inputs = [
+      row('开始下单 iPhone Duo 星光白色 512G(x1)....', { at: at - 100, offset: 1 }),
+      row('消息21101002: 72, , , 3', { at, offset: 100, task: 'A1' }),
+      row('消息24093001: R639, 2, , 0', { at, offset: 164, task: 'A1' }),
+    ];
+    const parsed = configPolicy.parse(reverse ? [...inputs].reverse() : inputs);
+    expect(parsed.events.filter(event => event.kind === 'city')).toHaveLength(1);
+    expect(parsed.events.find(event => event.id === inputs[1].id)).toBeUndefined();
+    expect(configPolicy.resolveAccount(parsed.events, NOW)).toMatchObject(SCOPE);
+    expect(configPolicy.population(parsed.accounts, parsed.events, SCOPE, NOW)).toMatchObject({
+      complete: true,
+      members: ['001'],
+      unknownAccounts: [],
+    });
+  }
+);
+
+test.each([
+  '消息21101002: 72, , , 3, R_UNKNOWN',
+  '消息21101002: 72, , , 3 # 未知状态',
+  '消息21101002: 72, 1, , 3',
+  '消息21101002: 72, , , 3, 4',
+  '消息24093001: 72, , , 3',
+  '消息21101002: +72, , , 3',
+  '消息21101002: 72.5, , , 3',
+  '消息21101002: 72， ， ， 3',
+])('数字211修复：非完整白名单或其他消息类型保持未知：%s', text => {
+  const inputs = [
+    row('开始下单 iPhone Duo 星光白色 512G(x1)....', { at: NOW - 1000, offset: 1 }),
+    row('消息24093001: R639, 2, , 0', { at: NOW - 900, offset: 2, task: 'A1' }),
+    row(text, { at: NOW - 800, offset: 3, task: 'A1' }),
+  ];
+  const parsed = configPolicy.parse(inputs);
+  expect(parsed.events.find(event => event.id === inputs[2].id)).toMatchObject({
+    kind: 'city',
+    body: { unknown: true },
+  });
+  const population = configPolicy.population(parsed.accounts, parsed.events, SCOPE, NOW);
+  expect(population.complete).toBe(false);
+  expect(population.unknownAccounts).toEqual(['001']);
+});
+
+test.each(['crossCity', 'missingSpec'])(
+  '数字211修复：忽略numeric不能解除真实其他缺口：%s',
+  mode => {
+    const inputs = [
+      row(
+        mode === 'missingSpec'
+          ? '开始监控库存状态......'
+          : '开始下单 iPhone Duo 星光白色 512G(x1)....',
+        { at: NOW - 1000, offset: 1 }
+      ),
+      row('消息21101002: 72, , , 3', { at: NOW - 900, offset: 2, task: 'A1' }),
+      row('消息24093001: R639, 2, , 0', { at: NOW - 900, offset: 66, task: 'A1' }),
+    ];
+    if (mode === 'crossCity')
+      inputs.push(row('消息21101002: R793, 2, , 0', { at: NOW - 800, offset: 100, task: 'A1' }));
+    const parsed = configPolicy.parse(inputs);
+    expect(configPolicy.population(parsed.accounts, parsed.events, SCOPE, NOW).complete).toBe(
+      false
+    );
+    expect(
+      configPolicy.population(parsed.accounts, parsed.events, SCOPE, NOW).unknownAccounts
+    ).toEqual(['001']);
+  }
+);
+
+test('数字211修复：336真实白名单回放的69个同SKU编号加入替代numeric仍保持广州10/23', () => {
+  const inputs = realInputs();
+  const base = configPolicy.parse(inputs);
+  const matching = base.accounts.filter(account => {
+    const config = configPolicy.resolveAccount(
+      base.events.filter(event => event.accountNumber === account.accountNumber),
+      NOW
+    );
+    return ['model', 'color', 'capacity'].every(field => config[field] === SCOPE[field]);
+  });
+  expect(matching).toHaveLength(69);
+  const numeric = matching.map(account => {
+    const city = base.events.find(
+      event => event.kind === 'city' && event.accountNumber === account.accountNumber
+    );
+    expect(city).toBeDefined();
+    return row('消息21101002: 72, , , 3', {
+      account: account.accountNumber,
+      at: Date.parse(city.loggedAt),
+      fileId: city.fileId,
+      offset: Number(city.byteOffset) - 64,
+      task: 'A1',
+    });
+  });
+  const parsed = configPolicy.parse([...inputs, ...numeric]);
+  expect(parsed.accounts).toHaveLength(336);
+  expect(parsed.events.filter(event => event.kind === 'city')).toHaveLength(335);
+  const population = configPolicy.population(parsed.accounts, parsed.events, SCOPE, NOW);
+  expect(population.complete).toBe(true);
+  expect(population.members).toHaveLength(23);
+  const hits = new Set(fixture.anchors.map(anchor => anchor.account));
+  expect([...hits].filter(account => population.members.includes(account))).toHaveLength(10);
+});
+
 test('同城多门店仍属于同一分母，跨城市证据冲突保留未知', () => {
   const rows = [
     row('开始下单 iPhone Duo 星光白色 512G(x1)....', { at: NOW - 1000, offset: 1 }),

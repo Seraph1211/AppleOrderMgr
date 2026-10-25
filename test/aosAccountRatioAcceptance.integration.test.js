@@ -250,6 +250,9 @@ suite('AOS账号比例独立真实PG：旧API协议、索引事务、覆盖及�
     try {
       if (db) {
         await budgetFixture.down(db);
+        await db.query(
+          'TRUNCATE monitor_log_receipts,monitor_log_block_accounts,monitor_log_blocks,monitor_log_files CASCADE'
+        );
         await indexMigration.down(db.getQueryInterface());
         await repeatMigration.down(db.getQueryInterface());
         await blockMigration.down(db.getQueryInterface());
@@ -1368,6 +1371,402 @@ suite('AOS账号比例独立真实PG：旧API协议、索引事务、覆盖及�
       throw new Error('QA_LEGACY_PAGE_GAP_BOUNDS_FAILED', { cause: error });
     }
   });
+
+  /** 依旧版city事件结构独立构造坏事实；不从新repair输出倒造预期。 */
+  function oldNumericCity(entry) {
+    const fact = {
+      id: entry.id,
+      deviceId: DEVICE,
+      localId: entry.localId,
+      accountNumber: entry.accountNumber,
+      fileId: entry.fileId,
+      byteOffset: String(entry.byteOffset),
+      lineIndex: 0,
+      loggedAt: entry.loggedAt,
+      kind: 'city',
+      body: { cities: [], unknown: true },
+    };
+    return { ...fact, payloadHash: configPolicy.digest(fact) };
+  }
+
+  async function numericRepairFixture() {
+    try {
+      const monitorLogs = require('../src/services/monitorLogService');
+      const other = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const inputs = ['001', '002'].flatMap(account => {
+        const settings = startup(account, now - 10000);
+        return [
+          settings[0],
+          settings[1],
+          row('消息21101002: 72, , , 3', { account, at: now - 9998, task: 'A1' }),
+          settings[2],
+          row('取货信息: 取货日期待付款完成后确定', { account, at: now - 9997, task: 'A1' }),
+        ];
+      });
+      inputs.push(row('消息21101002: 72, , , 3', { at: now - 5 * 86400000, task: 'A1' }));
+      inputs.push({
+        ...row('消息21101002: 72, , , 3', { at: now - 1000, task: 'A1' }),
+        localId: other,
+      });
+      inputs.push(row('消息21101002: R_UNKNOWN, 2, , 0', { at: now - 20000, task: 'A1' }));
+      const entries = apiRows(inputs);
+      entries[3].byteOffset = entries[2].byteOffset + 64;
+      entries[8].byteOffset = entries[7].byteOffset + 64;
+      await monitorLogs.receive(DEVICE, { entries });
+      const noise = [entries[2], entries[7], entries[10], entries[11]];
+      const facts = noise.map(oldNumericCity);
+      expect(
+        configPolicy.parse(noise.map(entry => ({ ...entry, deviceId: DEVICE }))).ignoredCity
+      ).toEqual(facts);
+      await models.AosAccountConfigEvent.bulkCreate(facts);
+      await models.InventoryDelivery.create({
+        id: 'qa-sent-history',
+        body: { kind: 'aos_signal', status: 'sent', content: '历史已发送10/—', sentAt: now - 1000 },
+      });
+      await ready();
+      return { entries, facts, targetIds: facts.slice(0, 2).map(fact => fact.id) };
+    } catch (error) {
+      throw new Error('QA_NUMERIC_REPAIR_FIXTURE_FAILED', { cause: error });
+    }
+  }
+
+  async function repairSnapshot(ignoredIds = []) {
+    try {
+      const snapshot = {};
+      for (const name of [
+        'AosAccountRegistry',
+        'MonitorLogEntry',
+        'MonitorLogState',
+        'AosSignalInbox',
+        'AosSignalContext',
+        'InventoryDelivery',
+        'InventoryRuntime',
+      ])
+        snapshot[name] = await models[name].findAll({ order: [['id', 'ASC']], raw: true });
+      snapshot.events = (
+        await models.AosAccountConfigEvent.findAll({ order: [['id', 'ASC']], raw: true })
+      ).filter(event => !ignoredIds.includes(event.id));
+      return JSON.stringify(snapshot);
+    } catch (error) {
+      throw new Error('QA_REPAIR_SNAPSHOT_FAILED', { cause: error });
+    }
+  }
+
+  function repairCauses(error) {
+    const causes = [];
+    for (let item = error, depth = 0; item && depth < 12; item = item.cause, depth++)
+      causes.push(item.message, item.original?.code, item.code);
+    return causes;
+  }
+
+  test('数字211修复PG：真实receive不持久化numeric city，完整设置仍可精确D', async () => {
+    try {
+      const monitorLogs = require('../src/services/monitorLogService');
+      const settings = startup('001', now - 10000);
+      const entries = apiRows([
+        settings[0],
+        settings[1],
+        row('消息21101002: 72, , , 3', { at: now - 9998, task: 'A1' }),
+        settings[2],
+      ]);
+      entries[3].byteOffset = entries[2].byteOffset + 64;
+      await monitorLogs.receive(DEVICE, { entries });
+      expect(await models.AosAccountConfigEvent.findByPk(entries[2].id)).toBeNull();
+      expect(await models.AosAccountConfigEvent.count()).toBe(3);
+      await ready();
+      expect(await evaluate(trackerFor([{ account: '001', at: now - 100 }]))).toMatchObject({
+        numerator: 1,
+        denominator: 1,
+      });
+    } catch (error) {
+      throw new Error('QA_LIVE_NUMERIC_CITY_FAILED', { cause: error });
+    }
+  });
+
+  test('数字211修复PG：preview只读且限scope三日；整旧事实摘要审核、审计后仅删noise，重复absent幂等，历史/原文不变', async () => {
+    try {
+      const repair = require('../src/services/aosAccountIndexRepair');
+      const { targetIds } = await numericRepairFixture();
+      const allBefore = await repairSnapshot();
+      const unchanged = await repairSnapshot(targetIds);
+      const prior = await evaluate(trackerFor([{ account: '001', at: now - 100 }]));
+      expect(prior.denominator).toBeNull();
+      const manifest = await repair.preview(
+        models,
+        { deviceId: DEVICE, localId: INSTANCE },
+        { now, limit: 100 }
+      );
+      expect(await repairSnapshot()).toBe(allBefore);
+      expect(manifest.entries.map(entry => entry.before.id).sort()).toEqual([...targetIds].sort());
+      expect(manifest.retained).toBe(1);
+      expect(manifest.complete).toBe(true);
+      expect(manifest.digest).toMatch(/^[0-9a-f]{64}$/);
+      for (const entry of manifest.entries) {
+        expect(Object.keys(entry.before).sort()).toEqual(
+          [
+            'id',
+            'deviceId',
+            'localId',
+            'accountNumber',
+            'fileId',
+            'byteOffset',
+            'lineIndex',
+            'loggedAt',
+            'kind',
+            'body',
+            'payloadHash',
+            'createdAt',
+            'updatedAt',
+          ].sort()
+        );
+        expect(entry.lineSha256).toMatch(/^[0-9a-f]{64}$/);
+        expect(entry.before.message).toBeUndefined();
+      }
+      const audits = [];
+      const options = {
+        scope: { deviceId: DEVICE, localId: INSTANCE },
+        now,
+        beforeDelete: audit => {
+          audits.push(audit);
+        },
+      };
+      // CLI实际保存/读取JSON后不能因对象key顺序变化而丢失审核绑定。
+      const persisted = JSON.parse(JSON.stringify(manifest));
+      for (const entry of persisted.entries) {
+        entry.before = Object.fromEntries(Object.entries(entry.before).reverse());
+        entry.before.body = { unknown: true, cities: [] };
+      }
+      const result = await repair.apply(models, persisted, persisted.digest, options);
+      expect(result).toMatchObject({ deleted: 2, absent: 0, digest: manifest.digest });
+      expect(audits).toHaveLength(1);
+      expect(audits[0].before.map(fact => fact.id).sort()).toEqual([...targetIds].sort());
+      expect(
+        audits[0].before.every(fact => fact.payloadHash && !Object.hasOwn(fact, 'message'))
+      ).toBe(true);
+      expect(await repairSnapshot(targetIds)).toBe(unchanged);
+      const after = await evaluate(trackerFor([{ account: '001', at: now - 100 }]));
+      expect(after).toMatchObject({ numerator: 1, denominator: 2 });
+      const replay = await repair.apply(models, persisted, persisted.digest, options);
+      expect(replay).toMatchObject({ deleted: 0, absent: 2 });
+      expect(audits).toHaveLength(2);
+      expect(audits[1].before).toEqual([]);
+      expect(audits[1].absentIds.sort()).toEqual([...targetIds].sort());
+      expect(await repairSnapshot(targetIds)).toBe(unchanged);
+    } catch (error) {
+      throw new Error('QA_NUMERIC_REPAIR_HAPPY_FAILED', { cause: error });
+    }
+  });
+
+  test('数字211修复PG：preview前account与body被改但旧hash未更新，必须retained而非生成可删manifest', async () => {
+    try {
+      const repair = require('../src/services/aosAccountIndexRepair');
+      const { targetIds } = await numericRepairFixture();
+      const original = await models.AosAccountConfigEvent.findAll({
+        where: { id: targetIds },
+        raw: true,
+      });
+      await models.AosAccountConfigEvent.update(
+        { accountNumber: '099' },
+        { where: { id: targetIds[0] } }
+      );
+      await models.AosAccountConfigEvent.update(
+        { body: { cities: ['广州'], unknown: true } },
+        { where: { id: targetIds[1] } }
+      );
+      const before = await repairSnapshot();
+      const manifest = await repair.preview(
+        models,
+        { deviceId: DEVICE, localId: INSTANCE },
+        { now }
+      );
+      expect(manifest.entries).toEqual([]);
+      expect(manifest.retained).toBe(3);
+      expect(await repairSnapshot()).toBe(before);
+      const retained = await models.AosAccountConfigEvent.findAll({
+        where: { id: targetIds },
+        raw: true,
+      });
+      expect(retained).toHaveLength(2);
+      expect(retained.map(row => row.payloadHash).sort()).toEqual(
+        original.map(row => row.payloadHash).sort()
+      );
+    } catch (error) {
+      throw new Error('QA_NUMERIC_REPAIR_PREVIEW_IDENTITY_FAILED', { cause: error });
+    }
+  });
+
+  test.each([
+    ['digest', 'REPAIR_MANIFEST_INVALID'],
+    ['manifestRow', 'REPAIR_MANIFEST_INVALID'],
+    ['hash', 'REPAIR_STALE_FACT'],
+    ['body', 'REPAIR_STALE_FACT'],
+    ['source', 'REPAIR_RAW_PROOF_CHANGED'],
+    ['scope', 'REPAIR_SCOPE_MISMATCH'],
+    ['date', 'REPAIR_RANGE_CHANGED'],
+    ['audit', 'QA_AUDIT_FS_FAILED'],
+    ['noAudit', 'REPAIR_BACKUP_REQUIRED'],
+  ])('数字211修复PG：%s变化整批拒绝，不留部分delete', async (mode, expectedCause) => {
+    try {
+      const repair = require('../src/services/aosAccountIndexRepair');
+      const { targetIds } = await numericRepairFixture();
+      const scope = { deviceId: DEVICE, localId: INSTANCE };
+      const manifest = await repair.preview(models, scope, { now });
+      const audit = jest.fn();
+      const options = { scope, now, beforeDelete: audit };
+      let digest = manifest.digest;
+      const target = manifest.entries[1].before;
+      if (mode === 'digest') digest = '0'.repeat(64);
+      if (mode === 'manifestRow') manifest.entries[0].before.byteOffset = '123456789';
+      if (mode === 'hash')
+        await models.AosAccountConfigEvent.update(
+          { payloadHash: 'f'.repeat(64) },
+          { where: { id: target.id } }
+        );
+      if (mode === 'body')
+        await models.AosAccountConfigEvent.update(
+          { body: { cities: ['广州'], unknown: false } },
+          { where: { id: target.id } }
+        );
+      if (mode === 'source') {
+        const raw = await models.MonitorLogEntry.findByPk(target.id);
+        await raw.update({ message: raw.message.replace('72, , , 3', '73, , , 3') });
+      }
+      if (mode === 'scope') options.scope = { deviceId: DEVICE, localId: FILE };
+      if (mode === 'date') options.now = now + 3 * 86400000;
+      if (mode === 'audit') audit.mockRejectedValue(new Error('QA_AUDIT_FS_FAILED'));
+      if (mode === 'noAudit') delete options.beforeDelete;
+      const before = await repairSnapshot();
+      let failure;
+      try {
+        await repair.apply(models, manifest, digest, options);
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeDefined();
+      expect(repairCauses(failure)).toContain(expectedCause);
+      expect(await repairSnapshot()).toBe(before);
+      expect(await models.AosAccountConfigEvent.count({ where: { id: targetIds } })).toBe(2);
+      if (mode === 'audit') expect(audit).toHaveBeenCalledTimes(1);
+      else expect(audit).not.toHaveBeenCalled();
+    } catch (error) {
+      throw new Error('QA_NUMERIC_REPAIR_REJECT_FAILED', { cause: error });
+    }
+  });
+
+  test('数字211修复PG：共享2秒预算真实PG超时整批rollback，缩至小批后可成功', async () => {
+    let spy;
+    try {
+      const repair = require('../src/services/aosAccountIndexRepair');
+      const { targetIds } = await numericRepairFixture();
+      const scope = { deviceId: DEVICE, localId: INSTANCE };
+      const manifest = await repair.preview(models, scope, { now });
+      const before = await repairSnapshot();
+      const original = db.query.bind(db);
+      let delays = 0;
+      spy = jest.spyOn(db, 'query').mockImplementation((sql, options) => {
+        if (typeof sql === 'string' && sql.startsWith('SELECT message FROM monitor_log_entries')) {
+          delays++;
+          return original(
+            'WITH qa_delay AS MATERIALIZED (SELECT pg_sleep(1.1)) SELECT message FROM monitor_log_entries CROSS JOIN qa_delay WHERE id=:rowId',
+            options
+          );
+        }
+        return original(sql, options);
+      });
+      const audit = jest.fn();
+      let failure;
+      try {
+        await repair.apply(models, manifest, manifest.digest, { scope, now, beforeDelete: audit });
+      } catch (error) {
+        failure = error;
+      }
+      expect(failure).toBeDefined();
+      expect(repairCauses(failure)).toContain('57014');
+      expect(delays).toBe(2);
+      expect(audit).not.toHaveBeenCalled();
+      spy.mockRestore();
+      spy = null;
+      expect(await repairSnapshot()).toBe(before);
+      expect(await models.AosAccountConfigEvent.count({ where: { id: targetIds } })).toBe(2);
+      let small;
+      let afterId = '';
+      for (let page = 0; page < 3; page++) {
+        small = await repair.preview(models, scope, { now, limit: 1, afterId });
+        if (small.entries.length) break;
+        afterId = small.nextCursor;
+      }
+      expect(small.entries).toHaveLength(1);
+      expect(
+        await repair.apply(models, small, small.digest, { scope, now, beforeDelete: audit })
+      ).toMatchObject({ deleted: 1, absent: 0 });
+      expect(await models.AosAccountConfigEvent.count({ where: { id: targetIds } })).toBe(1);
+    } catch (error) {
+      throw new Error('QA_NUMERIC_REPAIR_TRANSACTION_BUDGET_FAILED', { cause: error });
+    } finally {
+      spy?.mockRestore();
+    }
+  }, 15000);
+
+  test('数字211修复PG：真实压缩块累计32MiB前停止，cursor不跳未处理项，续页覆盖全部40项', async () => {
+    const previousTarget = process.env.MONITOR_LOG_BLOCK_BYTES;
+    let spy;
+    try {
+      const repair = require('../src/services/aosAccountIndexRepair');
+      const monitorLogs = require('../src/services/monitorLogService');
+      const blockStore = require('../src/services/monitorLogBlockStore');
+      process.env.MONITOR_LOG_BLOCK_BYTES = String(1024 * 1024);
+      await db.query(
+        "INSERT INTO monitor_log_storage_scopes(device_id,local_id,mode) VALUES(:device,:local,'blocks')",
+        { replacements: { device: DEVICE, local: INSTANCE } }
+      );
+      const noise = Array.from({ length: 40 }, (_, index) =>
+        row('消息21101002: 72, , , 3', {
+          id: `${String(index + 1).padStart(8, '0')}-1111-4111-8111-111111111111`,
+          at: now - 1000,
+          task: 'A1',
+        })
+      );
+      const padding = Array.from({ length: 60 }, () => row('Q'.repeat(15000), { at: now - 1000 }));
+      const entries = apiRows([...noise, ...padding]);
+      await monitorLogs.receive(DEVICE, { entries });
+      const facts = entries.slice(0, 40).map(oldNumericCity);
+      await models.AosAccountConfigEvent.bulkCreate(facts);
+      const blocks = await db.query('SELECT raw_bytes AS bytes FROM monitor_log_blocks', {
+        type: QueryTypes.SELECT,
+      });
+      expect(blocks).toHaveLength(1);
+      const expected = Math.floor(repair.MAX_BATCH_BYTES / blocks[0].bytes);
+      expect(expected).toBeGreaterThan(0);
+      expect(expected).toBeLessThan(40);
+      spy = jest.spyOn(blockStore, 'readBlock');
+      const scope = { deviceId: DEVICE, localId: INSTANCE };
+      const first = await repair.preview(models, scope, { now, limit: 100 });
+      expect(first.entries).toHaveLength(expected);
+      expect(first.scanned).toBe(expected);
+      expect(first.rawBytes).toBe(expected * blocks[0].bytes);
+      expect(first.rawBytes).toBeLessThanOrEqual(repair.MAX_BATCH_BYTES);
+      expect(first.complete).toBe(false);
+      expect(first.nextCursor).toBe(facts[expected - 1].id);
+      expect(spy).toHaveBeenCalledTimes(expected);
+      const second = await repair.preview(models, scope, {
+        now,
+        afterId: first.nextCursor,
+        limit: 100,
+      });
+      expect(second.complete).toBe(true);
+      const ids = [...first.entries, ...second.entries].map(entry => entry.before.id);
+      expect(new Set(ids).size).toBe(40);
+      expect(ids.sort()).toEqual(facts.map(fact => fact.id).sort());
+      expect(await models.AosAccountConfigEvent.count({ where: { kind: 'city' } })).toBe(40);
+      expect(await models.AosSignalInbox.count()).toBe(0);
+    } catch (error) {
+      throw new Error('QA_NUMERIC_REPAIR_PREVIEW_BYTE_CURSOR_FAILED', { cause: error });
+    } finally {
+      if (previousTarget === undefined) delete process.env.MONITOR_LOG_BLOCK_BYTES;
+      else process.env.MONITOR_LOG_BLOCK_BYTES = previousTarget;
+      spy?.mockRestore();
+    }
+  }, 30000);
 
   test('实际monitorLogService.receive的200条batch原子入索引，重复不增；Migration缺失受控拒绝并可原样重试', async () => {
     const monitorLogs = require('../src/services/monitorLogService');

@@ -20,6 +20,7 @@ function parse(rows) {
   const accounts = new Map();
   const events = [];
   const gaps = [];
+  const ignoredCity = [];
   const recordGap = (row, lineIndex = 0) => {
     const accountNumber =
       typeof row.accountNumber === 'string' && /^\d{1,64}$/.test(row.accountNumber)
@@ -103,7 +104,12 @@ function parse(rows) {
       const text = match[3].replace(/^[^\s-]*-/, '');
       let kind;
       let body = {};
-      if (/^开始监控库存状态/.test(text)) {
+      const numericStatus =
+        /^消息21101002[ \t]*[:：][ \t]*[0-9]+[ \t]*,[ \t]*,[ \t]*,[ \t]*[0-9]+[ \t]*$/.test(text);
+      if (numericStatus) {
+        kind = 'city';
+        body = { cities: [], unknown: true };
+      } else if (/^开始监控库存状态/.test(text)) {
         kind = 'start';
         body = { mode: 'monitor', product: null };
       } else if (/^开始下单(?:\s|$)/.test(text)) {
@@ -148,10 +154,10 @@ function parse(rows) {
         kind,
         body,
       };
-      events.push({ ...event, payloadHash: digest(event) });
+      (numericStatus ? ignoredCity : events).push({ ...event, payloadHash: digest(event) });
     }
   }
-  return { accounts: [...accounts.values()], events, gaps };
+  return { accounts: [...accounts.values()], events, gaps, ignoredCity };
 }
 
 /** 查询日志时点的最近启动设置，停止不清空；缺失和冲突保留未知。 @param {Object[]} input 同编号事件 @param {number} at 截止毫秒 @returns {Object} 可证明维度 */
