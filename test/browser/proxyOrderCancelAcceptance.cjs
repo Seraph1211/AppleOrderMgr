@@ -107,7 +107,27 @@ async function main() {
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(origin + '/proxy-orders');
       const selectStatus = async (name, label) => {
-        if (width >= 768)
+        const productionName =
+          name === '调整代抢状态'
+            ? '调整代抢 #4 状态，当前待处理'
+            : name.replace(/代抢 #(\d+) 状态/, '调整代抢 #$1 状态，当前待处理');
+        const scope =
+          name === '调整代抢状态'
+            ? page.getByRole('dialog', { name: '代抢 #4 · 合成', exact: true })
+            : page;
+        const productionButton = scope.getByRole('button', { name: productionName, exact: true });
+        await productionButton
+          .or(scope.getByRole('combobox', { name, exact: true }))
+          .or(scope.getByRole('button', { name, exact: true }))
+          .first()
+          .waitFor();
+        if (await productionButton.count()) {
+          await productionButton.click();
+          await page
+            .getByRole('group', { name: '选择代抢状态' })
+            .getByRole('button', { name: label, exact: true })
+            .click();
+        } else if (width >= 768)
           await page.getByRole('combobox', { name, exact: true }).selectOption({ label });
         else {
           await page.getByRole('button', { name, exact: true }).click();
@@ -115,7 +135,7 @@ async function main() {
         }
       };
       const dialogFor = id =>
-        page.getByRole('dialog', { name: `调整代抢 #${id} 为已取消`, exact: true });
+        page.getByRole('dialog', { name: new RegExp(`^调整代抢 #${id} (?:为已取消|状态)$`) });
 
       // 退出取消弹窗无写入；无占用可直接取消。
       await selectStatus('代抢 #1 状态', '已取消');
@@ -166,7 +186,19 @@ async function main() {
       await dialog.waitFor({ state: 'hidden' });
 
       // 详情取消后读取新状态和账号释放历史。
-      await page.getByRole('button', { name: '#4 · 合成', exact: true }).click();
+      const rowStatus = page.getByRole('button', {
+        name: '调整代抢 #4 状态，当前待处理',
+        exact: true,
+      });
+      const legacyDetail = page.getByRole('button', { name: '#4 · 合成', exact: true });
+      await rowStatus.or(legacyDetail).first().waitFor();
+      if (await rowStatus.count())
+        await page
+          .locator('article, tbody tr')
+          .filter({ has: rowStatus })
+          .getByRole('button', { name: /^详情/ })
+          .click();
+      else await legacyDetail.click();
       const detail = page.getByRole('dialog', { name: '代抢 #4 · 合成', exact: true });
       await selectStatus('调整代抢状态', '已取消');
       dialog = dialogFor(4);
@@ -179,7 +211,12 @@ async function main() {
         0
       );
       assert.equal(rows[3].status, 'cancelled');
-      if (width >= 768)
+      const productionStatus = detail.getByRole('button', {
+        name: '调整代抢 #4 状态，当前已取消',
+        exact: true,
+      });
+      if (await productionStatus.count()) assert.equal(await productionStatus.isVisible(), true);
+      else if (width >= 768)
         assert.equal(
           await detail.getByRole('combobox', { name: '调整代抢状态' }).inputValue(),
           'cancelled'
