@@ -112,7 +112,7 @@ test('11实例全部来源在单条概览，长分组详情受控且计数非库
     });
   const text = policy.content(groups, false);
   expect(Buffer.byteLength(text)).toBeLessThan(1500);
-  expect(text).toContain('非库存数量');
+  expect(text).toContain('150家门店');
   expect(text).toContain('150次命中');
   for (let i = 1; i <= 11; i++) expect(text).toContain(`心蓝${String(i).padStart(2, '0')}`);
 });
@@ -158,7 +158,7 @@ test('单片段多条标准记录分别保留时间和顺序，无时间续行�
   ).toEqual([]);
 });
 
-test('11来源的100字标签仍一条有效概览，时间与每组来源对应', () => {
+test('11来源的100字标签仍一条有效概览，时间与来源总计保留', () => {
   const groups = {};
   for (let i = 1; i <= 11; i++)
     policy.addGroup(groups, {
@@ -178,8 +178,8 @@ test('11来源的100字标签仍一条有效概览，时间与每组来源对应
   const text = policy.content(groups, false);
   expect(Buffer.byteLength(text)).toBeLessThan(1500);
   expect(text).toContain('日志时间：2026-10-19 08:00:00.001 ～ 08:00:00.011');
-  expect(text).toContain('S1×1');
-  expect(text).toContain('S11×1');
+  expect(text).toContain('US_01 / 心蓝01');
+  expect(text).toContain('US_01 / 心蓝11');
   for (let i = 1; i <= 11; i++) expect(text).toContain(`心蓝${String(i).padStart(2, '0')}`);
 });
 
@@ -215,9 +215,9 @@ test.each([
   policy.addGroup(groups, { ...item, observedAt: Date.parse(from) });
   for (const immediate of [true, false]) {
     const text = policy.content(groups, immediate);
-    expect(text.split('\n').find(value => value.startsWith('日志时间'))).toBe(expected);
+    expect(text.split('\n').find(value => value.startsWith('- 日志时间'))).toBe(`- ${expected}`);
     expect(text).not.toContain('日志时间（北京）');
-    expect(text).toContain('2次命中（非库存数量）');
+    expect(text).toContain('2次命中（1家门店）');
   }
 });
 

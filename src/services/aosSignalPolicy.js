@@ -254,7 +254,14 @@ function refreshAssociation(association, contexts) {
   return { association: next, groups };
 }
 
-/** 在单条安全字节预算内优先保留全部来源，详情超长时明确省略。 */
+/** 将明确的美国服务器编号统一为通知展示名；无法识别时保留原名称。 @param {string} value 档案名称 @returns {string} 通知展示名 */
+function serverName(value) {
+  const name = String(value || UNKNOWN);
+  const number = name.match(/^US(?:[\s_]*Server)?(?:[\s_]*(?:No\.?|#))?[\s_]*(\d+)$/i)?.[1];
+  return number ? `US_${number.padStart(2, '0')}` : name;
+}
+
+/** 在单条安全字节预算内展示完整总计；超长来源和详情明确标注省略数。 */
 function content(groups, immediate) {
   const rows = Object.values(groups);
   const sources = new Map();
@@ -263,40 +270,51 @@ function content(groups, immediate) {
       const previous = sources.get(key);
       sources.set(key, { ...value, count: (previous?.count || 0) + value.count });
     }
-  const head = `${immediate ? '首次信号' : '3分钟汇总'}：${rows.reduce((n, row) => n + row.count, 0)}次命中（非库存数量）\n`;
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const stores = new Set(rows.filter(hasLocation).map(row => row.storeCode));
+  const unknown = rows.filter(row => !hasLocation(row)).reduce((sum, row) => sum + row.count, 0);
+  const locations = unknown
+    ? `${stores.size}家已知门店，${unknown}次门店未知`
+    : `${stores.size}家门店`;
+  let text = `- ${immediate ? '首次信号' : '3分钟汇总'}：${total}次命中（${locations}）\n`;
   const timestamps = rows.flatMap(row => [row.firstAt, row.lastAt]).filter(Number.isFinite);
   const clock = value => new Date(value + 8 * 3600000).toISOString().slice(0, 23).replace('T', ' ');
-  let times = '';
   if (timestamps.length) {
     const [startDate, startTime] = clock(Math.min(...timestamps)).split(' ');
     const [endDate, endTime] = clock(Math.max(...timestamps)).split(' ');
     const end = startDate === endDate ? endTime : `${endDate} ${endTime}`;
-    times = `日志时间：${startDate} ${startTime} ～ ${end}\n`;
+    text += `- 日志时间：${startDate} ${startTime} ～ ${end}\n`;
   }
-  const sourceCodes = new Map([...sources.keys()].map((key, index) => [key, `S${index + 1}`]));
-  const sourceText = `来源：${[...sources.values()].map(row => `${sourceCodes.get(row.key)} ${shorten(row.server, 12)}/${shorten(row.instance, 10)} ${row.count}次`).join('；')}\n`;
-  let text = head + times;
-  if (Buffer.byteLength(text + sourceText, 'utf8') <= 1100) text += sourceText;
+  const sourceRows = [...sources.values()];
+  const sourceLine = row =>
+    `${shorten(serverName(row.server), 12)} / ${shorten(row.instance, 10)}：${row.count}次`;
+  if (sourceRows.length === 1) text += `- 来源：${sourceLine(sourceRows[0])}\n`;
   else {
-    text += `来源共${sources.size}个实例；详情请在运行日志核对。\n`;
-    for (const row of sources.values()) {
-      const source = `${sourceCodes.get(row.key)} ${shorten(row.server, 6)}/${shorten(row.instance, 6)}；`;
-      if (Buffer.byteLength(text + source, 'utf8') > 1050) break;
-      text += source;
+    text += '- 来源：\n';
+    let shownSources = 0;
+    for (const row of sourceRows) {
+      const line = `  - ${sourceLine(row)}\n`;
+      if (Buffer.byteLength(text + line, 'utf8') > 1000) break;
+      text += line;
+      shownSources++;
     }
-    text += '\n';
+    if (shownSources < sourceRows.length) {
+      const omitted = sourceRows.slice(shownSources).reduce((sum, row) => sum + row.count, 0);
+      text += `  - 其余${sourceRows.length - shownSources}个来源共${omitted}次，详见运行日志。\n`;
+    }
   }
+  text += '- 详情：\n';
   let shown = 0;
   for (const row of rows) {
-    const mapping = Object.entries(row.sources)
-      .map(([key, source]) => `${sourceCodes.get(key)}×${source.count}`)
-      .join('/');
-    const line = `${row.city} · ${row.storeName} · ${row.model} ${row.color} ${row.capacity}：${row.count}次（${mapping}）\n`;
-    if (Buffer.byteLength(text + line, 'utf8') > 1350) break;
+    const line = `  - ${row.city} · ${row.storeName} · ${row.model} ${row.color} ${row.capacity}：${row.count}次\n`;
+    if (Buffer.byteLength(text + line, 'utf8') > 1300) break;
     text += line;
     shown++;
   }
-  if (shown < rows.length) text += `其余${rows.length - shown}组请在服务器监控的运行日志核对。\n`;
+  if (shown < rows.length) {
+    const omitted = rows.slice(shown).reduce((sum, row) => sum + row.count, 0);
+    text += `  - 其余${rows.length - shown}组共${omitted}次，详见服务器监控运行日志。\n`;
+  }
   return text;
 }
 
@@ -315,4 +333,5 @@ module.exports = {
   addAssociation,
   refreshAssociation,
   content,
+  serverName,
 };

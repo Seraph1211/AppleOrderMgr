@@ -86,7 +86,9 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
       m.AosDevice = {
         findAll: () => Promise.resolve([{ id: deviceId, name: 'US Server No.9', enabled: true }]),
       };
-      m.MonitorInstance = { findAll: () => Promise.resolve([{ deviceId, localId, label: '心蓝11' }]) };
+      m.MonitorInstance = {
+        findAll: () => Promise.resolve([{ deviceId, localId, label: '心蓝11' }]),
+      };
       m.MonitorLogState = { findAll: () => Promise.resolve([]) };
       service = new InventoryService(m);
       const locked = service.locked.bind(service);
@@ -130,7 +132,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
     }
   });
 
-  test('首次立即、三分钟合并不重复首条、空窗口结束及服务重建保留状态', async () => {
+  test('首次立即、三分钟合并包含首条、空窗口结束及服务重建保留状态', async () => {
     await feed([
       '消息20110501',
       '尝试预约: Apple 王府井, 日期',
@@ -139,7 +141,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
     ]);
     await signals.tick();
     expect((await deliveries())[0].content).toContain('首次信号：1次命中');
-    expect((await deliveries())[0].content).toContain('US09/心蓝11');
+    expect((await deliveries())[0].content).toContain('US_09 / 心蓝11');
     now += 60000;
     await feed(['取货信息: 取货日期待付款完成后确定'], 8);
     await new AosSignalService(service).tick();
@@ -147,7 +149,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
     now += 120000;
     await signals.tick();
     expect((await deliveries()).find(row => row.content.includes('3分钟汇总')).content).toContain(
-      '1次命中'
+      '2次命中'
     );
     now += 180000;
     await signals.tick();
@@ -156,6 +158,48 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
     await feed(['取货信息: 取货日期待付款完成后确定'], 9);
     await signals.tick();
     expect((await deliveries()).filter(row => row.content.includes('首次信号'))).toHaveLength(2);
+  });
+
+  test('只有首次命中也在首窗汇总一次，重复推进不会重复排队', async () => {
+    await feed(['取货信息: 取货日期待付款完成后确定']);
+    await signals.tick();
+    const first = (await deliveries())[0];
+    expect(Object.values(first.aosGroups)[0].count).toBe(1);
+    now += 180000;
+    await Promise.all([signals.tick(), new AosSignalService(service).tick()]);
+    const rows = await deliveries();
+    expect(rows).toHaveLength(2);
+    expect(rows.find(row => !row.aosImmediate).content).toContain('3分钟汇总：1次命中');
+    expect(Object.values(rows.find(row => row.id === first.id).aosGroups)[0].count).toBe(1);
+  });
+
+  test('精确边界新命中归下一窗且不累计首窗，旧空窗口升级不补首条', async () => {
+    await feed(['取货信息: 取货日期待付款完成后确定']);
+    await signals.tick();
+    now += 180000;
+    await feed(['取货信息: 取货日期待付款完成后确定'], 2);
+    await signals.tick();
+    let rows = await deliveries();
+    expect(rows.filter(row => !row.aosImmediate)).toHaveLength(1);
+    expect(rows.find(row => !row.aosImmediate).content).toContain('3分钟汇总：1次命中');
+    expect(
+      Object.values((await m.InventoryRuntime.findByPk('main')).body.aosSignals.groups)[0].count
+    ).toBe(1);
+    now += 180000;
+    await signals.tick();
+    rows = await deliveries();
+    expect(rows.filter(row => !row.aosImmediate)).toHaveLength(2);
+    expect(
+      rows.filter(row => !row.aosImmediate).every(row => row.content.includes('3分钟汇总：1次命中'))
+    ).toBe(true);
+    const runtime = await m.InventoryRuntime.findByPk('main');
+    await runtime.update({
+      body: { ...runtime.body, aosSignals: { from: now, until: now + 180000, groups: {} } },
+    });
+    now += 180000;
+    await new AosSignalService(service).tick();
+    expect(await deliveries()).toHaveLength(3);
+    expect((await m.InventoryRuntime.findByPk('main')).body.aosSignals).toBeNull();
   });
 
   test('接收前过期、启用前、Worker停顿超过3分钟均不补发', async () => {
@@ -231,6 +275,6 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
     expect(await m.AosSignalInbox.count()).toBe(1);
     expect(
       Object.keys((await m.InventoryRuntime.findByPk('main')).body.aosSignals.groups)
-    ).toHaveLength(0);
+    ).toHaveLength(1);
   });
 });

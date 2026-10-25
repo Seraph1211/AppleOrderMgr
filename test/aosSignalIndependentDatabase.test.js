@@ -192,7 +192,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
     }
   });
 
-  test('十台十一实例并发入队只有一次全局立即提醒，摘要恰好10次且不重复首条', async () => {
+  test('十台十一实例并发入队只有一次全局立即提醒，摘要恰好11次且包含首条', async () => {
     try {
       await Promise.all(instances.map((_, i) => feed(i, attempt)));
       await Promise.all([signals.tick(), new AosSignalService(service).tick()]);
@@ -208,14 +208,14 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       rows = await deliveries();
       expect(rows).toHaveLength(2);
       const summary = rows.find(item => item.content.includes('3分钟汇总'));
-      expect(summary.content).toContain('10次命中（非库存数量）');
+      expect(summary.content).toContain('11次命中（1家门店）');
       const sources = Object.values(summary.aosGroups).flatMap(group => Object.keys(group.sources));
-      expect(sources).toHaveLength(10);
-      expect(sources).not.toContain(firstSource);
+      expect(sources).toHaveLength(11);
+      expect(sources).toContain(firstSource);
       const allSources = rows.map(item => item.content).join('\n');
-      for (let i = 1; i <= 11; i += 1) expect(allSources).toContain(`/心蓝${i} `);
-      expect(allSources).toContain('US01/');
-      expect(allSources).toContain('US10/');
+      for (let i = 1; i <= 11; i += 1) expect(allSources).toContain(` / 心蓝${i}：`);
+      expect(allSources).toContain('US_01 /');
+      expect(allSources).toContain('US_10 /');
     } catch (error) {
       throw new Error('全局窗口验收失败', { cause: error });
     }
@@ -287,7 +287,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       });
       expect(rows[0].content).toContain('未知 · 未知');
       expect(rows[0].aosAssociation.refs).toHaveLength(1);
-      expect((await getRuntime()).aosSignals.association.refs).toHaveLength(1);
+      expect((await getRuntime()).aosSignals.association.refs).toHaveLength(2);
       const immediateId = rows[0].id;
       const send = jest.fn().mockResolvedValue({ status: 'accepted' });
       const notifier = new InventoryNotifier(service, send);
@@ -339,7 +339,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       const immediate = rows.find(row => row.id === immediateId);
       expect(immediate.aosContextDeadline).toBe(base + 32690);
       expect(immediate.content).toContain('上海 · Apple 浦东 · iPhone Duo 星光白色 512G：1次');
-      expect(immediate.content).toContain('来源：S1 US01/心蓝1 1次');
+      expect(immediate.content).toContain('来源：US_01 / 心蓝1：1次');
       expect(immediate).toMatchObject({ status: 'accepted', attempts: 1 });
       for (const status of immutableDeliveries) {
         expect(rows.find(row => row.id === `association-${status}`)).toMatchObject({
@@ -357,14 +357,14 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       rows = await deliveries();
       const summary = rows.find(item => item.content.includes('3分钟汇总'));
       expect(rows.filter(item => item.content.includes('首次信号'))).toHaveLength(1);
-      expect(summary.content).toContain('1次命中（非库存数量）');
-      expect(summary.content).toContain('上海 · Apple 浦东 · iPhone Duo 星光白色 512G：1次');
+      expect(summary.content).toContain('2次命中（1家门店）');
+      expect(summary.content).toContain('上海 · Apple 浦东 · iPhone Duo 星光白色 512G：2次');
       const immediateGroup = Object.values(immediate.aosGroups)[0];
       const summaryGroup = Object.values(summary.aosGroups)[0];
-      expect(summaryGroup.count).toBe(1);
+      expect(summaryGroup.count).toBe(2);
       expect(immediateGroup.count).toBe(1);
       expect(Object.values(summaryGroup.sources).map(source => source.count)).toEqual(
-        Object.values(immediateGroup.sources).map(source => source.count)
+        Object.values(immediateGroup.sources).map(source => source.count * 2)
       );
       expect(summary.receivedWindowFrom).toBe(base + 22690);
       expect((await getRuntime()).aosSignals.from).toBe(base + 202690);
@@ -559,12 +559,12 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       now = base + 3500;
       await signals.tick();
       let runtime = await models.InventoryRuntime.findByPk('main');
-      expect(runtime.body.aosSignals.association.refs).toHaveLength(1);
+      expect(runtime.body.aosSignals.association.refs).toHaveLength(2);
       const initialCount = Object.values(runtime.body.aosSignals.groups).reduce(
         (sum, row) => sum + row.count,
         0
       );
-      expect(initialCount).toBe(1);
+      expect(initialCount).toBe(2);
 
       // Emulate the previous worker version: it increments groups and knows nothing about refs.
       const downgradedState = structuredClone(runtime.body);
@@ -589,8 +589,8 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
         (sum, row) => sum + row.count,
         0
       );
-      expect(windowCount).toBe(3);
-      expect(frozenCount).toBe(2);
+      expect(windowCount).toBe(4);
+      expect(frozenCount).toBe(3);
       expect(window.association.refs).toHaveLength(1);
 
       now = base + 182500;
@@ -599,11 +599,11 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       const summary = rows.find(item => item.content.includes('3分钟汇总'));
       const immediate = rows.find(item => item.content.includes('首次信号'));
       expect(rows.filter(item => item.content.includes('首次信号'))).toHaveLength(1);
-      expect(summary.content).toContain('3次命中（非库存数量）');
+      expect(summary.content).toContain('4次命中（0家已知门店，4次门店未知）');
       const group = Object.values(summary.aosGroups)[0];
-      expect(group.count).toBe(3);
+      expect(group.count).toBe(4);
       const sourceCount = Object.values(group.sources).reduce((sum, item) => sum + item.count, 0);
-      expect(sourceCount).toBe(3);
+      expect(sourceCount).toBe(4);
       expect(Object.values(immediate.aosGroups)[0].count).toBe(1);
     } catch (error) {
       throw new Error('新旧Worker状态回退验收失败', { cause: error });

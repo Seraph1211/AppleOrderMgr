@@ -160,8 +160,8 @@ describe('AOS 放货信号独立验收：真实语法及防串联', () => {
         },
       });
     const text = policy.content(groups, false);
-    expect(text).toContain('11次命中（非库存数量）');
-    for (let i = 1; i <= 11; i += 1) expect(text).toContain(`实例${i} `);
+    expect(text).toContain('11次命中（1家门店）');
+    for (let i = 1; i <= 11; i += 1) expect(text).toContain(`实例${i}：`);
     expect(text).not.toContain('[013]');
     expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(1400);
   });
@@ -189,10 +189,10 @@ describe('AOS 放货信号独立验收：真实语法及防串联', () => {
       source: { key: 'two', server: 'US10', instance: '心蓝11' },
     });
     const text = policy.content(groups, false);
-    expect(text).toContain('S1 US01/心蓝01 1次');
-    expect(text).toContain('S2 US10/心蓝11 1次');
-    expect(text).toContain('北京 · Apple 王府井 · iPhone Duo 星光白色 512G：1次（S1×1）');
-    expect(text).toContain('深圳 · Apple 深圳万象城 · iPhone Duo 夜空色 256G：1次（S2×1）');
+    expect(text).toContain('US_01 / 心蓝01：1次');
+    expect(text).toContain('US_10 / 心蓝11：1次');
+    expect(text).toContain('北京 · Apple 王府井 · iPhone Duo 星光白色 512G：1次');
+    expect(text).toContain('深圳 · Apple 深圳万象城 · iPhone Duo 夜空色 256G：1次');
     expect(text).toContain('日志时间：2026-10-19 03:58:00.000 ～ 04:00:00.000');
   });
 });

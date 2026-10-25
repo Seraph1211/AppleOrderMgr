@@ -79,7 +79,7 @@ class AosSignalService {
     }
   }
 
-  /** 固定三分钟窗口：首条不进入汇总，空窗口结束本轮。 */
+  /** 固定三分钟窗口：首次命中计入首窗，空窗口结束本轮。 */
   async advance(context, at) {
     try {
       const { state, now } = context;
@@ -228,12 +228,11 @@ class AosSignalService {
         entries.map(row => {
           const key = `${row.deviceId}:${row.localId}`;
           const device = byDevice.get(row.deviceId);
-          const number = device?.name.match(/^US\s*Server\s*No\.?\s*(\d+)$/i)?.[1];
           return [
             key,
             {
               key,
-              server: number ? `US${number.padStart(2, '0')}` : device?.name || '未知',
+              server: policy.serverName(device?.name),
               instance: byInstance.get(key) || '未知',
               enabled: Boolean(device?.enabled),
             },
@@ -262,15 +261,13 @@ class AosSignalService {
           });
           const entries = queue.map(row => ({ id: row.id, ...row.body }));
           const keys = [...new Set(entries.map(row => row.taskKey))];
-          const contexts = new Map(
-            (keys.length
-              ? await this.s.m.AosSignalContext.findAll({
-                where: { id: { [Op.in]: keys } },
-                transaction,
-              })
-              : []
-            ).map(row => [row.id, row.body])
-          );
+          let storedContexts = [];
+          if (keys.length)
+            storedContexts = await this.s.m.AosSignalContext.findAll({
+              where: { id: { [Op.in]: keys } },
+              transaction,
+            });
+          const contexts = new Map(storedContexts.map(row => [row.id, row.body]));
           const sources = await this.sources(entries, transaction);
           for (const key of keys) {
             const taskEntries = entries.filter(row => row.taskKey === key);
@@ -327,10 +324,11 @@ class AosSignalService {
                 anchor.receivedAt,
                 first.association
               );
+              // 首次投递保留独立快照，后续命中和晚到上下文只更新各自关联。
               state.aosSignals = {
+                ...structuredClone(first),
                 from: anchor.receivedAt,
                 until: anchor.receivedAt + policy.WINDOW_MS,
-                groups: {},
               };
             } else policy.addAssociation(state.aosSignals, anchor, item, task);
           }
