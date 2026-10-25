@@ -1166,4 +1166,123 @@ suite('AOS账号比例独立真实PG：旧API协议、索引事务、覆盖及�
       throw new Error('QA_EMPTY_CONTINUATION_WINDOW_FAILED', { cause: error });
     }
   });
+
+  /** Collector无时间的新文件首行：businessDate来自文件，contextAt只可能是前文排序下界。 */
+  function uncertainStartup(day, options = {}) {
+    const input = row('开始下单 iPhone Duo 夜空色 1T(x1)....', {
+      at: options.at ?? now - 750,
+      fileId: '44444444-4444-4444-8444-444444444444',
+    });
+    return {
+      ...input,
+      businessDate: day,
+      loggedAt: options.precise ? input.loggedAt : null,
+      contextAt: options.contextAt || null,
+      accountNumber: options.account || null,
+      parseState: options.precise ? 'parsed' : 'unparsed',
+      message: options.precise
+        ? input.message.replace('[2][001]', '')
+        : '开始下单 iPhone Duo 夜空色 1T(x1)....\r\n',
+    };
+  }
+
+  test('仅日期startup gap当天不确定，不能用当日较午夜晚的明确start将它错误清除', async () => {
+    try {
+      const day = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+      const start = Date.parse(`${day}T00:00:00.000+08:00`);
+      await ingest(startup('001', start + 60000));
+      await ready();
+      await ingest([uncertainStartup(day)]);
+      const ratio = await evaluate(trackerFor([{ account: '001', at: now - 100 }]));
+      expect(ratio.numerator).toBe(1);
+      expect(ratio.denominator).toBeNull();
+    } catch (error) {
+      throw new Error('QA_DATE_ONLY_GAP_SAME_DAY_FAILED', { cause: error });
+    }
+  });
+
+  test('日期gap次日可靠完整start可覆盖，不让已解决旧日期缺口永久影响D', async () => {
+    try {
+      const day = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+      const previousDay = new Date(Date.parse(day) - 86400000).toISOString().slice(0, 10);
+      await ingest(startup('001', Date.parse(`${day}T00:01:00.000+08:00`)));
+      await ready();
+      await ingest([uncertainStartup(previousDay)]);
+      const ratio = await evaluate(trackerFor([{ account: '001', at: now - 100 }]));
+      expect(ratio.numerator).toBe(1);
+      expect(ratio.denominator).toBe(1);
+    } catch (error) {
+      throw new Error('QA_DATE_GAP_NEXT_DAY_CLEAR_FAILED', { cause: error });
+    }
+  });
+
+  test.each(['date', 'point'])('未来%s gap不影响更早hit的as-of比例', async precision => {
+    try {
+      const day = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+      const hitAt = now - 86400000;
+      await ingest(startup('001', hitAt - 3600000));
+      await ready();
+      await ingest([uncertainStartup(day, { precise: precision === 'point', at: now - 1000 })]);
+      const ratio = await evaluate(trackerFor([{ account: '001', at: hitAt }]));
+      expect(ratio.numerator).toBe(1);
+      expect(ratio.denominator).toBe(1);
+    } catch (error) {
+      throw new Error('QA_FUTURE_GAP_ASOF_FAILED', { cause: error });
+    }
+  });
+
+  test.each(['date', 'point'])(
+    '未覆盖的%s startup gap可能切入目标SKU，不能凭缺口前旧SKU排除编号',
+    async precision => {
+      try {
+        const day = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+        const previousDay = new Date(Date.parse(day) - 86400000).toISOString().slice(0, 10);
+        const oldNight = startup('002', now - 3 * 86400000).map(input => ({
+          ...input,
+          message: input.message.replace('星光白色 512G', '夜空色 1T'),
+        }));
+        await ingest([...oldNight, ...startup('001', now - 500)]);
+        await ready();
+        await ingest([
+          uncertainStartup(precision === 'date' ? previousDay : day, {
+            precise: precision === 'point',
+            at: now - 750,
+            account: precision === 'point' ? '002' : null,
+          }),
+        ]);
+        const ratio = await evaluate(trackerFor([{ account: '001', at: now - 100 }]));
+        expect(ratio.numerator).toBe(1);
+        expect(ratio.denominator).toBeNull();
+      } catch (error) {
+        throw new Error('QA_OLD_SKU_BEFORE_GAP_FAILED', { cause: error });
+      }
+    }
+  );
+
+  test('contextAt仅前文下界，同日较晚完整start仍不足清除未知上界的startup gap', async () => {
+    try {
+      const day = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+      const start = Date.parse(`${day}T00:00:00.000+08:00`);
+      await ingest(startup('001', start + 120000));
+      await ready();
+      await ingest([uncertainStartup(day, { contextAt: new Date(start + 60000).toISOString() })]);
+      const ratio = await evaluate(trackerFor([{ account: '001', at: now - 100 }]));
+      expect(ratio.denominator).toBeNull();
+    } catch (error) {
+      throw new Error('QA_CONTEXT_LOWER_BOUND_FAILED', { cause: error });
+    }
+  });
+
+  test('精确loggedAt gap后可靠完整start可清除，不能把精确点误扩为全天', async () => {
+    try {
+      await ingest(startup('001', now - 500));
+      await ready();
+      const day = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+      await ingest([uncertainStartup(day, { precise: true, at: now - 750 })]);
+      const ratio = await evaluate(trackerFor([{ account: '001', at: now - 100 }]));
+      expect(ratio.denominator).toBe(1);
+    } catch (error) {
+      throw new Error('QA_EXACT_GAP_CLEAR_FAILED', { cause: error });
+    }
+  });
 });

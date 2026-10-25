@@ -139,21 +139,24 @@ async function evaluate(tracker, models, transaction) {
           reason ||= 'HIT_NOT_ELIGIBLE_AT_TIME';
         if (data.gapOverflow) reason ||= 'CONFIG_GAP_LIMIT';
         for (const gap of data.gaps || []) {
-          const at = gap.at == null ? null : +new Date(gap.at);
-          if (at != null && at > ref.anchor.loggedAt) continue;
+          const from = gap.atFrom || gap.at;
+          const to = gap.atTo || gap.at;
+          const earliest = from && Number.isFinite(+new Date(from)) ? +new Date(from) : null;
+          const latest = to && Number.isFinite(+new Date(to)) ? +new Date(to) : null;
+          if (earliest != null && earliest > ref.anchor.loggedAt) continue;
           const affects = data.registries.some(registry => {
             if (gap.accountNumber && registry.accountNumber !== gap.accountNumber) return false;
             const config = configPolicy.resolveAccount(
               prepared.get(registry.accountNumber) || [],
               ref.anchor
             );
-            if (
-              configPolicy.DIMENSIONS.some(
-                field => config[field] && config[field] !== '未知' && config[field] !== scope[field]
-              )
-            )
-              return false;
-            return at == null || !config.startAt || +new Date(config.startAt) <= at;
+            const complete = configPolicy.DIMENSIONS.every(
+              field => config[field] && config[field] !== '未知'
+            );
+            // 未被之后完整启动覆盖的gap可能改变旧SKU/城市，旧维度不能排除影响。
+            return (
+              latest == null || !complete || !config.startAt || +new Date(config.startAt) <= latest
+            );
           });
           if (affects) reason ||= 'CONFIG_GAP_UNRESOLVED';
         }

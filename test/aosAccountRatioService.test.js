@@ -155,3 +155,97 @@ test('旧活跃窗口缺少历史账号tracker，新增已知hit也不能冒充�
     reason: 'LEGACY_WINDOW_WITHOUT_ACCOUNT_TRACKER',
   });
 });
+
+test.each([false, true])(
+  '仅日期startup缺口不可被当日更早或稍晚启动清除，旧SKU不匹配=%s',
+  async mismatch => {
+    const data = fixture();
+    if (mismatch)
+      data.events.forEach(row => {
+        if (row.kind === 'start' && row.accountNumber === '002') row.body.product.color = '夜空色';
+      });
+    const day = '2026-10-25';
+    const parsed = policy.parse([
+      {
+        deviceId: 'dev',
+        localId: 'local',
+        fileId: 'new-file',
+        byteOffset: '0',
+        accountNumber: '002',
+        parseState: 'unparsed',
+        partIndex: 0,
+        message: '[2][002]开始下单 iPhone Duo 星光白色 512G',
+        loggedAt: null,
+        contextAt: null,
+        businessDate: day,
+      },
+    ]);
+    expect(parsed.gaps[0]).toMatchObject({
+      at: null,
+      atFrom: '2026-10-24T16:00:00.000Z',
+      atTo: '2026-10-25T15:59:59.999Z',
+    });
+    expect(parsed.accounts[0].firstSeenAt).toBe(parsed.gaps[0].atFrom);
+    data.gaps = parsed.gaps;
+    jest.spyOn(configs, 'load').mockResolvedValue(data);
+    const result = sourceRatio(
+      await ratios.evaluate(ratios.add(null, anchor('001'), item), {}, {})
+    );
+    expect(result.denominator).toBeNull();
+    expect(result.reason).toBe('CONFIG_GAP_UNRESOLVED');
+  }
+);
+
+test('整日缺口在次日完整启动后可证明覆盖，未来日缺口不污染较早hit', async () => {
+  const data = fixture();
+  data.gaps = [
+    { at: null, atFrom: '2026-10-23T16:00:00.000Z', atTo: '2026-10-24T15:59:59.999Z' },
+    { at: null, atFrom: '2026-10-25T16:00:00.000Z', atTo: '2026-10-26T15:59:59.999Z' },
+  ];
+  jest.spyOn(configs, 'load').mockResolvedValue(data);
+  const result = sourceRatio(await ratios.evaluate(ratios.add(null, anchor('001'), item), {}, {}));
+  expect(result).toMatchObject({ numerator: 1, denominator: 2, reason: null });
+});
+
+test('继承前文contextAt不是精确启动时刻，同日后来完整配置仍不能清除区间缺口', async () => {
+  const data = fixture();
+  data.gaps = policy.parse([
+    {
+      deviceId: 'dev',
+      localId: 'local',
+      fileId: 'file',
+      byteOffset: '0',
+      accountNumber: '002',
+      parseState: 'unparsed',
+      partIndex: 0,
+      message: '[2][002]开始下单 iPhone Duo 星光白色 512G',
+      loggedAt: null,
+      contextAt: new Date(at - 20000).toISOString(),
+      businessDate: '2026-10-25',
+    },
+  ]).gaps;
+  expect(data.gaps[0]).toMatchObject({
+    at: null,
+    atFrom: new Date(at - 20000).toISOString(),
+    atTo: '2026-10-25T15:59:59.999Z',
+  });
+  jest.spyOn(configs, 'load').mockResolvedValue(data);
+  expect(
+    sourceRatio(await ratios.evaluate(ratios.add(null, anchor('001'), item), {}, {}))
+  ).toMatchObject({ denominator: null, reason: 'CONFIG_GAP_UNRESOLVED' });
+});
+
+test('精确gap之前的别SKU不能排除新启动可能改变配置，之后完整启动才可清除', async () => {
+  const data = fixture();
+  data.events.find(row => row.accountNumber === '002' && row.kind === 'start').body.product.color =
+    '夜空色';
+  data.gaps = [{ accountNumber: '002', at: new Date(at - 5000).toISOString() }];
+  jest.spyOn(configs, 'load').mockResolvedValue(data);
+  expect(
+    sourceRatio(await ratios.evaluate(ratios.add(null, anchor('001'), item), {}, {}))
+  ).toMatchObject({ denominator: null, reason: 'CONFIG_GAP_UNRESOLVED' });
+  data.gaps[0].at = new Date(at - 15000).toISOString();
+  expect(
+    sourceRatio(await ratios.evaluate(ratios.add(null, anchor('001'), item), {}, {}))
+  ).toMatchObject({ denominator: 1, reason: null });
+});

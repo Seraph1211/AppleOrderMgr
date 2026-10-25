@@ -25,10 +25,14 @@ function parse(rows) {
       typeof row.accountNumber === 'string' && /^\d{1,64}$/.test(row.accountNumber)
         ? row.accountNumber
         : null;
-    const at =
-      row.loggedAt ||
-      row.contextAt ||
-      (row.businessDate ? `${row.businessDate}T23:59:59.999+08:00` : null);
+    const at = row.loggedAt || null;
+    const date = typeof row.businessDate === 'string' ? row.businessDate : '';
+    const day = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00.000+08:00`) : NaN;
+    const dated =
+      Number.isFinite(day) && new Date(day + 8 * 3600000).toISOString().slice(0, 10) === date;
+    // contextAt只继承前文排序时间，不能伪造无时间新启动的精确时刻。
+    const atFrom = !at ? row.contextAt || (dated ? new Date(day).toISOString() : null) : null;
+    const atTo = !at && dated ? new Date(day + 86400000 - 1).toISOString() : null;
     gaps.push({
       deviceId: row.deviceId,
       localId: row.localId,
@@ -37,16 +41,18 @@ function parse(rows) {
       lineIndex,
       accountNumber,
       at,
+      ...(!at ? { atFrom, atTo } : {}),
     });
-    if (accountNumber && at && Number.isFinite(+new Date(at))) {
+    const firstAt = at || atFrom;
+    if (accountNumber && firstAt && Number.isFinite(+new Date(firstAt))) {
       const id = digest([row.deviceId, row.localId, accountNumber]);
-      if (!accounts.has(id) || +new Date(at) < +new Date(accounts.get(id).firstSeenAt))
+      if (!accounts.has(id) || +new Date(firstAt) < +new Date(accounts.get(id).firstSeenAt))
         accounts.set(id, {
           id,
           deviceId: row.deviceId,
           localId: row.localId,
           accountNumber,
-          firstSeenAt: new Date(at).toISOString(),
+          firstSeenAt: new Date(firstAt).toISOString(),
         });
     }
   };
