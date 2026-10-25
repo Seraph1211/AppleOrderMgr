@@ -522,6 +522,72 @@ export default function ProxyOrders() {
       action === 'notes' ? '备注已保存' : '状态已更新'
     );
   }
+  function openStatus(row, status) {
+    setReason('');
+    setError('');
+    setModalError('');
+    setNotice('');
+    setStatusTarget({
+      row,
+      status,
+      requiresStopped: status === 'cancelled' && activeAssignmentCount(row) > 0,
+      confirmedStopped: false,
+    });
+  }
+  async function saveStatus() {
+    if (!statusTarget || (statusTarget.requiresStopped && !statusTarget.confirmedStopped)) return;
+    await run(async () => {
+      let mutation;
+      try {
+        mutation = await client.post(`/proxy-orders/${statusTarget.row.id}/status`, {
+          expectedVersion: statusTarget.row.version,
+          status: statusTarget.status,
+          reason,
+          ...(statusTarget.status === 'cancelled'
+            ? { confirmedStopped: statusTarget.confirmedStopped }
+            : {}),
+        });
+      } catch (failure) {
+        if (
+          failure.details?.requiresStoppedConfirmation ||
+          failure.response?.data?.error?.details?.requiresStoppedConfirmation
+        )
+          setStatusTarget(target => ({
+            ...target,
+            requiresStopped: true,
+            confirmedStopped: false,
+          }));
+        throw failure;
+      }
+      setStatusTarget(null);
+      refresh();
+      if (current?.id === statusTarget.row.id) {
+        try {
+          const response = await client.get(`/proxy-orders/${current.id}`);
+          setCurrent(response.data);
+          setDraft({
+            ...response.data,
+            productCandidates: response.data.productCandidates?.length
+              ? response.data.productCandidates
+              : [
+                  {
+                    productModel: response.data.productModel,
+                    color: response.data.color,
+                    storage: response.data.storage,
+                  },
+                ],
+          });
+        } catch (failure) {
+          throw new Error(`状态已更新，详情刷新失败，请刷新核对：${failure.message}`);
+        }
+      }
+      setNotice(
+        statusTarget.status === 'cancelled'
+          ? `代抢单已取消，释放 ${mutation.data.released} 个账号。`
+          : '状态已更新'
+      );
+    });
+  }
   async function openAssignments(row = current) {
     await run(async () => {
       const response = await client.get('/proxy-orders/accounts', {
@@ -1217,9 +1283,7 @@ export default function ProxyOrders() {
                               value={row.status}
                               disabled={busy}
                               onChange={event => {
-                                const next = event.target.value;
-                                setReason('');
-                                setStatusTarget({ row, status: next });
+                                openStatus(row, event.target.value);
                               }}
                             >
                               {Object.entries(STATUS).map(([key, [label]]) => (
@@ -1530,8 +1594,7 @@ export default function ProxyOrders() {
                 value={current.status}
                 disabled={busy}
                 onChange={event => {
-                  setReason('');
-                  setStatusTarget({ row: current, status: event.target.value });
+                  openStatus(current, event.target.value);
                 }}
               >
                 {Object.entries(STATUS).map(([key, [label]]) => (
@@ -1745,8 +1808,26 @@ export default function ProxyOrders() {
         >
           {modalMessage}
           <p className="text-sm text-gray-600 mb-3">
-            状态可按实际情况人工调整。账号仍需确认外部软件停抢后释放。
+            {statusTarget.status === 'cancelled'
+              ? statusTarget.requiresStopped
+                ? '取消订单将一并释放该单全部占用账号，请先停止外部抢购软件对应任务。'
+                : '当前没有占用账号，可直接取消代抢单。'
+              : '状态可按实际情况人工调整。账号仍需确认外部软件停抢后释放。'}
           </p>
+          {statusTarget.requiresStopped && (
+            <label className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 rounded-lg p-3 mb-3">
+              <input
+                type="checkbox"
+                className="mt-0.5"
+                checked={statusTarget.confirmedStopped}
+                disabled={busy}
+                onChange={event =>
+                  setStatusTarget(target => ({ ...target, confirmedStopped: event.target.checked }))
+                }
+              />
+              已确认外部抢购任务停止，取消订单并释放全部占用账号
+            </label>
+          )}
           <Field label="操作说明（选填，保留客户原备注）" value={reason} onChange={setReason} />
           <div className="flex justify-end gap-2 mt-4">
             <button
@@ -1758,36 +1839,14 @@ export default function ProxyOrders() {
             </button>
             <button
               className="btn btn-primary"
-              disabled={busy}
-              onClick={() =>
-                run(async () => {
-                  await client.post(`/proxy-orders/${statusTarget.row.id}/status`, {
-                    expectedVersion: statusTarget.row.version,
-                    status: statusTarget.status,
-                    reason,
-                  });
-                  if (current?.id === statusTarget.row.id) {
-                    const response = await client.get(`/proxy-orders/${current.id}`);
-                    setCurrent(response.data);
-                    setDraft({
-                      ...response.data,
-                      productCandidates: response.data.productCandidates?.length
-                        ? response.data.productCandidates
-                        : [
-                            {
-                              productModel: response.data.productModel,
-                              color: response.data.color,
-                              storage: response.data.storage,
-                            },
-                          ],
-                    });
-                  }
-                  setStatusTarget(null);
-                  refresh();
-                }, '状态已更新')
-              }
+              disabled={busy || (statusTarget.requiresStopped && !statusTarget.confirmedStopped)}
+              onClick={saveStatus}
             >
-              确认修改
+              {statusTarget.status === 'cancelled'
+                ? statusTarget.requiresStopped
+                  ? '确认取消并释放'
+                  : '确认取消订单'
+                : '确认修改'}
             </button>
           </div>
         </Dialog>

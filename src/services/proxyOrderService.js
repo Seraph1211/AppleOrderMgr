@@ -309,6 +309,25 @@ async function saveOrder(orderId, body, actorId) {
   }
 }
 
+/** 结束指定占用并沿用手动释放的账号状态规则，保留分配历史。 */
+async function releaseAssignments(assignments, transaction) {
+  try {
+    const assignmentIds = assignments.map(assignment => assignment.id);
+    await ProxyAssignment.update(
+      { endedAt: new Date() },
+      { where: { id: assignmentIds, endedAt: null }, transaction }
+    );
+    await AppleId.update(
+      { status: '未使用' },
+      { where: { id: assignments.map(a => a.appleIdRef), status: '使用中' }, transaction }
+    );
+    return assignmentIds;
+  } catch (error) {
+    logger.debug('代抢账号释放事务未完成', { errorType: error.name });
+    throw error;
+  }
+}
+
 /** 执行版本化状态、分配、释放和关联动作。 @param {string} action 动作 @param {number} orderId 编号 @param {Object} body 输入 @param {number} actorId 操作人 @returns {Promise<Object>} 结果 */
 async function changeOrder(action, orderId, body, actorId) {
   try {
@@ -317,6 +336,7 @@ async function changeOrder(action, orderId, body, actorId) {
         const row = await lockedOrder(orderId, body.expectedVersion, transaction);
         let audit = {};
         let assigned;
+        let released;
         const previousStatus = row.status;
         if (action === 'notes') {
           if (typeof body.notes !== 'string' || body.notes.length > 10000)
@@ -334,6 +354,28 @@ async function changeOrder(action, orderId, body, actorId) {
             const { encrypt } = require('../utils/fieldEncryption');
             audit.reasonEncrypted = encrypt(reason);
           }
+          if (body.status === 'cancelled') {
+            const assignments = await ProxyAssignment.findAll({
+              where: { proxyOrderId: row.id, endedAt: null },
+              transaction,
+              lock: transaction.LOCK.UPDATE,
+            });
+            if (assignments.length && body.confirmedStopped !== true)
+              throw ApiError.conflict('请先停止外部抢购软件对应任务，并确认停抢后取消并释放账号', {
+                requiresStoppedConfirmation: true,
+              });
+            released = assignments.length;
+            if (released) {
+              const assignmentIds = await releaseAssignments(assignments, transaction);
+              await event(
+                'release',
+                row.id,
+                actorId,
+                { assignmentIds, source: 'cancel' },
+                transaction
+              );
+            }
+          }
           row.status = body.status;
         } else if (action === 'accounts') {
           const added = await assign(row, body, transaction, actorId);
@@ -349,14 +391,7 @@ async function changeOrder(action, orderId, body, actorId) {
           });
           if (assignments.length !== assignmentIds.length)
             throw ApiError.conflict('账号占用已变化');
-          await ProxyAssignment.update(
-            { endedAt: new Date() },
-            { where: { id: assignmentIds }, transaction }
-          );
-          await AppleId.update(
-            { status: '未使用' },
-            { where: { id: assignments.map(a => a.appleIdRef), status: '使用中' }, transaction }
-          );
+          await releaseAssignments(assignments, transaction);
           audit = { assignmentIds };
         } else if (action === 'link') {
           if (typeof body.reason !== 'string' || !body.reason.trim() || body.reason.length > 500)
@@ -438,7 +473,12 @@ async function changeOrder(action, orderId, body, actorId) {
         row.version += 1;
         await row.save({ transaction });
         await event(action, row.id, actorId, audit, transaction);
-        return { id: row.id, version: row.version, ...(assigned == null ? {} : { assigned }) };
+        return {
+          id: row.id,
+          version: row.version,
+          ...(assigned == null ? {} : { assigned }),
+          ...(released == null ? {} : { released }),
+        };
       } catch (error) {
         logger.debug('代抢事务未完成', { errorType: error.name });
         throw error;
