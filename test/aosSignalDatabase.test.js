@@ -140,7 +140,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
       '取货信息: 取货日期待付款完成后确定',
     ]);
     await signals.tick();
-    expect((await deliveries())[0].content).toContain('首次信号：1次命中');
+    expect((await deliveries())[0].content).toContain('首次信号｜1次命中');
     expect((await deliveries())[0].content).toContain('US_09 / 心蓝11');
     now += 60000;
     await feed(['取货信息: 取货日期待付款完成后确定'], 8);
@@ -169,7 +169,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
     await Promise.all([signals.tick(), new AosSignalService(service).tick()]);
     const rows = await deliveries();
     expect(rows).toHaveLength(2);
-    expect(rows.find(row => !row.aosImmediate).content).toContain('3分钟汇总：1次命中');
+    expect(rows.find(row => !row.aosImmediate).content).toContain('3分钟汇总｜1次命中');
     expect(Object.values(rows.find(row => row.id === first.id).aosGroups)[0].count).toBe(1);
   });
 
@@ -181,7 +181,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
     await signals.tick();
     let rows = await deliveries();
     expect(rows.filter(row => !row.aosImmediate)).toHaveLength(1);
-    expect(rows.find(row => !row.aosImmediate).content).toContain('3分钟汇总：1次命中');
+    expect(rows.find(row => !row.aosImmediate).content).toContain('3分钟汇总｜1次命中');
     expect(
       Object.values((await m.InventoryRuntime.findByPk('main')).body.aosSignals.groups)[0].count
     ).toBe(1);
@@ -190,7 +190,7 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
     rows = await deliveries();
     expect(rows.filter(row => !row.aosImmediate)).toHaveLength(2);
     expect(
-      rows.filter(row => !row.aosImmediate).every(row => row.content.includes('3分钟汇总：1次命中'))
+      rows.filter(row => !row.aosImmediate).every(row => row.content.includes('3分钟汇总｜1次命中'))
     ).toBe(true);
     const runtime = await m.InventoryRuntime.findByPk('main');
     await runtime.update({
@@ -233,8 +233,10 @@ suite('AOS信号隔离PostgreSQL事务及模拟投递', () => {
       else process.env.INVENTORY_PUBLIC_URL = previousUrl;
     }
     expect(send).toHaveBeenCalledTimes(1);
-    expect(send.mock.calls[0][1]).toContain('北京 · Apple 王府井 · iPhone Duo 星光白色 512G');
-    expect(send.mock.calls[0][1]).toContain('https://signal.example.invalid/server-monitor/logs');
+    expect(send.mock.calls[0][1]).toContain('北京 · Apple 王府井\niPhone Duo\n星光白色 · 512G');
+    expect(send.mock.calls[0][1]).not.toContain(
+      'https://signal.example.invalid/server-monitor/logs'
+    );
     expect(send.mock.calls[0][1]).not.toContain('/inventory-monitor');
     await notifier.tick();
     expect(send).toHaveBeenCalledTimes(1);

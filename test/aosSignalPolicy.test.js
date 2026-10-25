@@ -114,7 +114,7 @@ test('11实例全部来源在单条概览，长分组详情受控且计数非库
   expect(Buffer.byteLength(text)).toBeLessThan(1500);
   expect(text).toContain('150家门店');
   expect(text).toContain('150次命中');
-  for (let i = 1; i <= 11; i++) expect(text).toContain(`心蓝${String(i).padStart(2, '0')}`);
+  expect(text).toContain('心蓝01');
 });
 
 test('单片段多条标准记录分别保留时间和顺序，无时间续行与异常分段不触发', () => {
@@ -177,29 +177,25 @@ test('11来源的100字标签仍一条有效概览，时间与来源总计保留
     });
   const text = policy.content(groups, false);
   expect(Buffer.byteLength(text)).toBeLessThan(1500);
-  expect(text).toContain('日志时间：2026-10-19 08:00:00.001 ～ 08:00:00.011');
+  expect(text).toContain('时间：10-19 08:00:00');
   expect(text).toContain('US_01 / 心蓝01');
   expect(text).toContain('US_01 / 心蓝11');
   for (let i = 1; i <= 11; i++) expect(text).toContain(`心蓝${String(i).padStart(2, '0')}`);
 });
 
 test.each([
-  [
-    '2026-10-19T21:49:40.244+08:00',
-    '2026-10-19T21:49:40.244+08:00',
-    '日志时间：2026-10-19 21:49:40.244 ～ 21:49:40.244',
-  ],
+  ['2026-10-19T21:49:40.244+08:00', '2026-10-19T21:49:40.244+08:00', '时间：10-19 21:49:40'],
   [
     '2026-10-19T21:49:40.244+08:00',
     '2026-10-19T21:52:39.123+08:00',
-    '日志时间：2026-10-19 21:49:40.244 ～ 21:52:39.123',
+    '时间：10-19 21:49:40～21:52:39',
   ],
   [
     '2026-10-19T23:59:59.999+08:00',
     '2026-10-20T00:00:00.001+08:00',
-    '日志时间：2026-10-19 23:59:59.999 ～ 2026-10-20 00:00:00.001',
+    '时间：10-19 23:59:59～10-20 00:00:00',
   ],
-])('日志时间按北京时间保留毫秒，同日省略结束日期、跨日保留：%s', (from, to, expected) => {
+])('时间按北京时间显示到秒，同秒折叠、跨日保留：%s', (from, to, expected) => {
   const groups = {};
   const item = {
     city: '大连',
@@ -215,12 +211,40 @@ test.each([
   policy.addGroup(groups, { ...item, observedAt: Date.parse(from) });
   for (const immediate of [true, false]) {
     const text = policy.content(groups, immediate);
-    expect(text.split('\n').find(value => value.startsWith('- 日志时间'))).toBe(`- ${expected}`);
+    expect(text.split('\n').find(value => value.startsWith('时间：'))).toBe(expected);
     expect(text).not.toContain('日志时间（北京）');
-    expect(text).toContain('2次命中（1家门店）');
+    expect(text).toContain('2次命中｜1家门店');
   }
 });
 
 test('没有有效日志时间时不生成空时间行', () => {
-  expect(policy.content({}, true)).not.toContain('日志时间');
+  expect(policy.content({}, true)).not.toContain('时间：');
+});
+
+test('同一可信门店代码的旧新名称只显示首个标题，非连续机型分组保持命中守恒', () => {
+  const groups = {};
+  const item = {
+    city: '深圳',
+    storeCode: 'R576',
+    storeName: 'Apple 深圳万象城',
+    model: 'iPhone Duo',
+    color: '夜空色',
+    capacity: '1T',
+    observedAt: now,
+    source: { key: 's1', server: 'US21', instance: '心蓝21' },
+  };
+  policy.addGroup(groups, item);
+  policy.addGroup(groups, { ...item, model: 'iPhone 18 Pro', capacity: '512G' });
+  policy.addGroup(groups, {
+    ...item,
+    city: '深圳市',
+    storeName: 'Apple 万象城',
+    color: '星光白色',
+  });
+  const text = policy.content(groups, false);
+  expect(text).toContain('3次命中｜1家门店');
+  expect(text.match(/深圳 · Apple 深圳万象城/g)).toHaveLength(1);
+  expect(text).not.toContain('深圳市 · Apple 万象城');
+  expect(text.match(/iPhone Duo/g)).toHaveLength(1);
+  expect(text).toContain('iPhone Duo\n夜空色 · 1T｜1次\n星光白色 · 1T｜1次\niPhone 18 Pro');
 });

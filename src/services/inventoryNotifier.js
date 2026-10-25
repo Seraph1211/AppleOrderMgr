@@ -185,15 +185,13 @@ class InventoryNotifier {
                 .filter(Boolean)
             ),
           ];
-          const rounds = new Map(
-            (roundIds.length
-              ? await this.s.rows('InventoryRound', {
-                transaction,
-                where: { id: { [Op.in]: roundIds } },
-              })
-              : []
-            ).map(r => [r.id, r])
-          );
+          let roundRows = [];
+          if (roundIds.length)
+            roundRows = await this.s.rows('InventoryRound', {
+              transaction,
+              where: { id: { [Op.in]: roundIds } },
+            });
+          const rounds = new Map(roundRows.map(r => [r.id, r]));
           const guardPaused = Boolean(
             guard?.body.pausedReason || guard?.body.cooldownUntil > now || guard?.body.recovering
           );
@@ -249,6 +247,8 @@ class InventoryNotifier {
               if (round && ['queued', 'running'].includes(round.status)) continue;
               item.partial = round?.status !== 'complete';
             }
+            if (item.kind === 'aos_signal' && item.aosGroups)
+              item.content = aosSignalPolicy.content(item.aosGroups, item.aosImmediate);
             eligible.push(item);
           }
           await this.s.put('InventoryDelivery', skipped, transaction);
@@ -273,16 +273,16 @@ class InventoryNotifier {
               (!item.rows && batch.length)
             )
               continue;
-            const line = item.rows
-              ? item.rows
+            let line = item.content;
+            if (item.rows)
+              line = item.rows
                 .map(
                   r =>
                     `${getProductDisplayName(r)}：${r.quote || '检测到可取货'}（${new Date(r.observedAt).toLocaleTimeString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false })}）`
                 )
-                .join('\n')
-              : item.kind === 'health' && item.healthKey === 'normal'
-                ? `状态：查询通道恢复\n原因：查询通道已连续观察 2 分钟；覆盖范围见当前摘要\n最近成功：${state.lastSuccessAt ? new Date(state.lastSuccessAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚无'}`
-                : item.content;
+                .join('\n');
+            else if (item.kind === 'health' && item.healthKey === 'normal')
+              line = `状态：查询通道恢复\n原因：查询通道已连续观察 2 分钟；覆盖范围见当前摘要\n最近成功：${state.lastSuccessAt ? new Date(state.lastSuccessAt).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' }) : '尚无'}`;
             if (Buffer.byteLength(content + line, 'utf8') > 1600) break;
             content += `${line}\n`;
             batch.push(item);
@@ -298,11 +298,8 @@ class InventoryNotifier {
             content += `当前有效覆盖：${current.length} / ${products.size * stores.size} 个组合\n有货：${current.filter(row => row.status === 'in_stock').length} 个组合\n此为当前有效结果，不代表全国完整覆盖或长期稳定。\n`;
           }
           const base = process.env.INVENTORY_PUBLIC_URL;
-          if (base && /^https:\/\/[^\s?#]+$/.test(base)) {
-            const path =
-              first.kind === 'aos_signal'
-                ? '/server-monitor/logs'
-                : `/inventory-monitor${first.kind === 'health' ? '/manage?tab=settings' : ''}`;
+          if (first.kind !== 'aos_signal' && base && /^https:\/\/[^\s?#]+$/.test(base)) {
+            const path = `/inventory-monitor${first.kind === 'health' ? '/manage?tab=settings' : ''}`;
             content += `详情（需登录）：${base.replace(/\/$/, '')}${path}\n`;
           }
           if (!batch.length) {

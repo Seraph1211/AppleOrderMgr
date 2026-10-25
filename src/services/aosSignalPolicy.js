@@ -261,9 +261,65 @@ function serverName(value) {
   return number ? `US_${number.padStart(2, '0')}` : name;
 }
 
-/** 在单条安全字节预算内展示完整总计；超长来源和详情明确标注省略数。 */
+const CONTENT_BYTES = 1520;
+const SOURCE_RESERVE_BYTES = 320;
+
+/** 显示北京时间秒级范围；跨年保留年份，不改变源时间精度。 */
+function timeRange(rows) {
+  const timestamps = rows.flatMap(row => [row.firstAt, row.lastAt]).filter(Number.isFinite);
+  if (!timestamps.length) return '';
+  const clock = value => new Date(value + 8 * 3600000).toISOString().slice(0, 19).replace('T', ' ');
+  const first = clock(Math.min(...timestamps));
+  const last = clock(Math.max(...timestamps));
+  const crossYear = first.slice(0, 4) !== last.slice(0, 4);
+  const start = crossYear ? first : first.slice(5);
+  if (first === last) return `时间：${start}`;
+  let end = crossYear ? last : last.slice(5);
+  if (first.slice(0, 10) === last.slice(0, 10)) end = last.slice(11);
+  return `时间：${start}～${end}`;
+}
+
+/** 按店铺、机型稳定分组，让非连续输入仍只显示一次标题。 */
+function detailRows(rows) {
+  const stores = new Map();
+  for (const row of rows) {
+    const key = hasLocation(row)
+      ? `store:${row.storeCode}`
+      : JSON.stringify([row.city, row.storeCode, row.storeName]);
+    if (!stores.has(key))
+      stores.set(key, { city: row.city, name: row.storeName, models: new Map() });
+    const store = stores.get(key);
+    if (!store.models.has(row.model)) store.models.set(row.model, []);
+    store.models
+      .get(row.model)
+      .push({ ...row, city: store.city, storeName: store.name, storeKey: key });
+  }
+  return [...stores.values()].flatMap(store => [...store.models.values()].flat());
+}
+
+/** 来源最后呈现，超长时保留省略来源数量及命中数。 */
+function sourceContent(rows, budget) {
+  if (!rows.length) return '';
+  const line = row =>
+    `${shorten(serverName(row.server), 12)} / ${shorten(row.instance, 10)}｜${row.count}次`;
+  if (rows.length === 1) return `来源：${line(rows[0])}`;
+  let text = '来源：';
+  for (let index = 0; index < rows.length; index++) {
+    const next = `${text}\n${line(rows[index])}`;
+    const omitted = rows.slice(index + 1).reduce((sum, row) => sum + row.count, 0);
+    const marker = omitted ? `\n其余${rows.length - index - 1}个来源｜${omitted}次未展示` : '';
+    if (Buffer.byteLength(next + marker, 'utf8') > budget) {
+      const remaining = rows.slice(index).reduce((sum, row) => sum + row.count, 0);
+      return `${text}\n其余${rows.length - index}个来源｜${remaining}次未展示`;
+    }
+    text = next;
+  }
+  return text;
+}
+
+/** 在手机纯文本层次中展示完整总计；优先商品且明确保留省略数。 */
 function content(groups, immediate) {
-  const rows = Object.values(groups);
+  const rows = detailRows(Object.values(groups));
   const sources = new Map();
   for (const row of rows)
     for (const [key, value] of Object.entries(row.sources)) {
@@ -274,48 +330,39 @@ function content(groups, immediate) {
   const stores = new Set(rows.filter(hasLocation).map(row => row.storeCode));
   const unknown = rows.filter(row => !hasLocation(row)).reduce((sum, row) => sum + row.count, 0);
   const locations = unknown
-    ? `${stores.size}家已知门店，${unknown}次门店未知`
+    ? `${stores.size}家已知门店｜${unknown}次门店未知`
     : `${stores.size}家门店`;
-  let text = `- ${immediate ? '首次信号' : '3分钟汇总'}：${total}次命中（${locations}）\n`;
-  const timestamps = rows.flatMap(row => [row.firstAt, row.lastAt]).filter(Number.isFinite);
-  const clock = value => new Date(value + 8 * 3600000).toISOString().slice(0, 23).replace('T', ' ');
-  if (timestamps.length) {
-    const [startDate, startTime] = clock(Math.min(...timestamps)).split(' ');
-    const [endDate, endTime] = clock(Math.max(...timestamps)).split(' ');
-    const end = startDate === endDate ? endTime : `${endDate} ${endTime}`;
-    text += `- 日志时间：${startDate} ${startTime} ～ ${end}\n`;
-  }
+  let text = `${immediate ? '首次信号' : '3分钟汇总'}｜${total}次命中｜${locations}`;
+  const time = timeRange(rows);
   const sourceRows = [...sources.values()];
-  const sourceLine = row =>
-    `${shorten(serverName(row.server), 12)} / ${shorten(row.instance, 10)}：${row.count}次`;
-  if (sourceRows.length === 1) text += `- 来源：${sourceLine(sourceRows[0])}\n`;
-  else {
-    text += '- 来源：\n';
-    let shownSources = 0;
-    for (const row of sourceRows) {
-      const line = `  - ${sourceLine(row)}\n`;
-      if (Buffer.byteLength(text + line, 'utf8') > 1000) break;
-      text += line;
-      shownSources++;
-    }
-    if (shownSources < sourceRows.length) {
-      const omitted = sourceRows.slice(shownSources).reduce((sum, row) => sum + row.count, 0);
-      text += `  - 其余${sourceRows.length - shownSources}个来源共${omitted}次，详见运行日志。\n`;
-    }
-  }
-  text += '- 详情：\n';
+  const fullSources = sourceContent(sourceRows, CONTENT_BYTES);
+  const sourceReserve = Math.min(Buffer.byteLength(fullSources, 'utf8'), SOURCE_RESERVE_BYTES);
+  const footerBytes = Buffer.byteLength(time, 'utf8') + sourceReserve + 8;
   let shown = 0;
+  let previous;
   for (const row of rows) {
-    const line = `  - ${row.city} · ${row.storeName} · ${row.model} ${row.color} ${row.capacity}：${row.count}次\n`;
-    if (Buffer.byteLength(text + line, 'utf8') > 1300) break;
+    let heading = '';
+    if (row.storeKey !== previous?.storeKey)
+      heading = `\n\n${shorten(row.city, 12)} · ${shorten(row.storeName, 30)}\n${shorten(row.model, 24)}\n`;
+    else if (row.model !== previous?.model) heading = `\n${shorten(row.model, 24)}\n`;
+    else heading = '\n';
+    const line = `${heading}${shorten(row.color, 20)} · ${shorten(row.capacity, 12)}｜${row.count}次`;
+    const remaining = rows.slice(shown + 1).reduce((sum, item) => sum + item.count, 0);
+    const marker = remaining ? `\n\n其余${rows.length - shown - 1}组｜${remaining}次未展示` : '';
+    if (Buffer.byteLength(text + line + marker, 'utf8') + footerBytes > CONTENT_BYTES) break;
     text += line;
+    previous = row;
     shown++;
   }
   if (shown < rows.length) {
     const omitted = rows.slice(shown).reduce((sum, row) => sum + row.count, 0);
-    text += `  - 其余${rows.length - shown}组共${omitted}次，详见服务器监控运行日志。\n`;
+    text += `\n\n其余${rows.length - shown}组｜${omitted}次未展示`;
   }
-  return text;
+  if (time) text += `\n\n${time}`;
+  const sourceBudget = CONTENT_BYTES - Buffer.byteLength(text, 'utf8') - 2;
+  const sourceText = sourceContent(sourceRows, sourceBudget);
+  if (sourceText) text += `\n\n${sourceText}`;
+  return `${text}\n`;
 }
 
 module.exports = {

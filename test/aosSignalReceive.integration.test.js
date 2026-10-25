@@ -105,7 +105,19 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
       expect(await models.AosSignalInbox.count()).toBe(1);
       const inbox = await models.AosSignalInbox.findByPk(row.id);
       expect(inbox.body).toMatchObject({ deviceId, localId, kind: 'anchor' });
-      expect(JSON.stringify(inbox.body)).not.toMatch(/013|A77|取货信息/);
+      // UUID和摘要可能随机包含账号的数字片段，按结构白名单验证脱敏边界。
+      expect(Object.keys(inbox.body).sort()).toEqual(
+        [
+          'kind',
+          'fileId',
+          'localId',
+          'taskKey',
+          'deviceId',
+          'loggedAt',
+          'byteOffset',
+          'receivedAt',
+        ].sort()
+      );
       await models.AosSignalInbox.destroy({ where: {} });
       await receive(deviceId, { entries: [row] });
       expect(await models.AosSignalInbox.count()).toBe(0);
@@ -143,7 +155,11 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
   });
 
   test('Worker未运行时，接收端有界清理过期脱敏队列并保留新事件', async () => {
-    await models.AosSignalInbox.create({ id: 'expired-synthetic', body: {}, createdAt: new Date(Date.now() - 180100) });
+    await models.AosSignalInbox.create({
+      id: 'expired-synthetic',
+      body: {},
+      createdAt: new Date(Date.now() - 180100),
+    });
     const row = entry(10);
     await receive(deviceId, { entries: [row] });
     expect(await models.AosSignalInbox.findByPk('expired-synthetic')).toBeNull();

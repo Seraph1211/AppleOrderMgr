@@ -198,7 +198,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       await Promise.all([signals.tick(), new AosSignalService(service).tick()]);
       let rows = await deliveries();
       expect(rows).toHaveLength(1);
-      expect(rows[0].content).toContain('首次信号：1次命中');
+      expect(rows[0].content).toContain('首次信号｜1次命中');
       expect(await models.AosSignalInbox.count()).toBe(0);
       expect(await models.AosSignalContext.count()).toBe(11);
       const firstSource = Object.keys(Object.values(rows[0].aosGroups)[0].sources)[0];
@@ -208,12 +208,12 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       rows = await deliveries();
       expect(rows).toHaveLength(2);
       const summary = rows.find(item => item.content.includes('3分钟汇总'));
-      expect(summary.content).toContain('11次命中（1家门店）');
+      expect(summary.content).toContain('11次命中｜1家门店');
       const sources = Object.values(summary.aosGroups).flatMap(group => Object.keys(group.sources));
       expect(sources).toHaveLength(11);
       expect(sources).toContain(firstSource);
       const allSources = rows.map(item => item.content).join('\n');
-      for (let i = 1; i <= 11; i += 1) expect(allSources).toContain(` / 心蓝${i}：`);
+      for (let i = 1; i <= 11; i += 1) expect(allSources).toContain(` / 心蓝${i}｜`);
       expect(allSources).toContain('US_01 /');
       expect(allSources).toContain('US_10 /');
     } catch (error) {
@@ -333,13 +333,15 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       // booking仍只在inbox时，claim必须读取并关联；不依赖signal Worker先消费。
       await notifier.tick();
       expect(send).toHaveBeenCalledTimes(1);
-      expect(send.mock.calls[0][1]).toContain('上海 · Apple 浦东 · iPhone Duo 星光白色 512G：1次');
+      expect(send.mock.calls[0][1]).toContain(
+        '上海 · Apple 浦东\niPhone Duo\n星光白色 · 512G｜1次'
+      );
       await signals.tick();
       rows = await deliveries();
       const immediate = rows.find(row => row.id === immediateId);
       expect(immediate.aosContextDeadline).toBe(base + 32690);
-      expect(immediate.content).toContain('上海 · Apple 浦东 · iPhone Duo 星光白色 512G：1次');
-      expect(immediate.content).toContain('来源：US_01 / 心蓝1：1次');
+      expect(immediate.content).toContain('上海 · Apple 浦东\niPhone Duo\n星光白色 · 512G｜1次');
+      expect(immediate.content).toContain('来源：US_01 / 心蓝1｜1次');
       expect(immediate).toMatchObject({ status: 'accepted', attempts: 1 });
       for (const status of immutableDeliveries) {
         expect(rows.find(row => row.id === `association-${status}`)).toMatchObject({
@@ -357,8 +359,8 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       rows = await deliveries();
       const summary = rows.find(item => item.content.includes('3分钟汇总'));
       expect(rows.filter(item => item.content.includes('首次信号'))).toHaveLength(1);
-      expect(summary.content).toContain('2次命中（1家门店）');
-      expect(summary.content).toContain('上海 · Apple 浦东 · iPhone Duo 星光白色 512G：2次');
+      expect(summary.content).toContain('2次命中｜1家门店');
+      expect(summary.content).toContain('上海 · Apple 浦东\niPhone Duo\n星光白色 · 512G｜2次');
       const immediateGroup = Object.values(immediate.aosGroups)[0];
       const summaryGroup = Object.values(summary.aosGroups)[0];
       expect(summaryGroup.count).toBe(2);
@@ -460,7 +462,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       const send = jest.fn().mockResolvedValue({ status: 'accepted' });
       await new InventoryNotifier(service, send).tick();
       expect(send).toHaveBeenCalledTimes(1);
-      expect(send.mock.calls[0][1]).toContain('北京 · Apple 王府井 · iPhone Duo 星光白色 512G');
+      expect(send.mock.calls[0][1]).toContain('北京 · Apple 王府井\niPhone Duo\n星光白色 · 512G');
       expect((await deliveries()).find(row => row.id === id)).toMatchObject({
         status: 'accepted',
         attempts: 1,
@@ -494,7 +496,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       now = base + 3000;
       await signals.tick();
       const [pending] = await deliveries();
-      expect(pending.content).toContain('上海 · Apple 浦东 · iPhone Duo 星光白色 512G');
+      expect(pending.content).toContain('上海 · Apple 浦东\niPhone Duo\n星光白色 · 512G');
       expect(pending.aosContextDeadline).toBe(base + 13000);
 
       const send = jest.fn().mockResolvedValue({ status: 'accepted' });
@@ -599,7 +601,7 @@ suite('AOS 独立隔离库验收：多来源全局窗口与共用投递约束', 
       const summary = rows.find(item => item.content.includes('3分钟汇总'));
       const immediate = rows.find(item => item.content.includes('首次信号'));
       expect(rows.filter(item => item.content.includes('首次信号'))).toHaveLength(1);
-      expect(summary.content).toContain('4次命中（0家已知门店，4次门店未知）');
+      expect(summary.content).toContain('4次命中｜0家已知门店｜4次门店未知');
       const group = Object.values(summary.aosGroups)[0];
       expect(group.count).toBe(4);
       const sourceCount = Object.values(group.sources).reduce((sum, item) => sum + item.count, 0);

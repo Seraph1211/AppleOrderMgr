@@ -128,11 +128,10 @@ const ATTEMPT = [
 test('独立格式验收：单来源正文逐行匹配用户示例且不含S编号', () => {
   const groups = policy.addGroup({}, item());
   expect(policy.content(groups, true)).toBe(
-    '- 首次信号：1次命中（1家门店）\n' +
-      '- 日志时间：2026-10-24 19:48:35.943 ～ 19:48:35.943\n' +
-      '- 来源：US_21 / 心蓝21：1次\n' +
-      '- 详情：\n' +
-      '  - 深圳 · Apple 前海壹方城 · iPhone Duo 星光白色 512G：1次\n'
+    '首次信号｜1次命中｜1家门店\n\n' +
+      '深圳 · Apple 前海壹方城\niPhone Duo\n星光白色 · 512G｜1次\n\n' +
+      '时间：10-24 19:48:35\n\n' +
+      '来源：US_21 / 心蓝21｜1次\n'
   );
 });
 
@@ -161,11 +160,11 @@ test('独立格式验收：多来源按实际明细合计12次、3门店，不�
     item({ city: '广州', storeCode: 'R639', storeName: 'Apple 天环广场', source: second })
   );
   const text = policy.content(groups, false);
-  expect(text).toContain('- 3分钟汇总：12次命中（3家门店）\n');
-  expect(text).toContain('- 来源：\n  - US_12 / 心蓝13：11次\n  - US_21 / 心蓝21：1次\n');
-  expect(text).toContain('  - 深圳 · Apple 深圳万象城 · iPhone Duo 夜空色 1T：8次\n');
-  expect(text).toContain('  - 深圳 · Apple 壹方城 · iPhone Duo 夜空色 2T：3次\n');
-  expect(text).toContain('  - 广州 · Apple 天环广场 · iPhone Duo 星光白色 512G：1次\n');
+  expect(text).toContain('3分钟汇总｜12次命中｜3家门店\n');
+  expect(text).toContain('来源：\nUS_12 / 心蓝13｜11次\nUS_21 / 心蓝21｜1次\n');
+  expect(text).toContain('深圳 · Apple 深圳万象城\niPhone Duo\n夜空色 · 1T｜8次\n');
+  expect(text).toContain('深圳 · Apple 壹方城\niPhone Duo\n夜空色 · 2T｜3次\n');
+  expect(text).toContain('广州 · Apple 天环广场\niPhone Duo\n星光白色 · 512G｜1次\n');
   expect(text).not.toMatch(/S\d+|非库存数量/);
 });
 
@@ -175,7 +174,7 @@ test('独立门店计数：同店多规格只计一家，未知门店不虚增�
   policy.addGroup(groups, item({ capacity: '1T' }));
   policy.addGroup(groups, item({ city: '未知', storeCode: '未知', storeName: '未知' }));
   const text = policy.content(groups, false);
-  expect(text).toContain('3次命中（1家已知门店，1次门店未知）');
+  expect(text).toContain('3次命中｜1家已知门店｜1次门店未知');
 });
 
 test.each(['US Server 21', 'US Server No.21', 'US21', 'US_21'])(
@@ -183,7 +182,7 @@ test.each(['US Server 21', 'US Server No.21', 'US21', 'US_21'])(
   server => {
     expect(
       policy.content(policy.addGroup({}, item({ source: { ...SOURCE, server } })), true)
-    ).toContain('- 来源：US_21 / 心蓝21：1次\n');
+    ).toContain('来源：US_21 / 心蓝21｜1次\n');
   }
 );
 
@@ -200,14 +199,14 @@ test('独立超长概览：保留实际总数、门店数与省略说明，受�
       })
     );
   const text = policy.content(groups, false);
-  expect(text).toContain('150次命中（150家门店）');
+  expect(text).toContain('150次命中｜150家门店');
   expect(text).toMatch(/其余|省略/);
-  expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(1400);
-  const [sources, details] = text.split('- 来源：\n')[1].split('- 详情：\n');
+  expect(Buffer.byteLength(text, 'utf8')).toBeLessThanOrEqual(1520);
+  const [details, sources] = text.split('来源：\n');
   const visible = section =>
-    [...section.matchAll(/：(\d+)次/g)].reduce((sum, match) => sum + Number(match[1]), 0);
-  const omittedSources = Number(sources.match(/其余\d+个来源共(\d+)次/)[1]);
-  const omittedGroups = Number(details.match(/其余\d+组共(\d+)次/)[1]);
+    [...section.matchAll(/｜(\d+)次$/gm)].reduce((sum, match) => sum + Number(match[1]), 0);
+  const omittedSources = Number(sources.match(/其余\d+个来源｜(\d+)次/)[1]);
+  const omittedGroups = Number(details.match(/其余\d+组｜(\d+)次/)[1]);
   expect(visible(sources) + omittedSources).toBe(150);
   expect(visible(details) + omittedGroups).toBe(150);
 });
@@ -247,7 +246,7 @@ test('独立克隆验收：同批两条锚点首次保持1，汇总2，来源与
     const summary = h.rows().find(row => !row.aosImmediate);
     expect(total(summary.aosGroups)).toBe(2);
     expect(Object.values(summary.aosGroups)[0].sources[SOURCE.key].count).toBe(2);
-    expect(summary.content).toContain('2次命中（1家门店）');
+    expect(summary.content).toContain('2次命中｜1家门店');
     expect(total(h.rows()[0].aosGroups)).toBe(1);
   } catch (error) {
     throw new Error('首次与汇总引用独立验收失败', { cause: error });
@@ -308,11 +307,11 @@ test('独立晚到关联：首条和汇总引用同时补齐门店，计数各�
     const h = harness();
     h.feed([ANCHOR], NOW, [4]);
     await h.service().tick();
-    expect(h.rows()[0].content).toContain('0家已知门店，1次门店未知');
+    expect(h.rows()[0].content).toContain('0家已知门店｜1次门店未知');
     h.context.now += 1000;
     h.feed(ATTEMPT.slice(0, 3), NOW - 10, [1, 2, 3]);
     await h.service().tick();
-    expect(h.rows()[0].content).toContain('1次命中（1家门店）');
+    expect(h.rows()[0].content).toContain('1次命中｜1家门店');
     expect(h.rows()[0].content).toContain('Apple 前海壹方城');
     expect(total(h.rows()[0].aosGroups)).toBe(1);
     expect(total(h.context.state.aosSignals.groups)).toBe(1);
@@ -320,14 +319,14 @@ test('独立晚到关联：首条和汇总引用同时补齐门店，计数各�
     h.context.now = NOW + 180000;
     await h.service().tick();
     const summary = h.rows().find(row => !row.aosImmediate);
-    expect(summary.content).toContain('1次命中（1家门店）');
+    expect(summary.content).toContain('1次命中｜1家门店');
     expect(total(summary.aosGroups)).toBe(1);
   } catch (error) {
     throw new Error('晚到上下文守恒验收失败', { cause: error });
   }
 });
 
-test('独立完整消息验收：notifier保留标题与登录链接，最大概览包装后仍满足安全预算', async () => {
+test('独立完整消息验收：notifier保留标题并移除AOS登录链接，最大概览包装后仍满足安全预算', async () => {
   const previous = process.env.INVENTORY_PUBLIC_URL;
   process.env.INVENTORY_PUBLIC_URL = 'https://signal.example.invalid';
   try {
@@ -345,8 +344,8 @@ test('独立完整消息验收：notifier保留标题与登录链接，最大概
     await h.service().queue(groups, h.context, false, NOW, NOW + 180000);
     const notifier = new InventoryNotifier(h.store, jest.fn());
     const message = await notifier.claim();
-    expect(message.content).toMatch(/^【AOS 放货信号】\n- 3分钟汇总：150次命中（150家门店）/);
-    expect(message.content).toContain(
+    expect(message.content).toMatch(/^【AOS 放货信号】\n3分钟汇总｜150次命中｜150家门店/);
+    expect(message.content).not.toContain(
       '详情（需登录）：https://signal.example.invalid/server-monitor/logs'
     );
     expect(Buffer.byteLength(message.content, 'utf8')).toBeLessThanOrEqual(1600);
