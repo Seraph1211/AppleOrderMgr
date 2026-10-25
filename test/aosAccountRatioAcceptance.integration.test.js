@@ -669,6 +669,515 @@ suite('AOS账号比例独立真实PG：旧API协议、索引事务、覆盖及�
     });
   }
 
+  /** 按公开seed接口完成全部日片，保留逐片save供旧生命周期断言使用。 */
+  async function completeMetadata(fill, state) {
+    try {
+      for (let index = 0; index < 32; index++) {
+        const patch = await fill.seed(state);
+        await fill.save(state, 'running', patch);
+        if (patch.seeded) return state.body;
+      }
+      throw new Error('QA_METADATA_DID_NOT_CONVERGE');
+    } catch (error) {
+      throw new Error('QA_METADATA_COMPLETION_FAILED', { cause: error });
+    }
+  }
+
+  /** 真实状态上报契约，不把客户端observedAt当作服务器capture时点。 */
+  function captureReport(observedAt = now - 3600000) {
+    return {
+      observedAt: new Date(observedAt).toISOString(),
+      instances: [
+        {
+          localId: INSTANCE,
+          label: '心蓝13',
+          state: 'ready',
+          dates: [new Date(now + 8 * 3600000).toISOString().slice(0, 10)],
+          fileCount: 1,
+          totalBytes: 100,
+          scannedBytes: 100,
+          pending: 0,
+          issues: 0,
+          expired: 0,
+        },
+      ],
+    };
+  }
+
+  test.each(['rows', 'blocks'])(
+    'capture修复：%s全重传create0仍建立服务器水位，不重复索引或发送历史信号',
+    async mode => {
+      let spy;
+      try {
+        const monitorLogs = require('../src/services/monitorLogService');
+        await db.query(
+          'INSERT INTO monitor_log_storage_scopes(device_id,local_id,mode) VALUES(:device,:local,:mode)',
+          { replacements: { device: DEVICE, local: INSTANCE, mode } }
+        );
+        const entries = apiRows(startup());
+        await monitorLogs.receive(DEVICE, { entries });
+        await db.query(
+          'TRUNCATE aos_account_registries,aos_account_config_events,aos_account_index_states'
+        );
+        spy = jest.spyOn(configs, 'ingest');
+        const [before] = await db.query('SELECT clock_timestamp() AS at', {
+          type: QueryTypes.SELECT,
+        });
+        expect((await monitorLogs.receive(DEVICE, { entries })).accepted).toHaveLength(3);
+        const [after] = await db.query('SELECT clock_timestamp() AS at', {
+          type: QueryTypes.SELECT,
+        });
+        const state = await models.AosAccountIndexState.findByPk(
+          configPolicy.digest([DEVICE, INSTANCE])
+        );
+        expect(state.status).toBe('pending');
+        const marker = state.body.captureStartedAt;
+        const captureAt = Date.parse(marker);
+        expect(captureAt).toBeGreaterThanOrEqual(+before.at);
+        expect(captureAt).toBeLessThanOrEqual(+after.at);
+        expect(captureAt).toBeGreaterThan(Date.parse(entries[0].loggedAt));
+        await monitorLogs.receive(DEVICE, { entries });
+        expect((await state.reload()).body.captureStartedAt).toBe(marker);
+        expect(spy.mock.calls.map(([rows]) => rows.length)).toEqual(
+          mode === 'blocks' ? [0, 0] : []
+        );
+        expect(await models.AosAccountRegistry.count()).toBe(0);
+        expect(await models.AosAccountConfigEvent.count()).toBe(0);
+        expect(await models.AosSignalInbox.count()).toBe(0);
+        expect(await models.InventoryDelivery.count()).toBe(0);
+      } catch (error) {
+        throw new Error('QA_CAPTURE_RETRANSMIT_FAILED', { cause: error });
+      } finally {
+        spy?.mockRestore();
+      }
+    }
+  );
+
+  test('capture修复：新增无账号不可识别普通行仍建立水位，不虚构账号或配置', async () => {
+    try {
+      const monitorLogs = require('../src/services/monitorLogService');
+      const [entry] = apiRows([row('普通运行状态')]);
+      Object.assign(entry, {
+        accountNumber: null,
+        parseState: 'unparsed',
+        message: '普通运行状态\r\n',
+      });
+      await monitorLogs.receive(DEVICE, { entries: [entry] });
+      const state = await models.AosAccountIndexState.findByPk(
+        configPolicy.digest([DEVICE, INSTANCE])
+      );
+      expect(Number.isFinite(Date.parse(state.body.captureStartedAt))).toBe(true);
+      expect(state.status).toBe('pending');
+      expect(await models.AosAccountRegistry.count()).toBe(0);
+      expect(await models.AosAccountConfigEvent.count()).toBe(0);
+      expect(await models.AosSignalInbox.count()).toBe(0);
+    } catch (error) {
+      throw new Error('QA_CAPTURE_UNRECOGNIZED_FAILED', { cause: error });
+    }
+  });
+
+  test.each([false, true])(
+    'capture修复：自然状态报告旧observedAt=%s仍只写一次服务器水位且不设ready',
+    async stale => {
+      try {
+        const monitorLogs = require('../src/services/monitorLogService');
+        if (!stale) await models.MonitorLogState.destroy({ where: {} });
+        const report = captureReport();
+        const [before] = await db.query('SELECT clock_timestamp() AS at', {
+          type: QueryTypes.SELECT,
+        });
+        expect(await monitorLogs.receiveStates(DEVICE, report)).toEqual({ accepted: true });
+        const [after] = await db.query('SELECT clock_timestamp() AS at', {
+          type: QueryTypes.SELECT,
+        });
+        const state = await models.AosAccountIndexState.findByPk(
+          configPolicy.digest([DEVICE, INSTANCE])
+        );
+        const marker = state.body.captureStartedAt;
+        expect(Date.parse(marker)).toBeGreaterThanOrEqual(+before.at);
+        expect(Date.parse(marker)).toBeLessThanOrEqual(+after.at);
+        expect(Date.parse(marker)).toBeGreaterThan(Date.parse(report.observedAt));
+        expect(state.status).toBe('pending');
+        await monitorLogs.receiveStates(DEVICE, captureReport(now - 2000));
+        expect((await state.reload()).body.captureStartedAt).toBe(marker);
+        expect(await models.AosAccountConfigEvent.count()).toBe(0);
+        expect(await models.AosSignalInbox.count()).toBe(0);
+        expect(await models.InventoryDelivery.count()).toBe(0);
+      } catch (error) {
+        throw new Error('QA_CAPTURE_STATUS_FAILED', { cause: error });
+      }
+    }
+  );
+
+  test.each(['receive', 'receiveStates'])(
+    'capture修复：%s在capture后失败，真实PG事务回滚不留下水位',
+    async route => {
+      let spy;
+      try {
+        const monitorLogs = require('../src/services/monitorLogService');
+        if (route === 'receive') {
+          spy = jest
+            .spyOn(models.MonitorLogEntry, 'bulkCreate')
+            .mockRejectedValue(new Error('QA_POST_CAPTURE_FAIL'));
+          await expect(
+            monitorLogs.receive(DEVICE, { entries: apiRows(startup()) })
+          ).rejects.toMatchObject({ code: 'FULL_LOG_TEMPORARY' });
+        } else {
+          spy = jest
+            .spyOn(models.MonitorLogState, 'findOne')
+            .mockRejectedValue(new Error('QA_POST_CAPTURE_FAIL'));
+          await expect(monitorLogs.receiveStates(DEVICE, captureReport())).rejects.toMatchObject({
+            code: 'FULL_LOG_TEMPORARY',
+          });
+        }
+        expect(await models.AosAccountIndexState.count()).toBe(0);
+        expect(await models.MonitorLogEntry.count()).toBe(0);
+        expect(await models.AosAccountRegistry.count()).toBe(0);
+        expect(await models.AosSignalInbox.count()).toBe(0);
+      } catch (error) {
+        throw new Error('QA_CAPTURE_ATOMIC_ROLLBACK_FAILED', { cause: error });
+      } finally {
+        spy?.mockRestore();
+      }
+    }
+  );
+
+  test('capture修复：仅索引ingest和历史回填不得自行capture，扫完仍等待真实API事实', async () => {
+    try {
+      const Backfill = require('../src/services/aosAccountBackfill');
+      await ingest(startup());
+      let state = await models.AosAccountIndexState.findByPk(
+        configPolicy.digest([DEVICE, INSTANCE])
+      );
+      expect(state.body.captureStartedAt).toBeUndefined();
+      await db.transaction(transaction =>
+        configs.ingest(startup('002'), transaction, models, { historical: true })
+      );
+      const fill = new Backfill(models);
+      await fill.tick();
+      expect((await fill.tick()).waitingCapture).toBe(true);
+      state = await state.reload();
+      expect(state.body.captureStartedAt).toBeUndefined();
+      expect(state.status).toBe('running');
+      expect(state.body.reason).toBe('WAITING_REALTIME_CAPTURE');
+      expect(await models.AosSignalInbox.count()).toBe(0);
+      expect(await models.InventoryDelivery.count()).toBe(0);
+    } catch (error) {
+      throw new Error('QA_NO_SYNTHETIC_CAPTURE_FAILED', { cause: error });
+    }
+  });
+
+  test('capture修复：旧seed水位不一致强制三日重扫，低UUID文件不漏且不补发历史信号', async () => {
+    try {
+      const monitorLogs = require('../src/services/monitorLogService');
+      const Backfill = require('../src/services/aosAccountBackfill');
+      const lastDate = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+      const firstDate = new Date(Date.parse(lastDate) - 2 * 86400000).toISOString().slice(0, 10);
+      const boundary = Date.parse(`${firstDate}T00:00:00.000+08:00`);
+      const lowFile = '00000001-0000-4000-8000-000000000001';
+      const oldFile = '00000002-0000-4000-8000-000000000002';
+      const history = [
+        ...startup('001', boundary).map(input => ({ ...input, fileId: lowFile })),
+        ...startup('099', boundary - 4).map(input => ({ ...input, fileId: oldFile })),
+      ];
+      const entries = apiRows(history);
+      await monitorLogs.receive(DEVICE, { entries });
+      await db.query(
+        'TRUNCATE aos_account_registries,aos_account_config_events,aos_account_index_states'
+      );
+      const fill = new Backfill(models);
+      await fill.discover();
+      const state = await models.AosAccountIndexState.findByPk(
+        configPolicy.digest([DEVICE, INSTANCE])
+      );
+      const seed = await completeMetadata(fill, state);
+      expect(seed.seedCaptureAt).toBeNull();
+      await fill.save(state, 'running', {
+        ...seed,
+        afterFile: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+        fileId: null,
+      });
+      await monitorLogs.receive(DEVICE, { entries });
+      expect((await state.reload()).body.captureStartedAt).toBeTruthy();
+      expect((await fill.tick()).captureRescan).toBe(true);
+      expect((await state.reload()).status).toBe('pending');
+      expect(state.body.afterFile).toBeNull();
+      expect(state.body.seedCaptureAt).toBeNull();
+      for (let index = 0; index < 15; index++) {
+        const result = await new Backfill(models).tick();
+        expect(result.failed).not.toBe(true);
+        if ((await state.reload()).status === 'ready') break;
+      }
+      expect(state.status).toBe('ready');
+      expect(state.body.firstDate).toBe(firstDate);
+      expect(state.body.lastDate).toBe(lastDate);
+      expect(state.body.seedCaptureAt).toBe(state.body.captureStartedAt);
+      expect(await models.AosAccountRegistry.count()).toBe(2);
+      expect(await models.AosAccountConfigEvent.count({ where: { accountNumber: '001' } })).toBe(3);
+      expect(await models.AosAccountConfigEvent.count({ where: { accountNumber: '099' } })).toBe(0);
+      expect(await models.AosSignalInbox.count()).toBe(0);
+      expect(await models.InventoryDelivery.count()).toBe(0);
+    } catch (error) {
+      throw new Error('QA_CAPTURE_SEED_RESCAN_FAILED', { cause: error });
+    }
+  });
+
+  test.each(['rows', 'blocks'])(
+    'seed日片修复：%s全日期metadata逐实际日续跑，老编号保留且raw严格三日',
+    async mode => {
+      let blockSpy;
+      let clock;
+      try {
+        const monitorLogs = require('../src/services/monitorLogService');
+        const Backfill = require('../src/services/aosAccountBackfill');
+        const blockStore = require('../src/services/monitorLogBlockStore');
+        await db.query(
+          'INSERT INTO monitor_log_storage_scopes(device_id,local_id,mode) VALUES(:device,:local,:mode)',
+          { replacements: { device: DEVICE, local: INSTANCE, mode } }
+        );
+        const today = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+        const day = back =>
+          new Date(Date.parse(today) - back * 86400000).toISOString().slice(0, 10);
+        const dates = [day(9), day(3), day(2), today];
+        const at = date => Date.parse(`${date}T00:00:01.000+08:00`);
+        const history = dates.flatMap((date, index) => {
+          const accounts = [['001', '010'], ['004'], ['002'], ['001', '003']][index];
+          return accounts.flatMap(account =>
+            startup(account, at(date)).map(input => ({
+              ...input,
+              fileId: `${String(index + 1).padStart(8, '0')}-0000-4000-8000-000000000001`,
+            }))
+          );
+        });
+        await monitorLogs.receive(DEVICE, { entries: apiRows(history) });
+        await db.query(
+          'TRUNCATE aos_account_registries,aos_account_config_events,aos_account_index_states'
+        );
+        await monitorLogs.receiveStates(DEVICE, captureReport());
+        const state = await models.AosAccountIndexState.findByPk(
+          configPolicy.digest([DEVICE, INSTANCE])
+        );
+        const marker = state.body.captureStartedAt;
+        blockSpy = jest.spyOn(blockStore, 'readBlock');
+        for (let index = 0; index < dates.length; index++) {
+          if (index === 1) clock = jest.spyOn(Date, 'now').mockReturnValue(now + 86400000);
+          const result = await new Backfill(models).tick();
+          clock?.mockRestore();
+          clock = null;
+          await state.reload();
+          expect(result.failed).not.toBe(true);
+          expect(result.metadataComplete).toBe(false);
+          expect(state.body.registryVersion).toBe(1);
+          expect(state.body.registryAfterDate).toBe(dates[index]);
+          expect(state.body.registryPages).toBe(index + 1);
+          expect(state.body.seeded).toBe(false);
+          expect(state.body.firstDate).toBe(day(2));
+          expect(state.body.lastDate).toBe(today);
+          expect(state.body.seedCaptureAt).toBe(marker);
+          expect(state.status).toBe('running');
+          expect((await read()).ready).toBe(false);
+          expect(await models.AosAccountRegistry.count()).toBe([2, 3, 4, 5][index]);
+          expect(await models.AosAccountConfigEvent.count()).toBe(0);
+          expect(blockSpy).not.toHaveBeenCalled();
+        }
+        expect((await new Backfill(models).tick()).metadataComplete).toBe(true);
+        await state.reload();
+        expect(state.body.seeded).toBe(true);
+        expect(state.body.registryPages).toBe(4);
+        const first = await models.AosAccountRegistry.findOne({ where: { accountNumber: '001' } });
+        expect(+first.firstSeenAt).toBe(at(dates[0]));
+        for (let index = 0; index < 16; index++) {
+          expect((await new Backfill(models).tick()).failed).not.toBe(true);
+          if ((await state.reload()).status === 'ready') break;
+        }
+        expect(state.status).toBe('ready');
+        expect(await models.AosAccountRegistry.count()).toBe(5);
+        expect(await models.AosAccountConfigEvent.count()).toBe(9);
+        expect(await models.AosAccountConfigEvent.count({ where: { accountNumber: '004' } })).toBe(
+          0
+        );
+        expect(await models.AosAccountConfigEvent.count({ where: { accountNumber: '010' } })).toBe(
+          0
+        );
+        if (mode === 'blocks') {
+          expect(blockSpy).toHaveBeenCalled();
+          expect(
+            blockSpy.mock.calls.every(([block]) => String(block.business_date) >= day(2))
+          ).toBe(true);
+        }
+        expect(await models.AosSignalInbox.count()).toBe(0);
+        expect(await models.InventoryDelivery.count()).toBe(0);
+      } catch (error) {
+        throw new Error('QA_DAILY_SEED_UNIVERSE_FAILED', { cause: error });
+      } finally {
+        clock?.mockRestore();
+        blockSpy?.mockRestore();
+      }
+    }
+  );
+
+  test('seed日片修复：日片提交前崩溃可重放，写失败不跳游标，跨来源日期合并不漏', async () => {
+    let renamed = false;
+    try {
+      const monitorLogs = require('../src/services/monitorLogService');
+      const Backfill = require('../src/services/aosAccountBackfill');
+      const today = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+      const old = new Date(Date.parse(today) - 4 * 86400000).toISOString().slice(0, 10);
+      const historical = startup('001', Date.parse(`${old}T12:00:00.000+08:00`));
+      await monitorLogs.receive(DEVICE, { entries: apiRows(historical) });
+      await db.query(
+        "INSERT INTO monitor_log_storage_scopes(device_id,local_id,mode) VALUES(:device,:local,'blocks')",
+        { replacements: { device: DEVICE, local: INSTANCE } }
+      );
+      await monitorLogs.receive(DEVICE, { entries: apiRows(startup('002', now - 1000), 8000) });
+      await db.query(
+        'TRUNCATE aos_account_registries,aos_account_config_events,aos_account_index_states'
+      );
+      await monitorLogs.receiveStates(DEVICE, captureReport());
+      const state = await models.AosAccountIndexState.findByPk(
+        configPolicy.digest([DEVICE, INSTANCE])
+      );
+      const fill = new Backfill(models);
+      // 模拟upsert已提交但进度尚未save即进程退出；重放同日必须幂等。
+      const firstPatch = await fill.seed(state);
+      expect(firstPatch.registryAfterDate).toBe(old);
+      expect(await models.AosAccountRegistry.count()).toBe(1);
+      expect((await state.reload()).body.registryAfterDate).toBeUndefined();
+      const repeated = await new Backfill(models).seed(state);
+      expect(repeated.registryAfterDate).toBe(old);
+      expect(await models.AosAccountRegistry.count()).toBe(1);
+      await fill.save(state, 'running', repeated);
+      await db.query('ALTER TABLE aos_account_registries RENAME TO qa_seed_registry_missing');
+      renamed = true;
+      await expect(new Backfill(models).seed(state)).rejects.toThrow(
+        'AOS_ACCOUNT_OPERATION_FAILED'
+      );
+      await db.query('ALTER TABLE qa_seed_registry_missing RENAME TO aos_account_registries');
+      renamed = false;
+      await state.reload();
+      expect(state.body.registryAfterDate).toBe(old);
+      expect(state.body.registryPages).toBe(1);
+      expect(await models.AosAccountRegistry.count()).toBe(1);
+      const next = await new Backfill(models).seed(state);
+      expect(next.registryAfterDate).toBe(today);
+      await fill.save(state, 'running', next);
+      expect(await models.AosAccountRegistry.count()).toBe(2);
+      expect((await new Backfill(models).seed(state)).seeded).toBe(true);
+      expect(await models.AosSignalInbox.count()).toBe(0);
+    } catch (error) {
+      throw new Error('QA_DAILY_SEED_CRASH_RECOVERY_FAILED', { cause: error });
+    } finally {
+      if (renamed)
+        await db.query('ALTER TABLE qa_seed_registry_missing RENAME TO aos_account_registries');
+    }
+  });
+
+  test('seed日片修复：legacy仅continuation编号用sortAt进入全宇宙，不伪造loggedAt或缺失设置', async () => {
+    try {
+      const monitorLogs = require('../src/services/monitorLogService');
+      const Backfill = require('../src/services/aosAccountBackfill');
+      const at = now - 5 * 86400000;
+      const [entry] = apiRows([row('普通续行', { account: '099', at })]);
+      Object.assign(entry, {
+        loggedAt: null,
+        contextAt: new Date(at).toISOString(),
+        parseState: 'continuation',
+        message: '普通续行\r\n',
+      });
+      await monitorLogs.receive(DEVICE, { entries: [entry] });
+      await db.query(
+        'TRUNCATE aos_account_registries,aos_account_config_events,aos_account_index_states'
+      );
+      await monitorLogs.receiveStates(DEVICE, captureReport());
+      const state = await models.AosAccountIndexState.findByPk(
+        configPolicy.digest([DEVICE, INSTANCE])
+      );
+      for (let index = 0; index < 8; index++) {
+        expect((await new Backfill(models).tick()).failed).not.toBe(true);
+        if ((await state.reload()).status === 'ready') break;
+      }
+      expect(state.status).toBe('ready');
+      const registry = await models.AosAccountRegistry.findOne({ where: { accountNumber: '099' } });
+      expect(registry).not.toBeNull();
+      expect(+registry.firstSeenAt).toBe(at);
+      const raw = await models.MonitorLogEntry.findByPk(entry.id);
+      expect(raw.loggedAt).toBeNull();
+      expect(+raw.sortAt).toBe(at);
+      expect(await models.AosAccountConfigEvent.count()).toBe(0);
+      const loaded = await read();
+      expect(loaded.ready).toBe(true);
+      const population = configPolicy.population(loaded.registries, loaded.events, SCOPE, now);
+      expect(population.complete).toBe(false);
+      expect(population.unknownAccounts).toEqual(['099']);
+      expect(await models.AosSignalInbox.count()).toBe(0);
+    } catch (error) {
+      throw new Error('QA_LEGACY_CONTINUATION_UNIVERSE_FAILED', { cause: error });
+    }
+  });
+
+  test.each([false, true])(
+    'seed日片修复：旧r3 capture变化=%s，未扫完的fileId也立即安全恢复',
+    async mismatch => {
+      let pageSpy;
+      let seedSpy;
+      try {
+        const monitorLogs = require('../src/services/monitorLogService');
+        const Backfill = require('../src/services/aosAccountBackfill');
+        await monitorLogs.receive(DEVICE, { entries: apiRows(startup()) });
+        const state = await models.AosAccountIndexState.findByPk(
+          configPolicy.digest([DEVICE, INSTANCE])
+        );
+        const marker = state.body.captureStartedAt;
+        const today = new Date(now + 8 * 3600000).toISOString().slice(0, 10);
+        const firstDate = new Date(Date.parse(today) - 2 * 86400000).toISOString().slice(0, 10);
+        await state.update({
+          status: 'running',
+          body: {
+            captureStartedAt: marker,
+            seedCaptureAt: mismatch ? null : marker,
+            seeded: true,
+            seedAt: new Date(now - 10000).toISOString(),
+            firstDate,
+            lastDate: today,
+            fileId: FILE,
+            offset: '1000',
+            afterFile: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
+          },
+        });
+        const fill = new Backfill(models);
+        pageSpy = jest.spyOn(fill, 'page');
+        seedSpy = jest.spyOn(fill, 'seed');
+        const result = await fill.tick();
+        await state.reload();
+        expect(pageSpy).not.toHaveBeenCalled();
+        if (mismatch) {
+          expect(result.captureRescan).toBe(true);
+          expect(seedSpy).not.toHaveBeenCalled();
+          expect(state.status).toBe('pending');
+          expect(state.body.fileId).toBeNull();
+          expect(state.body.seedAt).toBeNull();
+          expect(state.body.registryVersion).toBeNull();
+          expect(state.body.firstDate).toBeNull();
+          expect(state.body.captureStartedAt).toBe(marker);
+        } else {
+          expect(seedSpy).toHaveBeenCalledTimes(1);
+          expect(result.metadataComplete).toBe(false);
+          expect(state.body.registryVersion).toBe(1);
+          expect(state.body.registryPages).toBe(1);
+          expect(state.body.seedCaptureAt).toBe(marker);
+        }
+        expect(await models.AosAccountRegistry.count()).toBe(1);
+        expect(await models.AosAccountConfigEvent.count()).toBe(3);
+        expect(await models.AosSignalInbox.count()).toBe(0);
+      } catch (error) {
+        throw new Error('QA_LEGACY_DAILY_SEED_RECOVERY_FAILED', { cause: error });
+      } finally {
+        pageSpy?.mockRestore();
+        seedSpy?.mockRestore();
+      }
+    }
+  );
+
   test('实际monitorLogService.receive的200条batch原子入索引，重复不增；Migration缺失受控拒绝并可原样重试', async () => {
     const monitorLogs = require('../src/services/monitorLogService');
     let renamed = false;
@@ -1003,6 +1512,7 @@ suite('AOS账号比例独立真实PG：旧API协议、索引事务、覆盖及�
       try {
         const Backfill = require('../src/services/aosAccountBackfill');
         await ingest(startup());
+        await require('../src/services/monitorLogService').receiveStates(DEVICE, captureReport());
         const lastDate = new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10);
         const firstDate = new Date(Date.parse(lastDate) - 2 * 86400000).toISOString().slice(0, 10);
         const outside = new Date(Date.parse(firstDate) - 86400000).toISOString().slice(0, 10);
@@ -1016,7 +1526,7 @@ suite('AOS账号比例独立真实PG：旧API协议、索引事务、覆盖及�
         const state = await models.AosAccountIndexState.findByPk(
           configPolicy.digest([DEVICE, INSTANCE])
         );
-        const seed = await fill.seed(state);
+        const seed = await completeMetadata(fill, state);
         expect(seed.initialDates).toEqual([firstDate, lastDate]);
         await fill.save(state, 'running', {
           ...seed,
@@ -1057,7 +1567,7 @@ suite('AOS账号比例独立真实PG：旧API协议、索引事务、覆盖及�
       const state = await models.AosAccountIndexState.findByPk(
         configPolicy.digest([DEVICE, INSTANCE])
       );
-      const seed = await fill.seed(state);
+      const seed = await completeMetadata(fill, state);
       await fill.save(state, 'running', { ...seed, afterFile: null });
       clock = jest
         .spyOn(Date, 'now')
@@ -1066,7 +1576,7 @@ suite('AOS账号比例独立真实PG：旧API协议、索引事务、覆盖及�
       expect(state.body.firstDate).toBe(firstDate);
       await fill.reset(DEVICE, INSTANCE);
       await state.reload();
-      const reseed = await fill.seed(state);
+      const reseed = await completeMetadata(fill, state);
       await fill.save(state, 'running', reseed);
       expect(state.body.firstDate).toBe(
         new Date(Date.parse(firstDate) + 86400000).toISOString().slice(0, 10)

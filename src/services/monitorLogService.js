@@ -98,6 +98,10 @@ async function receive(deviceId, body) {
             byPosition.set(position, row);
           }
         }
+        await accountConfigs.capture(
+          active.map(item => ({ deviceId, localId: item.localId })),
+          transaction
+        );
         if (create.length) {
           const modes = new Map();
           for (const localId of [...new Set(create.map(row => row.localId))].sort())
@@ -188,6 +192,10 @@ async function receiveStates(deviceId, body) {
     await sequelize.transaction(async transaction => {
       try {
         await lockDevice(deviceId, transaction);
+        await accountConfigs.capture(
+          snapshots.map(item => ({ deviceId, localId: item.localId })),
+          transaction
+        );
         for (const item of snapshots) {
           const row = await MonitorLogState.findOne({
             where: { deviceId, localId: item.localId },

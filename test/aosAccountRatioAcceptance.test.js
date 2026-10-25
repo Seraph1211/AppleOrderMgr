@@ -429,3 +429,63 @@ test('长summary含标题仍<=1600字节，首个商品/门店和ratio可见，�
   expect(Buffer.byteLength(`【AOS 放货信号】\n${content}`, 'utf8')).toBeLessThanOrEqual(1600);
   expect(content).not.toMatch(/https?:|[\r\n]$/);
 });
+
+test.each([8, 3])('seed CLI持续busy按250ms有限退避且不超过pages=%s', async pages => {
+  try {
+    const delays = [];
+    const worker = { tick: jest.fn().mockResolvedValue({ busy: true }) };
+    const close = jest.fn().mockResolvedValue(undefined);
+    const logger = { info: jest.fn(), error: jest.fn() };
+    const scriptModule = { exports: {} };
+    const source = fs.readFileSync(
+      path.join(__dirname, '../scripts/backfillAosAccountIndex.js'),
+      'utf8'
+    );
+    const scriptProcess = {
+      argv: [
+        'node',
+        'script',
+        '--device',
+        DEVICE,
+        '--instance',
+        INSTANCE,
+        '--pages',
+        String(pages),
+      ],
+    };
+    vm.runInNewContext(source.replace(/\nmain\(\);\s*$/, '\nmodule.exports = main;'), {
+      module: scriptModule,
+      process: scriptProcess,
+      setTimeout: (resolve, milliseconds) => {
+        delays.push(milliseconds);
+        resolve();
+      },
+      require: name => {
+        if (name === 'dotenv') return { config: () => {} };
+        if (name === '../src/models') return { sequelize: { close } };
+        if (name === '../src/utils/logger') return logger;
+        if (name === '../src/services/aosAccountBackfill')
+          return class {
+            constructor() {
+              return worker;
+            }
+          };
+        throw new Error('QA_UNEXPECTED_CLI_DEPENDENCY');
+      },
+    });
+    await scriptModule.exports();
+    expect(worker.tick).toHaveBeenCalledTimes(pages);
+    expect(
+      worker.tick.mock.calls.every(
+        ([scope]) => scope.deviceId === DEVICE && scope.localId === INSTANCE
+      )
+    ).toBe(true);
+    expect(delays).toHaveLength(pages === 8 ? 7 : 3);
+    expect(delays.every(milliseconds => milliseconds === 250)).toBe(true);
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(scriptProcess.exitCode).toBeUndefined();
+  } catch (error) {
+    throw new Error('QA_CLI_BUSY_BOUNDARY_FAILED', { cause: error });
+  }
+});

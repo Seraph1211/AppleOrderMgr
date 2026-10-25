@@ -4,8 +4,34 @@ const logger = require('../utils/logger');
 const MAX_ACCOUNTS = 10000;
 const MAX_EVENTS = 20000;
 
+/** 已校验接收事务记录实例捕获启用水位；只写一次，不设置ready。 @param {Object[]} scopes 设备及实例 @param {Object} transaction 接收事务 @param {Object} models 可选模型 @returns {Promise<void>} 完成 */
+async function capture(scopes, transaction, models = require('../models')) {
+  try {
+    if (!models.AosAccountIndexState || !scopes.length) return;
+    const unique = new Map(scopes.map(row => [policy.digest([row.deviceId, row.localId]), row]));
+    const replacements = {};
+    const values = [...unique]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([id, row], index) => {
+        replacements[`id${index}`] = id;
+        replacements[`device${index}`] = row.deviceId;
+        replacements[`local${index}`] = row.localId;
+        return `(:id${index},:device${index},:local${index},jsonb_build_object('captureStartedAt',clock_timestamp()::text))`;
+      });
+    await models.sequelize.query(
+      `INSERT INTO aos_account_index_states AS target(id,device_id,local_id,body)
+      VALUES ${values.join(',')} ON CONFLICT(id) DO UPDATE
+      SET body=target.body || EXCLUDED.body,updated_at=now()
+      WHERE target.body->>'captureStartedAt' IS NULL`,
+      { replacements, transaction }
+    );
+  } catch (error) {
+    throw new Error('AOS_ACCOUNT_CAPTURE_FAILED', { cause: error });
+  }
+}
+
 /** 实际新增日志事务内写稀疏索引；不调用信号发送，不受3分钟鲜度限制。 @param {Object[]} rows 新日志 @param {Object} transaction 事务 @param {Object} models 可选模型 @returns {Promise<Object>} 统计 */
-async function ingest(rows, transaction, models = require('../models'), options = {}) {
+async function ingest(rows, transaction, models = require('../models')) {
   try {
     if (!models.AosAccountConfigEvent) return { events: 0, accounts: 0 };
     const parsed = policy.parse(rows);
@@ -51,11 +77,6 @@ async function ingest(rows, transaction, models = require('../models'), options 
         defaults: { deviceId: row.deviceId, localId: row.localId, status: 'pending', body: {} },
         transaction,
       });
-      if (!options.historical)
-        await db.query(
-          "UPDATE aos_account_index_states SET body=jsonb_set(body,'{captureStartedAt}',to_jsonb(clock_timestamp()::text)) WHERE id=:id AND NOT(body ? 'captureStartedAt')",
-          { replacements: { id }, transaction }
-        );
       const gaps = parsed.gaps.filter(
         gap => gap.deviceId === row.deviceId && gap.localId === row.localId
       );
@@ -252,4 +273,4 @@ async function attachAccounts(models, anchors, transaction) {
   }
 }
 
-module.exports = { ingest, load, attachAccounts, MAX_ACCOUNTS, MAX_EVENTS };
+module.exports = { capture, ingest, load, attachAccounts, MAX_ACCOUNTS, MAX_EVENTS };

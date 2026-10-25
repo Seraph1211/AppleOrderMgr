@@ -97,10 +97,15 @@ class AosAccountBackfill {
         fileId: null,
         offset: '-1',
         seedCaptureAt: null,
+        seedAt: null,
+        registryVersion: null,
+        registryAfterDate: null,
+        registryPages: 0,
         firstDate: null,
         lastDate: null,
         retryAfter: null,
         reason: null,
+        sqlState: null,
         resetAt: new Date().toISOString(),
       });
     } catch (error) {
@@ -108,29 +113,57 @@ class AosAccountBackfill {
     }
   }
 
-  /** 由精确账号目录建立完整宇宙，不解压原文。 @param {Object} state 状态 @returns {Promise<Object>} 覆盖 */
+  /** 按实际目录日期小步建立完整账号宇宙，不读取范围外原文。 @param {Object} state 状态 @returns {Promise<Object>} 日片进度 */
   async seed(state) {
     try {
-      const { firstDate, lastDate } = dateRange();
+      const started = Date.now();
+      const initializing = state.body.registryVersion !== 1;
+      const { firstDate, lastDate } = dateRange(state.body);
       return await this.m.sequelize.transaction(async transaction => {
         try {
-          await this.m.sequelize.query("SET LOCAL statement_timeout='1500ms'", { transaction });
-          const rows = await this.m.sequelize.query(
-            `SELECT account_number AS "accountNumber",min(first_at) AS "firstSeenAt" FROM (
-            SELECT account_number,min(min_sort_at) AS first_at FROM monitor_log_block_accounts
-              WHERE device_id=:deviceId AND local_id=:localId AND account_number<>'' GROUP BY account_number
-            UNION ALL SELECT account_number,min(logged_at) FROM monitor_log_entries
-              WHERE device_id=:deviceId AND local_id=:localId AND account_number IS NOT NULL AND logged_at IS NOT NULL GROUP BY account_number
-          ) source GROUP BY account_number ORDER BY account_number LIMIT 10001`,
-            {
-              replacements: { deviceId: state.deviceId, localId: state.localId },
-              type: QueryTypes.SELECT,
-              transaction,
+          const query = async (sql, options) => {
+            try {
+              const remaining = 2000 - (Date.now() - started);
+              if (remaining <= 0) throw new Error('ACCOUNT_SEED_PAGE_BUDGET');
+              await this.m.sequelize.query("SELECT set_config('statement_timeout',:timeout,true)", {
+                replacements: { timeout: `${Math.min(1500, remaining)}ms` },
+                transaction,
+              });
+              return await this.m.sequelize.query(sql, { ...options, transaction });
+            } catch (error) {
+              throw new Error('ACCOUNT_SEED_QUERY_FAILED', { cause: error });
             }
-          );
+          };
+          const replacements = {
+            deviceId: state.deviceId,
+            localId: state.localId,
+            after: initializing ? '0001-01-01' : state.body.registryAfterDate || '0001-01-01',
+          };
+          const dates = [];
+          for (const table of ['monitor_log_block_accounts', 'monitor_log_entries']) {
+            const [row] = await query(
+              `SELECT business_date::text AS day FROM ${table}
+              WHERE device_id=:deviceId AND local_id=:localId AND business_date>:after::date
+              ORDER BY business_date LIMIT 1`,
+              { replacements, type: QueryTypes.SELECT, transaction }
+            );
+            if (row) dates.push(row.day);
+          }
+          const day = dates.sort()[0] || null;
+          let rows = [];
+          if (day)
+            rows = await query(
+              `SELECT account_number AS "accountNumber",min(first_at) AS "firstSeenAt" FROM (
+            SELECT account_number,min(min_sort_at) AS first_at FROM monitor_log_block_accounts
+              WHERE device_id=:deviceId AND local_id=:localId AND business_date=:day::date AND account_number<>'' GROUP BY account_number
+            UNION ALL SELECT account_number,min(sort_at) FROM monitor_log_entries
+              WHERE device_id=:deviceId AND local_id=:localId AND business_date=:day::date AND account_number IS NOT NULL GROUP BY account_number
+          ) source GROUP BY account_number ORDER BY account_number LIMIT 10001`,
+              { replacements: { ...replacements, day }, type: QueryTypes.SELECT, transaction }
+            );
           if (rows.length > configs.MAX_ACCOUNTS) throw new Error('ACCOUNT_UNIVERSE_LIMIT');
+          if (Date.now() - started > 2000) throw new Error('ACCOUNT_SEED_PAGE_BUDGET');
           for (let offset = 0; offset < rows.length; offset += 500) {
-            const replacements = { deviceId: state.deviceId, localId: state.localId };
             const values = rows.slice(offset, offset + 500).map((row, index) => {
               replacements[`id${index}`] = policy.digest([
                 state.deviceId,
@@ -142,28 +175,45 @@ class AosAccountBackfill {
               return `(:id${index},:deviceId,:localId,:account${index},:at${index})`;
             });
             if (values.length)
-              await this.m.sequelize.query(
+              await query(
                 `INSERT INTO aos_account_registries(id,device_id,local_id,account_number,first_seen_at)
               VALUES ${values.join(',')} ON CONFLICT(id) DO UPDATE SET first_seen_at=EXCLUDED.first_seen_at,updated_at=now()
               WHERE EXCLUDED.first_seen_at<aos_account_registries.first_seen_at`,
                 { replacements, transaction }
               );
           }
-          const monitor = await this.m.MonitorLogState.findOne({
-            where: { deviceId: state.deviceId, localId: state.localId },
-            transaction,
-          });
+          const [{ count }] = await query(
+            'SELECT count(*)::int AS count FROM aos_account_registries WHERE device_id=:deviceId AND local_id=:localId',
+            { replacements, transaction, type: QueryTypes.SELECT }
+          );
+          if (count > configs.MAX_ACCOUNTS) throw new Error('ACCOUNT_UNIVERSE_LIMIT');
+          let initial = {};
+          if (initializing) {
+            const [monitor] = await query(
+              'SELECT snapshot FROM monitor_log_states WHERE device_id=:deviceId AND local_id=:localId LIMIT 1',
+              { replacements, type: QueryTypes.SELECT }
+            );
+            initial = {
+              firstDate,
+              lastDate,
+              seedCaptureAt: state.body.captureStartedAt || null,
+              initialDates: (monitor?.snapshot?.dates || []).filter(
+                value => value >= firstDate && value <= lastDate
+              ),
+              initialExpired: monitor?.snapshot?.expired || 0,
+              seedAt: new Date().toISOString(),
+            };
+          }
           return {
-            seeded: true,
-            firstDate,
-            lastDate,
-            seedCaptureAt: state.body.captureStartedAt || null,
-            accountCount: rows.length,
-            initialDates: (monitor?.snapshot?.dates || []).filter(
-              day => day >= firstDate && day <= lastDate
-            ),
-            initialExpired: monitor?.snapshot?.expired || 0,
-            seedAt: new Date().toISOString(),
+            ...initial,
+            registryVersion: 1,
+            registryAfterDate: day || state.body.registryAfterDate || null,
+            registryPages: (initializing ? 0 : state.body.registryPages || 0) + (day ? 1 : 0),
+            seeded: !day,
+            accountCount: count,
+            sqlState: null,
+            reason: null,
+            retryAfter: null,
           };
         } catch (error) {
           throw new Error('ACCOUNT_SEED_FAILED', { cause: error });
@@ -337,10 +387,22 @@ class AosAccountBackfill {
           await this.save(state, 'incomplete', { reason: 'INSTANCE_DISABLED' });
           return { disabled: true };
         }
-        if (!state.body.seeded) {
+        if (
+          state.body.seedAt &&
+          state.body.captureStartedAt &&
+          state.body.seedCaptureAt !== state.body.captureStartedAt
+        ) {
+          await this.reset(state.deviceId, state.localId);
+          return { captureRescan: true };
+        }
+        if (!state.body.seeded || state.body.registryVersion !== 1) {
           const seed = await this.seed(state);
           await this.save(state, 'running', seed);
-          return { seeded: seed.accountCount };
+          return {
+            seeded: seed.accountCount,
+            registryDay: seed.registryAfterDate,
+            metadataComplete: seed.seeded,
+          };
         }
         if (!state.body.fileId) {
           const fileId = await this.nextFile(state);
@@ -406,6 +468,8 @@ class AosAccountBackfill {
               body.offset = '-1';
             } else body.offset = page.end;
             body.retryAfter = null;
+            body.reason = null;
+            body.sqlState = null;
             await this.save(state, 'running', body, transaction);
           } catch (error) {
             throw new Error('ACCOUNT_BACKFILL_COMMIT_FAILED', { cause: error });
@@ -413,8 +477,18 @@ class AosAccountBackfill {
         });
         return { rows: page.rows.length, blocks: page.blocks, bytes: page.bytes };
       } catch (error) {
-        await this.save(state, 'error', { reason: error.message, retryAfter: Date.now() + 30000 });
-        logger.warn('AOS账号回填暂缓', { errorCode: error.message });
+        let sqlState = null;
+        let cause = error;
+        for (let depth = 0; cause && depth < 8; depth++, cause = cause.cause) {
+          const code = cause.original?.code || cause.parent?.code || cause.code;
+          if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) sqlState = code;
+        }
+        await this.save(state, 'error', {
+          reason: error.message,
+          sqlState,
+          retryAfter: Date.now() + 30000,
+        });
+        logger.warn('AOS账号回填暂缓', { errorCode: error.message, sqlState });
         return { failed: true };
       }
     } catch (error) {

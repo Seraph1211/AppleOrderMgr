@@ -2,6 +2,8 @@ require('dotenv').config();
 const models = require('../src/models');
 const Backfill = require('../src/services/aosAccountBackfill');
 const logger = require('../src/utils/logger');
+const BUSY_RETRY_MS = 250;
+const MAX_BUSY_RETRIES = 8;
 
 /** 只对明确实例重置当前3自然日或有界推进设置索引，不补发历史信号。 @returns {Promise<void>} 完成 */
 async function main() {
@@ -21,10 +23,16 @@ async function main() {
       throw new Error('PAGES_OUT_OF_RANGE');
     const worker = new Backfill(models);
     if (args.includes('--reset')) await worker.reset(deviceId, localId);
+    let busyRetries = 0;
     for (let index = 0; index < steps; index++) {
       const result = await worker.tick({ deviceId, localId });
       logger.info('AOS账号索引手动推进', { deviceId, localId, step: index + 1, ...result });
       if (result.completed || result.idle || result.failed || result.waitingCapture) break;
+      if (result.busy) {
+        busyRetries++;
+        if (busyRetries >= MAX_BUSY_RETRIES) break;
+        await new Promise(resolve => setTimeout(resolve, BUSY_RETRY_MS));
+      } else busyRetries = 0;
     }
   } catch (error) {
     logger.error('AOS账号索引命令失败', { errorCode: error.message });

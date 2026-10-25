@@ -38,7 +38,42 @@ test('精确锚点和常见商品预约语法，持久化结果不包含账号�
     color: '星光白色',
     capacity: '512G',
   });
-  expect(JSON.stringify(entries)).not.toMatch(/013|A77|尝试预约|RMB/);
+  const allowed = new Set([
+    'id',
+    'deviceId',
+    'localId',
+    'fileId',
+    'byteOffset',
+    'loggedAt',
+    'receivedAt',
+    'taskKey',
+    'kind',
+    'city',
+    'storeCode',
+    'storeName',
+    'model',
+    'color',
+    'capacity',
+  ]);
+  const business = new Set([
+    'kind',
+    'city',
+    'storeCode',
+    'storeName',
+    'model',
+    'color',
+    'capacity',
+  ]);
+  for (const entry of [...entries, anchor]) {
+    expect(Object.keys(entry).every(key => allowed.has(key))).toBe(true);
+    expect(entry).not.toHaveProperty('accountNumber');
+    expect(entry).not.toHaveProperty('message');
+    expect(entry.taskKey).toMatch(/^[a-f0-9]{64}$/);
+    const strings = Object.entries(entry)
+      .filter(([key, value]) => business.has(key) && typeof value === 'string')
+      .map(([, value]) => value);
+    expect(JSON.stringify(strings)).not.toMatch(/013|A77|尝试预约|RMB/);
+  }
   expect(line('取货信息：取货日期待付款完成后确定', 5).kind).toBe('anchor');
 });
 

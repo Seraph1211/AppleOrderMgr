@@ -81,7 +81,7 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
   beforeEach(async () => {
     try {
       await db.query(
-        'TRUNCATE monitor_log_entries,monitor_log_receipts,monitor_log_block_accounts,monitor_log_blocks,monitor_log_files,monitor_log_storage_scopes,monitor_log_storage_metrics,aos_signal_inbox,aos_account_config_events,aos_account_registries,aos_account_index_states RESTART IDENTITY CASCADE'
+        'TRUNCATE monitor_log_states,monitor_log_entries,monitor_log_receipts,monitor_log_block_accounts,monitor_log_blocks,monitor_log_files,monitor_log_storage_scopes,monitor_log_storage_metrics,aos_signal_inbox,aos_account_config_events,aos_account_registries,aos_account_index_states RESTART IDENTITY CASCADE'
       );
     } catch (error) {
       throw new Error('日志接收隔离重置失败', { cause: error });
@@ -206,5 +206,78 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
     await receive(deviceId, { entries: [row] });
     expect(await models.AosAccountConfigEvent.count()).toBe(1);
     expect(await models.AosSignalInbox.count()).toBe(1);
+  });
+  test('全重复已验证日志batch也建立新API捕获水位，且不重入信号队列', async () => {
+    const row = entry(800);
+    await receive(deviceId, { entries: [row] });
+    await models.AosAccountIndexState.destroy({ where: {}, truncate: true });
+    await receive(deviceId, { entries: [row] });
+    const state = (await models.AosAccountIndexState.findAll())[0];
+    expect(Number.isFinite(Date.parse(state.body.captureStartedAt))).toBe(true);
+    expect(state.status).toBe('pending');
+    expect(await models.MonitorLogEntry.count()).toBe(1);
+    expect(await models.AosSignalInbox.count()).toBe(1);
+  });
+
+  test('新普通无账号行也证明捕获已启用，不依赖parser识别账号或缺口', async () => {
+    const row = entry(900, {
+      loggedAt: null,
+      accountNumber: null,
+      message: '普通采集进度',
+      parseState: 'unparsed',
+    });
+    await receive(deviceId, { entries: [row] });
+    expect((await models.AosAccountIndexState.findAll())[0].body.captureStartedAt).toBeTruthy();
+    expect(await models.AosAccountRegistry.count()).toBe(0);
+    expect(await models.AosAccountConfigEvent.count()).toBe(0);
+  });
+
+  function report() {
+    const observedAt = new Date().toISOString();
+    return {
+      observedAt,
+      instances: [
+        {
+          localId,
+          label: '合成实例',
+          state: 'ready',
+          dates: [new Date(Date.now() + 8 * 3600000).toISOString().slice(0, 10)],
+          fileCount: 1,
+          totalBytes: 0,
+          scannedBytes: 0,
+          pending: 0,
+          issues: 0,
+          expired: 0,
+        },
+      ],
+    };
+  }
+
+  test('真实采集状态报告仅写一次服务器捕获边界，不将回填状态伪作ready', async () => {
+    const receiveStates = require('../src/services/monitorLogService').receiveStates;
+    const body = report();
+    await receiveStates(deviceId, body);
+    const state = (await models.AosAccountIndexState.findAll())[0];
+    expect(state.status).toBe('pending');
+    expect(Date.parse(state.body.captureStartedAt)).toBeGreaterThanOrEqual(
+      Date.parse(body.observedAt)
+    );
+    const before = state.toJSON();
+    await receiveStates(deviceId, body);
+    expect((await state.reload()).body.captureStartedAt).toBe(before.body.captureStartedAt);
+    expect(state.updatedAt).toEqual(before.updatedAt);
+    expect(await models.AosAccountConfigEvent.count()).toBe(0);
+  });
+
+  test('状态报告事务失败时捕获边界回滚，非法空日志batch也不写边界', async () => {
+    const receiveStates = require('../src/services/monitorLogService').receiveStates;
+    const failure = jest
+      .spyOn(models.MonitorLogState, 'create')
+      .mockRejectedValueOnce(new Error('synthetic state failure'));
+    await expect(receiveStates(deviceId, report())).rejects.toMatchObject({ statusCode: 503 });
+    failure.mockRestore();
+    expect(await models.AosAccountIndexState.count()).toBe(0);
+    await expect(receive(deviceId, { entries: [] })).rejects.toMatchObject({ statusCode: 400 });
+    expect(await models.AosAccountIndexState.count()).toBe(0);
   });
 });
