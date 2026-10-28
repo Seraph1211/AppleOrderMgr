@@ -1,3 +1,23 @@
+const taskConfigNameCollator = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
+
+function normalizeServerName(name) {
+  return String(name || '')
+    .trim()
+    .replace(/^US\s*Server\s*(?:No\.?\s*)?(\d+)/i, 'US Server $1');
+}
+
+/** 按服务器自然编号、实例名称和稳定 ID 排列任务配置，兼容 No. 与前导零。 */
+export function compareTaskConfigInstances(left, right) {
+  return (
+    taskConfigNameCollator.compare(
+      normalizeServerName(left.serverName),
+      normalizeServerName(right.serverName)
+    ) ||
+    taskConfigNameCollator.compare(left.instanceName || '', right.instanceName || '') ||
+    taskConfigNameCollator.compare(left.id || '', right.id || '')
+  );
+}
+
 /** 将配置时间显示为北京时间，未知时间保持缺失。 */
 export function taskConfigTime(value) {
   return value

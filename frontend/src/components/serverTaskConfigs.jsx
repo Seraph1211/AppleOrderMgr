@@ -13,6 +13,7 @@ import TaskConfigImport from './taskConfigImport';
 import useTaskConfigPanel from './useTaskConfigPanel';
 import { TaskConfigScopeTable, TaskConfigStatus, TaskConfigTable } from './taskConfigCommon';
 import {
+  compareTaskConfigInstances,
   taskConfigEffectiveAt,
   taskConfigError,
   taskConfigTime,
@@ -503,13 +504,15 @@ export default function ServerTaskConfigs({ initialInstanceId = null }) {
   }, [initialInstanceId]);
   const filtered = useMemo(
     () =>
-      items.filter(
-        item =>
-          (showInactive || item.active) &&
-          `${item.serverName} ${item.instanceName}`
-            .toLocaleLowerCase()
-            .includes(search.trim().toLocaleLowerCase())
-      ),
+      items
+        .filter(
+          item =>
+            (showInactive || item.active) &&
+            `${item.serverName} ${item.instanceName}`
+              .toLocaleLowerCase()
+              .includes(search.trim().toLocaleLowerCase())
+        )
+        .sort(compareTaskConfigInstances),
     [items, search, showInactive]
   );
   return (
