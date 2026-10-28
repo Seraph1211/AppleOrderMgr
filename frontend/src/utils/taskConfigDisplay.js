@@ -14,7 +14,7 @@ export function compareTaskConfigInstances(left, right) {
       normalizeServerName(right.serverName)
     ) ||
     taskConfigNameCollator.compare(left.instanceName || '', right.instanceName || '') ||
-    taskConfigNameCollator.compare(left.id || '', right.id || '')
+    taskConfigNameCollator.compare(left.instanceId || '', right.instanceId || '')
   );
 }
 
