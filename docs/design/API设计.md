@@ -1265,6 +1265,24 @@ AOS 通知不受 config.enabled、config.notificationsEnabled、官网保护暂�
 
 全局首条立即排队；此后每3分钟合并新增命中，首次提醒的命中也计入第一个汇总（只有首条时仍汇总1次）；后续窗口仅统计该窗新增命中。旧版本已开启窗口不从历史投递补回首条，避免补发与重计。连续一个完整3分钟窗口无命中结束本轮，下一条重新立即排队。所有服务器与实例共享窗口；消息投递与接收事务分离，网络故障不阻断日志回执。accepted 仅表示企微接口接受，不代表群内已读。
 
-2026-10-26同城同规格账号比例不新增HTTP端点或请求参数。实际新增日志事务调用独立设置索引，配置历史不受3分钟鲜度限制且不触发旧信号。汇总来源N/D按原日志编号字符串、实例、城市和完整规格计算；D冻结scope首hit之前最近启动设置，变化／缺口降级N/—，首次消息不求D。投递body新增可选aosAccountTracker、aosAccountRatio，保存有界结构化计数、时间、冻结集合摘要及降级reason，不含AppleID／原文；旧记录可无字段。
+2026-10-26旧账号比例字段保留用于历史兼容，旧设置索引仍可写入但不作为新通知分母。2026-10-28起新通知采用下文[AOS 手动任务配置接口](#aos-手动任务配置接口2026-10-28已批准实施)的人工配置版本；首次消息不求D。投递body保留可选aosAccountTracker、aosAccountRatio，任务比例version=2，保存观测任务计数、配置版本ID与分母快照及降级reason，不含AppleID／原文；旧记录可无字段。缺失/不可靠的比例仅省略，不再输出N/—。
 
 2026-10-19晚到关联修复不改变以上请求参数及响应外层结构。完整首次仍立即；缺城市或门店时仅在原接收时间后10秒内等待同任务可靠上下文，提前补齐则提前发送，到期仍未知则照常发送。三分钟汇总原点及频率不变。已出站历史不修改、不补发；管理员投递历史的items沿用既有脱敏body透传，新增可选 `aosAssociation`（有界脱敏锚点及结构证据）、`aosImmediate`、`aosContextDeadline`，具体结构见数据库架构；无密钥、账号和日志原文，旧记录可无这些字段，前端继续使用content和原状态，不依赖关联元数据。
+
+## AOS 手动任务配置接口（2026-10-28，已批准实施）
+
+统一前缀 `/api/server-monitor/task-configs`，全部要求 `monitor.manage`，响应仍为 `{success:true,data}`。实例通过稳定 `MonitorInstance.id` 指定，不从文件名或账号推断；写操作拒绝停用实例/设备。
+
+| 方法与路径 | 参数 | 返回 data |
+| --- | --- | --- |
+| GET `/` | 无 | `{items}`：实例、revision、status、任务/城市/规格数及确认时间 |
+| GET `/:instanceId` | 无 | `{instance,currentVersion}`，版本含脱敏 rows 和 aggregates |
+| POST `/:instanceId/preview` | `{text}`，最大8MiB、10000任务行、每行36字段 | `{valid,errors,previewId,expectedRevision,expiresAt,taskCount,cityCount,specCount,blankLineCount,aggregates,diff}` |
+| POST `/:instanceId/activate` | `{previewId,expectedRevision,effectiveAt?}` | `{instance,currentVersion,unchanged}` |
+| GET `/:instanceId/versions` | 无 | `{items,limit:50}`，最近50条版本摘要 |
+| GET `/:instanceId/versions/:versionId` | 无 | `{version}`，完整脱敏版本 |
+| POST `/:instanceId/confirm` | `{expectedRevision}` | `{instance,currentVersion}` |
+| POST `/:instanceId/invalidate` | `{expectedRevision}` | 同上，关闭当前版本生效区间 |
+| POST `/:instanceId/restore` | `{versionId,expectedRevision,effectiveAt?}` | 同 activate，历史版本复制为新版本 |
+
+status 为 missing/active/invalidated；errors 仅给行号、字段、错误码及固定说明，不回显输入。diff 每项含 city/model/color/capacity/previousCount/nextCount/delta。所有写操作校验 expectedRevision，冲突409；预览绑定用户且过期后不可激活。effectiveAt 使用含时区 ISO 时间，默认服务器当前时间，禁止未来时间及倒序/重叠版本。整批任一行无效即不可激活。相同有效配置重复提交返回 unchanged，不累加任务。

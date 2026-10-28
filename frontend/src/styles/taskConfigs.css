@@ -1,0 +1,245 @@
+.task-config-root {
+  min-width: 0;
+  color: #111827;
+}
+.task-config-root .task-config-panel {
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  min-width: 0;
+}
+.task-config-root .task-config-title-row,
+.task-config-root .task-config-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.task-config-root .task-config-toolbar > label:first-child {
+  width: 300px;
+  max-width: 100%;
+}
+.task-config-root .task-config-note {
+  background: #eff6ff;
+  color: #1e3a8a;
+  border-radius: 6px;
+  padding: 12px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.task-config-root .task-config-error {
+  border-left: 3px solid #b91c1c;
+  padding: 8px 12px;
+  color: #991b1b;
+  font-size: 14px;
+  line-height: 1.6;
+}
+.task-config-root .task-config-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.task-config-root .btn {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.task-config-root .btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+.task-config-root .task-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #1e3a8a;
+  font-size: 14px;
+  min-height: 32px;
+}
+.task-config-root .task-config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+  color: #374151;
+  min-width: 0;
+}
+.task-config-root .task-config-field .input {
+  width: 100%;
+}
+.task-config-root textarea {
+  min-height: 200px;
+  resize: vertical;
+}
+.task-config-root .task-config-filters {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.task-config-root .task-config-table-frame {
+  overflow: auto;
+  max-width: 100%;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+.task-config-root .task-config-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  text-align: left;
+}
+.task-config-root .task-config-table th {
+  color: #4b5563;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 12px;
+  background: #fff;
+  position: sticky;
+  top: 0;
+}
+.task-config-root .task-config-table td {
+  padding: 12px;
+  border-top: 1px solid #f3f4f6;
+  vertical-align: top;
+}
+.task-config-root .task-config-table th,
+.task-config-root .task-config-table td {
+  white-space: nowrap;
+}
+.task-config-root .task-config-table .task-cell-wrap {
+  white-space: normal;
+  min-width: 180px;
+  max-width: 360px;
+  overflow-wrap: anywhere;
+}
+.task-config-root .task-config-table tr:hover td {
+  background: #f9fafb;
+}
+.task-config-root .task-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.task-config-root .task-cell-sub {
+  display: block;
+  margin-top: 4px;
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+.task-config-root .task-empty {
+  padding: 32px 16px;
+  text-align: center;
+  color: #4b5563;
+  font-size: 14px;
+}
+.task-config-root .task-config-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+  border-top: 1px solid #e5e7eb;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 16px 0;
+}
+.task-config-root .task-config-summary > div {
+  min-width: 100px;
+  flex: 1;
+}
+.task-config-root .task-config-summary dt {
+  color: #4b5563;
+  font-size: 14px;
+}
+.task-config-root .task-config-summary dd {
+  color: #111827;
+  font-size: 24px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+.task-config-root .task-config-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+  font-size: 14px;
+  color: #4b5563;
+}
+.task-config-root .task-config-paging {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+  color: #4b5563;
+}
+.task-config-root .task-config-confirm {
+  padding: 16px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+}
+.task-config-root .task-config-tabs {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid #e5e7eb;
+  gap: 24px;
+}
+.task-config-root .task-config-tabs > button {
+  padding: 10px 0;
+  color: #4b5563;
+  font-size: 14px;
+  white-space: nowrap;
+  border-bottom: 2px solid transparent;
+}
+.task-config-root .task-config-tabs > button.active {
+  color: #1e3a8a;
+  border-color: #1e3a8a;
+  font-weight: 600;
+}
+@media (max-width: 767px) {
+  .task-config-root .task-config-panel {
+    padding: 16px;
+    gap: 16px;
+  }
+  .task-config-root .btn,
+  .task-config-root .task-back {
+    min-height: 44px;
+  }
+  .task-config-root .task-config-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .task-config-root .task-config-summary {
+    gap: 16px;
+  }
+  .task-config-root .task-config-summary > div {
+    min-width: 90px;
+  }
+  .task-config-root .task-config-table th,
+  .task-config-root .task-config-table td {
+    padding: 12px 10px;
+  }
+  .task-config-root .task-config-table td:first-child {
+    position: sticky;
+    left: 0;
+    background: #fff;
+    z-index: 1;
+  }
+  .task-config-root .task-config-toolbar {
+    align-items: stretch;
+    gap: 12px;
+  }
+  .task-config-root .task-config-toolbar > label:first-child {
+    width: 100%;
+  }
+  .task-config-root .task-config-tabs > button {
+    min-height: 44px;
+  }
+}

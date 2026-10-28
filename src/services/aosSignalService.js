@@ -50,7 +50,7 @@ class AosSignalService {
     try {
       if (!Object.keys(groups).length) return;
       const { transaction, settings, now } = context;
-      const ratioEnabled = Boolean(this.s.m.AosAccountRegistry);
+      const ratioEnabled = Boolean(this.s.m.AosTaskConfigVersion || this.s.m.AosAccountRegistry);
       const aosAccountRatio =
         ratioEnabled && !immediate
           ? await accountRatios.evaluate(accountTracker, this.s.m, transaction)
@@ -129,6 +129,27 @@ class AosSignalService {
           order: [['createdAt', 'ASC']],
           limit: 500,
         }));
+      if (this.s.m.AosTaskConfigVersion) {
+        const upgraded = [];
+        for (const row of pending) {
+          if (
+            row.kind === 'aos_signal' &&
+            row.status === 'pending' &&
+            !row.aosImmediate &&
+            row.aosGroups &&
+            row.aosAccountRatio?.version !== 2
+          ) {
+            row.aosAccountRatio = await accountRatios.evaluate(
+              row.aosAccountTracker,
+              this.s.m,
+              transaction
+            );
+            row.content = policy.content(row.aosGroups, false, row.aosAccountRatio);
+            upgraded.push(row);
+          }
+        }
+        if (upgraded.length) await this.s.put('InventoryDelivery', upgraded, transaction);
+      }
       const candidates = pending.filter(
         row => row.kind === 'aos_signal' && row.status === 'pending' && row.aosAssociation
       );
@@ -191,7 +212,7 @@ class AosSignalService {
           windowTo: Math.max(...Object.values(groups).map(group => group.lastAt)),
         };
       });
-      if (this.s.m.AosAccountRegistry) {
+      if (this.s.m.AosTaskConfigVersion || this.s.m.AosAccountRegistry) {
         if (state.aosSignals?.accountTracker)
           state.aosSignals.accountTracker = accountRatios.refresh(
             state.aosSignals.accountTracker,
@@ -275,7 +296,7 @@ class AosSignalService {
           const { transaction, state, settings, now } = context;
           state.aosSignals = state.aosSignals ? structuredClone(state.aosSignals) : null;
           if (
-            this.s.m.AosAccountRegistry &&
+            (this.s.m.AosTaskConfigVersion || this.s.m.AosAccountRegistry) &&
             state.aosSignals &&
             Object.keys(state.aosSignals.groups || {}).length &&
             !state.aosSignals.accountTracker
@@ -355,7 +376,7 @@ class AosSignalService {
             const item = policy.observation(task, anchor);
             if (!state.aosSignals) {
               const first = policy.addAssociation({ groups: {} }, anchor, item, task);
-              if (this.s.m.AosAccountRegistry)
+              if (this.s.m.AosTaskConfigVersion || this.s.m.AosAccountRegistry)
                 first.accountTracker = accountRatios.add(null, anchor, item);
               await this.queue(
                 first.groups,
@@ -374,7 +395,7 @@ class AosSignalService {
               };
             } else {
               policy.addAssociation(state.aosSignals, anchor, item, task);
-              if (this.s.m.AosAccountRegistry)
+              if (this.s.m.AosTaskConfigVersion || this.s.m.AosAccountRegistry)
                 state.aosSignals.accountTracker = accountRatios.add(
                   state.aosSignals.accountTracker,
                   anchor,

@@ -108,6 +108,27 @@ function errorHandler(err, req, res, _next) {
     });
   }
 
+  // 任务配置包含账号密码，JSON解析器异常可能带原文片段，须先做路径级脱敏。
+  if (
+    /^\/api\/server-monitor\/task-configs(?:\/|\?|$)/i.test(req.originalUrl || req.path || '') &&
+    (err instanceof SyntaxError ||
+      err.body !== undefined ||
+      [
+        'entity.parse.failed',
+        'entity.too.large',
+        'encoding.unsupported',
+        'charset.unsupported',
+        'request.aborted',
+        'request.size.invalid',
+      ].includes(err.type))
+  ) {
+    logger.warn('任务配置请求体格式或大小无效', { method: req.method, code: 'VALIDATION_ERROR' });
+    return res.status(400).json({
+      success: false,
+      error: { code: 'VALIDATION_ERROR', message: '请求体格式或大小无效' },
+    });
+  }
+
   // body-parser JSON 解析错误
   if (err.type === 'entity.parse.failed' || err instanceof SyntaxError) {
     logger.warn('请求体 JSON 解析失败', {

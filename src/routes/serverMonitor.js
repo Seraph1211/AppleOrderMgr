@@ -159,6 +159,30 @@ router.post(
   respond(req => notificationQueries.mutate(req.user.id, req.params.id, req.body, true))
 );
 router.use(requirePermission(PERMISSIONS.MONITOR_MANAGE));
+const taskConfigs = require('../services/aosTaskConfigService');
+router.get(
+  '/task-configs',
+  respond(() => taskConfigs.list())
+);
+router.get(
+  '/task-configs/:instanceId',
+  respond(req => taskConfigs.detail(req.params.instanceId))
+);
+router.get(
+  '/task-configs/:instanceId/versions',
+  respond(req => taskConfigs.versions(req.params.instanceId))
+);
+router.get(
+  '/task-configs/:instanceId/versions/:versionId',
+  respond(req => taskConfigs.version(req.params.instanceId, req.params.versionId))
+);
+for (const action of ['preview', 'activate', 'confirm', 'invalidate', 'restore']) {
+  router.post(
+    `/task-configs/:instanceId/${action}`,
+    respond(req => taskConfigs[action](req.user.id, req.params.instanceId, req.body))
+  );
+}
+
 router.get(
   '/overview',
   respond(() => service.overview())

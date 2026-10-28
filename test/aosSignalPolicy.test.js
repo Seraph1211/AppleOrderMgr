@@ -47,6 +47,7 @@ test('精确锚点和常见商品预约语法，持久化结果不包含账号�
     'loggedAt',
     'receivedAt',
     'taskKey',
+    'accountNumber',
     'kind',
     'city',
     'storeCode',
@@ -66,7 +67,7 @@ test('精确锚点和常见商品预约语法，持久化结果不包含账号�
   ]);
   for (const entry of [...entries, anchor]) {
     expect(Object.keys(entry).every(key => allowed.has(key))).toBe(true);
-    expect(entry).not.toHaveProperty('accountNumber');
+    expect(entry.accountNumber).toMatch(/^\d{1,64}$/);
     expect(entry).not.toHaveProperty('message');
     expect(entry.taskKey).toMatch(/^[a-f0-9]{64}$/);
     const strings = Object.entries(entry)

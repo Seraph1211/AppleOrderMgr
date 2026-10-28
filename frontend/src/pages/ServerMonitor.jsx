@@ -24,6 +24,7 @@ import { useLocation } from 'react-router-dom';
 import client from '../api/client';
 import TagMultiSelect from '../components/TagMultiSelect';
 import ServerMonitorNotifications from '../components/serverMonitorNotifications';
+import ServerTaskConfigs from '../components/serverTaskConfigs';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 
@@ -157,6 +158,7 @@ export default function ServerMonitor() {
   const eventIdParam = new URLSearchParams(location.search).get('eventId');
   const isValidEventId = Boolean(eventIdParam && /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(eventIdParam));
   const [tab, setTab] = useState(canManage && !eventIdParam ? 'traffic' : 'notifications');
+  const [taskConfigInstanceId, setTaskConfigInstanceId] = useState(null);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -214,9 +216,9 @@ export default function ServerMonitor() {
     setTrafficPage(1);
   }, [from, to, selectionKey, granularity]);
   useEffect(() => {
-    if (canManage && tab !== 'notifications') load();
+    if (canManage && !['notifications', 'task-configs'].includes(tab)) load();
     const refresh = () => {
-      if (canManage && tab !== 'notifications' && document.visibilityState === 'visible') load();
+      if (canManage && !['notifications', 'task-configs'].includes(tab) && document.visibilityState === 'visible') load();
     };
     const timer = setInterval(refresh, 15000);
     document.addEventListener('visibilitychange', refresh);
@@ -432,7 +434,7 @@ export default function ServerMonitor() {
             </p>
           )}
         </div>
-        {canManage && <button
+        {canManage && tab !== 'task-configs' && <button
           className="btn btn-secondary inline-flex items-center gap-1"
           onClick={load}
           disabled={refreshing}
@@ -441,7 +443,7 @@ export default function ServerMonitor() {
           {refreshing ? '刷新中…' : '刷新状态'}
         </button>}
       </div>
-      {error && (
+      {error && tab !== 'task-configs' && (
         <p role="alert" className="rounded-lg bg-red-50 p-3 text-red-700">
           {error}（现有展示可能已过期）
         </p>
@@ -460,6 +462,7 @@ export default function ServerMonitor() {
           ? [
               ['traffic', '流量统计'],
               ['instances', '实例监控'],
+              ['task-configs', '任务配置'],
               ['rules', '告警规则'],
               ['notifications', '通知设置'],
             ]
@@ -480,15 +483,17 @@ export default function ServerMonitor() {
             onClick={() => {
               setTab(id);
               setDetailId(null);
+              if (id === 'task-configs') setTaskConfigInstanceId(null);
             }}
           >
             {label}
           </button>
         ))}
       </div>
-      {canManage && tab !== 'notifications' && !data && !error && (
+      {canManage && !['notifications', 'task-configs'].includes(tab) && !data && !error && (
         <p className="p-8 text-center text-gray-500">正在读取监控数据…</p>
       )}
+      {canManage && tab === 'task-configs' && <ServerTaskConfigs initialInstanceId={taskConfigInstanceId} />}
       {tab === 'traffic' && (
         <>
           <section className="card hover:shadow-sm">
@@ -728,6 +733,15 @@ export default function ServerMonitor() {
                     }}
                   >
                     {i.active ? '查看 / 处理' : '查看历史'}
+                  </button>
+                  <button
+                    className="btn btn-secondary ml-2"
+                    onClick={() => {
+                      setTaskConfigInstanceId(i.id);
+                      setTab('task-configs');
+                    }}
+                  >
+                    任务配置
                   </button>
                 </Cell>
               </tr>

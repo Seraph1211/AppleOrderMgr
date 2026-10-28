@@ -59,6 +59,7 @@ function parseEntry(row, receivedAt) {
     loggedAt,
     receivedAt,
     taskKey,
+    accountNumber: match[1].match(/^\[[^\]]*\]\[(\d{1,64})\]/)?.[1] || null,
     kind,
     ...details,
   };

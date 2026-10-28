@@ -101,7 +101,7 @@ describe('AOS 放货信号独立验收：真实语法及防串联', () => {
     expect(new Set(entries.map(entry => entry.taskKey)).size).toBe(entries.length);
     for (const entry of entries) {
       expect(entry.message).toBeUndefined();
-      expect(entry.accountNumber).toBeUndefined();
+      expect(entry.accountNumber).toMatch(/^\d{1,64}$/);
     }
   });
 

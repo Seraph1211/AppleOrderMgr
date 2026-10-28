@@ -30,6 +30,8 @@ function refresh(tracker, association) {
 /** 根据首hit时点冻结分母，逐hit验证eligible集合；异常只降级比例，不吞分子。 @param {Object} tracker 独立跟踪 @param {Object} models 模型 @param {Object} transaction 事务 @returns {Promise<Object>} 城市规格来源比例 */
 async function evaluate(tracker, models, transaction) {
   try {
+    if (models.AosTaskConfigVersion)
+      return require('./aosTaskRatioService').evaluate(tracker, models, transaction);
     const result = {
       version: 1,
       scopes: {},

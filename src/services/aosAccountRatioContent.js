@@ -78,12 +78,25 @@ function scopesFor(rows) {
 const numberText = value => (Number.isSafeInteger(value) && value >= 0 ? String(value) : '—');
 
 function sourceLine(source, scope, ratios) {
-  const ratio = ratios?.version === 1 ? ratios.scopes?.[scope.key]?.sources?.[source.key] : null;
+  const ratio = [1, 2].includes(ratios?.version)
+    ? ratios.scopes?.[scope.key]?.sources?.[source.key]
+    : null;
   const numerator = ratio?.numerator;
   const denominator = ratio?.denominator;
   const inconsistent =
     Number.isFinite(numerator) && Number.isFinite(denominator) && numerator > denominator;
   const label = `${shorten(serverName(source.server), 12)} / ${shorten(source.instance, 10)}`;
+  if (ratios?.version === 2) {
+    if (
+      inconsistent ||
+      !Number.isSafeInteger(numerator) ||
+      !Number.isSafeInteger(denominator) ||
+      denominator <= 0 ||
+      ratio.reason
+    )
+      return `${label}｜${count(source.count)}次命中`;
+    return `${label}｜同城任务 ${numerator}/${denominator}`;
+  }
   return `${label}｜${numberText(numerator)}/${numberText(inconsistent ? null : denominator)}`;
 }
 
@@ -108,7 +121,7 @@ function scopeText(scope, ratios, storeLimit, sourceLimit) {
   if (omittedStores) lines.push(omittedStores);
   for (const source of scope.sources.slice(0, sourceLimit))
     lines.push(sourceLine(source, scope, ratios));
-  if (!scope.sources.length) lines.push('未知来源｜—/—');
+  if (!scope.sources.length) lines.push(ratios?.version === 2 ? '未知来源' : '未知来源｜—/—');
   const omittedSources = sourceMarker(scope.sources.slice(sourceLimit));
   if (omittedSources) lines.push(omittedSources);
   return lines.join('\n');

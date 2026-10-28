@@ -24,6 +24,9 @@ const sequelize = config.url
 
 // 导入所有模型
 const models = {
+  AosTaskConfig: require('./AosTaskConfig')(sequelize),
+  AosTaskConfigVersion: require('./AosTaskConfigVersion')(sequelize),
+  AosTaskConfigPreview: require('./AosTaskConfigPreview')(sequelize),
   MonitorNotificationChannel: require('./MonitorNotificationChannel')(sequelize),
   MonitorNotificationLink: require('./MonitorNotificationLink')(sequelize),
   NotificationWorkerState: require('./NotificationWorkerState')(sequelize),

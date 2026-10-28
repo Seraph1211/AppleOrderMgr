@@ -264,12 +264,18 @@ async function load(models, source, from, to, transaction) {
 /** 旧API信号按原位置补编号，失败仅令比例未知。 @param {Object} models 模型 @param {Object[]} anchors 信号 @param {Object} transaction 事务 @returns {Promise<Object[]>} 信号 */
 async function attachAccounts(models, anchors, transaction) {
   try {
-    if (!models.AosAccountConfigEvent || !anchors.length) return anchors;
-    return await isolated(models, transaction, nested =>
-      attachAccountsUnsafe(models, anchors, nested)
+    const missing = anchors.filter(row => !/^\d{1,64}$/.test(row.accountNumber || ''));
+    if (!models.AosAccountConfigEvent || !missing.length) return anchors;
+    const attached = await isolated(models, transaction, nested =>
+      attachAccountsUnsafe(models, missing, nested)
     );
+    const byId = new Map(attached.map(row => [row.id, row]));
+    return anchors.map(row => byId.get(row.id) || row);
   } catch (_error) {
-    return anchors.map(row => ({ ...row, accountNumber: null }));
+    return anchors.map(row => ({
+      ...row,
+      accountNumber: /^\d{1,64}$/.test(row.accountNumber || '') ? row.accountNumber : null,
+    }));
   }
 }
 

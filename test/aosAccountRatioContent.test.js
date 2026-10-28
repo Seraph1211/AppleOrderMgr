@@ -113,7 +113,7 @@ test.each([
 test('缺失或不支持的比例快照不猜分母，缺来源明确标注', () => {
   const row = group();
   expect(formatSummary({ row })).toContain('心蓝13｜—/—');
-  expect(formatSummary({ row }, { ...ratiosFor([row]), version: 2 })).toContain('心蓝13｜—/—');
+  expect(formatSummary({ row }, { ...ratiosFor([row]), version: 999 })).toContain('心蓝13｜—/—');
   expect(formatSummary({ row: group({ sources: {} }) })).toContain('未知来源｜—/—');
 });
 
