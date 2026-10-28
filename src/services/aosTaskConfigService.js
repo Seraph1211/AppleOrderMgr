@@ -187,10 +187,28 @@ function createService(models = defaultModels) {
   };
   return {
     list: guarded(async () => {
-      const [instances, devices, heads] = await Promise.all([
-        Instance.findAll({ order: [['label', 'ASC']], limit: 1000 }),
-        Device.findAll({ attributes: ['id', 'name', 'enabled'], limit: 1000 }),
-        Head.findAll({ limit: 1000 }),
+      const instances = await Instance.findAll({
+        order: [
+          ['label', 'ASC'],
+          ['id', 'ASC'],
+        ],
+        limit: 1001,
+      });
+      if (instances.length > 1000)
+        throw new ApiError(
+          422,
+          'TASK_INSTANCE_LIMIT',
+          '实例数量超过1000，暂不支持完整展示；未返回部分统计，请联系管理员处理'
+        );
+      if (!instances.length) return { items: [] };
+      const instanceIds = instances.map(row => row.id);
+      const deviceIds = [...new Set(instances.map(row => row.deviceId))];
+      const [devices, heads] = await Promise.all([
+        Device.findAll({
+          where: { id: { [Op.in]: deviceIds } },
+          attributes: ['id', 'name', 'enabled'],
+        }),
+        Head.findAll({ where: { instanceId: { [Op.in]: instanceIds } } }),
       ]);
       const ids = heads.map(head => head.currentVersionId).filter(Boolean);
       let versions = [];

@@ -1286,3 +1286,5 @@ AOS 通知不受 config.enabled、config.notificationsEnabled、官网保护暂�
 | POST `/:instanceId/restore` | `{versionId,expectedRevision,effectiveAt?}` | 同 activate，历史版本复制为新版本 |
 
 status 为 missing/active/invalidated；errors 仅给行号、字段、错误码及固定说明，不回显输入。diff 每项含 city/model/color/capacity/previousCount/nextCount/delta。所有写操作校验 expectedRevision，冲突409；预览绑定用户且过期后不可激活。effectiveAt 使用含时区 ISO 时间，默认服务器当前时间，禁止未来时间及倒序/重叠版本。整批任一行无效即不可激活。相同有效配置重复提交返回 unchanged，不累加任务。
+
+任务配置概览首期最多支持1000个实例（含停用实例）。超过上限返回422／`TASK_INSTANCE_LIMIT`及固定说明，绝不静默截断或返回部分统计；设备及配置头仅按本次实例集合关联读取。

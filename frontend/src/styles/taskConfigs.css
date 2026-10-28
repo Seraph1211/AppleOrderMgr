@@ -11,6 +11,8 @@
   flex-direction: column;
   gap: 20px;
   min-width: 0;
+  scroll-margin-top: 64px;
+  outline: none;
 }
 .task-config-root .task-config-title-row,
 .task-config-root .task-config-toolbar {

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { ArrowLeft, FileUp } from 'lucide-react';
 import { activateTaskConfig, previewTaskConfig } from '../api/taskConfigsApi';
+import useTaskConfigPanel from './useTaskConfigPanel';
 import { TaskConfigScopeTable, TaskConfigTable } from './taskConfigCommon';
 import { taskConfigEffectiveAt, taskConfigError, taskConfigTime } from '../utils/taskConfigDisplay';
 
@@ -9,6 +10,7 @@ const FIELD_LABELS = { row: '配置行', stores: '门店', product: '商品规�
 
 /** 按完整实例快照导入，只有服务器验证过的预览才可以确认生效。 */
 export default function TaskConfigImport({ instance, onCancel, onSaved }) {
+  const panelRef = useTaskConfigPanel();
   const [text, setText] = useState('');
   const [fileName, setFileName] = useState('');
   const [preview, setPreview] = useState(null);
@@ -95,7 +97,7 @@ export default function TaskConfigImport({ instance, onCancel, onSaved }) {
   }
 
   return (
-    <section className="task-config-panel" aria-busy={busy}>
+    <section ref={panelRef} tabIndex={-1} className="task-config-panel" aria-busy={busy}>
       <div className="task-config-title-row">
         <div>
           <button className="task-back" disabled={busy} onClick={onCancel}>

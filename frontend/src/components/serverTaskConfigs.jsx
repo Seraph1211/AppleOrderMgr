@@ -10,6 +10,7 @@ import {
   restoreTaskConfig,
 } from '../api/taskConfigsApi';
 import TaskConfigImport from './taskConfigImport';
+import useTaskConfigPanel from './useTaskConfigPanel';
 import { TaskConfigScopeTable, TaskConfigStatus, TaskConfigTable } from './taskConfigCommon';
 import {
   taskConfigEffectiveAt,
@@ -78,6 +79,7 @@ function ConfigDetail({ instanceId, onBack, onChanged }) {
   const [historical, setHistorical] = useState(null);
   const [view, setView] = useState('scopes');
   const [importing, setImporting] = useState(false);
+  const panelRef = useTaskConfigPanel(!importing);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -197,7 +199,7 @@ function ConfigDetail({ instanceId, onBack, onChanged }) {
     setNotice('');
   };
   return (
-    <section className="task-config-panel" aria-busy={loading || busy}>
+    <section ref={panelRef} tabIndex={-1} className="task-config-panel" aria-busy={loading || busy}>
       <div className="task-config-title-row">
         <div>
           <button className="task-back" disabled={busy} onClick={onBack}>
