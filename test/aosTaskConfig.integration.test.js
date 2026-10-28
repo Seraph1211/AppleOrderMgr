@@ -148,6 +148,90 @@ suite('任务配置真实PostgreSQL事务、版本、保密及并发验收', () 
     expect(changed.instance.currentVersionNumber).toBe(2);
   });
 
+  test('多SKU预览生效及恢复保持行任务数，未知选项整批拒绝并保留当前版本', async () => {
+    const text = sample(
+      '上海浦东|上海静安|上海环球港|上海五角场|上海七宝|上海环贸 iapm|上海香港广场|上海南京东路',
+      'iPhone Duo 星光白色 512G|iPhone Duo 星光白色 2T|iPhone Duo 夜空色 2T|iPhone Duo 星光白色 1T|iPhone Duo 夜空色 1T'
+    );
+    const p = await preview(text);
+    expect(p).toMatchObject({ valid: true, taskCount: 1, cityCount: 1, specCount: 5 });
+    expect(p.aggregates.map(row => row.taskCount)).toEqual([1, 1, 1, 1, 1]);
+    const first = await service.activate(actor, instance.id, {
+      previewId: p.previewId,
+      expectedRevision: p.expectedRevision,
+      effectiveAt: new Date(Date.now() - 10000).toISOString(),
+    });
+    expect(first.instance).toMatchObject({ taskCount: 1, cityCount: 1, specCount: 5 });
+    expect(first.currentVersion.rows[0].products).toHaveLength(5);
+    expect(first.currentVersion.rows[0]).not.toHaveProperty('model');
+    const bad = await preview(`${sample()}\n${text.replace('夜空色 2T', '未知色 2T')}`);
+    expect(bad).toMatchObject({ valid: false, previewId: null });
+    expect((await service.detail(instance.id)).currentVersion.id).toBe(first.currentVersion.id);
+    expect(await models.AosTaskConfigVersion.count()).toBe(1);
+    const next = await activate(sample('上海浦东'), new Date(Date.now() - 5000).toISOString());
+    const restored = await service.restore(actor, instance.id, {
+      versionId: first.currentVersion.id,
+      expectedRevision: next.instance.revision,
+    });
+    expect(restored.currentVersion).toMatchObject({
+      number: 3,
+      taskCount: 1,
+      cityCount: 1,
+      specCount: 5,
+      rows: first.currentVersion.rows,
+      aggregates: first.currentVersion.aggregates,
+      restoredFromId: first.currentVersion.id,
+    });
+    expect(JSON.stringify(await models.AosTaskConfigVersion.findAll({ raw: true }))).not.toMatch(
+      /secret-not-stored|test@example/
+    );
+  });
+
+  test('升级前已存单SKU预览可激活，旧版本可恢复且统计与多SKU版本互不混淆', async () => {
+    const payload = policy.parse(sample('北京三里屯'));
+    payload.rows = payload.rows.map(({ products: _products, ...row }) => row);
+    const oldPreview = await models.AosTaskConfigPreview.create({
+      id: randomUUID(),
+      instanceId: instance.id,
+      actorId: actor,
+      expectedRevision: 0,
+      expiresAt: new Date(Date.now() + 60000),
+      payload,
+    });
+    const first = await service.activate(actor, instance.id, {
+      previewId: oldPreview.id,
+      expectedRevision: 0,
+      effectiveAt: new Date(Date.now() - 10000).toISOString(),
+    });
+    expect(first.currentVersion).toMatchObject({
+      taskCount: 1,
+      cityCount: 1,
+      specCount: 1,
+      aggregates: payload.aggregates,
+    });
+    expect(first.currentVersion.rows[0]).not.toHaveProperty('products');
+    const next = await activate(
+      sample('北京三里屯', 'iPhone Duo 星光白色 512G|iPhone Duo 夜空色 1T'),
+      new Date(Date.now() - 5000).toISOString()
+    );
+    expect(next.currentVersion.specCount).toBe(2);
+    const restored = await service.restore(actor, instance.id, {
+      versionId: first.currentVersion.id,
+      expectedRevision: next.instance.revision,
+    });
+    expect(restored.currentVersion).toMatchObject({
+      number: 3,
+      taskCount: 1,
+      cityCount: 1,
+      specCount: 1,
+      aggregates: payload.aggregates,
+      restoredFromId: first.currentVersion.id,
+    });
+    expect((await service.version(instance.id, first.currentVersion.id)).version.rows).toEqual(
+      payload.rows
+    );
+  });
+
   test('解析失败、无权限预览token、过期与CAS冲突均不改变生效版本', async () => {
     const first = await activate(sample());
     const bad = await preview(`${sample()}\nbad-sensitive-line`);

@@ -18,6 +18,7 @@ import {
   taskConfigError,
   taskConfigTime,
   taskConfigNeedsReview,
+  taskConfigRowProducts,
 } from '../utils/taskConfigDisplay';
 import '../styles/taskConfigs.css';
 
@@ -28,25 +29,39 @@ function TaskRows({ rows = [] }) {
   return (
     <div className="space-y-3">
       <p className="text-sm text-gray-600">
-        保留原始行号及重复行，仅展示统计需要的门店、城市和商品规格。每行均计为 1 个任务。
+        保留原始行号及重复行，每行均计为 1
+        个任务。同一行选中的所有商品规格在该行内展示，各城市与规格分别计数。
       </p>
       <TaskConfigTable
         headers={[{ label: '原始行号', numeric: true }, '商品规格', '城市', '门店代码']}
         empty={!rows.length}
       >
-        {rows.slice((currentPage - 1) * 50, currentPage * 50).map(row => (
-          <tr key={row.rowNumber}>
-            <td className="task-num">{row.rowNumber}</td>
-            <td>
-              {row.model}
-              <span className="task-cell-sub">
-                {row.color} · {row.capacity}
-              </span>
-            </td>
-            <td className="task-cell-wrap">{row.cities.join('、')}</td>
-            <td className="task-cell-wrap text-gray-600">{row.storeCodes.join('、')}</td>
-          </tr>
-        ))}
+        {rows.slice((currentPage - 1) * 50, currentPage * 50).map(row => {
+          const products = taskConfigRowProducts(row);
+          return (
+            <tr key={row.rowNumber}>
+              <td className="task-num">{row.rowNumber}</td>
+              <td>
+                <div className="space-y-2">
+                  {products.length ? (
+                    products.map((product, index) => (
+                      <div key={`${product.model}/${product.color}/${product.capacity}/${index}`}>
+                        {product.model}
+                        <span className="task-cell-sub">
+                          {product.color} · {product.capacity}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <span className="text-gray-600">商品规格缺失</span>
+                  )}
+                </div>
+              </td>
+              <td className="task-cell-wrap">{row.cities.join('、')}</td>
+              <td className="task-cell-wrap text-gray-600">{row.storeCodes.join('、')}</td>
+            </tr>
+          );
+        })}
       </TaskConfigTable>
       {pageCount > 1 && (
         <div className="task-config-paging">
@@ -537,7 +552,7 @@ export default function ServerTaskConfigs({ initialInstanceId = null }) {
             </button>
           </div>
           <p className="task-config-note">
-            每行配置代表一个任务；同城多门店计一次，跨城市分别计数。实例实际配置变更后，请重新导入完整文件。
+            每行配置代表一个任务；同城多门店计一次，跨城市及多种商品规格分别计数，同一行重复规格只计一次。实例实际配置变更后，请重新导入完整文件。
           </p>
           {error && (
             <p role="alert" className="task-config-error">

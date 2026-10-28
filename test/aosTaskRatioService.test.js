@@ -36,6 +36,51 @@ test('同任务重复命中只计1，001和1保持不同，分母直接读上传
   });
 });
 
+test('一行五SKU解析后每个选中规格通知分母均1，未选规格局部省略比例', async () => {
+  const fields = Array(36).fill('');
+  [fields[0], fields[1], fields[2], fields[3], fields[4]] = [
+    'synthetic@example.invalid',
+    'SyntheticOnly',
+    '上海浦东|上海静安',
+    [
+      'iPhone Duo 星光白色 512G',
+      'iPhone Duo 星光白色 2T',
+      'iPhone Duo 夜空色 2T',
+      'iPhone Duo 星光白色 1T',
+      'iPhone Duo 夜空色 1T',
+    ].join('|'),
+    '2',
+  ];
+  const parsed = policy.parse(fields.join(','));
+  expect(parsed).toMatchObject({ valid: true, taskCount: 1, specCount: 5 });
+  const selected = parsed.rows[0].products.map(product => ({
+    ...item,
+    ...product,
+    city: '上海',
+  }));
+  const unselected = { ...item, city: '上海', color: '夜空色', capacity: '512G' };
+  const tracker = {
+    refs: [...selected, unselected].map(scope => ({ ...ref(), item: scope })),
+  };
+  const result = await service.evaluate(
+    tracker,
+    models([version({ aggregates: parsed.aggregates })])
+  );
+  for (const scope of selected) {
+    expect(result.scopes[policy.scopeKey(scope)].sources['dev:local']).toMatchObject({
+      numerator: 1,
+      denominator: 1,
+      reason: null,
+    });
+  }
+  expect(result.scopes[policy.scopeKey(unselected)].sources['dev:local']).toMatchObject({
+    numerator: null,
+    denominator: null,
+    reason: 'TASK_CONFIG_MISMATCH',
+  });
+  expect(tracker.refs).toHaveLength(6);
+});
+
 test.each([
   ['没有配置', [], [ref()], 'TASK_CONFIG_MISSING'],
   [

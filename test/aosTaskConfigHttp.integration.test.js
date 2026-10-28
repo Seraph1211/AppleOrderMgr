@@ -91,14 +91,14 @@ suite('任务配置真实用户INTEGER身份与HTTP鉴权链路', () => {
       throw new Error('TASK_HTTP_QA_FAILED', { cause: error });
     }
   }
-  test('真实整数用户从认证、预览、发布到历史查询均成功，正文伪造actor不起效', async () => {
+  test('真实整数用户从五SKU预览、生效到历史查询保留每行任务口径，正文伪造actor不起效', async () => {
     expect(Number.isInteger(users[0].id)).toBe(true);
     const fields = Array(36).fill('');
     [fields[0], fields[1], fields[2], fields[3], fields[4]] = [
       'http-task@example.invalid',
       'never-store-secret',
-      '广州天环广场',
-      'iPhone Duo 星光白色 512G',
+      '上海浦东|上海静安|上海环球港|上海五角场|上海七宝|上海环贸 iapm|上海香港广场|上海南京东路',
+      'iPhone Duo 星光白色 512G|iPhone Duo 星光白色 2T|iPhone Duo 夜空色 2T|iPhone Duo 星光白色 1T|iPhone Duo 夜空色 1T',
       '2',
     ];
     const preview = await call(`/${instance.id}/preview`, {
@@ -106,16 +106,31 @@ suite('任务配置真实用户INTEGER身份与HTTP鉴权链路', () => {
       actorId: users[1].id,
     });
     expect(preview.status).toBe(200);
-    expect(preview.json.data).toMatchObject({ valid: true, taskCount: 2 });
+    expect(preview.json.data).toMatchObject({
+      valid: true,
+      taskCount: 2,
+      cityCount: 1,
+      specCount: 5,
+    });
+    expect(preview.json.data.aggregates.map(row => row.taskCount)).toEqual([2, 2, 2, 2, 2]);
     const result = await call(`/${instance.id}/activate`, {
       previewId: preview.json.data.previewId,
       expectedRevision: preview.json.data.expectedRevision,
     });
     expect(result.status).toBe(200);
-    expect(result.json.data.currentVersion).toMatchObject({ taskCount: 2, actorId: users[0].id });
+    expect(result.json.data.currentVersion).toMatchObject({
+      taskCount: 2,
+      specCount: 5,
+      actorId: users[0].id,
+    });
+    expect(result.json.data.currentVersion.rows[0].products).toHaveLength(5);
+    expect(result.json.data.currentVersion.rows[0]).not.toHaveProperty('model');
     const history = await call(`/${instance.id}/versions`);
     expect(history.status).toBe(200);
     expect(history.json.data.items).toHaveLength(1);
+    const version = await call(`/${instance.id}/versions/${result.json.data.currentVersion.id}`);
+    expect(version.status).toBe(200);
+    expect(version.json.data.version.rows[0].products).toHaveLength(5);
     expect(JSON.stringify(history.json)).not.toMatch(/never-store-secret|http-task@example/);
   });
   test('无认证401、真实无权限用户403', async () => {

@@ -18,6 +18,16 @@ export function compareTaskConfigInstances(left, right) {
   );
 }
 
+/** 完整展示每行选中的规格；仅没有 products 字段的旧版本回退单规格字段。 */
+export function taskConfigRowProducts(row) {
+  if (!row || typeof row !== 'object') return [];
+  if (Object.prototype.hasOwnProperty.call(row, 'products'))
+    return Array.isArray(row.products) ? row.products : [];
+  if (![row.model, row.color, row.capacity].every(value => typeof value === 'string' && value))
+    return [];
+  return [{ model: row.model, color: row.color, capacity: row.capacity }];
+}
+
 /** 将配置时间显示为北京时间，未知时间保持缺失。 */
 export function taskConfigTime(value) {
   return value

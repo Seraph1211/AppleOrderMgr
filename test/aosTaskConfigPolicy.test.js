@@ -35,7 +35,10 @@ test.each([
   ['bad-secret-text', 'FIELD_COUNT'],
   [row('不存在的店'), 'STORE_UNKNOWN'],
   [row('北京三里屯|'), 'STORE_UNKNOWN'],
-  [row('北京三里屯', 'iPhone Duo 星光白色 512G|iPhone Duo 夜空色 1T'), 'PRODUCT_UNKNOWN'],
+  [row('北京三里屯', 'iPhone Duo 星光白色 512G|未知手机'), 'PRODUCT_UNKNOWN'],
+  [row('北京三里屯', '|iPhone Duo 星光白色 512G'), 'PRODUCT_UNKNOWN'],
+  [row('北京三里屯', 'iPhone Duo 星光白色 512G|'), 'PRODUCT_UNKNOWN'],
+  [row('北京三里屯', 'iPhone Duo 星光白色 512G||iPhone Duo 夜空色 1T'), 'PRODUCT_UNKNOWN'],
   [row('北京三里屯', '未知手机'), 'PRODUCT_UNKNOWN'],
   [row('北京三里屯', 'iPhone Duo 星光白色 512G', '0'), 'QUANTITY_INVALID'],
 ])('错误行不得静默通过且不回显秘密', (text, code) => {
@@ -44,6 +47,86 @@ test.each([
   expect(parsed.errors[0].code).toBe(code);
   expect(JSON.stringify(parsed.errors)).not.toMatch(
     /bad-secret-text|private-fixture|fixture@example/
+  );
+});
+
+test('上海8店同一行选择5规格，各规格分母1，任务总数仍为1且数量2不相乘', () => {
+  const parsed = policy.parse(
+    row(
+      '上海浦东|上海静安|上海环球港|上海五角场|上海七宝|上海环贸 iapm|上海香港广场|上海南京东路',
+      'iPhone Duo 星光白色 512G|iPhone Duo 星光白色 2T|iPhone Duo 夜空色 2T|iPhone Duo 星光白色 1T|iPhone Duo 夜空色 1T'
+    )
+  );
+  expect(parsed).toMatchObject({ valid: true, taskCount: 1, cityCount: 1, specCount: 5 });
+  expect(parsed.rows[0].storeCodes).toHaveLength(8);
+  expect(parsed.rows[0].products).toEqual([
+    { model: 'iPhone Duo', color: '星光白色', capacity: '512G' },
+    { model: 'iPhone Duo', color: '星光白色', capacity: '2T' },
+    { model: 'iPhone Duo', color: '夜空色', capacity: '2T' },
+    { model: 'iPhone Duo', color: '星光白色', capacity: '1T' },
+    { model: 'iPhone Duo', color: '夜空色', capacity: '1T' },
+  ]);
+  expect(parsed.rows[0]).not.toHaveProperty('model');
+  expect(parsed.rows[0]).not.toHaveProperty('color');
+  expect(parsed.rows[0]).not.toHaveProperty('capacity');
+  expect(parsed.aggregates).toHaveLength(5);
+  expect(parsed.aggregates.every(item => item.city === '上海' && item.taskCount === 1)).toBe(true);
+  expect(JSON.stringify(parsed)).not.toMatch(/private-fixture|fixture@example/);
+});
+
+test.each(['unknown-private-product', ''])('第二项未知或为空时只报告位置，不回显输入', value => {
+  const parsed = policy.parse(row('上海浦东', `iPhone Duo 星光白色 512G|${value}`));
+  expect(parsed.errors).toEqual([
+    {
+      rowNumber: 1,
+      field: 'product',
+      code: 'PRODUCT_UNKNOWN',
+      message: '第4字段第2项商品规格为空或无法唯一识别，请核对机型、颜色和容量',
+    },
+  ]);
+  expect(JSON.stringify(parsed.errors)).not.toMatch(
+    /unknown-private-product|private-fixture|fixture@example/
+  );
+});
+
+test('同行重复或容量别名SKU归一为一次，跨城分别计数，重复配置行仍各计一次', () => {
+  const text = row(
+    '北京三里屯|北京西单大悦城|广州天环广场',
+    'iPhone Duo 星光白色 1024GB|iPhone Duo 夜空色 2T|iPhone Duo 星光白色 1T|iPhone Duo 夜空色 2T'
+  );
+  const parsed = policy.parse(`${text}\n${text}`);
+  expect(parsed).toMatchObject({ valid: true, taskCount: 2, cityCount: 2, specCount: 2 });
+  expect(parsed.rows.every(item => item.products.length === 2)).toBe(true);
+  expect(parsed.rows[0].products[0]).toMatchObject({ capacity: '1T' });
+  expect(parsed.aggregates).toHaveLength(4);
+  expect(parsed.aggregates.every(item => item.taskCount === 2)).toBe(true);
+});
+
+test('聚合兼容旧单SKU快照，products为权威且空数组不能回退旧字段', () => {
+  const current = policy.parse(row()).rows[0];
+  const { products, ...legacy } = current;
+  expect(current).toMatchObject(products[0]);
+  expect(policy.aggregate([legacy])).toEqual(policy.aggregate([current]));
+  expect(policy.aggregate([{ ...legacy, products: [] }])).toEqual([]);
+  expect(
+    policy
+      .aggregate([
+        { ...legacy, products: [{ model: 'iPhone Duo', color: '夜空色', capacity: '2T' }] },
+      ])
+      .every(item => item.color === '夜空色' && item.capacity === '2T')
+  ).toBe(true);
+});
+
+test('多SKU移除一款只令该款归零，其余分母不变', () => {
+  const before = policy.parse(
+    row('北京三里屯', 'iPhone Duo 星光白色 512G|iPhone Duo 夜空色 1T')
+  ).aggregates;
+  const after = policy.parse(row('北京三里屯')).aggregates;
+  expect(policy.differences(before, after)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ color: '星光白色', capacity: '512G', delta: 0 }),
+      expect.objectContaining({ color: '夜空色', capacity: '1T', nextCount: 0, delta: -1 }),
+    ])
   );
 });
 

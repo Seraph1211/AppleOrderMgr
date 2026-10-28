@@ -153,6 +153,7 @@ function createService(models = defaultModels) {
     }
     if (state.version && !state.version.effectiveTo)
       await state.version.update({ effectiveTo: time }, { transaction });
+    const aggregates = policy.aggregate(payload.rows);
     const version = await Version.create(
       {
         id: randomUUID(),
@@ -164,10 +165,12 @@ function createService(models = defaultModels) {
         restoredFromId: restoredFromId || null,
         contentHash: payload.contentHash,
         rows: payload.rows,
-        aggregates: policy.aggregate(payload.rows),
+        aggregates,
         taskCount: payload.rows.length,
-        cityCount: payload.cityCount,
-        specCount: payload.specCount,
+        cityCount: new Set(aggregates.map(row => row.city)).size,
+        specCount: new Set(
+          aggregates.map(row => policy.digest([row.model, row.color, row.capacity]))
+        ).size,
         blankLineCount: payload.blankLineCount,
       },
       { transaction }

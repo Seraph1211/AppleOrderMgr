@@ -93,7 +93,7 @@ export function TaskConfigScopeTable({ rows = [], diff = false }) {
         )}
       </div>
       <p className="text-sm text-gray-600">
-        共 {filtered.length} 个城市与规格组合；各城市任务数不能相加作为实例任务总数。
+        共 {filtered.length} 个城市与规格组合；各城市与规格计数不能相加作为实例任务总数。
       </p>
       <TaskConfigTable
         headers={headers}

@@ -6,7 +6,11 @@ const ApiError = require('../utils/ApiError');
 const MAX_BYTES = 8 * 1024 * 1024;
 const MAX_ROWS = 10000;
 const digest = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const productKey = product => digest([product.model, product.color, product.capacity]);
 const scopeKey = row => digest([row.city, row.model, row.color, row.capacity]);
+const uniqueProducts = products => [
+  ...new Map(products.map(product => [productKey(product), product])).values(),
+];
 const normalizeStore = value =>
   value
     .normalize('NFKC')
@@ -55,12 +59,20 @@ function fieldsOf(line) {
 function aggregate(rows) {
   const values = new Map();
   for (const row of rows) {
+    // 已保存的旧单规格预览和版本没有 products，仍按原三字段读取。
+    const products = uniqueProducts(
+      row.products === undefined
+        ? [{ model: row.model, color: row.color, capacity: row.capacity }]
+        : row.products
+    );
     for (const city of new Set(row.cities)) {
-      const scope = { city, model: row.model, color: row.color, capacity: row.capacity };
-      const key = scopeKey(scope);
-      const entry = values.get(key) || { ...scope, taskCount: 0 };
-      entry.taskCount += 1;
-      values.set(key, entry);
+      for (const product of products) {
+        const scope = { city, ...product };
+        const key = scopeKey(scope);
+        const entry = values.get(key) || { ...scope, taskCount: 0 };
+        entry.taskCount += 1;
+        values.set(key, entry);
+      }
     }
   }
   return [...values.values()].sort((a, b) =>
@@ -111,23 +123,30 @@ function parse(text) {
       error(rowNumber, 'stores', 'STORE_UNKNOWN', '门店为空、无法识别或归属不唯一，请检查第3字段');
       continue;
     }
-    const product = resolveProductName(fields[3]);
-    if (!product.matched) {
+    const resolved = fields[3].split('|').map(value => resolveProductName(value.trim()));
+    const invalidProductIndex = resolved.findIndex(product => !product.matched);
+    if (invalidProductIndex !== -1) {
       error(
         rowNumber,
         'product',
         'PRODUCT_UNKNOWN',
-        '商品规格无法唯一识别，请检查第4字段的机型、颜色和容量'
+        `第4字段第${invalidProductIndex + 1}项商品规格为空或无法唯一识别，请核对机型、颜色和容量`
       );
       continue;
     }
+    const products = uniqueProducts(
+      resolved.map(product => ({
+        model: product.modelName,
+        color: product.color,
+        capacity: product.capacity,
+      }))
+    );
     rows.push({
       rowNumber,
       storeCodes: [...new Set(selected.map(value => value[0].code))].sort(),
       cities: [...new Set(selected.map(value => value[0].city))].sort(),
-      model: product.modelName,
-      color: product.color,
-      capacity: product.capacity,
+      products,
+      ...(products.length === 1 ? products[0] : {}),
     });
   }
   if (!taskLineCount) error(0, 'row', 'EMPTY_CONFIG', '配置没有任务，空文件不会清空现有配置');
@@ -139,7 +158,7 @@ function parse(text) {
     aggregates,
     taskCount: rows.length,
     cityCount: new Set(aggregates.map(row => row.city)).size,
-    specCount: new Set(rows.map(row => digest([row.model, row.color, row.capacity]))).size,
+    specCount: new Set(aggregates.map(productKey)).size,
     blankLineCount,
     contentHash: createHash('sha256').update(text, 'utf8').digest('hex'),
   };

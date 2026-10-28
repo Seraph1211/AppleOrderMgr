@@ -1285,6 +1285,8 @@ AOS 通知不受 config.enabled、config.notificationsEnabled、官网保护暂�
 | POST `/:instanceId/invalidate` | `{expectedRevision}` | 同上，关闭当前版本生效区间 |
 | POST `/:instanceId/restore` | `{versionId,expectedRevision,effectiveAt?}` | 同 activate，历史版本复制为新版本 |
 
+第4字段支持 `|` 分隔多个完整规格。每项均须能唯一识别，空项或未知项使整批不可激活，不跳过错误项；错误说明指出第几个商品选项，不回显选项内容。同一物理行总任务数仍为1，按城市×同行唯一规格分别贡献1，购买数量不乘。版本详情的 rows 新增 `products:[{model,color,capacity}]`；单规格行保留原单规格字段，旧历史快照无 products 时仍有效，多规格行不使用单规格根字段伪装第一款。aggregates 和 diff 仍为扁平城市×完整规格，实例任务总数不能用组合计数相加得到。
+
 status 为 missing/active/invalidated；errors 仅给行号、字段、错误码及固定说明，不回显输入。diff 每项含 city/model/color/capacity/previousCount/nextCount/delta。所有写操作校验 expectedRevision，冲突409；预览绑定用户且过期后不可激活。effectiveAt 使用含时区 ISO 时间，默认服务器当前时间，禁止未来时间及倒序/重叠版本。整批任一行无效即不可激活。相同有效配置重复提交返回 unchanged，不累加任务。
 
 任务配置概览首期最多支持1000个实例（含停用实例）。超过上限返回422／`TASK_INSTANCE_LIMIT`及固定说明，绝不静默截断或返回部分统计；设备及配置头仅按本次实例集合关联读取。

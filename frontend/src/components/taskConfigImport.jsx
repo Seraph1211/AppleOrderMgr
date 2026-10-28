@@ -116,6 +116,10 @@ export default function TaskConfigImport({ instance, onCancel, onSaved }) {
       <p className="task-config-note">
         每行代表一个任务，重复账号和重复行分别计数。一次导入完整替换本实例配置，不会追加任务，也不会修改采集器中的下单设置。
       </p>
+      <p className="text-sm text-gray-600">
+        商品字段支持用 | 分隔多个完整规格；同一行在每个城市 × 选中规格下分别计 1
+        个任务，重复规格只计一次，购买数量不影响任务数。
+      </p>
       {error && (
         <p role="alert" className="task-config-error">
           {error}
