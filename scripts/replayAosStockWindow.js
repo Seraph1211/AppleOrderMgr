@@ -8,6 +8,7 @@ const blocks = require('../src/services/monitorLogBlockStore');
 const logger = require('../src/utils/logger');
 
 const MAX_BLOCKS = 200;
+const MAX_RAW_BYTES = 32 * 1024 * 1024;
 
 /** 只读重放一个既有汇总窗口，原文补证与比例计算均不回写已发历史。 @param {string} id 汇总ID @returns {Promise<Object>} 脱敏结果 */
 async function replay(id) {
@@ -18,8 +19,13 @@ async function replay(id) {
     if (!body || body.kind !== 'aos_signal' || body.aosImmediate || !body.aosAccountTracker)
       throw new Error('SUMMARY_TRACKER_REQUIRED');
     const tracker = structuredClone(body.aosAccountTracker);
-    const anchors = tracker.refs.map(ref => ref.anchor);
-    const sources = new Map(tracker.refs.map(ref => [ref.item.source.key, ref.item.source]));
+    const participants = [...tracker.refs, ...(tracker.stock?.refs || [])];
+    const anchors = participants.map(ref => ref.anchor);
+    const sources = new Map(
+      participants
+        .filter(ref => ref.item?.source?.key)
+        .map(ref => [ref.item.source.key, ref.item.source])
+    );
     const floor = body.receivedWindowFrom - signals.WINDOW_MS;
     const rows = await models.sequelize.transaction(
       {
@@ -30,7 +36,7 @@ async function replay(id) {
         try {
           await models.sequelize.query("SET LOCAL statement_timeout='3000ms'", { transaction });
           const metadata = await models.sequelize.query(
-            `SELECT b.* FROM monitor_log_blocks b WHERE b.business_date BETWEEN :fromDate AND :toDate
+            `SELECT b.id,b.business_date,b.raw_bytes FROM monitor_log_blocks b WHERE b.business_date BETWEEN :fromDate AND :toDate
            AND b.device_id IN (:devices) AND b.local_id IN (:instances)
            AND b.min_sort_at <= :to AND b.max_sort_at >= :from ORDER BY b.id LIMIT :limit`,
             {
@@ -48,8 +54,22 @@ async function replay(id) {
             }
           );
           if (metadata.length > MAX_BLOCKS) throw new Error('REPLAY_BLOCK_LIMIT');
+          if (metadata.reduce((total, row) => total + row.raw_bytes, 0) > MAX_RAW_BYTES)
+            throw new Error('REPLAY_BYTE_LIMIT');
+          if (!metadata.length) throw new Error('REPLAY_LOGS_MISSING');
+          const payloads = await models.sequelize.query(
+            'SELECT b.* FROM monitor_log_blocks b WHERE business_date IN (:dates) AND id IN (:ids)',
+            {
+              replacements: {
+                dates: [...new Set(metadata.map(row => row.business_date))],
+                ids: metadata.map(row => row.id),
+              },
+              type: QueryTypes.SELECT,
+              transaction,
+            }
+          );
           const result = [];
-          for (const block of metadata) result.push(...(await blocks.readBlock(block)));
+          for (const block of payloads) result.push(...(await blocks.readBlock(block)));
           return result;
         } catch (error) {
           throw new Error('REPLAY_LOG_READ_FAILED', { cause: error });
