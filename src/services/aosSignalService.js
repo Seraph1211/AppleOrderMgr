@@ -6,11 +6,17 @@ const inventoryFailure = require('../utils/inventoryFailure');
 const accountConfigs = require('./aosAccountConfigService');
 const accountRatios = require('./aosAccountRatioService');
 const stockTasks = require('./aosStockTaskPolicy');
+const logger = require('../utils/logger');
+const stockConfigurations = require('./aosStockConfigurationService');
 
 /** 接收事务仅写脱敏队列，不获取库存全局锁。 @param {Object[]} rows 实际新增日志 @param {Object} transaction 日志事务 @returns {Promise<number>} 入队数 */
 async function enqueue(rows, transaction) {
   try {
-    const candidates = rows.filter(row => policy.parseEntries(row, Date.now()).length);
+    const parse = (row, at) => [
+      ...policy.parseEntries(row, at),
+      ...policy.parseEntries(row, at, { configurationOnly: true }),
+    ];
+    const candidates = rows.filter(row => parse(row, Date.now()).length);
     if (!candidates.length) return 0;
     const { sequelize, AosSignalInbox } = require('../models');
     const [{ now }] = await sequelize.query('SELECT clock_timestamp() AS now', {
@@ -18,7 +24,11 @@ async function enqueue(rows, transaction) {
       transaction,
     });
     const receivedAt = +new Date(now);
-    const entries = candidates.flatMap(row => policy.parseEntries(row, receivedAt));
+    const entries = [
+      ...new Map(
+        candidates.flatMap(row => parse(row, receivedAt)).map(row => [row.id, row])
+      ).values(),
+    ];
     await sequelize.query(
       `WITH expired AS (
         SELECT id FROM aos_signal_inbox WHERE created_at < :before
@@ -64,6 +74,18 @@ class AosSignalService {
         ratioEnabled && !immediate
           ? await accountRatios.evaluate(accountTracker, this.s.m, transaction)
           : null;
+      if (aosAccountRatio?.version === 3) {
+        const issues = Object.values(aosAccountRatio.scopes || {}).flatMap(scope =>
+          Object.entries(scope.sources)
+            .filter(([_key, value]) => value.stockReason)
+            .map(([key, value]) => ({
+              sourceKey: key,
+              reason: value.stockReason,
+              diagnostics: value.stockDiagnostics,
+            }))
+        );
+        if (issues.length) logger.warn('AOS有货任务统计待核验', { from, to, sources: issues });
+      }
       await this.s.put(
         'InventoryDelivery',
         [
@@ -235,6 +257,7 @@ class AosSignalService {
             ...previous,
             events: [...(previous.events || []), ...entries.filter(row => row.kind !== 'anchor')],
             configuration: stockTasks.configuration(previous, entries),
+            stockEvents: stockTasks.contextEvents(previous, entries),
           });
       }
       if (state.aosStockTasks) {
@@ -349,6 +372,7 @@ class AosSignalService {
   /** 每次最多1000个事件；删除、上下文、窗口和投递在同一事务提交。 */
   async tick() {
     try {
+      const warmed = await stockConfigurations.warm(this.s.m);
       return await this.s.locked(async context => {
         try {
           const { transaction, state, settings, now } = context;
@@ -374,24 +398,54 @@ class AosSignalService {
             transaction,
           });
           const entries = queue.map(row => ({ id: row.id, ...row.body }));
-          const keys = [...new Set(entries.map(row => row.taskKey))];
+          const changedConfigurations = new Set(
+            entries.filter(row => row.configurationBare).map(row => row.configurationKey)
+          );
+          const affected = new Map(
+            (state.aosStockTasks?.refs || [])
+              .filter(ref => changedConfigurations.has(ref.anchor.configurationKey))
+              .map(ref => [ref.anchor.taskKey, ref.anchor])
+          );
+          if (warmed) affected.set(warmed.taskKey, warmed);
+          const keys = [...new Set([...entries.map(row => row.taskKey), ...affected.keys()])];
+          const lookupKeys = [
+            ...new Set([
+              ...keys,
+              ...entries.map(row => row.configurationKey).filter(Boolean),
+              ...[...affected.values()].map(row => row.configurationKey),
+            ]),
+          ];
           let storedContexts = [];
           if (keys.length)
             storedContexts = await this.s.m.AosSignalContext.findAll({
-              where: { id: { [Op.in]: keys } },
+              where: { id: { [Op.in]: lookupKeys } },
               transaction,
             });
           const contexts = new Map(storedContexts.map(row => [row.id, row.body]));
           const sources = await this.sources(entries, transaction);
           for (const key of keys) {
             const taskEntries = entries.filter(row => row.taskKey === key);
-            const first = taskEntries[0];
+            const first = taskEntries[0] || affected.get(key);
+            const base = contexts.get(first.configurationKey);
+            const settings = [
+              ...(base?.configuration || []),
+              ...entries.filter(
+                row => row.configurationBare && row.configurationKey === first.configurationKey
+              ),
+            ]
+              .filter(row => row.configurationBare)
+              .map(row => ({ ...row, taskKey: key }));
+            const previous = contexts.get(key);
+            const configured = {
+              ...previous,
+              configuration: stockTasks.configuration(previous, settings),
+            };
             contexts.set(
               key,
               policy.mergeContext(
-                contexts.get(key),
+                configured,
                 taskEntries,
-                sources.get(`${first.deviceId}:${first.localId}`),
+                sources.get(`${first.deviceId}:${first.localId}`) || previous?.source,
                 now
               )
             );

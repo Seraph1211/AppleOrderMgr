@@ -49,7 +49,9 @@ suite('有货任务统计隔离PostgreSQL验收', () => {
               loggedAt: new Date(now).toISOString(),
               parseState: 'parsed',
               partIndex: 0,
-              message: `2026-10-29 17:41:00.000 [2][${account}]A-${text}`,
+              message: text.startsWith('开始下单')
+                ? `2026-10-29 17:41:00.000 [2][${account}]${text}`
+                : `2026-10-29 17:41:00.000 [2][${account}]A-${text}`,
             },
             now
           );
@@ -190,6 +192,56 @@ suite('有货任务统计隔离PostgreSQL验收', () => {
     // 首次提交之前已经检测、随后失败的任务也属于本轮，不能被提交时间截掉。
     expect(summary.content).toContain('1/2/45');
     expect(summary.content).toContain('1次命中');
+  });
+
+  test('真实省略号标记、重复预约超过100条仍保留商品，跨批次配置按历史时点归属', async () => {
+    await feed('002', ['开始下单 iPhone Duo 星光白色 512G (x1)']);
+    await service.tick();
+    now += 1000;
+    await feed('002', ['消息20110501...', '消息24093001: R401, 2, , 0']);
+    await attempt('001', true);
+    await feed('001', Array(130).fill('尝试预约: Apple 南京东路'));
+    await service.tick();
+    now += 180000;
+    await service.tick();
+    const summary = (await rows()).find(row => !row.aosImmediate);
+    expect(summary.content).toContain('1/2/45');
+    const value =
+      summary.aosAccountRatio.scopes[config.scopeKey(scope)].sources[`${deviceId}:${localId}`];
+    expect(value.stockDiagnostics).toMatchObject({ observed: 2, attributed: 2, reasons: {} });
+  });
+
+  test('补证成功的任务在无新日志的tick中立即重算', async () => {
+    await feed('002', ['消息20110501...', '消息24093001: R401, 2, , 0']);
+    await attempt('001', true);
+    await service.tick();
+    const ref = (await runtime()).aosStockTasks.refs.find(
+      row => row.anchor.accountNumber === '002'
+    );
+    expect(ref.reason).toBe('STOCK_SCOPE_UNKNOWN');
+    const helper = require('../src/services/aosStockConfigurationService');
+    const warm = jest.spyOn(helper, 'warm').mockImplementationOnce(async () => {
+      const row = await models.AosSignalContext.findByPk(ref.anchor.taskKey);
+      const setup = {
+        ...ref.anchor,
+        id: 'synthetic-verified-start',
+        kind: 'configStart',
+        byteOffset: 0,
+        loggedAt: ref.anchor.loggedAt - 1000,
+        ...scope,
+      };
+      await row.update({ body: { ...row.body, configuration: [setup] } });
+      return ref.anchor;
+    });
+    try {
+      now += 1000;
+      await service.tick();
+      expect(
+        (await runtime()).aosStockTasks.refs.find(row => row.anchor.accountNumber === '002').reason
+      ).toBeNull();
+    } finally {
+      warm.mockRestore();
+    }
   });
 
   test('真实数据库异常回滚有货状态、上下文和队列删除，恢复重试只计一次', async () => {

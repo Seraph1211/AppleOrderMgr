@@ -5,6 +5,8 @@ const WINDOW_MS = 180000;
 const RETENTION_MS = WINDOW_MS * 2;
 const MAX_REFS = 10000;
 const MAX_EVIDENCE = 12;
+const MAX_CONFIGURATION = 128;
+const MAX_CONTEXT_EVENTS = 100;
 const DIMENSIONS = ['city', 'model', 'color', 'capacity'];
 const BOUNDARIES = ['stock', 'reset', 'configStart'];
 const known = value => typeof value === 'string' && value && value !== '未知';
@@ -18,6 +20,8 @@ const EVIDENCE_FIELDS = [
   'fileId',
   'taskKey',
   'accountNumber',
+  'configurationKey',
+  'configurationBare',
   'byteOffset',
   'lineIndex',
   'loggedAt',
@@ -31,39 +35,75 @@ const EVIDENCE_FIELDS = [
   'capacity',
   'cities',
   'unknown',
+  'response',
 ];
 const clean = row =>
   Object.fromEntries(
     EVIDENCE_FIELDS.filter(key => row[key] !== undefined).map(key => [key, row[key]])
   );
 
-/** 保留最近启动的明确设置，避免普通上下文截尾丢失长时间运行的设置。 @param {Object} previous 旧上下文 @param {Object[]} entries 同任务结构事件 @returns {Object[]} 设置证据 */
+function semanticKey(row) {
+  if (row.kind === 'booking') return JSON.stringify([row.kind, row.city || '未知']);
+  if (row.kind === 'product')
+    return JSON.stringify([row.kind, ...DIMENSIONS.slice(1).map(key => row[key])]);
+  if (row.kind === 'configCity')
+    return JSON.stringify([
+      row.kind,
+      [...new Set(row.cities || [])].sort(),
+      Boolean(row.unknown),
+      Boolean(row.response),
+    ]);
+  return null;
+}
+
+function uniqueEvents(input) {
+  return [...new Map(input.map(row => [row.id, row])).values()].sort(order);
+}
+
+// 保留首次语义证据的位置，晚到边界仍可将后轮证据排除；真实差异保留。
+function compact(input) {
+  const seen = new Set();
+  return uniqueEvents(input).filter(row => {
+    if (BOUNDARIES.includes(row.kind)) seen.clear();
+    const key = semanticKey(row);
+    if (!key) return true;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** 保留有界启动历史及每轮城市证据，按事件时点选配置而非仅保留最新设置。 @param {Object} previous 旧上下文 @param {Object[]} entries 同任务结构事件 @returns {Object[]} 设置证据 */
 function configuration(previous, entries) {
-  const events = [...(previous?.configuration || []), ...entries]
-    .filter(row => ['configStart', 'configCity'].includes(row.kind))
-    .sort(order);
-  const start = events.findLast(row => row.kind === 'configStart');
-  if (!start) return [];
-  const cities = events.filter(
-    row => row.kind === 'configCity' && sameTask(row, start) && order(row, start) > 0
+  const events = compact(
+    [...(previous?.configuration || []), ...entries].filter(row =>
+      ['configStart', 'configCity'].includes(row.kind)
+    )
   );
-  const names = [...new Set(cities.flatMap(row => row.cities || []))];
-  return [
-    clean(start),
-    {
-      ...clean(cities.at(-1) || start),
-      kind: 'configCity',
-      id: `${start.id}:cities`,
-      cities: names,
-      unknown: cities.some(row => row.unknown),
-    },
-  ];
+  const bounded = events.slice(-MAX_CONFIGURATION);
+  const firstStart = bounded.findIndex(row => row.kind === 'configStart');
+  return firstStart < 0 ? [] : bounded.slice(firstStart).map(clean);
+}
+
+/** 为检测独立压缩尝试上下文，避免重复预约挤出商品，提交上下文保持原行为。 @param {Object} previous 旧上下文 @param {Object[]} entries 新事件 @returns {Object[]} 语义事件 */
+function contextEvents(previous, entries) {
+  return compact(
+    [...(previous?.stockEvents || previous?.events || []), ...entries].filter(
+      row => row.kind !== 'anchor'
+    )
+  )
+    .slice(-MAX_CONTEXT_EVENTS)
+    .map(clean);
 }
 
 function observe(ref, context) {
   const stock = ref.anchor;
   const unique = new Map(
-    [...(ref.evidence || []), ...(context?.configuration || []), ...(context?.events || [])]
+    [
+      ...(ref.evidence || []),
+      ...(context?.configuration || []),
+      ...(context?.stockEvents || context?.events || []),
+    ]
       .filter(row => sameTask(row, stock))
       .map(row => [row.id, row])
   );
@@ -73,7 +113,8 @@ function observe(ref, context) {
     row =>
       order(row, stock) > 0 &&
       (!end || order(row, end) < 0) &&
-      row.loggedAt <= stock.loggedAt + WINDOW_MS
+      row.loggedAt <= stock.loggedAt + WINDOW_MS &&
+      (['booking', 'product'].includes(row.kind) || (row.kind === 'configCity' && row.response))
   );
   const start = events.findLast(row => row.kind === 'configStart' && order(row, stock) < 0);
   let cityConfig = [];
@@ -83,16 +124,20 @@ function observe(ref, context) {
     );
   const bookings = attempt.filter(row => row.kind === 'booking');
   const products = attempt.filter(row => row.kind === 'product');
-  const cities = [...new Set(bookings.map(row => row.city))];
+  const responses = attempt.filter(row => row.kind === 'configCity' && row.response);
+  const cities = [
+    ...new Set([...bookings.map(row => row.city), ...responses.flatMap(row => row.cities || [])]),
+  ];
   const configuredCities = [...new Set(cityConfig.flatMap(row => row.cities || []))];
   const specs = new Map(products.map(row => [taskPolicy.scopeKey({ ...row, city: '' }), row]));
-  const city = bookings.length
-    ? cities.length === 1
-      ? cities[0]
-      : null
-    : configuredCities.length === 1 && !cityConfig.some(row => row.unknown)
-      ? configuredCities[0]
-      : null;
+  const city =
+    bookings.length || responses.length
+      ? cities.length === 1 && !responses.some(row => row.unknown)
+        ? cities[0]
+        : null
+      : configuredCities.length === 1 && !cityConfig.some(row => row.unknown)
+        ? configuredCities[0]
+        : null;
   const product = products.length ? (specs.size === 1 ? products[0] : null) : start;
   const item = {
     city: city || '未知',
@@ -102,13 +147,13 @@ function observe(ref, context) {
     source: context?.source || ref.item?.source,
   };
   // 只保存启动、城市及本尝试内证据；包含下个边界以防晚到内容跨尝试补齐。
-  const evidence = [
+  const evidence = compact([
     ...(start ? [start] : []),
-    ...cityConfig,
+    ...(!bookings.length && !responses.length ? cityConfig : []),
     stock,
     ...attempt,
     ...(end ? [end] : []),
-  ];
+  ]);
   const overflow = ref.evidenceOverflow || evidence.length > MAX_EVIDENCE;
   return {
     anchor: stock,
@@ -249,9 +294,13 @@ function range(stock, group) {
 function count(stock, group, submitted, denominator, version) {
   let reason = stock?.reason || (!stock ? 'STOCK_TRACKER_MISSING' : null);
   const accounts = new Set();
+  const diagnostics = { observed: 0, attributed: 0, reasons: {} };
   const files = new Set(group.refs.map(ref => ref.anchor.fileId));
   for (const ref of candidates(stock, group)) {
     reason ||= ref.reason;
+    diagnostics.observed += 1;
+    if (ref.reason) diagnostics.reasons[ref.reason] = (diagnostics.reasons[ref.reason] || 0) + 1;
+    else diagnostics.attributed += 1;
     if (
       version &&
       (ref.anchor.loggedAt < +new Date(version.effectiveAt) ||
@@ -268,6 +317,7 @@ function count(stock, group, submitted, denominator, version) {
   if (Number.isSafeInteger(denominator) && accounts.size > denominator)
     reason ||= 'STOCK_CONFIG_MISMATCH';
   return {
+    stockDiagnostics: diagnostics,
     stockCount: reason ? null : accounts.size,
     stockReason: reason,
     stockAccounts: [...accounts].filter(Boolean).sort(),
@@ -276,4 +326,13 @@ function count(stock, group, submitted, denominator, version) {
   };
 }
 
-module.exports = { configuration, collect, snapshot, refreshSnapshot, count, range, MAX_REFS };
+module.exports = {
+  configuration,
+  contextEvents,
+  collect,
+  snapshot,
+  refreshSnapshot,
+  count,
+  range,
+  MAX_REFS,
+};

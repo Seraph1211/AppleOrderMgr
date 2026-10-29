@@ -47,6 +47,7 @@ test('精确锚点和常见商品预约语法，持久化结果不包含账号�
     'loggedAt',
     'receivedAt',
     'taskKey',
+    'configurationKey',
     'accountNumber',
     'kind',
     'city',

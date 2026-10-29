@@ -17,36 +17,49 @@ const shorten = (value, size) => {
 };
 
 /** 仅提取通知需要的结构化字段，不持久化日志正文或账号。 */
-function parseEntry(row, receivedAt) {
+function parseEntry(row, receivedAt, options = {}) {
   const loggedAt = Date.parse(row.loggedAt);
   if (
     row.parseState !== 'parsed' ||
     row.partIndex !== 0 ||
     !Number.isFinite(loggedAt) ||
     loggedAt > receivedAt ||
-    receivedAt - loggedAt > WINDOW_MS
+    receivedAt - loggedAt > (options.configurationOnly ? CONTEXT_MS * 3 : WINDOW_MS)
   )
     return null;
-  const match = row.message
+  let match = row.message
     .replace(/^\uFEFF/, '')
     .match(
       /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+(\[[^\]\r\n]+\]\[[^\]\r\n]+\][^\s\r\n]+?)-([^\r\n]*)/
     );
+  let configurationBare = false;
+  if (!match) {
+    match = row.message
+      .replace(/^\uFEFF/, '')
+      .match(
+        /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+(\[[^\]\r\n]+\]\[[^\]\r\n]+\])((?:开始下单|开始监控库存状态|消息(?:24093001|21101002))[^\r\n]*)/
+      );
+    configurationBare = Boolean(match);
+  }
   if (!match) return null;
   const text = match[2];
   let kind;
   let details = {};
   if (/取货信息\s*[:：]\s*取货日期待付款完成后确定/.test(text)) kind = 'anchor';
-  else if (/^消息20110501(?:\s|[:：]|$)/.test(text)) kind = 'stock';
+  else if (/^消息20110501(?=\s|[:：.]|$)/.test(text)) kind = 'stock';
   else if (/^(?:开始下单|开始监控库存状态|消息(?:24093001|21101002))/.test(text)) {
     const parsed = require('./aosAccountConfigPolicy').parse([{ ...row, message: row.message }]);
     const event = parsed.events[0];
     if (!event || !['start', 'city'].includes(event.kind)) return null;
     kind = event.kind === 'start' ? 'configStart' : 'configCity';
-    details =
-      event.kind === 'start'
-        ? { ...(!event.body.invalid ? event.body.product || {} : {}) }
-        : { cities: event.body.cities, unknown: Boolean(event.body.unknown || event.body.invalid) };
+    if (event.kind === 'start')
+      details = { ...(!event.body.invalid ? event.body.product || {} : {}) };
+    else
+      details = {
+        cities: event.body.cities,
+        unknown: Boolean(event.body.unknown || event.body.invalid),
+        response: /^消息24093001\s*[:：]/.test(text),
+      };
   } else if (/^(?:开始登录|加入购物车成功)/.test(text)) kind = 'reset';
   else if (/尝试预约\s*[:：]/.test(text)) {
     kind = 'booking';
@@ -60,6 +73,11 @@ function parseEntry(row, receivedAt) {
     if (product.matched)
       details = { model: product.modelName, color: product.color, capacity: product.capacity };
   } else return null;
+  if (
+    (options.configurationOnly || configurationBare) &&
+    !['configStart', 'configCity'].includes(kind)
+  )
+    return null;
   const { id, deviceId, localId, fileId, byteOffset } = row;
   const taskKey = digest(`${deviceId}:${localId}:${fileId}:${match[1]}`);
   return {
@@ -71,6 +89,10 @@ function parseEntry(row, receivedAt) {
     loggedAt,
     receivedAt,
     taskKey,
+    configurationKey: digest(
+      `${deviceId}:${localId}:${fileId}:${match[1].match(/^\[[^\]]+\]\[[^\]]+\]/)?.[0]}`
+    ),
+    ...(configurationBare ? { configurationBare: true } : {}),
     accountNumber: match[1].match(/^\[[^\]]*\]\[(\d{1,64})\]/)?.[1] || null,
     kind,
     ...details,
@@ -78,15 +100,17 @@ function parseEntry(row, receivedAt) {
 }
 
 /** 同一片段存在多个标准记录时逐行提取；无时间续行不猜任务和时间。 */
-function parseEntries(row, receivedAt) {
+function parseEntries(row, receivedAt, options = {}) {
   const lines = row.message.replace(/^\uFEFF/, '').split(/\r?\n/);
-  if (lines.filter(Boolean).length <= 1) return [parseEntry(row, receivedAt)].filter(Boolean);
+  if (lines.filter(Boolean).length <= 1)
+    return [parseEntry(row, receivedAt, options)].filter(Boolean);
   return lines.flatMap((message, lineIndex) => {
     const match = message.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}\.\d{3})/);
     if (!match) return [];
     const item = parseEntry(
       { ...row, message, loggedAt: `${match[1]}T${match[2]}+08:00` },
-      receivedAt
+      receivedAt,
+      options
     );
     return item ? [{ ...item, id: `${row.id}:${lineIndex}`, lineIndex }] : [];
   });
@@ -96,9 +120,21 @@ function parseEntries(row, receivedAt) {
 function mergeContext(previous, entries, source, now) {
   const events = [...(previous?.events || []), ...entries.filter(row => row.kind !== 'anchor')];
   const unique = new Map(events.map(row => [row.id, row]));
+  const ordered = [...unique.values()].sort(order);
+  // 本批提交前的边界/商品/门店不能被提交后的重复预约挤出。
+  const protectedEvents = new Map(
+    entries
+      .filter(row => row.kind === 'anchor')
+      .flatMap(anchor => associationEvents({ events: ordered }, anchor))
+      .map(row => [row.id, row])
+  );
+  const protectedRows = [...protectedEvents.values()].sort(order).slice(-MAX_CONTEXT_EVENTS);
+  const recent = ordered.filter(row => !protectedEvents.has(row.id));
+  const remaining = MAX_CONTEXT_EVENTS - protectedRows.length;
   return {
-    events: [...unique.values()].sort(order).slice(-MAX_CONTEXT_EVENTS),
+    events: [...protectedRows, ...(remaining ? recent.slice(-remaining) : [])].sort(order),
     configuration: stockTasks.configuration(previous, entries),
+    stockEvents: stockTasks.contextEvents(previous, entries),
     source,
     updatedAt: now,
   };

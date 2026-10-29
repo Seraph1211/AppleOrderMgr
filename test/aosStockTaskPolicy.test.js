@@ -278,8 +278,14 @@ test('设置证据长期保存且最新启动清空旧城市，JSON不含日志�
   );
   expect(truncated.configuration[0].model).toBe('iPhone Duo');
   expect(JSON.stringify(truncated.configuration)).not.toContain('must-not-store');
-  expect(stock.configuration(truncated, [event('configStart', 500)])).toHaveLength(2);
-  expect(stock.configuration(truncated, [event('configStart', 500)])[1].cities).toEqual([]);
+  expect(stock.configuration(truncated, [event('configStart', 500)]).at(-1).kind).toBe(
+    'configStart'
+  );
+  const b = buffer([
+    ...stock.configuration(truncated, [event('configStart', 500)]),
+    event('stock', 501),
+  ]);
+  expect(b.refs[0].reason).toBe('STOCK_SCOPE_UNKNOWN');
 });
 
 test('现有真实脱敏样本的独立20110501日志可解析，位置在同任务预约/商品之前', () => {
@@ -314,14 +320,14 @@ test('首窗不越过已结算窗口，独立未提交的前置检测也计入�
   expect(count(closed).stockCount).toBe(1);
 });
 
-test('有货证据超限不会在下一次复核因截尾变成完整', () => {
+test('重复预约压缩为城市语义证据，不因原始条数超限丢失商品', () => {
   const entries = [
     event('stock', 1),
     ...Array.from({ length: 20 }, (_, i) => event('booking', i + 2, '001', { city: '上海' })),
     event('product', 30, '001', scope),
   ];
   let b = buffer(entries);
-  expect(b.refs[0].reason).toBe('STOCK_EVIDENCE_LIMIT');
+  expect(b.refs[0].reason).toBeNull();
   b = stock.collect(
     b,
     [],
@@ -329,7 +335,7 @@ test('有货证据超限不会在下一次复核因截尾变成完整', () => {
     at + 50,
     at - 1000
   );
-  expect(b.refs[0].reason).toBe('STOCK_EVIDENCE_LIMIT');
+  expect(b.refs[0].reason).toBeNull();
 });
 
 test('超限丢弃前后两段不能只保留最后时刻，影响旧窗口时依然未知', () => {
@@ -377,4 +383,53 @@ test('冻结有货尝试仍按晚到重启边界复核，不能因保留快照�
     new Map([[late.taskKey, { source, events: [late] }]])
   );
   expect(count(refreshed)).toMatchObject({ stockCount: null, stockReason: 'STOCK_SCOPE_UNKNOWN' });
+});
+
+test('同次有货后的24093001单城市响应可证明失败任务，跨城冲突与下轮响应仍未知', () => {
+  const setup = event('configStart', 1, '001', scope);
+  const hit = event('stock', 10);
+  const response = event('configCity', 11, '001', { response: true, cities: ['上海'] });
+  expect(buffer([setup, hit, response]).refs[0]).toMatchObject({
+    reason: null,
+    item: { city: '上海' },
+  });
+  const conflict = event('configCity', 12, '001', { response: true, cities: ['天津'] });
+  expect(buffer([setup, hit, response, conflict]).refs[0].reason).toBe('STOCK_SCOPE_UNKNOWN');
+  expect(
+    buffer([setup, hit, event('reset', 11), { ...response, id: 'late-response', byteOffset: '12' }])
+      .refs[0].reason
+  ).toBe('STOCK_SCOPE_UNKNOWN');
+});
+
+test('大量相同预约不挤出语义商品，跨批次晚到边界仍撤销后轮归属', () => {
+  const all = [
+    event('stock', 10),
+    ...Array.from({ length: 150 }, (_, i) => event('booking', i + 20, '001', { city: '上海' })),
+    event('product', 200, '001', scope),
+  ];
+  const context = signals.mergeContext(null, all, source, at);
+  let b = stock.collect(null, all, new Map([[all[0].taskKey, context]]), at, at - 1000);
+  expect(b.refs[0].reason).toBeNull();
+  const boundary = event('reset', 15);
+  const refreshed = signals.mergeContext(context, [boundary], source, at);
+  b = stock.collect(b, [], new Map([[all[0].taskKey, refreshed]]), at, at - 1000);
+  expect(b.refs[0].reason).toBe('STOCK_SCOPE_UNKNOWN');
+});
+
+test('真正不同语义超限的缺口在JSON恢复及后续截尾仍保留', () => {
+  const all = [
+    event('stock', 1),
+    ...Array.from({ length: 20 }, (_, i) => event('booking', i + 2, '001', { city: `城市${i}` })),
+    event('product', 30, '001', scope),
+  ];
+  let b = buffer(all);
+  expect(b.refs[0].reason).toBe('STOCK_EVIDENCE_LIMIT');
+  b = stock.collect(
+    JSON.parse(JSON.stringify(b)),
+    [],
+    new Map([[all[0].taskKey, { source, events: [] }]]),
+    at,
+    at - 1000
+  );
+  expect(b.refs[0].reason).toBe('STOCK_EVIDENCE_LIMIT');
 });
