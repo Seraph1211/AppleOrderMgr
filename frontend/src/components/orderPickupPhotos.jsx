@@ -1,3 +1,4 @@
+import { useOrdersUiScope } from './ordersUiScope';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { ExternalLink, Image, X } from 'lucide-react';
@@ -6,6 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 
 function PhotoPreview({ orderId, photo, onClose }) {
+  const ordersUi = useOrdersUiScope();
   const dialogRef = useRef(null);
   const closeRef = useRef(null);
   const [attempt, setAttempt] = useState(0);
@@ -43,7 +45,10 @@ function PhotoPreview({ orderId, photo, onClose }) {
         const controls = [...dialogRef.current.querySelectorAll('button, a[href]')];
         const first = controls[0];
         const last = controls.at(-1);
-        if (event.shiftKey && (document.activeElement === first || document.activeElement === dialogRef.current)) {
+        if (
+          event.shiftKey &&
+          (document.activeElement === first || document.activeElement === dialogRef.current)
+        ) {
           event.preventDefault();
           last?.focus();
         } else if (!event.shiftKey && document.activeElement === last) {
@@ -61,7 +66,10 @@ function PhotoPreview({ orderId, photo, onClose }) {
   }, []);
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 p-0 sm:p-4">
+    <div
+      data-orders-ui={ordersUi || undefined}
+      className={`${ordersUi ? 'order-photo-overlay z-[120]' : 'z-[60]'} fixed inset-0 flex items-center justify-center bg-black/50 p-0 sm:p-4`}
+    >
       <div
         ref={dialogRef}
         tabIndex={-1}

@@ -1,6 +1,7 @@
 /* eslint-env node, browser */
 /* eslint-disable camelcase -- 合成响应遵循订单 API 契约 */
 const assert = require('node:assert/strict');
+const BASE_URL = process.env.ORDERS_UI_BASE_URL || 'http://127.0.0.1:5173';
 const { chromium } = require('playwright-core');
 
 /** 用合成订单和联系人验证手机订单列表与邮件选择，不访问业务 API。 */
@@ -21,7 +22,7 @@ async function main() {
     await context.route('**/*', async route => {
       const url = new URL(route.request().url());
       if (!url.pathname.startsWith('/api/')) {
-        if (url.origin === 'http://127.0.0.1:5173') await route.continue();
+        if (url.origin === BASE_URL) await route.continue();
         else await route.abort();
         return;
       }
@@ -85,6 +86,8 @@ async function main() {
           sync: { status: 'ready' },
         };
       else if (url.pathname === '/api/orders/101') data = { apple_password: null };
+      else if (url.pathname === '/api/orders/101/devices')
+        data = { items: [{ id: 1, serialNumber: 'F12345678901234567890' }] };
       else if (url.pathname === '/api/orders/101/link') data = { orderUrl: null };
       else if (url.pathname === '/api/orders/101/emails/synthetic-mail')
         data = {
@@ -130,7 +133,7 @@ async function main() {
 
     for (const width of [320, 390, 768, 1440]) {
       await page.setViewportSize({ width, height: 720 });
-      await page.goto('http://127.0.0.1:5173/orders');
+      await page.goto(`${BASE_URL}/orders`);
       await page.getByRole('button', { name: '订单邮件 W1234567890' }).waitFor();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
       assert(overflow <= 1, `${width}px 下页面横向溢出 ${overflow}px`);
@@ -176,14 +179,14 @@ async function main() {
       displayedStatus = status;
       for (const width of [390, 1440]) {
         await page.setViewportSize({ width, height: 720 });
-        await page.goto('http://127.0.0.1:5173/orders');
+        await page.goto(`${BASE_URL}/orders`);
         const list = page.locator(width < 768 ? '.orders-mobile-list' : 'table tbody').first();
         await list.getByText(label, { exact: true }).waitFor();
         await list.getByRole('button', { name: '查看', exact: true }).click();
         await page.locator('.order-detail-modal').getByText(label, { exact: true }).waitFor();
         await page.getByRole('button', { name: '关闭订单详情' }).click();
         if (width < 768) await page.getByRole('button', { name: /筛选条件.*展开/ }).click();
-        await page.getByRole('button', { name: '订单状态筛选', exact: true }).click();
+        await page.getByRole('button', { name: '邮件订单状态筛选', exact: true }).click();
         await Promise.all([
           page.getByRole('option', { name: label, exact: true }).click(),
           page.waitForResponse(response => {
@@ -219,6 +222,7 @@ async function main() {
     await page.getByRole('button', { name: '纯文本' }).click();
     await page.getByText('合成纯文本正文', { exact: true }).waitFor();
     await page.getByRole('button', { name: '原始排版' }).click();
+    await page.getByRole('button', { name: '转发与记录', exact: true }).click();
     const search = page.getByRole('textbox', { name: '搜索转发联系人' });
     await search.click();
     const choices = page.getByRole('group', { name: '可选联系人' });
@@ -237,6 +241,7 @@ async function main() {
     assert.equal(await choices.isVisible(), false, 'Escape 应收起联系人列表');
     assert.equal(await page.getByRole('button', { name: '转发邮件' }).isEnabled(), true);
     await page.getByRole('button', { name: '转发邮件' }).click();
+    await page.getByRole('button', { name: '确认并转发', exact: true }).click();
     await page.getByText('已提交 1 个转发任务').waitFor();
     assert.equal(writes.length, 1);
     assert.equal(writes[0].path, '/api/orders/101/emails/synthetic-mail/forward-batch');

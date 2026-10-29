@@ -5,12 +5,13 @@ import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 
 /** 订单来源追溯，仅在具备来源读取权限时请求。 */
-export default function OrderSources({ orderId }) {
+export default function OrderSources({ orderId, ordersUi = false }) {
   const { can } = useAuth();
   const allowed = can(PERMISSIONS.INGESTION_READ);
   const [data, setData] = useState(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState('');
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
     let active = true;
     if (!allowed) return undefined;
@@ -25,14 +26,23 @@ export default function OrderSources({ orderId }) {
     return () => {
       active = false;
     };
-  }, [allowed, orderId, page]);
+  }, [allowed, orderId, page, attempt]);
   if (!allowed) return null;
   return (
-    <section className="rounded-lg border border-gray-200 bg-white p-4">
+    <section className="order-sources rounded-lg border border-gray-200 bg-white p-4">
       <h3 className="mb-3 font-semibold text-gray-900">来源记录</h3>
       {error && (
         <p role="alert" className="text-sm text-red-600">
           {error}
+          {ordersUi && (
+            <button
+              type="button"
+              className="btn btn-secondary ml-2"
+              onClick={() => setAttempt(value => value + 1)}
+            >
+              重新读取来源
+            </button>
+          )}
         </p>
       )}
       {!data && !error && <p className="text-sm text-gray-500">正在读取来源…</p>}

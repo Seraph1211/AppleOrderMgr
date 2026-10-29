@@ -1,3 +1,4 @@
+import OrderOverlay from './orderOverlay';
 import { useEffect, useId, useRef, useState } from 'react';
 import { CheckSquare, ChevronDown, Loader2, Search, Send, Square, X } from 'lucide-react';
 import { listMailContacts } from '../api/mailContactsApi';
@@ -18,6 +19,7 @@ export default function MailForwardForm({ orderId, messageId, onQueued, onSendin
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
   const [pending, setPending] = useState(null);
+  const [confirmation, setConfirmation] = useState(null);
   const busyRef = useRef(false);
   const selectorRef = useRef(null);
   const searchRef = useRef(null);
@@ -60,8 +62,8 @@ export default function MailForwardForm({ orderId, messageId, onQueued, onSendin
         : [...previous, item]
     );
   }
-  async function send(event) {
-    event.preventDefault();
+  async function send(event, approvedRequest = null) {
+    event?.preventDefault();
     if (busyRef.current) return;
     const recipients = [
       ...new Set(
@@ -74,17 +76,12 @@ export default function MailForwardForm({ orderId, messageId, onQueued, onSendin
       setError('请选择1至50个不同的收件邮箱');
       return;
     }
-    if (
-      !pending &&
-      !window.confirm(
-        '确认将这封邮件及附件分别转发至以下 ' +
-          recipients.length +
-          ' 个邮箱？\n' +
-          recipients.join('\n')
-      )
-    )
+    if (!pending && !approvedRequest) {
+      setOpen(false);
+      setConfirmation({ kind: 'send', recipients, note, idempotencyKey: crypto.randomUUID() });
       return;
-    const request = pending || { recipients, note, idempotencyKey: crypto.randomUUID() };
+    }
+    const request = pending || approvedRequest;
     setOpen(false);
     setPending(request);
     setSending(true);
@@ -107,216 +104,277 @@ export default function MailForwardForm({ orderId, messageId, onQueued, onSendin
     }
   }
   function resetRequest() {
-    if (
-      !window.confirm(
-        '提交结果可能尚未确认。请先核对下方转发记录，重新填写后再次发送可能重复投递。确认重新填写？'
-      )
-    )
-      return;
-    setPending(null);
-    setError('');
+    setConfirmation({ kind: 'reset' });
   }
   return (
-    <form onSubmit={send} className="order-mail-forward bg-primary-50 rounded-lg p-4 space-y-3">
-      <h3 className="font-semibold text-gray-900">转发这封邮件</h3>
-      <p className="text-sm text-gray-600">选择联系人（可多选，最多50个邮箱）</p>
-      <div className="flex flex-wrap gap-2">
-        {selected.map(item => (
-          <button
-            type="button"
-            key={item.id}
-            disabled={locked}
-            onClick={() => toggle(item)}
-            className="btn btn-secondary text-left break-all"
-            aria-label={'移除 ' + item.name}
-          >
-            {item.name} &lt;{item.email}&gt;
-            <X className="w-4 h-4 inline ml-1" />
-          </button>
-        ))}
-      </div>
-      <div
-        ref={selectorRef}
-        className="relative"
-        onKeyDownCapture={event => {
-          if (event.key === 'Escape' && open) {
-            event.preventDefault();
-            event.stopPropagation();
-            searchRef.current?.focus();
-            setOpen(false);
-          }
-        }}
-      >
-        <div className="relative">
-          <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
-          <input
-            aria-label="搜索转发联系人"
-            disabled={locked}
-            placeholder="搜索联系人名或邮箱"
-            maxLength={100}
-            className="input w-full pl-9 pr-10"
-            ref={searchRef}
-            aria-expanded={open && !locked}
-            aria-controls={open && !locked ? dropdownId : undefined}
-            autoComplete="off"
-            onFocus={() => setOpen(true)}
-            onClick={() => setOpen(true)}
-            onKeyDown={event => {
-              if (event.key === 'ArrowDown' || event.key === 'Enter') {
-                event.preventDefault();
-                if (!open) setOpen(true);
-                else
-                  selectorRef.current?.querySelector('[role="checkbox"]:not(:disabled)')?.focus();
-              }
-            }}
-            value={search}
-            onChange={event => {
-              setOpen(true);
-              setSearch(event.target.value);
-              setPage(1);
-            }}
-          />
-          <button
-            type="button"
-            disabled={locked}
-            aria-label={open ? '收起联系人' : '展开联系人'}
-            aria-expanded={open && !locked}
-            className="absolute inset-y-0 right-0 px-3 text-gray-500"
-            onClick={() => {
-              if (open) setOpen(false);
-              else {
-                setOpen(true);
-                searchRef.current?.focus();
-              }
-            }}
-          >
-            <ChevronDown className={'w-4 h-4 transition-transform ' + (open ? 'rotate-180' : '')} />
-          </button>
+    <>
+      <form onSubmit={send} className="order-mail-forward bg-primary-50 rounded-lg p-4 space-y-3">
+        <h3 className="font-semibold text-gray-900">转发这封邮件</h3>
+        <p className="text-sm text-gray-600">选择联系人（可多选，最多50个邮箱）</p>
+        <div className="flex flex-wrap gap-2">
+          {selected.map(item => (
+            <button
+              type="button"
+              key={item.id}
+              disabled={locked}
+              onClick={() => toggle(item)}
+              className="btn btn-secondary text-left break-all"
+              aria-label={'移除 ' + item.name}
+            >
+              {item.name} &lt;{item.email}&gt;
+              <X className="w-4 h-4 inline ml-1" />
+            </button>
+          ))}
         </div>
-        {open && !locked && (
-          <div
-            id={dropdownId}
-            role="group"
-            aria-label="可选联系人"
-            className="mt-1 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden"
-          >
-            <div className="max-h-52 overflow-y-auto">
-              {loading ? (
-                <p className="p-3 text-gray-500">加载中…</p>
-              ) : loadError ? (
-                <div role="alert" className="p-3 text-red-600">
-                  {loadError}
-                  <button
-                    type="button"
-                    className="btn btn-secondary ml-2"
-                    onClick={() => setRevision(value => value + 1)}
-                  >
-                    重试
-                  </button>
-                </div>
-              ) : !contacts.length ? (
-                <p className="p-3 text-gray-500">
-                  {search ? '没有匹配的联系人' : '暂无联系人，可手动填写邮箱或联系管理员配置'}
-                </p>
-              ) : (
-                contacts.map(item => {
-                  const checked = selected.some(value => value.id === item.id);
-                  return (
+        <div
+          ref={selectorRef}
+          className="relative"
+          onKeyDownCapture={event => {
+            if (event.key === 'Escape' && open) {
+              event.preventDefault();
+              event.stopPropagation();
+              searchRef.current?.focus();
+              setOpen(false);
+            }
+          }}
+        >
+          <div className="relative">
+            <Search className="w-4 h-4 absolute left-3 top-3 text-gray-400" />
+            <input
+              aria-label="搜索转发联系人"
+              disabled={locked}
+              placeholder="搜索联系人名或邮箱"
+              maxLength={100}
+              className="input w-full pl-9 pr-10"
+              ref={searchRef}
+              aria-expanded={open && !locked}
+              aria-controls={open && !locked ? dropdownId : undefined}
+              autoComplete="off"
+              onFocus={() => setOpen(true)}
+              onClick={() => setOpen(true)}
+              onKeyDown={event => {
+                if (event.key === 'ArrowDown' || event.key === 'Enter') {
+                  event.preventDefault();
+                  if (!open) setOpen(true);
+                  else
+                    selectorRef.current?.querySelector('[role="checkbox"]:not(:disabled)')?.focus();
+                }
+              }}
+              value={search}
+              onChange={event => {
+                setOpen(true);
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+            />
+            <button
+              type="button"
+              disabled={locked}
+              aria-label={open ? '收起联系人' : '展开联系人'}
+              aria-expanded={open && !locked}
+              className="absolute inset-y-0 right-0 px-3 text-gray-500"
+              onClick={() => {
+                if (open) setOpen(false);
+                else {
+                  setOpen(true);
+                  searchRef.current?.focus();
+                }
+              }}
+            >
+              <ChevronDown
+                className={'w-4 h-4 transition-transform ' + (open ? 'rotate-180' : '')}
+              />
+            </button>
+          </div>
+          {open && !locked && (
+            <div
+              id={dropdownId}
+              role="group"
+              aria-label="可选联系人"
+              className="mt-1 bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden"
+            >
+              <div className="max-h-52 overflow-y-auto">
+                {loading ? (
+                  <p className="p-3 text-gray-500">加载中…</p>
+                ) : loadError ? (
+                  <div role="alert" className="p-3 text-red-600">
+                    {loadError}
                     <button
                       type="button"
-                      role="checkbox"
-                      aria-checked={checked}
-                      key={item.id}
-                      disabled={locked || (!checked && selected.length >= 50)}
-                      onClick={() => toggle(item)}
-                      className="flex w-full min-h-11 items-center gap-2 p-2 text-left hover:bg-gray-50 cursor-pointer text-sm break-all disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                      className="btn btn-secondary ml-2"
+                      onClick={() => setRevision(value => value + 1)}
                     >
-                      {checked ? (
-                        <CheckSquare aria-hidden="true" className="w-4 h-4 shrink-0 text-primary" />
-                      ) : (
-                        <Square aria-hidden="true" className="w-4 h-4 shrink-0 text-gray-400" />
-                      )}
-                      <span>
-                        {item.name} &lt;{item.email}&gt;
-                      </span>
+                      重试
                     </button>
-                  );
-                })
+                  </div>
+                ) : !contacts.length ? (
+                  <p className="p-3 text-gray-500">
+                    {search ? '没有匹配的联系人' : '暂无联系人，可手动填写邮箱或联系管理员配置'}
+                  </p>
+                ) : (
+                  contacts.map(item => {
+                    const checked = selected.some(value => value.id === item.id);
+                    return (
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        key={item.id}
+                        disabled={locked || (!checked && selected.length >= 50)}
+                        onClick={() => toggle(item)}
+                        className="flex w-full min-h-11 items-center gap-2 p-2 text-left hover:bg-gray-50 cursor-pointer text-sm break-all disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                      >
+                        {checked ? (
+                          <CheckSquare
+                            aria-hidden="true"
+                            className="w-4 h-4 shrink-0 text-primary"
+                          />
+                        ) : (
+                          <Square aria-hidden="true" className="w-4 h-4 shrink-0 text-gray-400" />
+                        )}
+                        <span>
+                          {item.name} &lt;{item.email}&gt;
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+              {total > 20 && (
+                <div className="flex items-center justify-between text-sm p-2 border-t">
+                  <span>第 {page} 页</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={locked || loading || page === 1}
+                      onClick={() => setPage(page - 1)}
+                    >
+                      上一页
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      disabled={locked || loading || page * 20 >= total}
+                      onClick={() => setPage(page + 1)}
+                    >
+                      下一页
+                    </button>
+                  </div>
+                </div>
               )}
             </div>
-            {total > 20 && (
-              <div className="flex items-center justify-between text-sm p-2 border-t">
-                <span>第 {page} 页</span>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled={locked || loading || page === 1}
-                    onClick={() => setPage(page - 1)}
-                  >
-                    上一页
-                  </button>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    disabled={locked || loading || page * 20 >= total}
-                    onClick={() => setPage(page + 1)}
-                  >
-                    下一页
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      <label className="block text-sm text-gray-700">
-        手动添加邮箱（可选）
-        <input
-          type="email"
-          maxLength={254}
-          value={recipient}
-          disabled={locked}
-          autoComplete="off"
-          placeholder="输入一个额外的收件邮箱"
-          className="input w-full mt-1"
-          onChange={event => setRecipient(event.target.value)}
-        />
-      </label>
-      <label className="block text-sm text-gray-700">
-        备注（可选）
-        <textarea
-          value={note}
-          maxLength={2000}
-          rows={2}
-          disabled={locked}
-          className="input w-full mt-1"
-          onChange={event => setNote(event.target.value)}
-        />
-      </label>
-      <p className="text-xs text-gray-600">
-        分别发送给每个邮箱，保留原邮件正文排版、图片、原附件及原始邮件文件。
-      </p>
-      {error && (
-        <p role="alert" className="text-red-600 text-sm">
-          {error}
+          )}
+        </div>
+        <label className="block text-sm text-gray-700">
+          手动添加邮箱（可选）
+          <input
+            type="email"
+            maxLength={254}
+            value={recipient}
+            disabled={locked}
+            autoComplete="off"
+            placeholder="输入一个额外的收件邮箱"
+            className="input w-full mt-1"
+            onChange={event => setRecipient(event.target.value)}
+          />
+        </label>
+        <label className="block text-sm text-gray-700">
+          备注（可选）
+          <textarea
+            value={note}
+            maxLength={2000}
+            rows={2}
+            disabled={locked}
+            className="input w-full mt-1"
+            onChange={event => setNote(event.target.value)}
+          />
+        </label>
+        <p className="text-xs text-gray-600">
+          分别发送给每个邮箱，保留原邮件正文排版、图片、原附件及原始邮件文件。
         </p>
-      )}
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="submit"
-          className="btn btn-primary inline-flex items-center gap-2"
-          disabled={sending || (!pending && !selected.length && !recipient.trim())}
-        >
-          {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-          {sending ? '提交中…' : pending ? '重试原请求' : '转发邮件'}
-        </button>
-        {pending && !sending && (
-          <button type="button" className="btn btn-secondary" onClick={resetRequest}>
-            重新填写
-          </button>
+        {error && (
+          <p role="alert" className="text-red-600 text-sm">
+            {error}
+          </p>
         )}
-      </div>
-    </form>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="submit"
+            className="btn btn-primary inline-flex items-center gap-2"
+            disabled={sending || (!pending && !selected.length && !recipient.trim())}
+          >
+            {sending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+            {sending ? '提交中…' : pending ? '重试原请求' : '转发邮件'}
+          </button>
+          {pending && !sending && (
+            <button type="button" className="btn btn-secondary" onClick={resetRequest}>
+              重新填写
+            </button>
+          )}
+        </div>
+      </form>
+      {confirmation && (
+        <OrderOverlay
+          title={confirmation.kind === 'send' ? '确认转发邮件' : '重新填写转发请求？'}
+          subtitle={
+            confirmation.kind === 'send'
+              ? `分别发送至 ${confirmation.recipients.length} 个邮箱`
+              : '请先核对已有的转发记录'
+          }
+          size="small"
+          onClose={() => setConfirmation(null)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setConfirmation(null)}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={() => {
+                  const request = confirmation;
+                  setConfirmation(null);
+                  if (request.kind === 'reset') {
+                    setPending(null);
+                    setError('');
+                  } else {
+                    const approved = {
+                      recipients: request.recipients,
+                      note: request.note,
+                      idempotencyKey: request.idempotencyKey,
+                    };
+                    send(null, approved);
+                  }
+                }}
+              >
+                {confirmation.kind === 'send' ? '确认并转发' : '重新填写'}
+              </button>
+            </>
+          }
+        >
+          {confirmation.kind === 'send' ? (
+            <>
+              <p className="order-panel-note mb-3">
+                将保留原邮件正文、图片和附件，并为每个邮箱分别创建发送任务。
+              </p>
+              <ul className="divide-y divide-gray-100">
+                {confirmation.recipients.map(email => (
+                  <li className="py-2 break-all" key={email}>
+                    {email}
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p>提交结果可能尚未确认。请先核对转发记录，重新填写并再次发送可能重复投递。</p>
+          )}
+        </OrderOverlay>
+      )}
+    </>
   );
 }

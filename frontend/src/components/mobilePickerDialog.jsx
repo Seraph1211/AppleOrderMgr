@@ -1,3 +1,4 @@
+import { useOrdersUiScope } from './ordersUiScope';
 import { useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import useModalScrollLock from './useModalScrollLock';
@@ -12,6 +13,7 @@ export default function MobilePickerDialog({
   footer,
   id,
 }) {
+  const ordersUi = useOrdersUiScope();
   useModalScrollLock();
   const dialogRef = useRef(null);
   const titleId = useId();
@@ -43,6 +45,7 @@ export default function MobilePickerDialog({
       ref={dialogRef}
       tabIndex={-1}
       id={id}
+      data-orders-ui={ordersUi || undefined}
       className="mobile-picker-dialog"
       aria-labelledby={titleId}
       onCancel={event => {
