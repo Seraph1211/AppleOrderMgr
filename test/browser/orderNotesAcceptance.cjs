@@ -30,20 +30,42 @@ async function main() {
         }
         let data;
         if (url.pathname === '/api/auth/me') {
-          data = { id: 1, username: 'synthetic', role: 'operator', availableHome: '/orders',
-            permissions: ['orders.read', ...(editable ? ['orders.edit'] : [])] };
+          data = {
+            id: 1,
+            username: 'synthetic',
+            role: 'operator',
+            availableHome: '/orders',
+            permissions: ['orders.read', ...(editable ? ['orders.edit'] : [])],
+          };
         } else if (url.pathname === '/api/orders/filter-options') {
           data = { productOptions: [], recipientTags: [], stores: [] };
         } else if (url.pathname === '/api/orders') {
-          data = { total: 1, orders: [{ id: 101, order_number: 'W1234567890', notes,
-            products: [], created_at: '2026-10-08T00:00:00Z', updated_at: '2026-10-08T00:00:00Z' }] };
+          data = {
+            total: 1,
+            orders: [
+              {
+                id: 101,
+                order_number: 'W1234567890',
+                notes,
+                products: [],
+                created_at: '2026-10-08T00:00:00Z',
+                updated_at: '2026-10-08T00:00:00Z',
+              },
+            ],
+          };
         } else if (url.pathname === '/api/orders/101' && route.request().method() === 'PUT') {
           const body = route.request().postDataJSON();
           writes.push(body);
           assert.deepEqual(Object.keys(body), ['notes']);
-          if (holdSave) await new Promise(resolve => { releaseSave = resolve; });
+          if (holdSave)
+            await new Promise(resolve => {
+              releaseSave = resolve;
+            });
           if (fail) {
-            await route.fulfill({ status: 400, json: { success: false, error: { message: '合成保存失败' } } });
+            await route.fulfill({
+              status: 400,
+              json: { success: false, error: { message: '合成保存失败' } },
+            });
             return;
           }
           notes = body.notes.trim() || null;
@@ -65,13 +87,17 @@ async function main() {
     });
     const edit = async () => {
       if (!(await page.getByRole('button', { name: '关闭订单详情', exact: true }).isVisible())) {
-        await page.getByRole('button', { name: '查看', exact: true }).filter({ visible: true }).click();
+        await page
+          .getByRole('button', { name: '查看', exact: true })
+          .filter({ visible: true })
+          .click();
       }
       await page.getByRole('button', { name: '修改备注', exact: true }).click();
     };
     const input = () => page.getByRole('textbox', { name: '订单备注', exact: true });
     const save = () => page.getByRole('button', { name: '保存备注', exact: true });
-    const waitClosed = () => page.getByRole('dialog').waitFor({ state: 'hidden' });
+    const waitClosed = () =>
+      page.getByRole('dialog', { name: '修改备注', exact: true }).waitFor({ state: 'hidden' });
     for (const width of [375, 768, 1440]) {
       await page.setViewportSize({ width, height: 780 });
       await page.goto(`${BASE_URL}/orders`);
@@ -87,9 +113,16 @@ async function main() {
       await page.getByRole('button', { name: '取消', exact: true }).click();
     }
     await page.getByRole('button', { name: '关闭订单详情', exact: true }).click();
-    assert.equal(await page.getByRole('button', { name: '修改备注 W1234567890', exact: true }).count(), 0);
+    assert.equal(
+      await page.getByRole('button', { name: '修改备注 W1234567890', exact: true }).count(),
+      0
+    );
     await page.getByRole('button', { name: '列设置', exact: true }).click();
-    await page.locator('[draggable]').filter({ has: page.getByText('备注', { exact: true }) }).getByRole('checkbox').check();
+    await page
+      .locator('[draggable]')
+      .filter({ has: page.getByText('备注', { exact: true }) })
+      .getByRole('checkbox')
+      .check();
     await page.getByRole('button', { name: '保存', exact: true }).click();
     // 桌面备注列同样可编辑；取消不写入。
     await page.getByRole('button', { name: '编辑备注 W1234567890', exact: true }).click();
@@ -110,7 +143,10 @@ async function main() {
     await page.waitForFunction(() => document.querySelector('textarea')?.disabled);
     assert.equal(await page.getByRole('button', { name: '取消', exact: true }).isDisabled(), true);
     await page.keyboard.press('Escape');
-    assert.equal(await page.getByRole('dialog').isVisible(), true);
+    assert.equal(
+      await page.getByRole('dialog', { name: '修改备注', exact: true }).isVisible(),
+      true
+    );
     await page.waitForTimeout(100);
     assert(releaseSave);
     releaseSave();
@@ -143,4 +179,7 @@ async function main() {
     await browser.close();
   }
 }
-main().catch(error => { process.stderr.write(`${error.stack}\n`); process.exitCode = 1; });
+main().catch(error => {
+  process.stderr.write(`${error.stack}\n`);
+  process.exitCode = 1;
+});

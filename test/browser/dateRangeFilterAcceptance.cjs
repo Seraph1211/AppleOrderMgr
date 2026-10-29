@@ -11,6 +11,7 @@ async function main() {
   const baseUrl = process.env.DATE_FILTER_BASE_URL || 'http://127.0.0.1:5173';
   const output = process.env.DATE_FILTER_OUTPUT || '/tmp/order-date-filter-ui';
   fs.mkdirSync(output, { recursive: true });
+  const sizingEvidence = [];
   try {
     for (const width of [320, 375, 768, 1440]) {
       const context = await browser.newContext({ viewport: { width, height: 900 } });
@@ -64,7 +65,7 @@ async function main() {
       page.setDefaultTimeout(10000);
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(`${baseUrl}/orders`);
-      if (width < 768) await page.getByRole('button', { name: /筛选条件.*展开/ }).click();
+      if (width < 1100) await page.getByRole('button', { name: /筛选条件.*展开/ }).click();
       const orderButton = page.getByRole('button', { name: /^下单日期：/ });
       const pickupButton = page.getByRole('button', { name: /^实际取货日期：/ });
       const panel = page.getByRole('dialog');
@@ -82,6 +83,15 @@ async function main() {
       await page.getByRole('button', { name: '日期筛选字段说明' }).hover();
       assert((await page.getByRole('tooltip').innerText()).includes('邮件中的预约取货日期'));
       await scheduledButton.click();
+      const bounds = await panel.boundingBox();
+      sizingEvidence.push({ width, panel: bounds });
+      assert(bounds.x >= 0 && bounds.x + bounds.width <= width, '日期面板保持在视口内');
+      if (width >= 768) {
+        assert(Math.abs(bounds.width - 292) <= 1, '桌面日期面板收紧为292px');
+        assert(bounds.height <= 450, `桌面日期面板过高：${bounds.height}`);
+      }
+      await page.screenshot({ path: `${output}/紧凑日期-${width}.png` });
+      fs.writeFileSync(`${output}/日期尺寸.json`, JSON.stringify(sizingEvidence, null, 2));
       await page.getByLabel('预约取货开始日期', { exact: true }).fill('2026-10-01');
       await page.getByLabel('预约取货结束日期', { exact: true }).fill('2026-10-05');
       await apply();

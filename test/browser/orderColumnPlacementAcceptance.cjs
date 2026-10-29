@@ -1,5 +1,6 @@
 /* eslint-env node, browser */
 const assert = require('node:assert/strict');
+const BASE_URL = process.env.ORDERS_UI_BASE_URL || 'http://127.0.0.1:5173';
 const { pathToFileURL } = require('node:url');
 const path = require('node:path');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
@@ -23,7 +24,7 @@ async function main() {
         try {
           const url = new URL(route.request().url());
           if (!url.pathname.startsWith('/api/')) {
-            if (url.origin === 'http://127.0.0.1:5173') await route.continue(); else await route.abort();
+            if (url.origin === BASE_URL) await route.continue(); else await route.abort();
             return;
           }
           let data;
@@ -35,7 +36,7 @@ async function main() {
         } catch (error) { await route.abort(); throw error; }
       });
       const page = await context.newPage();
-      await page.goto('http://127.0.0.1:5173/orders');
+      await page.goto(`${BASE_URL}/orders`);
       await page.getByRole('columnheader', { name: '实际取货日期', exact: true }).waitFor();
       const headers = await page.getByRole('columnheader').allTextContents();
       assert.equal(headers[headers.findIndex(value => value.includes('取货信息')) + 1].trim(), '实际取货日期');

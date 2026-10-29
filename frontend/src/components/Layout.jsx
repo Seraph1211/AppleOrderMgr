@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
+import '../pages/ordersWorkspace.css';
+import './appSidebar.css';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   ShieldCheck,
@@ -76,6 +78,10 @@ export default function Layout({ children }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [emailWorker, setEmailWorker] = useState(null);
   const menuRef = useRef(null);
+  const sidebarRef = useRef(null);
+  const navigationTriggerRef = useRef(null);
+  const mainRef = useRef(null);
+  const preferenceKeyRef = useRef(null);
   const location = useLocation();
   const navigate = useNavigate();
   const { user, logout, can } = useAuth();
@@ -106,21 +112,77 @@ export default function Layout({ children }) {
   }, [location.pathname, activeGroupId]);
 
   useEffect(() => {
+    if (preferenceKeyRef.current && preferenceKeyRef.current !== navigationStorageKey) {
+      let saved = [];
+      try {
+        const value = JSON.parse(localStorage.getItem(navigationStorageKey) || '[]');
+        if (Array.isArray(value))
+          saved = value.filter(id => NAVIGATION_GROUPS.some(group => group.id === id));
+      } catch (_error) {
+        // 禁用存储时继续使用当前路由分组。
+      }
+      preferenceKeyRef.current = navigationStorageKey;
+      setExpandedGroups([...new Set([...saved, ...(activeGroupId ? [activeGroupId] : [])])]);
+      return;
+    }
+    preferenceKeyRef.current = navigationStorageKey;
     try {
       localStorage.setItem(navigationStorageKey, JSON.stringify(expandedGroups));
     } catch (_error) {
       // 无存储权限时，只在本次页面会话保留展开状态。
     }
-  }, [navigationStorageKey, expandedGroups]);
+  }, [navigationStorageKey, expandedGroups, activeGroupId]);
 
   useEffect(() => {
     if (!sidebarOpen) return undefined;
+    const previous = navigationTriggerRef.current;
+    const main = mainRef.current;
+    const panel = sidebarRef.current;
+    const overflow = document.body.style.overflow;
+    main.inert = true;
+    document.body.style.overflow = 'hidden';
+    panel.querySelector('button')?.focus({ preventScroll: true });
     const closeOnEscape = event => {
-      if (event.key === 'Escape') setSidebarOpen(false);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setSidebarOpen(false);
+      }
+      if (event.key !== 'Tab') return;
+      const controls = [...panel.querySelectorAll('a[href],button:not(:disabled)')].filter(
+        node => node.getClientRects().length && !node.closest('[hidden]')
+      );
+      const first = controls[0];
+      const last = controls.at(-1);
+      if (
+        event.shiftKey &&
+        (document.activeElement === first || !panel.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        last?.focus();
+      } else if (
+        !event.shiftKey &&
+        (document.activeElement === last || !panel.contains(document.activeElement))
+      ) {
+        event.preventDefault();
+        first?.focus();
+      }
     };
+    const desktop = window.matchMedia(
+      location.pathname === '/orders' ? '(min-width: 1100px)' : '(min-width: 1024px)'
+    );
+    const closeOnDesktop = () => {
+      if (desktop.matches) setSidebarOpen(false);
+    };
+    desktop.addEventListener('change', closeOnDesktop);
     document.addEventListener('keydown', closeOnEscape);
-    return () => document.removeEventListener('keydown', closeOnEscape);
-  }, [sidebarOpen]);
+    return () => {
+      desktop.removeEventListener('change', closeOnDesktop);
+      document.removeEventListener('keydown', closeOnEscape);
+      main.inert = false;
+      document.body.style.overflow = overflow;
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [sidebarOpen, location.pathname]);
 
   const toggleNavigationGroup = id => {
     setExpandedGroups(current =>
@@ -174,20 +236,26 @@ export default function Layout({ children }) {
   }, [can]);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div
+      className={`min-h-screen bg-gray-50 ${location.pathname === '/orders' ? 'orders-workspace' : ''}`}
+    >
       {/* 移动端侧边栏遮罩 */}
       {sidebarOpen && (
         <button
           type="button"
           aria-label="关闭导航遮罩"
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="app-navigation-backdrop fixed inset-0 bg-black/50 z-40 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
       {/* 侧边栏 */}
       <aside
-        className={`
+        ref={sidebarRef}
+        role={sidebarOpen ? 'dialog' : undefined}
+        aria-modal={sidebarOpen || undefined}
+        aria-label="应用导航"
+        className={`app-sidebar ${sidebarOpen ? 'is-open' : ''}
         fixed inset-y-0 left-0 z-50 lg:z-20 w-64 lg:w-52 bg-white border-r border-gray-200
         transform transition-transform duration-200 ease-in-out lg:translate-x-0
         ${sidebarOpen ? 'visible translate-x-0' : 'invisible lg:visible -translate-x-full'}
@@ -195,15 +263,27 @@ export default function Layout({ children }) {
       >
         <div className="flex flex-col h-full">
           {/* Logo */}
-          <div className="flex shrink-0 items-center justify-between h-[52px] px-4">
-            <div className="flex items-center space-x-2">
-              <Apple className="w-7 h-7 shrink-0 text-primary" />
-              <span className="text-sm font-semibold text-gray-900">Apple Orders Mgr</span>
+          <div className="app-brand flex shrink-0 items-center justify-between h-[72px] px-4">
+            <div className="flex min-w-0 items-center gap-1">
+              <img
+                src="/order-mark-blue.png"
+                alt=""
+                aria-hidden="true"
+                className="h-11 w-11 shrink-0 object-contain"
+              />
+              <div className="min-w-0">
+                <span className="app-brand-name block text-sm font-semibold text-gray-900">
+                  Apple Orders Mgr
+                </span>
+                <span className="app-brand-caption block text-xs text-gray-500">
+                  订单管理工作台
+                </span>
+              </div>
             </div>
             <button
               onClick={() => setSidebarOpen(false)}
               aria-label="关闭导航"
-              className="lg:hidden min-h-11 min-w-11 flex items-center justify-center text-gray-400 hover:text-gray-600"
+              className="app-sidebar-close lg:hidden min-h-11 min-w-11 flex items-center justify-center text-gray-400 hover:text-gray-600"
             >
               <X className="w-6 h-6" />
             </button>
@@ -275,18 +355,27 @@ export default function Layout({ children }) {
       </aside>
 
       {/* 主内容区 */}
-      <div className="lg:pl-52">
+      <div ref={mainRef} className="app-main lg:pl-52">
         {/* 顶部栏 */}
         <header className="sticky top-0 z-10 h-[52px] bg-white">
           <div className="flex items-center justify-between h-full px-4">
             <button
+              ref={navigationTriggerRef}
               onClick={() => setSidebarOpen(true)}
               aria-label="打开导航"
-              className="lg:hidden min-h-11 min-w-11 flex items-center justify-center text-gray-400 hover:text-gray-600"
+              className="app-navigation-trigger lg:hidden min-h-11 min-w-11 flex items-center justify-center text-gray-400 hover:text-gray-600"
             >
               <Menu className="w-6 h-6" />
             </button>
 
+            {location.pathname === '/orders' && (
+              <img
+                src="/order-mark-blue.png"
+                alt=""
+                aria-hidden="true"
+                className="h-9 w-9 object-contain lg:hidden"
+              />
+            )}
             <div className="flex-1" />
 
             <div className="flex items-center gap-2 sm:gap-4 min-w-0">

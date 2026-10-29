@@ -10,7 +10,7 @@ async function main() {
   const output = process.env.FILTER_OUTPUT || '/tmp/order-filter-select-all';
   fs.mkdirSync(output, { recursive: true });
   try {
-    for (const width of [375, 768, 1440]) {
+    for (const width of [375, 768, 1440, 1904]) {
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       await context.addInitScript(() => localStorage.setItem('token', 'synthetic-filter-all'));
       const queries = [];
@@ -69,7 +69,7 @@ async function main() {
       page.setDefaultTimeout(10000);
       page.on('pageerror', error => errors.push(error.message));
       await page.goto(`${baseUrl}/orders`);
-      if (width < 768) await page.getByRole('button', { name: /筛选条件.*展开/ }).click();
+      if (width < 1100) await page.getByRole('button', { name: /筛选条件.*展开/ }).click();
       const waitQuery = async predicate => {
         for (let attempt = 0; attempt < 150; attempt += 1) {
           if (predicate(queries.at(-1) || {})) return;
@@ -82,16 +82,47 @@ async function main() {
         ['邮件订单状态筛选', 'displayOrderStatuses'],
         ['商品信息筛选', 'productKeys'],
         ['官网订单状态筛选', 'officialOrderStatuses'],
-        ['取机人 TAG 筛选', 'recipientTags'],
+        ['订单 TAG 筛选', 'recipientTags'],
         ['取货门店筛选', 'pickupStores'],
         ['付款人筛选', 'payerNames'],
       ]) {
         await page.getByRole('button', { name: label, exact: true }).click();
+        if (width >= 768) {
+          const menu = await page.locator('.tag-select-panel').boundingBox();
+          assert(menu.x >= 0 && menu.x + menu.width <= width, '筛选菜单不能越出视口');
+          const trigger = await page
+            .getByRole('button', { name: label, exact: true })
+            .boundingBox();
+          assert(Math.abs(menu.width - trigger.width) <= 1, `${label}菜单必须与触发器等宽`);
+          assert(Math.abs(menu.x - trigger.x) <= 1, `${label}菜单必须与触发器左边界对齐`);
+          const row = await page.getByRole('option').first().boundingBox();
+          // 商品规格保留原有完整换行，短状态为单行，长商品最多三行。
+          const maxRowHeight = label === '商品信息筛选' ? 66 : 34;
+          assert(
+            row.height >= 32 && row.height <= maxRowHeight,
+            `${label}选项高度异常：${row.height}`
+          );
+        } else {
+          const primary = page.getByRole('dialog').locator('.mobile-picker-footer .btn-primary');
+          assert.equal(
+            await primary.evaluate(node => getComputedStyle(node).backgroundColor),
+            'rgb(36, 107, 220)',
+            '手机完成操作使用订单配色'
+          );
+        }
         const count = await page.getByRole('option').count();
         assert(count > 1);
         await page.getByRole('button', { name: `${label}全选`, exact: true }).click();
         await waitQuery(query => JSON.parse(query[key] || '[]').length === count);
         assert.equal(await page.getByRole('option', { selected: true }).count(), count);
+        const checkColor = await page
+          .getByRole('option', { selected: true })
+          .first()
+          .locator('.tag-select-checkbox')
+          .evaluate(element => getComputedStyle(element).backgroundColor);
+        assert.equal(checkColor, 'rgb(36, 107, 220)', '选中使用品牌蓝勾选');
+        if (width >= 768 && label === '官网订单状态筛选')
+          await page.screenshot({ path: `${output}/紧凑多选-${width}.png` });
         await page.getByRole('button', { name: `${label}取消全选`, exact: true }).click();
         await waitQuery(query => !query[key]);
         assert.equal(await page.getByRole('option', { selected: true }).count(), 0);
@@ -137,7 +168,10 @@ async function main() {
       await page.locator('input[placeholder^="搜索 "]').press('Escape');
       await page.getByPlaceholder(/搜索订单 ID/).fill('测试取机人');
       await waitQuery(query => query.keyword === '测试取机人' && !('recipientName' in query));
-      await page.getByRole('button', { name: '清空筛选', exact: true }).click();
+      await page
+        .locator('#orders-filters')
+        .getByRole('button', { name: '清空筛选', exact: true })
+        .click();
       await waitQuery(
         query => !query.keyword && !query.officialOrderStatuses && !query.displayOrderStatuses
       );

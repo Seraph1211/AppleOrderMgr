@@ -22,6 +22,7 @@ export default function TagMultiSelect({
   searchLabels = EMPTY_LABELS,
   compareOptions,
   enableSelectAll = false,
+  triggerLabel = '',
 }) {
   const [mobile, setMobile] = useState(() => window.matchMedia('(max-width: 767px)').matches);
   const [open, setOpen] = useState(false);
@@ -101,10 +102,10 @@ export default function TagMultiSelect({
       className={
         mobile
           ? 'mobile-picker-multi-panel'
-          : 'absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg'
+          : 'tag-select-panel absolute left-0 right-0 z-30 mt-1 overflow-hidden rounded-lg border border-gray-200 bg-white shadow-lg'
       }
     >
-      <div className="border-b border-gray-100 p-2">
+      <div className="tag-select-search border-b border-gray-100 p-2">
         <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
           <input
@@ -136,7 +137,7 @@ export default function TagMultiSelect({
           >
             <span
               aria-hidden="true"
-              className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+              className={`tag-select-checkbox flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                 someVisibleSelected
                   ? 'border-primary bg-primary text-white'
                   : 'border-gray-300 bg-white'
@@ -184,7 +185,7 @@ export default function TagMultiSelect({
                 onClick={() => toggleOption(option)}
               >
                 <span
-                  className={`flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
+                  className={`tag-select-checkbox flex h-4 w-4 shrink-0 items-center justify-center rounded border ${
                     selected ? 'border-primary bg-primary text-white' : 'border-gray-300 bg-white'
                   }`}
                 >
@@ -201,16 +202,31 @@ export default function TagMultiSelect({
           })
         )}
       </div>
-      {value.length > 0 && (
-        <div className="flex justify-end border-t border-gray-100 p-2">
+      {(value.length > 0 || (triggerLabel && !mobile)) && (
+        <div
+          className={`tag-select-footer flex items-center border-t border-gray-100 p-2 ${triggerLabel ? 'justify-between' : 'justify-end'}`}
+        >
           <button
             type="button"
             className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-sm text-gray-500 hover:bg-gray-50 hover:text-gray-700"
             onClick={() => onChange([])}
+            disabled={!value.length}
           >
             <X className="h-4 w-4" />
             清空选择
           </button>
+          {triggerLabel && !mobile && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                closeDropdown();
+                triggerRef.current?.focus();
+              }}
+            >
+              完成
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -231,22 +247,40 @@ export default function TagMultiSelect({
       <button
         ref={triggerRef}
         type="button"
-        className="input flex w-full items-center justify-between gap-2 text-left"
+        className={`input flex w-full items-center justify-between gap-2 text-left ${triggerLabel ? 'order-filter-trigger' : ''} ${triggerLabel && value.length ? 'is-selected' : ''}`}
         aria-label={ariaLabel}
         aria-haspopup={mobile ? 'dialog' : 'listbox'}
         aria-expanded={open}
+        title={
+          triggerLabel && value.length
+            ? value.map(option => getOptionLabel(option, optionLabels)).join('、')
+            : undefined
+        }
         onClick={() => {
           if (open) closeDropdown();
           else setOpen(true);
         }}
       >
-        <span className={value.length > 0 ? 'truncate text-gray-900' : 'text-gray-400'}>
+        {triggerLabel && <span className="order-filter-trigger-label">{triggerLabel}</span>}
+        <span
+          className={
+            triggerLabel
+              ? 'order-filter-trigger-value'
+              : value.length > 0
+                ? 'truncate text-gray-900'
+                : 'text-gray-400'
+          }
+        >
           {value.length === 0
-            ? placeholder
+            ? triggerLabel
+              ? '不限'
+              : placeholder
             : value.length === 1
               ? getOptionLabel(value[0], optionLabels)
               : enableSelectAll
-                ? `已选 ${value.length} 项`
+                ? triggerLabel
+                  ? `${value.length} 项`
+                  : `已选 ${value.length} 项`
                 : `已选择 ${value.length} 个${itemLabel === 'TAG' ? ' TAG' : itemLabel}`}
         </span>
         <ChevronDown

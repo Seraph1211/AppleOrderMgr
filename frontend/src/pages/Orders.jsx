@@ -1,5 +1,7 @@
+import { OrdersUiProvider } from '../components/ordersUiScope';
 import RecipientTag from '../components/RecipientTag';
 import OfficialStatusFilter from '../components/OfficialStatusFilter';
+import { OFFICIAL_ORDER_STATUS_LABELS } from '../constants/officialOrderStatus';
 import OfficialOrderStatus from '../components/OfficialOrderStatus';
 import OfficialOrderRefreshModal from '../components/OfficialOrderRefreshModal';
 import { submitOfficialOrderRefresh } from '../api/officialOrderRefreshApi';
@@ -18,6 +20,7 @@ import { getOrderPickupDisplay } from '../utils/orderPickupDisplay';
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Search,
+  Eye,
   Filter,
   Download,
   RefreshCw,
@@ -28,10 +31,12 @@ import {
   Clock3,
   Activity,
   Pencil,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
 import { getOrders, getOrderLink, getOrderFilterOptions, exportOrders, updateOrder } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
-import ColumnConfigModal from '../components/ColumnConfigModal';
+import ColumnConfigModal from '../components/orderColumnConfigModal';
 import OrderDetailModal from '../components/OrderDetailModal';
 import OrderNotesModal from '../components/OrderNotesModal';
 import { DISPLAY_ORDER_STATUS_LABELS, getDisplayOrderStatusBadge } from '../constants/orderStatus';
@@ -43,7 +48,36 @@ import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
 import { replayOrderMailLifecycle, replayOrderMailLifecycleBatch } from '../api/orderMailApi';
 
+// 新访客优先看到核单所需字段；已保存配置由原 Hook 按 key 恢复。
+const WORKSPACE_COLUMN_KEYS = [
+  'orderNumber',
+  'products',
+  'officialOrderStatus',
+  'emailOrderStatus',
+  'recipientName',
+  'recipientTag',
+  'emailPickupInfo',
+  'actualPickupDate',
+  'actions',
+];
+const workspaceColumns = [
+  ...WORKSPACE_COLUMN_KEYS.filter(key => key !== 'actions').map(key =>
+    ordersColumns.find(column => column.key === key)
+  ),
+  ...ordersColumns.filter(column => !WORKSPACE_COLUMN_KEYS.includes(column.key)),
+  ...ordersColumns.filter(column => column.key === 'actions'),
+].map(column => ({ ...column, defaultVisible: WORKSPACE_COLUMN_KEYS.includes(column.key) }));
+
+/** 订单列表及其Portal的局部样式边界，其他路由继续使用共用组件默认实例。 */
 export default function Orders() {
+  return (
+    <OrdersUiProvider value={true}>
+      <OrdersWorkspace />
+    </OrdersUiProvider>
+  );
+}
+
+function OrdersWorkspace() {
   const { can, user } = useAuth();
   const canReadMail = can(PERMISSIONS.ORDER_MAIL_READ) || can(PERMISSIONS.ORDER_MAIL_MANAGE);
   const canRefreshMailStatus = can(PERMISSIONS.ORDER_MAIL_MANAGE);
@@ -60,6 +94,7 @@ export default function Orders() {
   const [orders, setOrders] = useState([]);
   const hasOfficialRunning = orders.some(order => order.officialRefreshState === 'running');
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [notesOrder, setNotesOrder] = useState(null);
   const [notesSaving, setNotesSaving] = useState(false);
@@ -108,7 +143,49 @@ export default function Orders() {
 
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const { columns, saveConfig, resetConfig } = useColumnConfig('orders', ordersColumns);
+  const tableScrollRef = useRef(null);
+  const [tableScroll, setTableScroll] = useState({ overflow: false, left: false, right: false });
+  const { columns, saveConfig, resetConfig } = useColumnConfig('orders', workspaceColumns);
+
+  const updateTableScroll = useCallback(() => {
+    const element = tableScrollRef.current;
+    const remaining = element ? element.scrollWidth - element.clientWidth : 0;
+    const next = {
+      overflow: remaining > 1,
+      left: Boolean(element && element.scrollLeft > 1),
+      right: Boolean(element && element.scrollLeft < remaining - 1),
+    };
+    setTableScroll(previous =>
+      previous.overflow === next.overflow &&
+      previous.left === next.left &&
+      previous.right === next.right
+        ? previous
+        : next
+    );
+  }, []);
+
+  useEffect(() => {
+    const element = tableScrollRef.current;
+    updateTableScroll();
+    if (!element) return undefined;
+    const observer = new ResizeObserver(updateTableScroll);
+    observer.observe(element);
+    if (element.firstElementChild) observer.observe(element.firstElementChild);
+    element.addEventListener('scroll', updateTableScroll, { passive: true });
+    return () => {
+      observer.disconnect();
+      element.removeEventListener('scroll', updateTableScroll);
+    };
+  }, [loading, loadError, orders.length, columns, updateTableScroll]);
+
+  const scrollTable = direction => {
+    const element = tableScrollRef.current;
+    if (!element) return;
+    element.scrollBy({
+      left: direction * Math.max(element.clientWidth * 0.75, 240),
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
+  };
 
   // 筛选选项（从后端获取或硬编码）
   const [filterOptions, setFilterOptions] = useState({
@@ -310,6 +387,7 @@ export default function Orders() {
       if (requestSequence !== ordersRequestSequence.current) return;
 
       if (res.success) {
+        setLoadError('');
         if (optionResponse.success) setFilterOptions(optionResponse.data);
         const mappedOrders = res.data.orders.map(order => ({
           id: order.id,
@@ -373,6 +451,7 @@ export default function Orders() {
     } catch (error) {
       if (requestSequence === ordersRequestSequence.current) {
         showToast('error', error.message || '加载订单失败');
+        if (!quiet) setLoadError(error.message || '加载订单失败');
         if (!quiet) setOrders([]);
       }
     } finally {
@@ -657,16 +736,17 @@ export default function Orders() {
 
       case 'actions': {
         return (
-          <div className="flex flex-wrap items-center justify-end gap-2">
+          <div className="orders-row-actions flex items-center justify-end gap-2">
             <button
               onClick={event => {
                 event.stopPropagation();
                 setSelectedOrder(order);
                 setShowDetailModal(true);
               }}
-              className="btn btn-secondary text-sm"
+              className="btn btn-secondary text-sm inline-flex items-center gap-1"
             >
-              查看
+              <Eye className="w-4 h-4" aria-hidden="true" />
+              <span>查看</span>
             </button>
             {canReadMail && (
               <button
@@ -693,7 +773,7 @@ export default function Orders() {
                 }}
               >
                 <RefreshCw className="w-4 h-4" />
-                更新官网状态
+                <span>{officialSubmitting ? '提交中' : '官网更新'}</span>
               </button>
             )}
             {canRefreshMailStatus && (
@@ -711,7 +791,7 @@ export default function Orders() {
                     mailRefreshingIds.includes(order.id) ? 'animate-spin' : ''
                   }`}
                 />
-                {mailRefreshingIds.includes(order.id) ? '提交中' : '刷新邮件状态'}
+                <span>{mailRefreshingIds.includes(order.id) ? '提交中' : '邮件刷新'}</span>
               </button>
             )}
           </div>
@@ -723,35 +803,68 @@ export default function Orders() {
     }
   };
 
-  const activeFiltersCount = Object.values(filters).filter(value =>
-    Array.isArray(value) ? value.length > 0 : value !== ''
-  ).length;
+  const activeFiltersCount =
+    Object.values(filters).filter(value => Array.isArray(value) && value.length > 0).length +
+    [
+      filters.dateFrom || filters.dateTo,
+      filters.pickupDateFrom || filters.pickupDateTo,
+      filters.actualPickupDateFrom || filters.actualPickupDateTo,
+    ].filter(Boolean).length;
+
+  const activeFilterGroups = [
+    ['officialOrderStatuses', '官网订单状态', OFFICIAL_ORDER_STATUS_LABELS],
+    ['displayOrderStatuses', '邮件订单状态', DISPLAY_ORDER_STATUS_LABELS],
+    [
+      'productKeys',
+      '商品信息',
+      Object.fromEntries(
+        (filterOptions.productOptions || []).map(option => [option.value, option.label])
+      ),
+    ],
+    ['recipientTags', '订单 TAG', {}],
+    ['pickupStores', '取货门店', {}],
+    ['payerNames', '付款人', {}],
+  ]
+    .filter(([key]) => filters[key].length)
+    .map(([key, label, labels]) => {
+      const values = filters[key].map(
+        value => labels[value] || (key === 'productKeys' ? '已选商品' : value)
+      );
+      return {
+        key,
+        keys: [key],
+        label,
+        summary: values.length === 1 ? values[0] : `${values.length} 项`,
+        detail: values.join('、'),
+      };
+    });
+  for (const [from, to, label] of [
+    ['dateFrom', 'dateTo', '下单日期'],
+    ['pickupDateFrom', 'pickupDateTo', '取货日期'],
+    ['actualPickupDateFrom', 'actualPickupDateTo', '实际取货日期'],
+  ]) {
+    if (filters[from] || filters[to]) {
+      const summary = `${filters[from] || '不限'} 至 ${filters[to] || '不限'}`;
+      activeFilterGroups.push({ key: from, keys: [from, to], label, summary, detail: summary });
+    }
+  }
 
   return (
-    <div className="orders-page min-w-0 space-y-4 md:space-y-6">
+    <div className="orders-page min-w-0">
       <AutoDismissToast toast={toast} onDismiss={dismissToast} />
       {/* 页面标题 */}
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <div className="orders-page-heading flex items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold">订单管理</h1>
-          <p className="text-gray-600 mt-1">管理所有 Apple 订单</p>
+          <p className="text-gray-600 mt-1">订单、邮件证据与取货安排</p>
         </div>
-        <div className="flex items-center gap-2">
-          <button onClick={loadOrders} className="btn btn-secondary flex items-center space-x-2">
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-            <span>重新加载</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 搜索栏 */}
-      <div className="card">
-        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+        <div className="orders-heading-tools flex items-center gap-2">
           {/* 搜索框 */}
-          <div className="relative w-full min-w-0 sm:w-auto sm:flex-1">
+          <div className="orders-searchbar relative w-full min-w-0 sm:w-auto sm:flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
             <input
               type="text"
+              aria-label="搜索订单"
               placeholder="搜索订单 ID、订单号、Serial No.、Apple ID 或取机人..."
               value={searchTerm}
               onChange={e => setSearchTerm(e.target.value)}
@@ -767,13 +880,21 @@ export default function Orders() {
             <Settings className="w-4 h-4" />
             <span>列设置</span>
           </button>
+          <button
+            onClick={() => loadOrders()}
+            className="btn btn-secondary flex items-center space-x-2"
+            disabled={loading}
+          >
+            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            <span>重新加载</span>
+          </button>
         </div>
       </div>
 
       {/* 筛选区域 */}
       <button
         type="button"
-        className="btn btn-secondary flex w-full items-center justify-between md:hidden"
+        className="orders-filter-toggle btn btn-secondary flex w-full items-center justify-between"
         aria-expanded={showMobileFilters}
         aria-controls="orders-filters"
         onClick={() => setShowMobileFilters(previous => !previous)}
@@ -784,13 +905,17 @@ export default function Orders() {
         </span>
         <span>{showMobileFilters ? '收起' : '展开'}</span>
       </button>
-      <div id="orders-filters" className={`card ${showMobileFilters ? '' : 'hidden md:block'}`}>
-        <div className="flex items-center justify-between mb-4">
+      <div
+        id="orders-filters"
+        className={`orders-filters ${showMobileFilters ? 'is-filter-open' : ''}`}
+      >
+        <div className="orders-filter-heading">
           <div className="flex items-center gap-2">
             <Filter className="w-5 h-5 text-gray-600" />
-            <h3 className="text-sm font-medium text-gray-700">筛选条件</h3>
+            <h2>筛选订单</h2>
+            <span className="orders-filter-hint">多选即生效</span>
             {activeFiltersCount > 0 && (
-              <span className="badge badge-info">{activeFiltersCount}</span>
+              <span className="orders-filter-count">已启用 {activeFiltersCount} 组</span>
             )}
           </div>
           {activeFiltersCount > 0 && (
@@ -805,57 +930,9 @@ export default function Orders() {
         </div>
 
         <div className="order-filter-fields">
-          <div className="order-date-filters">
-            <DateRangeFilter
-              dateFrom={filters.dateFrom}
-              dateTo={filters.dateTo}
-              onChange={range => {
-                setFilters(previous => ({ ...previous, ...range }));
-                setPagination(previous => ({ ...previous, currentPage: 1 }));
-              }}
-            />
-            <DateRangeFilter
-              label="取货日期"
-              hint="按邮件中的预约取货日期筛选，结束日期包含当天"
-              ariaPrefix="预约取货"
-              dateFrom={filters.pickupDateFrom}
-              dateTo={filters.pickupDateTo}
-              onChange={({ dateFrom, dateTo }) => {
-                setFilters(previous => ({
-                  ...previous,
-                  pickupDateFrom: dateFrom,
-                  pickupDateTo: dateTo,
-                }));
-                setPagination(previous => ({ ...previous, currentPage: 1 }));
-              }}
-            />
-            <DateRangeFilter
-              label="实际取货日期"
-              hint="按实际取货日筛选，结束日期包含当天"
-              ariaPrefix="实际取货"
-              dateFrom={filters.actualPickupDateFrom}
-              dateTo={filters.actualPickupDateTo}
-              onChange={({ dateFrom, dateTo }) => {
-                setFilters(previous => ({
-                  ...previous,
-                  actualPickupDateFrom: dateFrom,
-                  actualPickupDateTo: dateTo,
-                }));
-                setPagination(previous => ({ ...previous, currentPage: 1 }));
-              }}
-            />
-            <div className="flex items-center">
-              <TableHeaderHint label="日期筛选字段说明">
-                <p>下单日期：订单的下单日期，按北京时间筛选。</p>
-                <p>取货日期：邮件中的预约取货日期，不代表已完成取货。</p>
-                <p>实际取货日期：官网记录的实际已取货日期，尚未获取时为空。</p>
-                <p>三个条件可组合使用；日期范围包含开始和结束当天。</p>
-              </TableHeaderHint>
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">官网订单状态</label>
+          <div className="order-filter-field">
             <OfficialStatusFilter
+              triggerLabel="官网订单状态"
               options={filterOptions.officialOrderStatuses || []}
               value={filters.officialOrderStatuses}
               onChange={value => handleFilterChange('officialOrderStatuses', value)}
@@ -863,14 +940,14 @@ export default function Orders() {
           </div>
 
           {/* 邮件订单状态 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">邮件订单状态</label>
+          <div className="order-filter-field">
             <TagMultiSelect
               enableSelectAll
               options={Object.keys(DISPLAY_ORDER_STATUS_LABELS)}
               optionLabels={DISPLAY_ORDER_STATUS_LABELS}
               value={filters.displayOrderStatuses}
               onChange={value => handleFilterChange('displayOrderStatuses', value)}
+              triggerLabel="邮件订单状态"
               ariaLabel="邮件订单状态筛选"
               placeholder="全部状态"
               itemLabel="状态"
@@ -878,9 +955,9 @@ export default function Orders() {
           </div>
 
           {/* 商品信息 */}
-          <div className="order-filter-product">
-            <label className="block text-sm font-medium text-gray-700 mb-2">商品信息</label>
+          <div className="order-filter-field order-filter-product">
             <ProductFilter
+              triggerLabel="商品信息"
               enableSelectAll
               hideProductCode
               options={filterOptions.productOptions || []}
@@ -889,13 +966,13 @@ export default function Orders() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">订单 TAG</label>
+          <div className="order-filter-field">
             <TagMultiSelect
               enableSelectAll
               options={filterOptions.recipientTags || []}
               value={filters.recipientTags}
               onChange={value => handleFilterChange('recipientTags', value)}
+              triggerLabel="订单 TAG"
               ariaLabel="订单 TAG 筛选"
               placeholder="全部 TAG"
               itemLabel="TAG"
@@ -903,39 +980,108 @@ export default function Orders() {
           </div>
 
           {/* 取货门店 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">取货门店</label>
+          <div className="order-filter-field">
             <TagMultiSelect
               enableSelectAll
               options={filterOptions.stores}
               value={filters.pickupStores}
               onChange={value => handleFilterChange('pickupStores', value)}
+              triggerLabel="取货门店"
               ariaLabel="取货门店筛选"
               placeholder="全部门店"
               itemLabel="门店"
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">付款人</label>
+          <div className="order-filter-field">
             <TagMultiSelect
               enableSelectAll
               options={filterOptions.payers || []}
               value={filters.payerNames}
               onChange={value => handleFilterChange('payerNames', value)}
+              triggerLabel="付款人"
               ariaLabel="付款人筛选"
               placeholder="全部付款人"
               itemLabel="付款人"
             />
           </div>
         </div>
+        <div className="order-date-filters">
+          <DateRangeFilter
+            dateFrom={filters.dateFrom}
+            dateTo={filters.dateTo}
+            onChange={range => {
+              setFilters(previous => ({ ...previous, ...range }));
+              setPagination(previous => ({ ...previous, currentPage: 1 }));
+            }}
+          />
+          <DateRangeFilter
+            label="取货日期"
+            hint="按邮件中的预约取货日期筛选，结束日期包含当天"
+            ariaPrefix="预约取货"
+            dateFrom={filters.pickupDateFrom}
+            dateTo={filters.pickupDateTo}
+            onChange={({ dateFrom, dateTo }) => {
+              setFilters(previous => ({
+                ...previous,
+                pickupDateFrom: dateFrom,
+                pickupDateTo: dateTo,
+              }));
+              setPagination(previous => ({ ...previous, currentPage: 1 }));
+            }}
+          />
+          <DateRangeFilter
+            label="实际取货日期"
+            hint="按实际取货日筛选，结束日期包含当天"
+            ariaPrefix="实际取货"
+            dateFrom={filters.actualPickupDateFrom}
+            dateTo={filters.actualPickupDateTo}
+            onChange={({ dateFrom, dateTo }) => {
+              setFilters(previous => ({
+                ...previous,
+                actualPickupDateFrom: dateFrom,
+                actualPickupDateTo: dateTo,
+              }));
+              setPagination(previous => ({ ...previous, currentPage: 1 }));
+            }}
+          />
+          <div className="flex items-center">
+            <TableHeaderHint label="日期筛选字段说明">
+              <p>下单日期：订单的下单日期，按北京时间筛选。</p>
+              <p>取货日期：邮件中的预约取货日期，不代表已完成取货。</p>
+              <p>实际取货日期：官网记录的实际已取货日期，尚未获取时为空。</p>
+              <p>三个条件可组合使用；日期范围包含开始和结束当天。</p>
+            </TableHeaderHint>
+          </div>
+        </div>
+        {activeFilterGroups.length > 0 && (
+          <div className="orders-active-filters" aria-label="已选筛选条件">
+            {activeFilterGroups.map(group => (
+              <button
+                key={group.key}
+                type="button"
+                className="orders-active-filter"
+                title={group.detail}
+                aria-label={`移除${group.label}筛选`}
+                onClick={() => {
+                  setFilters(previous => ({
+                    ...previous,
+                    ...Object.fromEntries(
+                      group.keys.map(key => [key, Array.isArray(previous[key]) ? [] : ''])
+                    ),
+                  }));
+                  setPagination(previous => ({ ...previous, currentPage: 1 }));
+                }}
+              >
+                <span>{group.label}：</span>
+                <strong>{group.summary}</strong>
+                <X className="w-4 h-4" aria-hidden="true" />
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {canRefreshOfficialStatus && (
-        <p className="text-sm text-gray-500">
-          更新官网状态仅查询选中的订单；全选筛选结果仅查询符合当前筛选条件的订单。
-        </p>
-      )}
       {canRefreshOfficialStatus && showOfficialProgress && (
         <OfficialOrderRefreshModal
           onClose={closeOfficialProgress}
@@ -946,13 +1092,19 @@ export default function Orders() {
       )}
 
       {/* 订单列表 */}
-      <div className="card min-w-0">
+      <div className="orders-results min-w-0">
         {canSelectOrders && (
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-gray-600">
+          <div className="orders-bulk-toolbar flex flex-wrap items-center justify-between gap-3">
+            <span className="orders-selection-summary text-sm text-gray-600">
               {allFilteredSelected
                 ? `已选择筛选结果全部 ${pagination.totalItems} 单`
                 : `已选择 ${selectedIds.length} 项（当前页）`}
+              {canRefreshOfficialStatus && (
+                <TableHeaderHint label="批量更新范围说明">
+                  <p>更新官网状态仅查询选中的订单；全选筛选结果仅查询符合当前筛选条件的订单。</p>
+                  <p>批量刷新邮件状态仅支持当前页勾选项。</p>
+                </TableHeaderHint>
+              )}
             </span>
             <div className="flex flex-wrap items-center gap-2">
               {canRefreshOfficialStatus && (
@@ -1023,6 +1175,10 @@ export default function Orders() {
               {canRefreshMailStatus && (
                 <button
                   className="btn btn-secondary flex items-center gap-2"
+                  aria-label={mailBatchSubmitting ? '正在提交' : '批量刷新邮件状态'}
+                  title={
+                    allFilteredSelected ? '邮件批量刷新仅支持当前页勾选项' : '批量刷新邮件状态'
+                  }
                   disabled={
                     loading ||
                     mailBatchSubmitting ||
@@ -1032,10 +1188,35 @@ export default function Orders() {
                   onClick={handleSelectedMailStatusRefresh}
                 >
                   <RefreshCw className={`w-4 h-4 ${mailBatchSubmitting ? 'animate-spin' : ''}`} />
-                  {mailBatchSubmitting ? '正在提交' : '批量刷新邮件状态'}
+                  <span className="orders-mail-batch-label">
+                    {mailBatchSubmitting ? '正在提交' : '批量刷新邮件状态'}
+                  </span>
                 </button>
               )}
             </div>
+          </div>
+        )}
+        {!loading && !loadError && orders.length > 0 && tableScroll.overflow && (
+          <div className="orders-scroll-navigation" aria-label="表格横向翻阅">
+            <span>{tableScroll.right ? '右侧还有字段' : '已到最右侧'}</span>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              aria-label="向左查看字段"
+              disabled={!tableScroll.left}
+              onClick={() => scrollTable(-1)}
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              aria-label="向右查看字段"
+              disabled={!tableScroll.right}
+              onClick={() => scrollTable(1)}
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
           </div>
         )}
         {loading ? (
@@ -1045,9 +1226,23 @@ export default function Orders() {
               <p className="text-gray-600">加载订单...</p>
             </div>
           </div>
+        ) : loadError ? (
+          <div className="orders-feedback" role="alert">
+            <p className="font-medium">订单加载失败</p>
+            <p>{loadError}</p>
+            <button type="button" className="btn btn-secondary" onClick={() => loadOrders()}>
+              重试
+            </button>
+          </div>
         ) : orders.length === 0 ? (
           <div className="text-center py-12">
-            <p className="text-gray-600">未找到订单</p>
+            <p className="font-medium text-gray-900">未找到订单</p>
+            <p className="mt-1 text-sm text-gray-500">试试其他关键词或清空筛选条件</p>
+            {(activeFiltersCount > 0 || searchTerm) && (
+              <button type="button" className="btn btn-secondary mt-4" onClick={resetFilters}>
+                清空筛选
+              </button>
+            )}
           </div>
         ) : (
           <>
@@ -1059,7 +1254,7 @@ export default function Orders() {
                 return (
                   <article
                     key={order.id}
-                    className="rounded-lg border border-gray-200 bg-white p-3"
+                    className="orders-mobile-row rounded-lg border border-gray-200 bg-white p-3"
                   >
                     <div className="flex min-w-0 items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -1101,6 +1296,7 @@ export default function Orders() {
                       />
                     </div>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <span className="text-xs text-gray-500">邮件状态</span>
                       <span className={`badge ${status.class}`}>{status.text}</span>
                       {order.emailStatusNeedsReview && (
                         <span className="text-xs text-amber-700">待核对</span>
@@ -1162,12 +1358,22 @@ export default function Orders() {
                 );
               })}
             </div>
-            <div className="hidden min-w-0 md:block md:overflow-x-auto">
-              <table className="w-full min-w-max">
+            <div
+              ref={tableScrollRef}
+              className="orders-table-scroll hidden min-w-0 md:block md:overflow-x-auto"
+              role="region"
+              aria-label="订单列表，可横向滚动"
+              tabIndex={0}
+            >
+              <table
+                className="orders-table w-full"
+                data-identity-pinned={visibleColumns[0]?.key === 'orderNumber'}
+                style={{ '--orders-identity-left': canSelectOrders ? '40px' : '0px' }}
+              >
                 <thead>
                   <tr className="border-b border-gray-200 bg-gray-50">
                     {canSelectOrders && (
-                      <th className="py-3 px-3 w-10">
+                      <th className="py-3 px-3 w-10" data-order-select>
                         <input
                           type="checkbox"
                           aria-label="全选本页订单"
@@ -1189,6 +1395,7 @@ export default function Orders() {
                     {visibleColumns.map(col => (
                       <th
                         key={col.key}
+                        data-column={col.key}
                         className={`text-left py-3 px-4 text-sm font-medium text-gray-500 whitespace-nowrap ${
                           col.key === 'actions' ? 'text-right sticky right-0 bg-gray-50 z-10' : ''
                         }`}
@@ -1223,7 +1430,7 @@ export default function Orders() {
                       className="border-b border-gray-200 transition-colors hover:bg-gray-50"
                     >
                       {canSelectOrders && (
-                        <td className="py-4 px-3">
+                        <td className="py-4 px-3" data-order-select>
                           <input
                             type="checkbox"
                             aria-label={`选择订单 ${order.orderNumber}`}
@@ -1243,6 +1450,7 @@ export default function Orders() {
                       {visibleColumns.map(col => (
                         <td
                           key={col.key}
+                          data-column={col.key}
                           className={`py-4 px-4 ${col.key === 'actions' ? 'text-right sticky right-0 bg-white' : ''}`}
                         >
                           {renderCell(order, col)}
@@ -1311,16 +1519,18 @@ export default function Orders() {
       />
 
       {/* 分页组件 */}
-      {!loading && pagination.totalItems > 0 && (
-        <Pagination
-          currentPage={pagination.currentPage}
-          totalPages={pagination.totalPages}
-          totalItems={pagination.totalItems}
-          pageSize={pagination.pageSize}
-          onPageChange={handlePageChange}
-          onPageSizeChange={handlePageSizeChange}
-          pageSizeOptions={[10, 20, 50, 100]}
-        />
+      {!loading && !loadError && pagination.totalItems > 0 && (
+        <div className="orders-pagination">
+          <Pagination
+            currentPage={pagination.currentPage}
+            totalPages={pagination.totalPages}
+            totalItems={pagination.totalItems}
+            pageSize={pagination.pageSize}
+            onPageChange={handlePageChange}
+            onPageSizeChange={handlePageSizeChange}
+            pageSizeOptions={[10, 20, 50, 100]}
+          />
+        </div>
       )}
     </div>
   );

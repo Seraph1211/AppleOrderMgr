@@ -1,3 +1,4 @@
+import { useOrdersUiScope } from './ordersUiScope';
 import ResponsiveSelect from './responsiveSelect';
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -32,6 +33,7 @@ export default function DateRangeFilter({
   const panelRef = useRef(null);
   const modeRef = useRef(null);
   const appliedChoice = useRef(null);
+  const ordersUi = useOrdersUiScope();
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState('between');
   const [from, setFrom] = useState('');
@@ -174,7 +176,10 @@ export default function DateRangeFilter({
       ].filter(element => element.tabIndex >= 0);
       const first = controls[0];
       const last = controls[controls.length - 1];
-      if (event.shiftKey && (document.activeElement === first || document.activeElement === panelRef.current)) {
+      if (
+        event.shiftKey &&
+        (document.activeElement === first || document.activeElement === panelRef.current)
+      ) {
         event.preventDefault();
         last.focus();
       } else if (!event.shiftKey && document.activeElement === last) {
@@ -214,6 +219,7 @@ export default function DateRangeFilter({
             id={id}
             role="dialog"
             aria-label={`${label}选择`}
+            data-orders-ui={ordersUi || undefined}
             className="date-range-popover"
             style={position}
             onKeyDown={panelKeyDown}

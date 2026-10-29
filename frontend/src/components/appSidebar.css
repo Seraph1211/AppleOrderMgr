@@ -1,0 +1,74 @@
+/* 共享导航独立作用域。其他页面的内容占位及顶部栏保持原有布局。 */
+.app-sidebar {
+  background: #f0f6ff;
+  border: 0;
+  color: #214365;
+}
+.app-sidebar .app-brand {
+  height: 60px;
+}
+.app-sidebar .app-brand-name {
+  color: #214365;
+  font-size: 14px;
+  letter-spacing: -0.3px;
+}
+.app-sidebar .app-brand-caption {
+  color: #526b88;
+  margin-top: 2px;
+  letter-spacing: 1px;
+}
+.app-sidebar nav {
+  padding-top: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #b7c9e3 transparent;
+}
+.app-sidebar nav::-webkit-scrollbar {
+  width: 6px;
+}
+.app-sidebar nav::-webkit-scrollbar-thumb {
+  background: #b7c9e3;
+  border-radius: 8px;
+}
+.app-sidebar :is(nav a, nav button) {
+  min-height: 36px;
+  padding-top: 7px;
+  padding-bottom: 7px;
+  font-size: 13px;
+  border-radius: 8px;
+  color: #526b88;
+}
+.app-sidebar nav svg {
+  width: 18px;
+  height: 18px;
+}
+.app-sidebar :is(a, button):hover {
+  background: #eaf2ff;
+  color: #214365;
+}
+.app-sidebar a[aria-current='page'] {
+  background: #e3edfc;
+  color: #1f56b8;
+  box-shadow: none;
+}
+.app-sidebar :is(a, button):focus-visible {
+  outline: 1px solid #88a7d1;
+  outline-offset: -1px;
+  box-shadow: none;
+}
+.app-sidebar > div > div:last-child {
+  border: 0;
+}
+.app-sidebar > div > div:last-child p {
+  color: #526b88;
+}
+@media (max-width: 1023px) {
+  .app-sidebar :is(nav a, nav button) {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .app-sidebar,
+  .app-sidebar * {
+    transition: none;
+  }
+}

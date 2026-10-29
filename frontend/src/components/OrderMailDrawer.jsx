@@ -1,10 +1,10 @@
+import OrderOverlay from './orderOverlay';
 import ResponsiveSelect from './responsiveSelect';
 import MailForwardForm from './MailForwardForm';
 import { useAuth } from '../contexts/AuthContext';
 import { PERMISSIONS } from '../constants/permissions';
-import { createPortal } from 'react-dom';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, Download, Image, Mail, RefreshCw, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Download, Image, RefreshCw } from 'lucide-react';
 import {
   getOrderEmails,
   getOrderEmail,
@@ -92,11 +92,8 @@ export default function OrderMailDrawer({ order, onClose }) {
   const [remoteImagesEnabled, setRemoteImagesEnabled] = useState(false);
   const [inlineImages, setInlineImages] = useState({});
   const [previewWarning, setPreviewWarning] = useState('');
-  const panelRef = useRef(null);
-  const closeRef = useRef(onClose);
-  closeRef.current = () => {
-    if (!sending) onClose();
-  };
+  const [mailSection, setMailSection] = useState('content');
+  const [messageAttempt, setMessageAttempt] = useState(0);
 
   useEffect(() => {
     setStatusVersion(order.emailStatusVersion || 0);
@@ -111,6 +108,7 @@ export default function OrderMailDrawer({ order, onClose }) {
 
   useEffect(() => {
     setPreviewMode(detail?.html ? 'html' : 'text');
+    setMailSection('content');
     setRemoteImagesEnabled(false);
     setInlineImages({});
     setPreviewWarning('');
@@ -152,43 +150,6 @@ export default function OrderMailDrawer({ order, onClose }) {
       }),
     [detail?.html, inlineImages, remoteImagesEnabled]
   );
-
-  useEffect(() => {
-    const previous = document.activeElement;
-    const panel = panelRef.current;
-    panel?.focus();
-    const onKey = event => {
-      if (event.key === 'Escape') closeRef.current();
-      if (event.key !== 'Tab') return;
-      const focusable = [...panel.querySelectorAll('button,input,textarea,[tabindex="0"]')].filter(
-        element => !element.disabled && element.offsetParent !== null
-      );
-      if (!focusable.length) {
-        event.preventDefault();
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable.at(-1);
-      if (
-        event.shiftKey &&
-        (document.activeElement === first || document.activeElement === panel)
-      ) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    panel.addEventListener('keydown', onKey);
-    return () => {
-      panel.removeEventListener('keydown', onKey);
-      document.body.style.overflow = previousOverflow;
-      previous?.focus();
-    };
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -249,7 +210,7 @@ export default function OrderMailDrawer({ order, onClose }) {
     return () => {
       active = false;
     };
-  }, [order.id, selectedId]);
+  }, [order.id, selectedId, messageAttempt]);
 
   const hasPending = history.some(item =>
     ['queued', 'sending', 'retry_wait'].includes(item.status)
@@ -331,69 +292,105 @@ export default function OrderMailDrawer({ order, onClose }) {
     }
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-50 bg-gray-900/30 flex justify-end">
-      <section
-        ref={panelRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="order-mail-title"
-        tabIndex={-1}
-        className="bg-white w-full max-w-4xl h-full shadow-xl flex flex-col outline-none"
-      >
-        <header className="p-4 border-b flex items-center justify-between gap-3">
-          <div>
-            <h2
-              id="order-mail-title"
-              className="text-lg font-semibold text-gray-900 flex items-center gap-2"
+  return (
+    <OrderOverlay
+      title="订单邮件"
+      subtitle={`${order.orderNumber} · 订单 ID ${order.id}`}
+      size={selectedId ? 'mail' : 'mail-list'}
+      sectionKey={`${selectedId}-${mailSection}`}
+      className="order-mail-dialog"
+      onClose={onClose}
+      busy={sending}
+      navigation={
+        selectedId && (
+          <div className="order-mail-navigation">
+            <button
+              type="button"
+              className="btn btn-secondary inline-flex items-center gap-1"
+              disabled={sending}
+              onClick={() => setSelectedId(null)}
             >
-              <Mail className="w-5 h-5 text-primary" />
-              订单邮件
-            </h2>
-            <p className="text-sm text-gray-500 break-all">
-              {order.orderNumber} · 订单ID {order.id}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={sending}
-            className="btn btn-secondary"
-            aria-label="关闭订单邮件"
-          >
-            <X className="w-4 h-4" />
-          </button>
-        </header>
-        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
-          {error && (
-            <p role="alert" className="bg-red-50 text-red-700 rounded-lg p-3">
-              {error}
-            </p>
-          )}
-          {notice && (
-            <p role="status" className="bg-blue-50 text-primary rounded-lg p-3">
-              {notice}
-            </p>
-          )}
-          {selectedId ? (
-            <>
+              <ArrowLeft className="h-4 w-4" />
+              返回邮件列表
+            </button>
+            <nav className="order-detail-tabs" aria-label="邮件内容分区">
               <button
-                className="btn btn-secondary inline-flex items-center gap-1"
-                disabled={sending}
-                onClick={() => setSelectedId(null)}
+                type="button"
+                aria-pressed={mailSection === 'content'}
+                onClick={() => setMailSection('content')}
               >
-                <ArrowLeft className="w-4 h-4" />
-                返回邮件列表
+                邮件正文
               </button>
-              {loading && (
-                <p className="text-gray-500" role="status">
-                  正在加载邮件…
-                </p>
+              {(canForward || history.length > 0) && (
+                <button
+                  type="button"
+                  aria-pressed={mailSection === 'forward'}
+                  onClick={() => setMailSection('forward')}
+                >
+                  转发与记录
+                </button>
               )}
-              {detail && (
-                <>
-                  <div className="border rounded-lg p-4 space-y-2 break-words">
-                    <h3 className="font-semibold text-gray-900">{detail.subject || '无主题'}</h3>
+              {detail?.lifecycle && (
+                <button
+                  type="button"
+                  aria-pressed={mailSection === 'lifecycle'}
+                  onClick={() => setMailSection('lifecycle')}
+                >
+                  解析与核定
+                </button>
+              )}
+            </nav>
+          </div>
+        )
+      }
+      footer={
+        <>
+          <span className="order-inline-note">
+            {selectedId
+              ? '保留原始邮件排版、附件与来源证据'
+              : `关联邮件 ${list?.total ?? '—'} 封 · 仅限当前订单`}
+          </span>
+          <button type="button" className="btn btn-secondary" onClick={onClose} disabled={sending}>
+            关闭
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {error && (
+          <p role="alert" className="bg-red-50 text-red-700 rounded-lg p-3">
+            {error}
+            <button
+              type="button"
+              className="btn btn-secondary ml-3"
+              disabled={loading}
+              onClick={() => {
+                if (selectedId) {
+                  setMessageAttempt(value => value + 1);
+                } else setReload(value => value + 1);
+              }}
+            >
+              重新加载
+            </button>
+          </p>
+        )}
+        {notice && (
+          <p role="status" className="bg-blue-50 text-primary rounded-lg p-3">
+            {notice}
+          </p>
+        )}
+        {selectedId ? (
+          <>
+            {loading && (
+              <p className="text-gray-500" role="status">
+                正在加载邮件…
+              </p>
+            )}
+            {detail && (
+              <>
+                <div className="order-mail-message space-y-3 break-words">
+                  <h3 className="font-semibold text-gray-900">{detail.subject || '无主题'}</h3>
+                  <div className="order-mail-message-meta">
                     <p className="text-sm text-gray-600">发件人：{detail.from || '-'}</p>
                     <p className="text-sm text-gray-600">原始收件人：{detail.to || '-'}</p>
                     <p className="text-sm text-gray-600">
@@ -402,227 +399,231 @@ export default function OrderMailDrawer({ order, onClose }) {
                     <p className="text-sm text-gray-600">
                       实际收信：{formatOrderTime(detail.receivedAt)}
                     </p>
-                    {detail.lifecycle && (
-                      <div className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm">
-                        <p className="font-medium text-gray-900">
-                          {TEMPLATE_LABELS[detail.lifecycle.templateType] || '未知模板'}
-                        </p>
-                        <p className="mt-1 text-gray-700">
-                          订单：
-                          {LIFECYCLE_STATUS_LABELS[detail.lifecycle.orderStatus] || '不更新'} ·
-                          付款：
-                          {LIFECYCLE_STATUS_LABELS[detail.lifecycle.paymentStatus] || '不更新'}
-                        </p>
-                        <p className="mt-1 text-gray-700">
-                          来源：
-                          {AUTHENTICITY_LABELS[detail.lifecycle.authenticityStatus] || '待核对'}
-                        </p>
-                        {detail.lifecycle.pickupInfo && (
-                          <div className="mt-2 text-gray-700">
-                            <p>
-                              取货门店：
-                              {detail.lifecycle.pickupInfo.storeName || '-'}
-                            </p>
-                            <p>
-                              取货安排：
-                              {detail.lifecycle.pickupInfo.appointmentMode === 'business_hours'
-                                ? '营业时间内到店'
-                                : [
-                                    detail.lifecycle.pickupInfo.pickupDate,
-                                    detail.lifecycle.pickupInfo.startTime &&
-                                    detail.lifecycle.pickupInfo.endTime
-                                      ? `${detail.lifecycle.pickupInfo.startTime}–${detail.lifecycle.pickupInfo.endTime}`
-                                      : null,
-                                  ]
-                                    .filter(Boolean)
-                                    .join(' ') || '-'}
-                            </p>
-                          </div>
-                        )}
-                        <p className="mt-1 text-xs text-gray-500">
-                          {detail.lifecycle.appliedAt
-                            ? `已应用于 ${formatOrderTime(detail.lifecycle.appliedAt)}`
-                            : `已解析于 ${formatOrderTime(detail.lifecycle.parsedAt)}`}
-                        </p>
-                        {detail.lifecycle.needsReview && (
-                          <p className="mt-1 text-amber-700">
-                            该结论需要人工核对
-                            {!!detail.lifecycle.reviewReasons?.length && (
-                              <span className="block text-xs break-all">
-                                {detail.lifecycle.reviewReasons.join('、')}
-                              </span>
-                            )}
+                  </div>
+                  {detail.lifecycle && (
+                    <div className="order-mail-lifecycle" hidden={mailSection !== 'lifecycle'}>
+                      <p className="font-medium text-gray-900">
+                        {TEMPLATE_LABELS[detail.lifecycle.templateType] || '未知模板'}
+                      </p>
+                      <p className="mt-1 text-gray-700">
+                        订单：
+                        {LIFECYCLE_STATUS_LABELS[detail.lifecycle.orderStatus] || '不更新'} · 付款：
+                        {LIFECYCLE_STATUS_LABELS[detail.lifecycle.paymentStatus] || '不更新'}
+                      </p>
+                      <p className="mt-1 text-gray-700">
+                        来源：
+                        {AUTHENTICITY_LABELS[detail.lifecycle.authenticityStatus] || '待核对'}
+                      </p>
+                      {detail.lifecycle.pickupInfo && (
+                        <div className="mt-2 text-gray-700">
+                          <p>
+                            取货门店：
+                            {detail.lifecycle.pickupInfo.storeName || '-'}
                           </p>
-                        )}
-                        {canManage && (
-                          <>
-                            <button
-                              type="button"
-                              className="btn btn-secondary mt-3 inline-flex items-center gap-1"
-                              disabled={replaying}
-                              onClick={replayLifecycle}
-                            >
-                              <RefreshCw className={`w-4 h-4 ${replaying ? 'animate-spin' : ''}`} />
-                              {replaying ? '提交中…' : '重新解析'}
-                            </button>
-                            <form
-                              className="mt-3 space-y-2 border-t border-blue-100 pt-3"
-                              onSubmit={reviewLifecycle}
-                            >
-                              <p className="font-medium text-gray-900">人工核定当前邮件</p>
-                              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                                <label className="text-gray-700">
-                                  订单状态
-                                  <ResponsiveSelect
-                                    className="input mt-1 w-full"
-                                    value={reviewOrderStatus}
-                                    disabled={reviewing}
-                                    onChange={event => setReviewOrderStatus(event.target.value)}
-                                  >
-                                    <option value="unknown">待确认</option>
-                                    <option value="confirmed">订单已确认</option>
-                                    <option value="processing">处理中</option>
-                                    <option value="ready_for_pickup">可取货</option>
-                                    <option value="picked_up">已取货</option>
-                                    <option value="partially_cancelled">部分取消</option>
-                                    <option value="partially_return_requested">部分发起退货</option>
-                                    <option value="return_requested">已发起退货</option>
-                                    <option value="expired">已过期</option>
-                                    <option value="cancelled">已取消</option>
-                                  </ResponsiveSelect>
-                                </label>
-                                <label className="text-gray-700">
-                                  付款状态
-                                  <ResponsiveSelect
-                                    className="input mt-1 w-full"
-                                    value={reviewPaymentStatus}
-                                    disabled={reviewing}
-                                    onChange={event => setReviewPaymentStatus(event.target.value)}
-                                  >
-                                    <option value="unknown">待确认</option>
-                                    <option value="paid">已付款</option>
-                                  </ResponsiveSelect>
-                                </label>
-                              </div>
-                              <label className="block text-gray-700">
-                                核定依据
-                                <textarea
+                          <p>
+                            取货安排：
+                            {detail.lifecycle.pickupInfo.appointmentMode === 'business_hours'
+                              ? '营业时间内到店'
+                              : [
+                                  detail.lifecycle.pickupInfo.pickupDate,
+                                  detail.lifecycle.pickupInfo.startTime &&
+                                  detail.lifecycle.pickupInfo.endTime
+                                    ? `${detail.lifecycle.pickupInfo.startTime}–${detail.lifecycle.pickupInfo.endTime}`
+                                    : null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(' ') || '-'}
+                          </p>
+                        </div>
+                      )}
+                      <p className="mt-1 text-xs text-gray-500">
+                        {detail.lifecycle.appliedAt
+                          ? `已应用于 ${formatOrderTime(detail.lifecycle.appliedAt)}`
+                          : `已解析于 ${formatOrderTime(detail.lifecycle.parsedAt)}`}
+                      </p>
+                      {detail.lifecycle.needsReview && (
+                        <p className="mt-1 text-amber-700">
+                          该结论需要人工核对
+                          {!!detail.lifecycle.reviewReasons?.length && (
+                            <span className="block text-xs break-all">
+                              {detail.lifecycle.reviewReasons.join('、')}
+                            </span>
+                          )}
+                        </p>
+                      )}
+                      {canManage && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-secondary mt-3 inline-flex items-center gap-1"
+                            disabled={replaying}
+                            onClick={replayLifecycle}
+                          >
+                            <RefreshCw className={`w-4 h-4 ${replaying ? 'animate-spin' : ''}`} />
+                            {replaying ? '提交中…' : '重新解析'}
+                          </button>
+                          <form
+                            className="mt-3 space-y-2 border-t border-blue-100 pt-3"
+                            onSubmit={reviewLifecycle}
+                          >
+                            <p className="font-medium text-gray-900">人工核定当前邮件</p>
+                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                              <label className="text-gray-700">
+                                订单状态
+                                <ResponsiveSelect
                                   className="input mt-1 w-full"
-                                  rows={2}
-                                  minLength={5}
-                                  maxLength={500}
-                                  required
-                                  value={reviewReason}
+                                  value={reviewOrderStatus}
                                   disabled={reviewing}
-                                  placeholder="填写关联官方邮件中的核定依据"
-                                  onChange={event => setReviewReason(event.target.value)}
-                                />
+                                  onChange={event => setReviewOrderStatus(event.target.value)}
+                                >
+                                  <option value="unknown">待确认</option>
+                                  <option value="confirmed">订单已确认</option>
+                                  <option value="processing">处理中</option>
+                                  <option value="ready_for_pickup">可取货</option>
+                                  <option value="picked_up">已取货</option>
+                                  <option value="partially_cancelled">部分取消</option>
+                                  <option value="partially_return_requested">部分发起退货</option>
+                                  <option value="return_requested">已发起退货</option>
+                                  <option value="expired">已过期</option>
+                                  <option value="cancelled">已取消</option>
+                                </ResponsiveSelect>
                               </label>
-                              <button
-                                type="submit"
-                                className="btn btn-secondary"
-                                disabled={reviewing || reviewReason.trim().length < 5}
-                              >
-                                {reviewing ? '保存中…' : '保存核定'}
-                              </button>
-                            </form>
-                          </>
+                              <label className="text-gray-700">
+                                付款状态
+                                <ResponsiveSelect
+                                  className="input mt-1 w-full"
+                                  value={reviewPaymentStatus}
+                                  disabled={reviewing}
+                                  onChange={event => setReviewPaymentStatus(event.target.value)}
+                                >
+                                  <option value="unknown">待确认</option>
+                                  <option value="paid">已付款</option>
+                                </ResponsiveSelect>
+                              </label>
+                            </div>
+                            <label className="block text-gray-700">
+                              核定依据
+                              <textarea
+                                className="input mt-1 w-full"
+                                rows={2}
+                                minLength={5}
+                                maxLength={500}
+                                required
+                                value={reviewReason}
+                                disabled={reviewing}
+                                placeholder="填写关联官方邮件中的核定依据"
+                                onChange={event => setReviewReason(event.target.value)}
+                              />
+                            </label>
+                            <button
+                              type="submit"
+                              className="btn btn-secondary"
+                              disabled={reviewing || reviewReason.trim().length < 5}
+                            >
+                              {reviewing ? '保存中…' : '保存核定'}
+                            </button>
+                          </form>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  <div
+                    className="order-mail-reader order-mail-section space-y-3"
+                    hidden={mailSection !== 'content'}
+                  >
+                    {detail.html && (
+                      <div className="order-mail-preview-toolbar">
+                        <div
+                          className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1"
+                          role="group"
+                          aria-label="邮件正文显示方式"
+                        >
+                          <button
+                            type="button"
+                            className={
+                              'rounded-md px-3 py-1.5 text-sm transition-colors ' +
+                              (previewMode === 'html'
+                                ? 'bg-white text-primary'
+                                : 'text-gray-600 hover:text-gray-900')
+                            }
+                            aria-pressed={previewMode === 'html'}
+                            onClick={() => setPreviewMode('html')}
+                          >
+                            原始排版
+                          </button>
+                          <button
+                            type="button"
+                            className={
+                              'rounded-md px-3 py-1.5 text-sm transition-colors ' +
+                              (previewMode === 'text'
+                                ? 'bg-white text-primary'
+                                : 'text-gray-600 hover:text-gray-900')
+                            }
+                            aria-pressed={previewMode === 'text'}
+                            onClick={() => setPreviewMode('text')}
+                          >
+                            纯文本
+                          </button>
+                        </div>
+                        {previewMode === 'html' && detail.remoteImageCount > 0 && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary inline-flex items-center gap-1"
+                            disabled={remoteImagesEnabled}
+                            onClick={() => setRemoteImagesEnabled(true)}
+                          >
+                            <Image className="w-4 h-4" />
+                            {remoteImagesEnabled
+                              ? '已加载远程图片'
+                              : `加载远程图片（${detail.remoteImageCount}）`}
+                          </button>
                         )}
                       </div>
                     )}
-                    <div className="border-t pt-4 space-y-3">
-                      {detail.html && (
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div
-                            className="inline-flex rounded-lg border border-gray-300 bg-gray-50 p-1"
-                            role="group"
-                            aria-label="邮件正文显示方式"
-                          >
-                            <button
-                              type="button"
-                              className={
-                                'rounded-md px-3 py-1.5 text-sm transition-colors ' +
-                                (previewMode === 'html'
-                                  ? 'bg-white text-primary shadow-sm'
-                                  : 'text-gray-600 hover:text-gray-900')
-                              }
-                              aria-pressed={previewMode === 'html'}
-                              onClick={() => setPreviewMode('html')}
-                            >
-                              原始排版
-                            </button>
-                            <button
-                              type="button"
-                              className={
-                                'rounded-md px-3 py-1.5 text-sm transition-colors ' +
-                                (previewMode === 'text'
-                                  ? 'bg-white text-primary shadow-sm'
-                                  : 'text-gray-600 hover:text-gray-900')
-                              }
-                              aria-pressed={previewMode === 'text'}
-                              onClick={() => setPreviewMode('text')}
-                            >
-                              纯文本
-                            </button>
-                          </div>
-                          {previewMode === 'html' && detail.remoteImageCount > 0 && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary inline-flex items-center gap-1"
-                              disabled={remoteImagesEnabled}
-                              onClick={() => setRemoteImagesEnabled(true)}
-                            >
-                              <Image className="w-4 h-4" />
-                              {remoteImagesEnabled
-                                ? '已加载远程图片'
-                                : `加载远程图片（${detail.remoteImageCount}）`}
-                            </button>
-                          )}
-                        </div>
-                      )}
-                      {previewWarning && (
-                        <p
-                          className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700"
-                          role="status"
-                        >
-                          {previewWarning}
-                        </p>
-                      )}
-                      {previewMode === 'html' && previewDocument ? (
-                        <iframe
-                          className="h-[65vh] min-h-96 w-full rounded-lg border border-gray-200 bg-white"
-                          title="邮件原始排版预览"
-                          sandbox="allow-popups allow-popups-to-escape-sandbox"
-                          referrerPolicy="no-referrer"
-                          srcDoc={previewDocument}
-                        />
-                      ) : (
-                        <div className="whitespace-pre-wrap break-words text-gray-900">
-                          {detail.text || '此邮件没有可预览的文字正文，可查看附件。'}
-                        </div>
-                      )}
-                    </div>
+                    {previewWarning && (
+                      <p
+                        className="rounded-lg bg-amber-50 p-3 text-sm text-amber-700"
+                        role="status"
+                      >
+                        {previewWarning}
+                      </p>
+                    )}
+                    {previewMode === 'html' && previewDocument ? (
+                      <iframe
+                        className="h-[65vh] min-h-96 w-full rounded-lg border border-gray-200 bg-white"
+                        title="邮件原始排版预览"
+                        sandbox="allow-popups allow-popups-to-escape-sandbox"
+                        referrerPolicy="no-referrer"
+                        srcDoc={previewDocument}
+                      />
+                    ) : (
+                      <div className="order-mail-text whitespace-pre-wrap break-words text-gray-900">
+                        {detail.text || '此邮件没有可预览的文字正文，可查看附件。'}
+                      </div>
+                    )}
                   </div>
-                  {!!detail.attachments?.length && (
-                    <div className="space-y-2">
-                      <h3 className="font-medium text-gray-900">附件</h3>
-                      {detail.attachments.map(attachment => (
-                        <button
-                          key={attachment.index}
-                          className="btn btn-secondary flex items-center gap-2 max-w-full"
-                          disabled={downloading !== null}
-                          onClick={() => download(attachment)}
-                        >
-                          <Download className="w-4 h-4 shrink-0" />
-                          <span className="truncate">{attachment.name}</span>
-                          <span className="text-xs text-gray-500">
-                            {Math.ceil(attachment.size / 1024)} KB
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {canForward && (
+                </div>
+                {!!detail.attachments?.length && (
+                  <div className="order-mail-section space-y-2" hidden={mailSection !== 'content'}>
+                    <h3 className="font-medium text-gray-900">附件</h3>
+                    {detail.attachments.map(attachment => (
+                      <button
+                        key={attachment.index}
+                        className="btn btn-secondary flex items-center gap-2 max-w-full"
+                        disabled={downloading !== null}
+                        onClick={() => download(attachment)}
+                      >
+                        <Download className="w-4 h-4 shrink-0" />
+                        <span className="truncate">{attachment.name}</span>
+                        <span className="text-xs text-gray-500">
+                          {Math.ceil(attachment.size / 1024)} KB
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {canForward && (
+                  <div hidden={mailSection !== 'forward'}>
                     <MailForwardForm
                       key={order.id + ':' + selectedId}
                       orderId={order.id}
@@ -638,168 +639,163 @@ export default function OrderMailDrawer({ order, onClose }) {
                         );
                       }}
                     />
-                  )}
-                </>
-              )}
-              {!!history.length && (
-                <div>
-                  <h3 className="font-medium text-gray-900 mb-2">转发记录（最近50条）</h3>
-                  <div className="overflow-x-auto border rounded-lg">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-gray-50 text-gray-600">
-                        <tr>
-                          <th className="p-2">目标邮箱</th>
-                          <th className="p-2">操作人ID</th>
-                          <th className="p-2">时间</th>
-                          <th className="p-2">结果</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {history.map(item => (
-                          <tr key={item.id} className="border-t">
-                            <td className="p-2 break-all">{item.recipient}</td>
-                            <td className="p-2">{item.actorUserId}</td>
-                            <td className="p-2 whitespace-nowrap">
-                              {formatOrderTime(item.createdAt)}
-                            </td>
-                            <td className="p-2">
-                              {DELIVERY_LABELS[item.status] || item.status}
-                              {item.errorCode && (
-                                <span className="block text-xs text-gray-500">
-                                  {item.errorCode}
-                                </span>
-                              )}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
                   </div>
+                )}
+              </>
+            )}
+            {!!history.length && (
+              <div hidden={mailSection !== 'forward'} className="order-mail-section">
+                <h3 className="font-medium text-gray-900 mb-2">转发记录（最近50条）</h3>
+                <div className="order-mail-list overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="p-2">目标邮箱</th>
+                        <th className="p-2">操作人ID</th>
+                        <th className="p-2">时间</th>
+                        <th className="p-2">结果</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {history.map(item => (
+                        <tr key={item.id} className="border-t">
+                          <td className="p-2 break-all">{item.recipient}</td>
+                          <td className="p-2">{item.actorUserId}</td>
+                          <td className="p-2 whitespace-nowrap">
+                            {formatOrderTime(item.createdAt)}
+                          </td>
+                          <td className="p-2">
+                            {DELIVERY_LABELS[item.status] || item.status}
+                            {item.errorCode && (
+                              <span className="block text-xs text-gray-500">{item.errorCode}</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-              )}
-            </>
-          ) : (
-            <>
-              <div className="flex flex-wrap justify-between items-center gap-2">
-                <p className="text-sm text-gray-600">
-                  {list ? SYNC_LABELS[list.sync.status] : '正在读取同步状态'}
-                  {list?.sync.lastSucceededAt && (
-                    <span className="block text-xs text-gray-500">
-                      最近同步：{formatOrderTime(list.sync.lastSucceededAt)}
-                    </span>
-                  )}
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="flex flex-wrap justify-between items-center gap-2">
+              <p className="text-sm text-gray-600">
+                {list ? SYNC_LABELS[list.sync?.status] : '正在读取同步状态'}
+                {list?.sync?.lastSucceededAt && (
+                  <span className="block text-xs text-gray-500">
+                    最近同步：{formatOrderTime(list.sync.lastSucceededAt)}
+                  </span>
+                )}
+              </p>
+              <button
+                className="btn btn-secondary inline-flex items-center gap-1"
+                disabled={loading}
+                onClick={() => setReload(value => value + 1)}
+              >
+                <RefreshCw className={'w-4 h-4 ' + (loading ? 'animate-spin' : '')} />
+                刷新列表
+              </button>
+            </div>
+            {loading ? (
+              <p role="status" className="text-gray-500 py-10 text-center">
+                正在加载关联邮件…
+              </p>
+            ) : list && !list.items.length ? (
+              <div className="py-10 text-center text-gray-500">
+                <p>暂未找到此订单的关联邮件</p>
+                <p className="text-xs mt-2">
+                  仅展示通过来源筛选且明确匹配订单号的邮件；同步尚未完成时请稍后刷新。
                 </p>
+              </div>
+            ) : (
+              list && (
+                <div className="overflow-x-auto border rounded-lg">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-gray-600">
+                      <tr>
+                        <th className="p-3">主题 / 原始收件人</th>
+                        <th className="p-3">时间</th>
+                        <th className="p-3">识别 / 应用结果</th>
+                        <th className="p-3">附件</th>
+                        <th className="p-3">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {list.items.map(item => (
+                        <tr key={item.id} className="border-t hover:bg-gray-50">
+                          <td className="p-3 min-w-40 break-words">
+                            {item.subject || '邮件内容已过期'}
+                            <span className="block text-xs text-gray-500 break-all">{item.to}</span>
+                            <span className="block text-xs text-gray-500 break-all">
+                              {item.from}
+                            </span>
+                          </td>
+                          <td className="p-3 whitespace-nowrap">
+                            <span className="block">发信 {formatOrderTime(item.date)}</span>
+                            <span className="block text-xs text-gray-500">
+                              收信 {formatOrderTime(item.receivedAt)}
+                            </span>
+                          </td>
+                          <td className="p-3 min-w-40">
+                            {item.lifecycle ? (
+                              <div>
+                                <p>{TEMPLATE_LABELS[item.lifecycle.templateType] || '未知模板'}</p>
+                                <p className="text-xs text-gray-500">
+                                  {item.lifecycle.needsReview
+                                    ? '待核对'
+                                    : item.lifecycle.appliedAt
+                                      ? '已应用'
+                                      : '已解析'}
+                                </p>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400">等待解析</span>
+                            )}
+                          </td>
+                          <td className="p-3" data-mail-attachments>
+                            附件 {item.attachments?.length || 0}
+                          </td>
+                          <td className="p-3">
+                            <button
+                              className="btn btn-secondary whitespace-nowrap"
+                              onClick={() => setSelectedId(item.id)}
+                            >
+                              {item.expired ? '查看记录' : '查看邮件'}
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )
+            )}
+            {list && list.total > 20 && (
+              <div className="flex items-center justify-end gap-3">
                 <button
-                  className="btn btn-secondary inline-flex items-center gap-1"
-                  disabled={loading}
-                  onClick={() => setReload(value => value + 1)}
+                  className="btn btn-secondary"
+                  disabled={page === 1 || loading}
+                  onClick={() => setPage(value => value - 1)}
                 >
-                  <RefreshCw className={'w-4 h-4 ' + (loading ? 'animate-spin' : '')} />
-                  刷新列表
+                  上一页
+                </button>
+                <span className="text-sm text-gray-600">
+                  第 {page} 页 · 共 {list.total} 封
+                </span>
+                <button
+                  className="btn btn-secondary"
+                  disabled={page * 20 >= list.total || loading}
+                  onClick={() => setPage(value => value + 1)}
+                >
+                  下一页
                 </button>
               </div>
-              {loading ? (
-                <p role="status" className="text-gray-500 py-10 text-center">
-                  正在加载关联邮件…
-                </p>
-              ) : list && !list.items.length ? (
-                <div className="py-10 text-center text-gray-500">
-                  <p>暂未找到此订单的关联邮件</p>
-                  <p className="text-xs mt-2">
-                    仅展示通过来源筛选且明确匹配订单号的邮件；同步尚未完成时请稍后刷新。
-                  </p>
-                </div>
-              ) : (
-                list && (
-                  <div className="overflow-x-auto border rounded-lg">
-                    <table className="w-full text-sm text-left">
-                      <thead className="bg-gray-50 text-gray-600">
-                        <tr>
-                          <th className="p-3">主题 / 原始收件人</th>
-                          <th className="p-3">时间</th>
-                          <th className="p-3">识别 / 应用结果</th>
-                          <th className="p-3">附件</th>
-                          <th className="p-3">操作</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {list.items.map(item => (
-                          <tr key={item.id} className="border-t hover:bg-gray-50">
-                            <td className="p-3 min-w-40 break-words">
-                              {item.subject || '邮件内容已过期'}
-                              <span className="block text-xs text-gray-500 break-all">
-                                {item.to}
-                              </span>
-                              <span className="block text-xs text-gray-500 break-all">
-                                {item.from}
-                              </span>
-                            </td>
-                            <td className="p-3 whitespace-nowrap">
-                              <span className="block">发信 {formatOrderTime(item.date)}</span>
-                              <span className="block text-xs text-gray-500">
-                                收信 {formatOrderTime(item.receivedAt)}
-                              </span>
-                            </td>
-                            <td className="p-3 min-w-40">
-                              {item.lifecycle ? (
-                                <div>
-                                  <p>
-                                    {TEMPLATE_LABELS[item.lifecycle.templateType] || '未知模板'}
-                                  </p>
-                                  <p className="text-xs text-gray-500">
-                                    {item.lifecycle.needsReview
-                                      ? '待核对'
-                                      : item.lifecycle.appliedAt
-                                        ? '已应用'
-                                        : '已解析'}
-                                  </p>
-                                </div>
-                              ) : (
-                                <span className="text-gray-400">等待解析</span>
-                              )}
-                            </td>
-                            <td className="p-3">{item.attachments?.length || 0}</td>
-                            <td className="p-3">
-                              <button
-                                className="btn btn-secondary whitespace-nowrap"
-                                onClick={() => setSelectedId(item.id)}
-                              >
-                                {item.expired ? '查看记录' : '查看邮件'}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )
-              )}
-              {list && list.total > 20 && (
-                <div className="flex items-center justify-end gap-3">
-                  <button
-                    className="btn btn-secondary"
-                    disabled={page === 1 || loading}
-                    onClick={() => setPage(value => value - 1)}
-                  >
-                    上一页
-                  </button>
-                  <span className="text-sm text-gray-600">
-                    第 {page} 页 · 共 {list.total} 封
-                  </span>
-                  <button
-                    className="btn btn-secondary"
-                    disabled={page * 20 >= list.total || loading}
-                    onClick={() => setPage(value => value + 1)}
-                  >
-                    下一页
-                  </button>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </section>
-    </div>,
-    document.body
+            )}
+          </>
+        )}
+      </div>
+    </OrderOverlay>
   );
 }

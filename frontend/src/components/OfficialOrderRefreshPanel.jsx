@@ -53,7 +53,7 @@ const ERRORS = {
   PRIVATE_FILE_PERMISSIONS: '服务器取数文件权限异常，请联系管理员',
   COLLECTOR_EXIT_FAILED: '采集进程异常结束，本次结果未写入',
   REQUEST_BUDGET: '本轮请求额度已用完',
-  ORDER_ATTEMPT_LIMIT: '该订单今日查询次数已满',
+  ORDER_ATTEMPT_LIMIT: '该订单最近24小时查询已达50次',
   ACCOUNT_COOLDOWN: '账号处于冷却中',
   LOGIN_COOLDOWN: '账号登录冷却中',
   PROXY_COOLDOWN: '代理暂不可用',
@@ -198,6 +198,12 @@ export default function OfficialOrderRefreshPanel({ batchId, onBatchChange, onUp
       {!batch && !error && <p className="text-sm text-gray-500">正在读取任务进度…</p>}
       {batch && (
         <>
+          <progress
+            className="order-refresh-progress"
+            aria-label="官网更新完成进度"
+            max={Math.max(batch.total, 1)}
+            value={batch.counts.succeeded + batch.counts.failed + batch.counts.cancelled}
+          />
           <p className="text-sm text-gray-600" role="status">
             共 {batch.total} 单 · 已更新 {batch.counts.succeeded} · 失败 {batch.counts.failed} ·
             查询中 {batch.counts.running} · 排队 {batch.counts.queued} · 已取消{' '}

@@ -1,0 +1,1068 @@
+/* 订单路由基础配色；下方紧凑桌面布局使用208px导航、8px外沿与16px内边距。
+ * 六个宽屏筛选列：(可用宽度 - 5 × 8px) / 6；日期单独一行，已选条件自然换行。
+ * 已有个人列配置仅在独立表格区域横滚。
+ */
+.orders-workspace,
+[data-orders-ui] {
+  --orders-ground: #f0f6ff;
+  --orders-surface: #fff;
+  --orders-ink: #214365;
+  --orders-muted: #526b88;
+  --orders-border: #e0e9f5;
+  --orders-control: #c9d7eb;
+  --orders-accent: #246bdc;
+  --orders-accent-hover: #1f56b8;
+  --orders-tint: #eaf2ff;
+  --orders-radius: 8px;
+  color: var(--orders-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.orders-workspace {
+  background: var(--orders-ground);
+}
+.orders-workspace > div > header {
+  background: var(--orders-ground);
+}
+.orders-workspace .app-content {
+  margin: 0 8px 8px 0;
+  min-height: calc(100vh - 60px);
+  padding: 24px;
+  border: 1px solid var(--orders-border);
+  border-radius: 14px;
+  background: var(--orders-surface);
+}
+.orders-workspace .orders-page {
+  color: var(--orders-ink);
+}
+.orders-page-heading {
+  margin-bottom: 24px;
+}
+.orders-workspace .orders-page h1 {
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 32px;
+}
+.orders-page-heading p {
+  font-size: 14px;
+}
+.orders-heading-tools {
+  flex: 1;
+  min-width: 0;
+  max-width: 740px;
+}
+.orders-heading-tools > button {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.orders-searchbar {
+  min-width: 0;
+}
+.orders-selection-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.orders-scroll-navigation {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  min-height: 28px;
+  padding-bottom: 4px;
+  font-size: 12px;
+  color: var(--orders-muted);
+}
+.orders-workspace .orders-scroll-navigation .btn {
+  min-height: 24px;
+  padding: 2px 4px;
+}
+.orders-filters {
+  padding: 0 0 16px;
+}
+.orders-filter-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 28px;
+  margin-bottom: 12px;
+}
+.orders-filter-heading h2 {
+  font-size: 13px;
+  font-weight: 500;
+}
+.orders-filter-hint,
+.orders-filter-count {
+  font-size: 12px;
+  color: var(--orders-muted);
+}
+.orders-workspace .orders-filter-heading svg {
+  width: 16px;
+  height: 16px;
+}
+.order-filter-field {
+  min-width: 0;
+}
+.orders-workspace .order-filter-trigger {
+  display: flex;
+  gap: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.order-filter-trigger-label {
+  flex-shrink: 0;
+  color: var(--orders-ink);
+}
+.order-filter-trigger-value {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--orders-muted);
+  text-align: right;
+}
+.orders-workspace .order-filter-trigger.is-selected {
+  background: var(--orders-tint);
+  border-color: #a5c3f2;
+}
+.order-filter-trigger.is-selected .order-filter-trigger-value {
+  color: var(--orders-accent-hover);
+  font-weight: 500;
+}
+.orders-workspace .order-filter-trigger > svg {
+  width: 14px;
+  height: 14px;
+}
+.orders-workspace .order-filter-fields .order-filter-field .tag-select-panel {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  right: 0;
+  left: 0;
+}
+.orders-workspace .orders-filters .order-date-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.orders-active-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.orders-active-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--orders-border);
+  border-radius: 6px;
+  background: var(--orders-ground);
+  color: var(--orders-muted);
+  font-size: 12px;
+}
+.orders-active-filter strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+  color: var(--orders-ink);
+}
+.orders-active-filter > span,
+.orders-active-filter > svg {
+  flex-shrink: 0;
+}
+.orders-active-filter:hover {
+  border-color: var(--orders-control);
+  background: var(--orders-tint);
+}
+.orders-workspace .tag-select-footer .btn {
+  min-height: 30px;
+}
+.orders-filters > div:first-child {
+  margin-bottom: 12px;
+}
+.orders-workspace .order-filter-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+.orders-workspace .order-date-filters {
+  grid-column: 1 / -1;
+}
+.orders-workspace .order-filter-fields label {
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--orders-muted);
+}
+.orders-workspace .order-date-filters > .date-range-filter {
+  min-width: 0;
+}
+.orders-workspace .orders-filter-toggle {
+  display: none;
+}
+.orders-workspace .date-range-trigger.is-selected {
+  background: var(--orders-tint);
+  border-color: #a5c3f2;
+}
+[data-orders-ui].date-range-popover .date-range-inputs .is-active .input {
+  background: #f0f6ff;
+  border-color: var(--orders-accent);
+}
+.orders-results {
+  border-top: 1px solid var(--orders-border);
+}
+.orders-bulk-toolbar {
+  min-height: 60px;
+  padding: 12px 0;
+}
+.orders-bulk-toolbar > span {
+  font-size: 13px;
+}
+.orders-bulk-toolbar > div {
+  gap: 6px;
+}
+.orders-bulk-toolbar .btn {
+  padding-left: 10px;
+  padding-right: 10px;
+  font-size: 12px;
+}
+.orders-table-scroll {
+  max-height: none;
+  scrollbar-width: thin;
+  scrollbar-color: #b7c9e3 transparent;
+  scroll-padding: 40px;
+}
+.orders-table-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.orders-table-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.orders-table-scroll::-webkit-scrollbar-thumb {
+  background: #b7c9e3;
+  border-radius: 12px;
+}
+.orders-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #89a9d2;
+}
+.orders-table-scroll:focus-visible {
+  outline: 2px solid var(--orders-accent);
+  outline-offset: -2px;
+}
+.orders-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 11;
+}
+.orders-table th,
+.orders-table th.sticky {
+  background: var(--orders-surface);
+  font-size: 13px;
+  font-weight: 400;
+}
+.orders-table th {
+  padding: 12px 10px;
+}
+.orders-table td {
+  padding: 14px 10px;
+  vertical-align: top;
+}
+.orders-table tr {
+  border-color: #edf2f9;
+}
+.orders-table tbody tr:hover {
+  background: #f7faff;
+}
+.orders-table [data-column='orderNumber'] {
+  min-width: 138px !important;
+}
+.orders-table [data-column='products'] {
+  min-width: 208px !important;
+  max-width: 250px;
+}
+.orders-table [data-column='products'] > div {
+  font-weight: 500;
+}
+.orders-table [data-column='officialOrderStatus'],
+.orders-table [data-column='emailOrderStatus'] {
+  min-width: 112px !important;
+  max-width: 160px;
+}
+.orders-table [data-column='recipientName'] {
+  min-width: 76px !important;
+}
+.orders-table [data-column='recipientTag'] {
+  min-width: 106px !important;
+  max-width: 160px;
+}
+.orders-table [data-column='emailPickupInfo'] {
+  min-width: 182px !important;
+}
+.orders-table [data-column='actualPickupDate'] {
+  min-width: 110px !important;
+}
+.orders-table [data-column='actions'] {
+  min-width: 182px !important;
+  box-shadow: -1px 0 0 var(--orders-border);
+}
+.orders-workspace .orders-row-actions {
+  display: grid;
+  grid-template-columns: repeat(2, max-content);
+  width: max-content;
+  margin-left: auto;
+  gap: 4px;
+}
+.orders-row-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  padding: 5px 8px;
+  white-space: nowrap;
+}
+.orders-pagination {
+  padding-top: 16px;
+  border-top: 1px solid var(--orders-border);
+}
+.orders-feedback {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  padding: 40px 16px;
+  text-align: center;
+}
+
+/* 同一路由的弹窗、门户选择器及邮件抽屉共用控件配色，不影响其他业务路由。 */
+:is(.orders-workspace, [data-orders-ui]) .btn {
+  border-radius: var(--orders-radius);
+  box-shadow: none;
+  min-height: 36px;
+  transition-property: background-color, border-color, color;
+}
+:is(.orders-workspace, [data-orders-ui]) .btn-secondary {
+  background: var(--orders-surface);
+  color: var(--orders-ink);
+  border-color: var(--orders-control);
+}
+:is(.orders-workspace, [data-orders-ui]) .btn-secondary:hover {
+  background: #f0f5fd;
+}
+:is(.orders-workspace, [data-orders-ui]) .btn-primary {
+  background: var(--orders-accent);
+  color: var(--orders-surface);
+  border-color: var(--orders-accent);
+}
+:is(.orders-workspace, [data-orders-ui]) .btn-primary:hover {
+  background: var(--orders-accent-hover);
+}
+:is(.orders-workspace, [data-orders-ui]) .btn:disabled {
+  color: var(--orders-muted);
+  background: #f3f6fb;
+  border-color: var(--orders-border);
+  cursor: not-allowed;
+  opacity: 1;
+}
+:is(.orders-workspace, [data-orders-ui]) .input {
+  min-height: 36px;
+  border-color: var(--orders-control);
+  border-radius: var(--orders-radius);
+  color: var(--orders-ink);
+}
+:is(.orders-workspace, [data-orders-ui]) .input::placeholder {
+  color: var(--orders-muted);
+}
+:is(.orders-workspace, [data-orders-ui]) :is(.text-gray-400, .text-gray-500, .text-gray-600) {
+  color: var(--orders-muted);
+}
+:is(.orders-workspace, [data-orders-ui]) .text-primary {
+  color: var(--orders-accent);
+}
+:is(.orders-workspace, [data-orders-ui]) .bg-primary {
+  background-color: var(--orders-accent);
+}
+:is(.orders-workspace, [data-orders-ui]) .bg-primary-50 {
+  background-color: var(--orders-tint);
+}
+:is(.orders-workspace, [data-orders-ui]) input[type='checkbox'] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--orders-accent);
+}
+:is(.orders-workspace, [data-orders-ui]) :is(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid var(--orders-accent);
+  outline-offset: 2px;
+  --tw-ring-color: transparent;
+}
+.orders-workspace .badge {
+  border-radius: 4px;
+  border-color: transparent;
+  white-space: nowrap;
+}
+.orders-workspace .badge[class*='bg-purple-'] {
+  background: #eef3fb;
+  color: #475e7d;
+}
+.orders-workspace .badge[class*='text-green-'] {
+  color: #226346;
+}
+.orders-workspace .badge[class*='text-blue-'] {
+  color: #255c83;
+}
+.orders-workspace .badge[class*='text-yellow-'] {
+  color: #785317;
+}
+.orders-workspace .badge[class*='text-red-'] {
+  color: #993d3c;
+}
+.orders-workspace .orders-pagination .bg-primary {
+  background: var(--orders-tint);
+  color: var(--orders-accent-hover);
+}
+.orders-workspace .orders-page .card {
+  box-shadow: none;
+}
+
+@media (min-width: 1280px) {
+  .orders-workspace .order-filter-fields {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1024px) {
+  .orders-workspace > aside {
+    width: 228px;
+  }
+  .orders-workspace > .lg\:pl-52 {
+    padding-left: 228px;
+  }
+}
+@media (max-width: 1099px) {
+  .orders-workspace .orders-filter-toggle {
+    display: flex;
+    margin-bottom: 12px;
+  }
+  .orders-filters:not(.is-filter-open) {
+    display: none;
+  }
+  .orders-bulk-toolbar {
+    align-items: flex-start;
+  }
+  .orders-bulk-toolbar > div {
+    width: 100%;
+  }
+}
+@media (max-width: 767px) {
+  .orders-workspace .app-content {
+    margin: 0;
+    padding: 16px;
+    border: 0;
+    border-radius: 0;
+  }
+  .orders-page-heading {
+    margin-bottom: 16px;
+  }
+  .orders-workspace .orders-page h1 {
+    font-size: 22px;
+    line-height: 28px;
+  }
+  .orders-page-heading p {
+    font-size: 12px;
+  }
+  .orders-page-heading .btn {
+    white-space: nowrap;
+  }
+  .orders-workspace .order-filter-fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .orders-workspace .order-filter-trigger {
+    min-height: 44px;
+    flex-wrap: wrap;
+  }
+  .order-filter-trigger-label {
+    font-size: 12px;
+  }
+  .order-filter-trigger-value {
+    min-width: 0;
+  }
+  .orders-filter-hint {
+    display: none;
+  }
+  .orders-active-filter {
+    min-height: 44px;
+  }
+  .orders-filters {
+    padding: 16px 0;
+  }
+  .orders-bulk-toolbar {
+    gap: 8px;
+  }
+  .orders-bulk-toolbar .btn {
+    min-height: 44px;
+    font-size: 12px;
+  }
+  .orders-bulk-toolbar > div {
+    gap: 6px;
+  }
+  .orders-mail-batch-label {
+    display: none;
+  }
+  .orders-mobile-row .text-xs {
+    font-size: 13px;
+  }
+  .orders-mobile-row {
+    padding: 16px 0;
+    border: 0;
+    border-radius: 0;
+    border-bottom: 1px solid var(--orders-border);
+  }
+  .orders-mobile-list {
+    margin-top: 4px;
+  }
+  .orders-mobile-list > :not([hidden]) ~ :not([hidden]) {
+    margin-top: 0;
+  }
+  .orders-mobile-row > div:first-child input[type='checkbox'] {
+    width: 24px;
+    height: 24px;
+  }
+  .orders-mobile-actions {
+    margin-top: 12px;
+    padding-top: 0;
+    border: 0;
+  }
+  .orders-workspace .orders-row-actions {
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+  .orders-row-actions .btn {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  :is(.orders-workspace, [data-orders-ui]) .input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+  :is(.orders-workspace, [data-orders-ui]) .btn {
+    min-height: 44px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .orders-workspace *,
+  [data-orders-ui] * {
+    transition: none !important;
+  }
+}
+
+/* 100%缩放下的桌面工作台：208px导航 + 8px外沿 + 两侧16px内距；
+ * 1440px时表格可用1192px，默认列最小宽度约1152px；1600px起操作单行，表格最小1280px。只有列表滚动，工具与分页固定。
+ * 矮窗口、平板和手机恢复页面滚动，防止筛选展开后挤掉列表。
+ */
+@media (min-width: 768px) {
+  .orders-workspace .orders-page {
+    font-size: 13px;
+  }
+  .orders-page-heading {
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+  .orders-page-heading > div:first-child {
+    flex-shrink: 0;
+  }
+  .orders-workspace .orders-page h1 {
+    font-size: 20px;
+    line-height: 26px;
+  }
+  .orders-page-heading p {
+    font-size: 12px;
+    line-height: 18px;
+    margin-top: 2px;
+  }
+  body .orders-workspace .orders-page :is(.btn, .input, .date-range-trigger) {
+    min-height: 30px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  body .orders-workspace .orders-page .btn {
+    padding: 5px 8px;
+  }
+  body .orders-workspace .orders-page .input {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+  .orders-workspace .orders-page .orders-searchbar .input {
+    font-size: 13px;
+  }
+  .orders-workspace .order-filter-trigger {
+    padding: 5px 8px;
+  }
+  .orders-workspace .orders-filters {
+    padding-bottom: 10px;
+  }
+  .orders-filter-heading {
+    min-height: 20px;
+  }
+  .orders-filters > div:first-child {
+    margin-bottom: 6px;
+  }
+  .orders-workspace .orders-filters .order-date-filters {
+    margin-top: 8px;
+  }
+  .orders-active-filters {
+    margin-top: 8px;
+    gap: 6px;
+  }
+  .orders-active-filter {
+    min-height: 26px;
+    padding: 3px 6px;
+  }
+  .orders-bulk-toolbar {
+    min-height: 44px;
+    padding: 6px 0;
+    gap: 8px;
+  }
+  .orders-bulk-toolbar > span {
+    font-size: 12px;
+  }
+  .orders-table {
+    min-width: 1152px;
+    font-size: 12px;
+  }
+  .orders-table .text-sm {
+    font-size: 12px;
+    line-height: 17px;
+  }
+  .orders-table .text-xs {
+    font-size: 12px;
+    line-height: 17px;
+  }
+  .orders-table [data-column='products'] .text-sm {
+    font-size: 12px;
+  }
+  .orders-table th {
+    padding: 8px;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  .orders-table td {
+    padding: 5px 8px;
+    line-height: 17px;
+  }
+  .orders-table [data-column='orderNumber'] {
+    min-width: 120px !important;
+  }
+  .orders-table [data-column='products'] {
+    min-width: 180px !important;
+    max-width: 240px;
+  }
+  .orders-table [data-column='officialOrderStatus'],
+  .orders-table [data-column='emailOrderStatus'] {
+    min-width: 96px !important;
+  }
+  .orders-table [data-column='recipientName'] {
+    min-width: 62px !important;
+  }
+  .orders-table [data-column='recipientTag'] {
+    min-width: 86px !important;
+  }
+  .orders-table [data-column='emailPickupInfo'] {
+    min-width: 170px !important;
+  }
+  .orders-table [data-column='actualPickupDate'] {
+    min-width: 98px !important;
+  }
+  .orders-table [data-column='actions'] {
+    min-width: 192px !important;
+  }
+  body .orders-workspace .orders-row-actions .btn {
+    min-height: 28px;
+    padding: 4px 6px;
+  }
+  .orders-pagination {
+    flex-shrink: 0;
+    padding-top: 6px;
+  }
+  .orders-pagination > div {
+    padding: 6px 0;
+    background: var(--orders-surface);
+    border: 0;
+    gap: 8px;
+  }
+  .orders-pagination :is(.text-sm, label, .input) {
+    font-size: 12px;
+  }
+  .orders-pagination button {
+    min-height: 28px;
+    height: 28px;
+    padding: 4px 6px;
+  }
+}
+@media (min-width: 1100px) {
+  .orders-workspace > aside {
+    width: 208px;
+  }
+  .orders-workspace > .lg\:pl-52 {
+    padding-left: 208px;
+  }
+  .orders-workspace .app-content {
+    padding: 16px;
+  }
+  .orders-workspace .app-brand {
+    height: 60px;
+  }
+  .orders-workspace .app-brand-name {
+    font-size: 14px;
+  }
+  .orders-workspace > aside nav {
+    padding-top: 8px;
+  }
+  .orders-workspace > aside :is(nav a, nav button) {
+    min-height: 36px;
+    padding-top: 7px;
+    padding-bottom: 7px;
+    font-size: 13px;
+  }
+  .orders-workspace > aside nav svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+@media (min-width: 1100px) and (min-height: 680px) {
+  .orders-workspace {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .orders-workspace > .lg\:pl-52 {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+  .orders-workspace > div > header {
+    flex-shrink: 0;
+    height: 44px;
+  }
+  .orders-workspace .app-content {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+  .orders-workspace .orders-page {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    min-height: 0;
+  }
+  .orders-page-heading,
+  .orders-filters {
+    flex-shrink: 0;
+  }
+  .orders-results {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .orders-bulk-toolbar {
+    flex-shrink: 0;
+  }
+  .orders-table-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+}
+@media (max-width: 767px) {
+  .orders-page-heading {
+    flex-wrap: wrap;
+  }
+  .orders-heading-tools {
+    flex-wrap: wrap;
+    flex-basis: 100%;
+    max-width: none;
+  }
+  .orders-searchbar {
+    flex-basis: 100%;
+  }
+  .orders-heading-tools .input {
+    padding-left: 40px;
+  }
+  .orders-scroll-navigation {
+    display: none;
+  }
+}
+
+.orders-workspace {
+  scrollbar-width: thin;
+  scrollbar-color: #b7c9e3 transparent;
+}
+@media (min-width: 768px) {
+  .orders-table [data-order-select] {
+    position: sticky;
+    left: 0;
+    width: 40px;
+    min-width: 40px;
+    z-index: 2;
+    background: var(--orders-surface);
+  }
+  .orders-table[data-identity-pinned='true'] [data-column='orderNumber'] {
+    position: sticky;
+    left: var(--orders-identity-left);
+    z-index: 2;
+    background: var(--orders-surface);
+    box-shadow: inset -1px 0 var(--orders-border);
+  }
+  .orders-table thead :is([data-order-select], [data-column='orderNumber']) {
+    z-index: 3;
+  }
+}
+
+@media (min-width: 768px) {
+  .orders-table [data-column='orderNumber'] :is(.mb-1, .mt-1) {
+    margin-top: 0;
+    margin-bottom: 0;
+  }
+}
+
+@media (max-width: 767px) {
+  .orders-page-heading {
+    gap: 12px;
+  }
+  .orders-heading-tools {
+    row-gap: 8px;
+  }
+  .orders-searchbar {
+    padding: 0;
+  }
+}
+
+/* 用户反馈：正文缩小一档，操作始终带文字；大屏一行，中等宽度2×2。 */
+@media (min-width: 1600px) {
+  .orders-workspace .orders-row-actions {
+    grid-template-columns: repeat(4, max-content);
+  }
+  .orders-table {
+    min-width: 1280px;
+  }
+  .orders-table [data-column='actions'] {
+    min-width: 308px !important;
+  }
+}
+@media (min-width: 360px) and (max-width: 767px) {
+  .orders-workspace .orders-row-actions {
+    grid-template-columns: repeat(4, max-content);
+  }
+  .orders-row-actions .btn {
+    padding-left: 6px;
+    padding-right: 6px;
+    font-size: 12px;
+  }
+}
+@media (min-width: 768px) {
+  [data-orders-ui].order-overlay table,
+  [data-orders-ui].order-overlay table .text-sm {
+    font-size: 12px;
+  }
+}
+
+/* 一处控件只保留一层焦点反馈：输入使用细边框，键盘按钮使用1px轮廓。
+ * 同时覆盖订单路由的门户和嵌套弹层，不改变其他路由。
+ */
+:is(.orders-workspace, [data-orders-ui]) :is(button, a, input, select, textarea, [tabindex]):focus {
+  outline: none;
+  box-shadow: none;
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+  --tw-ring-color: transparent;
+}
+:is(.orders-workspace, [data-orders-ui])
+  :is(button, a, input[type='checkbox'], [tabindex]):focus-visible {
+  outline: 1px solid #88a7d1;
+  outline-offset: 2px;
+}
+:is(.orders-workspace, [data-orders-ui]) :is(input:not([type='checkbox']), textarea, select):focus {
+  border-color: #88a7d1;
+  outline: none;
+  box-shadow: none;
+}
+:is(.orders-workspace, [data-orders-ui]) :is([role='option'], .tag-select-all):focus-visible {
+  outline-offset: -2px;
+}
+.orders-workspace .orders-table-scroll:focus-visible {
+  outline-offset: -1px;
+}
+
+/* 筛选菜单与触发器等宽；白底清单及蓝色勾选沿用用户参考，不引入排序语义。 */
+.orders-workspace .order-filter-field .tag-select-panel {
+  margin-top: 4px;
+  border-color: #dce5f1;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgb(33 67 101 / 10%);
+}
+.orders-workspace .tag-select-panel .tag-select-search {
+  padding: 8px;
+}
+.orders-workspace .tag-select-panel .tag-select-search .input {
+  height: 30px;
+  min-height: 30px;
+  padding: 4px 8px 4px 28px;
+  font-size: 12px;
+  border-radius: 5px;
+}
+.orders-workspace .tag-select-search svg {
+  width: 14px;
+  height: 14px;
+  top: 50%;
+  left: 8px;
+  transform: translateY(-50%);
+}
+.orders-workspace .tag-select-panel [role='listbox'] {
+  max-height: 224px;
+  padding: 4px;
+}
+body .orders-workspace .tag-select-panel :is(.tag-select-option, .tag-select-all) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 6px 8px;
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+  background: white;
+  border: 0;
+  border-radius: 4px;
+  color: var(--orders-ink);
+}
+.orders-workspace .tag-select-panel :is(.tag-select-option, .tag-select-all):hover:not(:disabled) {
+  background: #f4f7fb;
+}
+:is(.orders-workspace, [data-orders-ui] .mobile-picker-multi-panel) .tag-select-checkbox {
+  width: 16px;
+  height: 16px;
+  border: 1px solid #cbd7e6;
+  border-radius: 4px;
+  box-shadow: none;
+}
+:is(.orders-workspace, [data-orders-ui] .mobile-picker-multi-panel)
+  :is([aria-selected='true'], [aria-pressed='true'], [aria-pressed='mixed'])
+  .tag-select-checkbox {
+  color: white;
+  background: #246bdc;
+  border-color: #246bdc;
+}
+.orders-workspace .tag-select-panel .tag-select-footer {
+  padding: 6px 8px;
+  gap: 4px;
+}
+body .orders-workspace .tag-select-panel .tag-select-footer button {
+  min-height: 28px;
+  padding: 4px 6px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.orders-workspace .tag-select-panel .tag-select-footer button > svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* 桌面日历独立缩小，手机保留原尺寸与44px触控。 */
+@media (min-width: 768px) {
+  [data-orders-ui].date-range-popover {
+    width: 292px;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    line-height: 18px;
+    box-shadow: 0 6px 18px rgb(33 67 101 / 10%);
+  }
+  [data-orders-ui].date-range-popover :is(.btn, .input) {
+    min-height: 28px;
+    padding: 4px 6px;
+    font-size: 12px;
+    line-height: 18px;
+    border-radius: 5px;
+  }
+  [data-orders-ui] .date-range-toolbar {
+    gap: 6px;
+    margin-bottom: 10px;
+  }
+  [data-orders-ui] .date-range-inputs {
+    gap: 8px;
+  }
+  [data-orders-ui] .date-range-inputs label > span {
+    margin-bottom: 3px;
+    font-size: 12px;
+    line-height: 16px;
+  }
+  [data-orders-ui] .date-range-month {
+    margin: 8px 0 4px;
+    font-size: 13px;
+  }
+  [data-orders-ui] .date-range-weekday {
+    padding: 4px 0;
+    font-size: 12px;
+    line-height: 16px;
+  }
+  [data-orders-ui] .date-range-day {
+    height: 28px;
+    min-height: 28px;
+    font-size: 12px;
+    line-height: 18px;
+    border-radius: 4px;
+  }
+  [data-orders-ui] .date-range-hint {
+    margin: 8px 0;
+    font-size: 12px;
+    line-height: 18px;
+  }
+  [data-orders-ui] .date-range-footer {
+    padding-top: 8px;
+  }
+  [data-orders-ui] .date-range-footer > p {
+    margin-bottom: 8px;
+    line-height: 18px;
+  }
+}
+
+@media (max-width: 639px) {
+  .orders-workspace .order-filter-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* 订单工作台的抽屉断点独立于其他路由原有1024px断点。 */
+@media (min-width: 1024px) and (max-width: 1099px) {
+  .orders-workspace > .app-main {
+    padding-left: 0;
+  }
+  .orders-workspace .app-navigation-trigger {
+    display: flex;
+  }
+  .orders-workspace .app-navigation-backdrop {
+    display: block;
+  }
+  .orders-workspace > .app-sidebar {
+    width: 256px;
+    z-index: 50;
+  }
+  .orders-workspace > .app-sidebar:not(.is-open) {
+    visibility: hidden;
+    transform: translateX(-100%);
+  }
+  .orders-workspace > .app-sidebar.is-open {
+    visibility: visible;
+    transform: translateX(0);
+  }
+  .orders-workspace .app-sidebar-close {
+    display: flex;
+  }
+}

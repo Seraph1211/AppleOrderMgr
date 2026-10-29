@@ -9,6 +9,7 @@ export default function ProductFilter({
   onChange,
   enableSelectAll = false,
   hideProductCode = false,
+  triggerLabel = '',
 }) {
   const remembered = useRef(new Map());
   for (const option of options) remembered.current.set(option.value, option);
@@ -67,6 +68,7 @@ export default function ProductFilter({
       ariaLabel="商品信息筛选"
       itemLabel="商品"
       placeholder="全部商品"
+      triggerLabel={triggerLabel}
     />
   );
 }

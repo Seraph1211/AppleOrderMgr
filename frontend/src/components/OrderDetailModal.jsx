@@ -2,7 +2,8 @@ import { formatProductStorageText } from '../utils/productStorage';
 import ProductName from '../components/ProductName';
 import RecipientTag from './RecipientTag';
 import OrderSerialEditor from './OrderSerialEditor';
-import AlertModal from './AlertModal';
+import OrderOverlay from './orderOverlay';
+import OfficialOrderStatus from './OfficialOrderStatus';
 import OrderAmount from './OrderAmount';
 import OrderSources from './OrderSources';
 import OrderPickupPhotos from './orderPickupPhotos';
@@ -34,6 +35,9 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [alertInfo, setAlertInfo] = useState(null);
+  const [activeSection, setActiveSection] = useState('overview');
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [detailAttempt, setDetailAttempt] = useState(0);
   const [detailExtras, setDetailExtras] = useState({
     orderId: null,
     recipientPhone: null,
@@ -48,10 +52,18 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
   const [detailLoading, setDetailLoading] = useState(false);
 
   const formOrderIdRef = useRef(null);
+  const paymentUploadRef = useRef(null);
   const orderId = order?.id;
   const payerName = order?.payerName;
   const paymentScreenshots = order?.paymentScreenshots;
   const paymentScreenshot = order?.paymentScreenshot;
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveSection('overview');
+      setConfirmDiscard(false);
+    }
+  }, [isOpen, orderId]);
 
   useEffect(() => {
     if (!isOpen || !orderId) {
@@ -117,7 +129,14 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
     return () => {
       active = false;
     };
-  }, [isOpen, order?.id, order?.recipientTag, order?.recipientTagState, order?.recipientTagSource]);
+  }, [
+    isOpen,
+    order?.id,
+    order?.recipientTag,
+    order?.recipientTagState,
+    order?.recipientTagSource,
+    detailAttempt,
+  ]);
 
   if (!isOpen || !order) return null;
 
@@ -191,39 +210,118 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
 
   const statusBadge = getDisplayOrderStatusBadge(order.displayOrderStatus);
 
-  return (
-    <div className="order-detail-modal fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-0 sm:p-4">
-      <div className="flex h-[100dvh] w-full max-w-4xl flex-col overflow-hidden bg-white shadow-xl sm:h-auto sm:max-h-[90vh] sm:rounded-lg">
-        <div className="flex items-center justify-between border-b border-gray-200 p-4 sm:p-6">
-          <div>
-            <h2 className="text-2xl font-bold">订单详情</h2>
-            <p className="mt-1 font-mono text-gray-600">{order.orderNumber}</p>
-          </div>
-          <button
-            onClick={onClose}
-            aria-label="关闭订单详情"
-            className="text-gray-400 hover:text-gray-600"
-          >
-            <X className="h-6 w-6" />
-          </button>
-        </div>
+  const paymentDirty =
+    formData.payerName.trim() !== (order.payerName || '') ||
+    JSON.stringify(formData.paymentScreenshots) !== JSON.stringify(readScreenshots(order));
+  const requestClose = () => {
+    if (saving || uploading) return;
+    if (paymentDirty) setConfirmDiscard(true);
+    else onClose();
+  };
+  const sections = [
+    ['overview', '订单概览'],
+    ['payment', '付款信息'],
+    ...(can(PERMISSIONS.PICKUPS_READ) ? [['photos', '取货照片']] : []),
+    ...(can(PERMISSIONS.INGESTION_READ) ? [['sources', '来源记录']] : []),
+  ];
 
-        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto p-4 sm:p-6">
-          <OrderSources orderId={order.id} />
-          <div className="card border-blue-100 bg-blue-50/40">
+  let footerHint = '官网状态与邮件证据分别展示';
+  if (activeSection === 'payment') {
+    footerHint =
+      can(PERMISSIONS.ORDERS_EDIT) || can(PERMISSIONS.ORDERS_PAYER_EDIT)
+        ? '尚无待保存的修改'
+        : '当前为只读展示';
+  }
+  if (paymentDirty) footerHint = '付款信息有未保存的修改';
+
+  return (
+    <>
+      <OrderOverlay
+        title="订单详情"
+        subtitle={`订单 ID ${order.id} · ${order.orderNumber}`}
+        className="order-detail-modal"
+        sectionKey={activeSection}
+        size="large"
+        onClose={requestClose}
+        busy={saving || uploading}
+        navigation={
+          <nav className="order-detail-tabs" aria-label="订单详情分区">
+            {sections.map(([key, label]) => (
+              <button
+                type="button"
+                key={key}
+                aria-pressed={activeSection === key}
+                onClick={() => setActiveSection(key)}
+              >
+                {label}
+              </button>
+            ))}
+          </nav>
+        }
+        footer={
+          <>
+            <span className="order-inline-note" role="status">
+              {footerHint}
+            </span>
+            <button
+              type="button"
+              onClick={requestClose}
+              disabled={saving || uploading}
+              className="btn btn-secondary"
+            >
+              关闭
+            </button>
+            {activeSection === 'payment' &&
+              (can(PERMISSIONS.ORDERS_EDIT) || can(PERMISSIONS.ORDERS_PAYER_EDIT)) && (
+                <button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={saving || uploading || !paymentDirty}
+                  className="btn btn-primary inline-flex items-center gap-2"
+                >
+                  <Save className="h-4 w-4" />
+                  {saving ? '保存中...' : '保存付款信息'}
+                </button>
+              )}
+          </>
+        }
+      >
+        {detailExtras.orderLinkError && !detailLoading && (
+          <div className="order-panel-note mb-4" role="alert">
+            {detailExtras.orderLinkError}{' '}
+            <button
+              type="button"
+              className="text-primary ml-2"
+              onClick={() => setDetailAttempt(value => value + 1)}
+            >
+              重新读取详情
+            </button>
+          </div>
+        )}
+        <div hidden={activeSection !== 'overview'}>
+          <div className="order-section">
             <h3 className="mb-4 text-lg font-semibold">订单状态</h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <div className="order-detail-status-grid">
+              <div>
+                <p className="text-sm text-gray-600">官网订单状态</p>
+                <OfficialOrderStatus
+                  status={order.officialOrderStatus}
+                  observedAt={order.officialStatusObservedAt}
+                />
+              </div>
               <div>
                 <p className="text-sm text-gray-600">邮件订单状态</p>
                 <span className={`badge mt-1 ${statusBadge.class}`}>{statusBadge.text}</span>
               </div>
-              <div>
+            </div>
+            <div className="order-detail-evidence-row">
+              <div className="order-detail-evidence-time">
                 <p className="text-sm text-gray-600">邮件证据时间</p>
-                <p className="mt-1 text-sm">{formatOrderTime(order.emailStatusEvidenceAt)}</p>
+                <p className="text-sm">{formatOrderTime(order.emailStatusEvidenceAt)}</p>
               </div>
-              <div>
+              <div className="order-detail-evidence-time">
                 <p className="text-sm text-gray-600">邮件状态更新时间</p>
-                <p className="mt-1 text-sm">{formatOrderTime(order.emailLifecycleUpdatedAt)}</p>
+                <p className="text-sm">{formatOrderTime(order.emailLifecycleUpdatedAt)}</p>
               </div>
             </div>
             {order.emailStatusNeedsReview && (
@@ -244,9 +342,49 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
             </div>
           </div>
 
+          <div className="order-section">
+            <div className="order-detail-section-heading">
+              <h3 className="text-lg font-semibold">商品信息</h3>
+            </div>
+            <div className="order-detail-products overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-4 py-3 text-left text-sm text-gray-500">型号</th>
+                    <th className="px-4 py-3 text-left text-sm text-gray-500">名称</th>
+                    <th className="px-4 py-3 text-right text-sm text-gray-500">数量</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!order.products?.length && (
+                    <tr>
+                      <td colSpan={3} className="text-gray-500">
+                        暂无商品信息
+                      </td>
+                    </tr>
+                  )}
+                  {(order.products || []).map((product, index) => (
+                    <tr
+                      key={`${product.model || product.name}-${index}`}
+                      className="border-t border-gray-100"
+                    >
+                      <td className="px-4 py-3 font-mono text-sm">
+                        {formatProductStorageText(product.model || product.modelId || '-')}
+                      </td>
+                      <td className="px-4 py-3 text-sm">
+                        <ProductName product={product} />
+                      </td>
+                      <td className="px-4 py-3 text-right text-sm">{product.quantity ?? '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div className="card">
             <h3 className="mb-4 text-lg font-semibold">基本信息</h3>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="order-detail-form-grid">
               <div>
                 <p className="text-sm text-gray-600">下单时间</p>
                 <p className="mt-1 text-sm">{formatOrderTime(order.orderDate)}</p>
@@ -326,9 +464,6 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
                 ) : (
                   <p className="mt-1 text-sm text-gray-400">{detailLoading ? '加载中...' : '-'}</p>
                 )}
-                {!detailLoading && detailExtras.orderLinkError && (
-                  <p className="mt-1 text-xs text-amber-700">{detailExtras.orderLinkError}</p>
-                )}
               </div>
             </div>
           </div>
@@ -354,59 +489,28 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
               {order.notes || '暂无备注'}
             </p>
           </section>
-
-          <OrderPickupPhotos orderId={order.id} orderNumber={order.orderNumber} />
-
-          <div className="card overflow-hidden p-0">
-            <div className="border-b border-gray-200 px-5 py-4">
-              <h3 className="text-lg font-semibold">商品信息</h3>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="px-4 py-3 text-left text-sm text-gray-500">型号</th>
-                    <th className="px-4 py-3 text-left text-sm text-gray-500">名称</th>
-                    <th className="px-4 py-3 text-right text-sm text-gray-500">数量</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(order.products || []).map((product, index) => (
-                    <tr
-                      key={`${product.model || product.name}-${index}`}
-                      className="border-t border-gray-100"
-                    >
-                      <td className="px-4 py-3 font-mono text-sm">
-                        {formatProductStorageText(product.model || product.modelId || '-')}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <ProductName product={product} />
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm">{product.quantity ?? '-'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <div className="card border-2 border-blue-200 bg-blue-50">
+        </div>
+        <div hidden={activeSection !== 'payment'}>
+          <div className="order-section">
             <h3 className="mb-4 text-lg font-semibold">付款信息</h3>
             <div className="space-y-4">
-              <div>
-                <p className="text-sm text-gray-600">付款方式</p>
-                <p className="mt-1 text-sm">{order.paymentMethod}</p>
+              <div className="order-detail-payment-grid">
+                <div>
+                  <p className="text-sm text-gray-600">付款方式</p>
+                  <p className="mt-1 text-sm">{order.paymentMethod}</p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">订单金额</p>
+                  <OrderAmount amount={order.orderAmount} />
+                </div>
               </div>
-              <div>
-                <p className="text-sm text-gray-600">订单金额</p>
-                <OrderAmount amount={order.orderAmount} />
-              </div>
-              <label className="block text-sm font-medium text-gray-700">
+              <label className="order-detail-payer block text-sm font-medium text-gray-700">
                 付款人
                 {can(PERMISSIONS.ORDERS_PAYER_EDIT) ? (
                   <input
                     className="input mt-1"
                     maxLength="100"
+                    disabled={saving || uploading}
                     value={formData.payerName}
                     onChange={event =>
                       setFormData(previous => ({ ...previous, payerName: event.target.value }))
@@ -420,6 +524,9 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
                 <p className="mb-2 text-sm font-medium text-gray-700">
                   付款截图 ({formData.paymentScreenshots.length}/9)
                 </p>
+                {!formData.paymentScreenshots.length && (
+                  <p className="order-panel-note">尚未添加付款截图。最多9张，每张不超过5MB。</p>
+                )}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                   {formData.paymentScreenshots.map((src, index) => (
                     <div key={`${src.slice(0, 32)}-${index}`} className="relative">
@@ -428,66 +535,102 @@ export default function OrderDetailModal({ order, isOpen, onClose, onUpdate, onE
                         alt={`付款截图 ${index + 1}`}
                         className="h-32 w-full rounded border border-gray-200 object-cover"
                       />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setFormData(previous => ({
-                            ...previous,
-                            paymentScreenshots: previous.paymentScreenshots.filter(
-                              (_, itemIndex) => itemIndex !== index
-                            ),
-                          }))
-                        }
-                        className="absolute right-1 top-1 rounded bg-white/90 p-1 text-red-600"
-                        aria-label={`删除付款截图 ${index + 1}`}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
+                      {can(PERMISSIONS.ORDERS_EDIT) && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setFormData(previous => ({
+                              ...previous,
+                              paymentScreenshots: previous.paymentScreenshots.filter(
+                                (_, itemIndex) => itemIndex !== index
+                              ),
+                            }))
+                          }
+                          className="absolute right-1 top-1 rounded bg-white/90 p-1 text-red-600"
+                          aria-label={`删除付款截图 ${index + 1}`}
+                          disabled={saving || uploading}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
               </div>
               {can(PERMISSIONS.ORDERS_EDIT) && formData.paymentScreenshots.length < 9 && (
-                <label className="btn btn-secondary inline-flex cursor-pointer items-center gap-2">
-                  <Upload className="h-4 w-4" />
-                  {uploading ? '读取中...' : '添加付款截图'}
+                <div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary inline-flex items-center gap-2"
+                    disabled={saving || uploading}
+                    onClick={() => paymentUploadRef.current?.click()}
+                  >
+                    <Upload className="h-4 w-4" />
+                    {uploading ? '读取中...' : '添加付款截图'}
+                  </button>
                   <input
+                    ref={paymentUploadRef}
                     type="file"
                     accept="image/*"
                     multiple
                     className="hidden"
-                    disabled={uploading}
+                    aria-label="上传付款截图"
+                    disabled={saving || uploading}
                     onChange={handleFileUpload}
                   />
-                </label>
+                </div>
               )}
             </div>
           </div>
         </div>
-
-        <div className="flex justify-end gap-3 border-t border-gray-200 p-4 sm:p-6">
-          <button onClick={onClose} className="btn btn-secondary">
-            关闭
-          </button>
-          {(can(PERMISSIONS.ORDERS_EDIT) || can(PERMISSIONS.ORDERS_PAYER_EDIT)) && (
-            <button
-              onClick={handleSave}
-              disabled={saving || uploading}
-              className="btn btn-primary inline-flex items-center gap-2"
-            >
-              <Save className="h-4 w-4" />
-              {saving ? '保存中...' : '保存付款信息'}
-            </button>
-          )}
-        </div>
-      </div>
+        {can(PERMISSIONS.PICKUPS_READ) && (
+          <div hidden={activeSection !== 'photos'}>
+            <OrderPickupPhotos orderId={order.id} orderNumber={order.orderNumber} />
+          </div>
+        )}
+        {can(PERMISSIONS.INGESTION_READ) && (
+          <div hidden={activeSection !== 'sources'}>
+            <OrderSources orderId={order.id} ordersUi />
+          </div>
+        )}
+      </OrderOverlay>
       {alertInfo && (
-        <AlertModal
+        <OrderOverlay
           title={alertInfo.title}
-          message={alertInfo.message}
+          size="small"
           onClose={() => setAlertInfo(null)}
-        />
+          footer={
+            <button type="button" className="btn btn-primary" onClick={() => setAlertInfo(null)}>
+              确定
+            </button>
+          }
+        >
+          <p role="status">{alertInfo.message}</p>
+        </OrderOverlay>
       )}
-    </div>
+      {confirmDiscard && (
+        <OrderOverlay
+          title="放弃未保存的付款修改？"
+          size="small"
+          onClose={() => setConfirmDiscard(false)}
+          footer={
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => setConfirmDiscard(false)}
+              >
+                继续编辑
+              </button>
+              <button type="button" className="btn btn-primary" onClick={onClose}>
+                放弃修改并关闭
+              </button>
+            </>
+          }
+        >
+          <p>当前付款人或付款截图的修改尚未保存。</p>
+        </OrderOverlay>
+      )}
+    </>
   );
 }
