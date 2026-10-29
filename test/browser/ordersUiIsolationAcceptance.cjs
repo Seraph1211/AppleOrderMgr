@@ -365,6 +365,18 @@ async function main() {
           await p.waitForTimeout(400);
           await p.evaluate(() => document.fonts.ready);
         }
+        // 本次已授权删除邮件监听入口与分隔线；只对基线应用这两项明确变化后比对页头。
+        await pages[0]
+          .locator('header')
+          .first()
+          .evaluate(header => {
+            const status = header.querySelector('a[href="/email-processing"]');
+            if (!status) return;
+            const separator = status.nextElementSibling;
+            status.remove();
+            if (separator?.classList.contains('w-px')) separator.remove();
+          })
+          .catch(() => {});
         await compare(label, p =>
           p.locator(route.startsWith('/quote/') || route === '/login' ? 'body' : '.app-content')
         );
@@ -441,6 +453,7 @@ async function main() {
           report,
           apiStates: [...apiStates],
           errors,
+          authorizedBaselineChange: '仅移除页头邮件监听入口及相邻分隔线',
           coverage: '28个其他路由×1440/390px；原有数据及故障状态、共用控件；导航1050/768/390/320px',
         },
         null,

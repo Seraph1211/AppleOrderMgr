@@ -31,8 +31,6 @@ import {
   Clock3,
   Activity,
   Pencil,
-  ChevronLeft,
-  ChevronRight,
 } from 'lucide-react';
 import { getOrders, getOrderLink, getOrderFilterOptions, exportOrders, updateOrder } from '../api';
 import useColumnConfig from '../hooks/useColumnConfig';
@@ -143,49 +141,7 @@ function OrdersWorkspace() {
 
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showMobileFilters, setShowMobileFilters] = useState(false);
-  const tableScrollRef = useRef(null);
-  const [tableScroll, setTableScroll] = useState({ overflow: false, left: false, right: false });
   const { columns, saveConfig, resetConfig } = useColumnConfig('orders', workspaceColumns);
-
-  const updateTableScroll = useCallback(() => {
-    const element = tableScrollRef.current;
-    const remaining = element ? element.scrollWidth - element.clientWidth : 0;
-    const next = {
-      overflow: remaining > 1,
-      left: Boolean(element && element.scrollLeft > 1),
-      right: Boolean(element && element.scrollLeft < remaining - 1),
-    };
-    setTableScroll(previous =>
-      previous.overflow === next.overflow &&
-      previous.left === next.left &&
-      previous.right === next.right
-        ? previous
-        : next
-    );
-  }, []);
-
-  useEffect(() => {
-    const element = tableScrollRef.current;
-    updateTableScroll();
-    if (!element) return undefined;
-    const observer = new ResizeObserver(updateTableScroll);
-    observer.observe(element);
-    if (element.firstElementChild) observer.observe(element.firstElementChild);
-    element.addEventListener('scroll', updateTableScroll, { passive: true });
-    return () => {
-      observer.disconnect();
-      element.removeEventListener('scroll', updateTableScroll);
-    };
-  }, [loading, loadError, orders.length, columns, updateTableScroll]);
-
-  const scrollTable = direction => {
-    const element = tableScrollRef.current;
-    if (!element) return;
-    element.scrollBy({
-      left: direction * Math.max(element.clientWidth * 0.75, 240),
-      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
-    });
-  };
 
   // 筛选选项（从后端获取或硬编码）
   const [filterOptions, setFilterOptions] = useState({
@@ -576,7 +532,7 @@ function OrdersWorkspace() {
       case 'actualPickupDate':
         return (
           <span
-            className={value ? 'text-sm text-gray-900' : 'text-sm text-gray-400'}
+            className={`order-timestamp ${value ? 'text-sm text-gray-900' : 'text-sm text-gray-400'}`}
             title="官网明确返回的实际取货日期"
           >
             {value || '尚未获取'}
@@ -624,7 +580,10 @@ function OrdersWorkspace() {
             )}
             {order.emailStatusEvidenceAt && (
               <p className="mt-1 text-xs text-gray-500">
-                证据 {formatOrderTime(order.emailStatusEvidenceAt)}
+                证据{' '}
+                <span className="order-timestamp">
+                  {formatOrderTime(order.emailStatusEvidenceAt)}
+                </span>
               </p>
             )}
           </div>
@@ -643,15 +602,18 @@ function OrdersWorkspace() {
         return (
           <div className="text-sm text-gray-700">
             <p className="font-medium text-gray-900">{pickup.storeName || '门店待确认'}</p>
-            <p>{schedule || '时间待确认'}</p>
+            <p className="order-timestamp">{schedule || '时间待确认'}</p>
           </div>
         );
       }
 
       case 'emailLifecycleUpdatedAt':
         return (
-          <span className="text-sm text-gray-600" title="最后一次邮件解析并更新订单数据的时间">
-            {value === '-' ? '尚未更新' : new Date(value).toLocaleString('zh-CN')}
+          <span
+            className="order-timestamp text-sm text-gray-600"
+            title="最后一次邮件解析并更新订单数据的时间"
+          >
+            {value === '-' ? '尚未更新' : formatOrderTime(value)}
           </span>
         );
 
@@ -659,7 +621,7 @@ function OrdersWorkspace() {
         return (
           <div className="text-sm space-y-1">
             <ProductSummary products={order.products} selectedKeys={filters.productKeys} />
-            <OrderAmount amount={order.orderAmount} compact />
+            <OrderAmount amount={order.orderAmount} compact showPricingNote={false} />
           </div>
         );
 
@@ -679,7 +641,10 @@ function OrdersWorkspace() {
 
       case 'orderDate':
         return (
-          <span className="text-sm text-gray-600" title="北京时间，邮件或人工录入来源">
+          <span
+            className="order-timestamp text-sm text-gray-600"
+            title="北京时间，邮件或人工录入来源"
+          >
             {formatOrderTime(value)}
           </span>
         );
@@ -687,7 +652,7 @@ function OrdersWorkspace() {
       case 'createdAt':
       case 'updatedAt':
         return value !== '-' ? (
-          <span className="text-sm text-gray-600">{new Date(value).toLocaleString('zh-CN')}</span>
+          <span className="order-timestamp text-sm text-gray-600">{formatOrderTime(value)}</span>
         ) : (
           <span className="text-gray-400">-</span>
         );
@@ -929,129 +894,131 @@ function OrdersWorkspace() {
           )}
         </div>
 
-        <div className="order-filter-fields">
-          <div className="order-filter-field">
-            <OfficialStatusFilter
-              triggerLabel="官网订单状态"
-              options={filterOptions.officialOrderStatuses || []}
-              value={filters.officialOrderStatuses}
-              onChange={value => handleFilterChange('officialOrderStatuses', value)}
-            />
-          </div>
+        <div className="orders-filter-controls">
+          <div className="order-filter-fields">
+            <div className="order-filter-field">
+              <OfficialStatusFilter
+                triggerLabel="官网订单状态"
+                options={filterOptions.officialOrderStatuses || []}
+                value={filters.officialOrderStatuses}
+                onChange={value => handleFilterChange('officialOrderStatuses', value)}
+              />
+            </div>
 
-          {/* 邮件订单状态 */}
-          <div className="order-filter-field">
-            <TagMultiSelect
-              enableSelectAll
-              options={Object.keys(DISPLAY_ORDER_STATUS_LABELS)}
-              optionLabels={DISPLAY_ORDER_STATUS_LABELS}
-              value={filters.displayOrderStatuses}
-              onChange={value => handleFilterChange('displayOrderStatuses', value)}
-              triggerLabel="邮件订单状态"
-              ariaLabel="邮件订单状态筛选"
-              placeholder="全部状态"
-              itemLabel="状态"
-            />
-          </div>
+            {/* 邮件订单状态 */}
+            <div className="order-filter-field">
+              <TagMultiSelect
+                enableSelectAll
+                options={Object.keys(DISPLAY_ORDER_STATUS_LABELS)}
+                optionLabels={DISPLAY_ORDER_STATUS_LABELS}
+                value={filters.displayOrderStatuses}
+                onChange={value => handleFilterChange('displayOrderStatuses', value)}
+                triggerLabel="邮件订单状态"
+                ariaLabel="邮件订单状态筛选"
+                placeholder="全部状态"
+                itemLabel="状态"
+              />
+            </div>
 
-          {/* 商品信息 */}
-          <div className="order-filter-field order-filter-product">
-            <ProductFilter
-              triggerLabel="商品信息"
-              enableSelectAll
-              hideProductCode
-              options={filterOptions.productOptions || []}
-              value={filters.productKeys}
-              onChange={value => handleFilterChange('productKeys', value)}
-            />
-          </div>
+            {/* 商品信息 */}
+            <div className="order-filter-field order-filter-product">
+              <ProductFilter
+                triggerLabel="商品信息"
+                enableSelectAll
+                hideProductCode
+                options={filterOptions.productOptions || []}
+                value={filters.productKeys}
+                onChange={value => handleFilterChange('productKeys', value)}
+              />
+            </div>
 
-          <div className="order-filter-field">
-            <TagMultiSelect
-              enableSelectAll
-              options={filterOptions.recipientTags || []}
-              value={filters.recipientTags}
-              onChange={value => handleFilterChange('recipientTags', value)}
-              triggerLabel="订单 TAG"
-              ariaLabel="订单 TAG 筛选"
-              placeholder="全部 TAG"
-              itemLabel="TAG"
-            />
-          </div>
+            <div className="order-filter-field">
+              <TagMultiSelect
+                enableSelectAll
+                options={filterOptions.recipientTags || []}
+                value={filters.recipientTags}
+                onChange={value => handleFilterChange('recipientTags', value)}
+                triggerLabel="订单 TAG"
+                ariaLabel="订单 TAG 筛选"
+                placeholder="全部 TAG"
+                itemLabel="TAG"
+              />
+            </div>
 
-          {/* 取货门店 */}
-          <div className="order-filter-field">
-            <TagMultiSelect
-              enableSelectAll
-              options={filterOptions.stores}
-              value={filters.pickupStores}
-              onChange={value => handleFilterChange('pickupStores', value)}
-              triggerLabel="取货门店"
-              ariaLabel="取货门店筛选"
-              placeholder="全部门店"
-              itemLabel="门店"
-            />
-          </div>
+            {/* 取货门店 */}
+            <div className="order-filter-field">
+              <TagMultiSelect
+                enableSelectAll
+                options={filterOptions.stores}
+                value={filters.pickupStores}
+                onChange={value => handleFilterChange('pickupStores', value)}
+                triggerLabel="取货门店"
+                ariaLabel="取货门店筛选"
+                placeholder="全部门店"
+                itemLabel="门店"
+              />
+            </div>
 
-          <div className="order-filter-field">
-            <TagMultiSelect
-              enableSelectAll
-              options={filterOptions.payers || []}
-              value={filters.payerNames}
-              onChange={value => handleFilterChange('payerNames', value)}
-              triggerLabel="付款人"
-              ariaLabel="付款人筛选"
-              placeholder="全部付款人"
-              itemLabel="付款人"
-            />
+            <div className="order-filter-field">
+              <TagMultiSelect
+                enableSelectAll
+                options={filterOptions.payers || []}
+                value={filters.payerNames}
+                onChange={value => handleFilterChange('payerNames', value)}
+                triggerLabel="付款人"
+                ariaLabel="付款人筛选"
+                placeholder="全部付款人"
+                itemLabel="付款人"
+              />
+            </div>
           </div>
-        </div>
-        <div className="order-date-filters">
-          <DateRangeFilter
-            dateFrom={filters.dateFrom}
-            dateTo={filters.dateTo}
-            onChange={range => {
-              setFilters(previous => ({ ...previous, ...range }));
-              setPagination(previous => ({ ...previous, currentPage: 1 }));
-            }}
-          />
-          <DateRangeFilter
-            label="取货日期"
-            hint="按邮件中的预约取货日期筛选，结束日期包含当天"
-            ariaPrefix="预约取货"
-            dateFrom={filters.pickupDateFrom}
-            dateTo={filters.pickupDateTo}
-            onChange={({ dateFrom, dateTo }) => {
-              setFilters(previous => ({
-                ...previous,
-                pickupDateFrom: dateFrom,
-                pickupDateTo: dateTo,
-              }));
-              setPagination(previous => ({ ...previous, currentPage: 1 }));
-            }}
-          />
-          <DateRangeFilter
-            label="实际取货日期"
-            hint="按实际取货日筛选，结束日期包含当天"
-            ariaPrefix="实际取货"
-            dateFrom={filters.actualPickupDateFrom}
-            dateTo={filters.actualPickupDateTo}
-            onChange={({ dateFrom, dateTo }) => {
-              setFilters(previous => ({
-                ...previous,
-                actualPickupDateFrom: dateFrom,
-                actualPickupDateTo: dateTo,
-              }));
-              setPagination(previous => ({ ...previous, currentPage: 1 }));
-            }}
-          />
-          <div className="flex items-center">
-            <TableHeaderHint label="日期筛选字段说明">
-              <p>下单日期：订单的下单日期，按北京时间筛选。</p>
-              <p>取货日期：邮件中的预约取货日期，不代表已完成取货。</p>
-              <p>实际取货日期：官网记录的实际已取货日期，尚未获取时为空。</p>
-              <p>三个条件可组合使用；日期范围包含开始和结束当天。</p>
-            </TableHeaderHint>
+          <div className="order-date-filters">
+            <DateRangeFilter
+              dateFrom={filters.dateFrom}
+              dateTo={filters.dateTo}
+              onChange={range => {
+                setFilters(previous => ({ ...previous, ...range }));
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+            />
+            <DateRangeFilter
+              label="取货日期"
+              hint="按邮件中的预约取货日期筛选，结束日期包含当天"
+              ariaPrefix="预约取货"
+              dateFrom={filters.pickupDateFrom}
+              dateTo={filters.pickupDateTo}
+              onChange={({ dateFrom, dateTo }) => {
+                setFilters(previous => ({
+                  ...previous,
+                  pickupDateFrom: dateFrom,
+                  pickupDateTo: dateTo,
+                }));
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+            />
+            <DateRangeFilter
+              label="实际取货日期"
+              hint="按实际取货日筛选，结束日期包含当天"
+              ariaPrefix="实际取货"
+              dateFrom={filters.actualPickupDateFrom}
+              dateTo={filters.actualPickupDateTo}
+              onChange={({ dateFrom, dateTo }) => {
+                setFilters(previous => ({
+                  ...previous,
+                  actualPickupDateFrom: dateFrom,
+                  actualPickupDateTo: dateTo,
+                }));
+                setPagination(previous => ({ ...previous, currentPage: 1 }));
+              }}
+            />
+            <div className="flex items-center">
+              <TableHeaderHint label="日期筛选字段说明">
+                <p>下单日期：订单的下单日期，按北京时间筛选。</p>
+                <p>取货日期：邮件中的预约取货日期，不代表已完成取货。</p>
+                <p>实际取货日期：官网记录的实际已取货日期，尚未获取时为空。</p>
+                <p>三个条件可组合使用；日期范围包含开始和结束当天。</p>
+              </TableHeaderHint>
+            </div>
           </div>
         </div>
         {activeFilterGroups.length > 0 && (
@@ -1196,29 +1163,6 @@ function OrdersWorkspace() {
             </div>
           </div>
         )}
-        {!loading && !loadError && orders.length > 0 && tableScroll.overflow && (
-          <div className="orders-scroll-navigation" aria-label="表格横向翻阅">
-            <span>{tableScroll.right ? '右侧还有字段' : '已到最右侧'}</span>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              aria-label="向左查看字段"
-              disabled={!tableScroll.left}
-              onClick={() => scrollTable(-1)}
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              aria-label="向右查看字段"
-              disabled={!tableScroll.right}
-              onClick={() => scrollTable(1)}
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        )}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
@@ -1359,7 +1303,6 @@ function OrdersWorkspace() {
               })}
             </div>
             <div
-              ref={tableScrollRef}
               className="orders-table-scroll hidden min-w-0 md:block md:overflow-x-auto"
               role="region"
               aria-label="订单列表，可横向滚动"

@@ -12,6 +12,12 @@ const ORDERS = [
     order_number: 'W1027000001',
     products: [{ name: 'iPhone 18 Pro 银色 256G', quantity: 2 }],
     official_order_status: 'PROCESSING',
+    official_status_observed_at: '2026-10-28T14:31:03Z',
+    email_status_evidence_at: '2026-10-28T14:36:28Z',
+    order_amount: 35998,
+    created_at: '2026-10-28T14:24:30Z',
+    updated_at: '2026-10-28T14:38:00Z',
+    email_lifecycle_updated_at: '2026-10-28T14:36:28Z',
     display_order_status: 'ready_for_pickup',
     recipient_name: '张某',
     recipient_tag: '深圳 演示组',
@@ -60,7 +66,13 @@ async function main() {
             id: 1,
             username: '界面验收',
             role: 'admin',
-            permissions: ['orders.read', 'orders.edit', 'orders.export', 'order_mail.manage'],
+            permissions: [
+              'orders.read',
+              'orders.edit',
+              'orders.export',
+              'order_mail.manage',
+              'email.read',
+            ],
             availableHome: '/orders',
           };
         else if (url.pathname === '/api/orders/filter-options')
@@ -260,6 +272,7 @@ async function main() {
     densityMode = true;
     for (const [width, height] of [
       [1904, 948],
+      [1600, 900],
       [1440, 900],
       [1280, 800],
       [1280, 600],
@@ -320,6 +333,58 @@ async function main() {
       }
       if (width >= 1440)
         assert(metrics.horizontal <= 1, `${width}px 默认列应完整放入: ${metrics.horizontal}`);
+      assert.equal(await page.locator('.orders-scroll-navigation').count(), 0);
+      assert.equal(await page.getByText(/邮件监听正常|邮件监听未连接/).count(), 0);
+      assert.equal(await page.locator('.orders-page').getByText('按官方售价计算').count(), 0);
+      assert.match(await page.getByLabel('系统版本', { exact: true }).innerText(), /^v\d{14}$/);
+      assert.equal(
+        await page.locator('.app-version').innerText(),
+        await page.getByLabel('系统版本', { exact: true }).innerText()
+      );
+      if (width >= 1600) {
+        const filters = await page.locator('.orders-filter-controls').evaluate(element => {
+          const controls = [
+            ...element.querySelectorAll('.order-filter-trigger, .date-range-trigger'),
+          ];
+          return controls.map(control => {
+            const rect = control.getBoundingClientRect();
+            return {
+              x: rect.x,
+              y: rect.y,
+              right: rect.right,
+              width: rect.width,
+              height: rect.height,
+            };
+          });
+        });
+        assert.equal(filters.length, 9);
+        assert.equal(new Set(filters.map(control => control.y)).size, 1, '九项筛选同一行');
+        assert(filters[6].x > filters[5].x, '三组日期在多选右侧');
+        assert(
+          filters.every(control => control.width > 100 && control.height <= 32),
+          '控件紧凑且可读'
+        );
+      }
+      const timestamps = await page
+        .locator('.orders-table .order-timestamp')
+        .evaluateAll(elements =>
+          elements.map(element => {
+            const css = getComputedStyle(element);
+            return {
+              text: element.textContent,
+              fontSize: css.fontSize,
+              whiteSpace: css.whiteSpace,
+              height: element.getBoundingClientRect().height,
+            };
+          })
+        );
+      assert(timestamps.length > 0);
+      assert(
+        timestamps.every(
+          time => time.fontSize === '11px' && time.whiteSpace === 'nowrap' && time.height <= 17
+        ),
+        '完整时间始终单行'
+      );
       await page.screenshot({ path: `${OUTPUT}/density-${width}-${height}.png` });
       if (metrics.horizontal > 1) {
         const region = page.getByRole('region', { name: '订单列表，可横向滚动', exact: true });
@@ -327,19 +392,34 @@ async function main() {
           .locator('tbody [data-column="orderNumber"]')
           .first()
           .boundingBox();
-        const next = page.getByRole('button', { name: '向右查看字段', exact: true });
-        await next.click();
-        await page.waitForFunction(() => {
-          const el = document.querySelector('.orders-table-scroll');
-          return el.scrollLeft >= el.scrollWidth - el.clientWidth - 1;
+        assert.equal(
+          await page.getByRole('button', { name: '向右查看字段', exact: true }).count(),
+          0
+        );
+        await region.focus();
+        await region.press('ArrowRight');
+        await page.waitForFunction(
+          () => document.querySelector('.orders-table-scroll').scrollLeft > 0
+        );
+        await region.evaluate(element => {
+          element.scrollLeft = element.scrollWidth;
         });
-        assert(await next.isDisabled(), '到右端必须禁用右翻');
         const identityAfter = await page
           .locator('tbody [data-column="orderNumber"]')
           .first()
           .boundingBox();
         assert(Math.abs(identityAfter.x - identityBefore.x) < 1, '横向翻阅时订单身份列保持可见');
-        await page.getByRole('button', { name: '向左查看字段', exact: true }).click();
+        await region.focus();
+        for (let step = 0; step < 3; step += 1) {
+          await region.press('ArrowLeft', { delay: 80 });
+        }
+        await page.waitForFunction(() => {
+          const el = document.querySelector('.orders-table-scroll');
+          return el.scrollLeft < el.scrollWidth - el.clientWidth - 1;
+        });
+        await region.evaluate(element => {
+          element.scrollLeft = 0;
+        });
         await page.waitForFunction(
           () => document.querySelector('.orders-table-scroll').scrollLeft <= 1
         );
@@ -353,9 +433,70 @@ async function main() {
         }
       }
     }
+    // 还原截图中较宽的自选列，缩放只改变布局，完整时间不应折行或截断。
+    await page.setViewportSize({ width: 1904, height: 948 });
+    await page.evaluate(() => {
+      const keys = [
+        'orderNumber',
+        'officialOrderStatus',
+        'emailOrderStatus',
+        'products',
+        'recipientName',
+        'recipientTag',
+        'orderDate',
+        'emailPickupInfo',
+        'actualPickupDate',
+        'paymentMethod',
+        'payerName',
+        'createdAt',
+        'emailLifecycleUpdatedAt',
+        'updatedAt',
+        'serialNumbers',
+        'actions',
+      ];
+      localStorage.setItem(
+        'columnConfig:orders',
+        JSON.stringify({
+          officialStatusVersion: 1,
+          actualPickupDateVersion: 2,
+          columns: keys.map((key, order) => ({ key, order, visible: true })),
+        })
+      );
+    });
+    await page.reload();
+    await page.getByRole('checkbox', { name: '选择订单 W1027000001', exact: true }).waitFor();
+    const zoomEvidence = [];
+    for (const zoom of [0.9, 1, 1.25]) {
+      await page.locator('.orders-workspace').evaluate((element, scale) => {
+        element.style.zoom = scale;
+      }, zoom);
+      const metrics = await page.locator('.orders-table .order-timestamp').evaluateAll(elements =>
+        elements.map(element => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const css = getComputedStyle(element);
+          return {
+            text: element.textContent,
+            lines: range.getClientRects().length,
+            nowrap: css.whiteSpace,
+            overflow: element.scrollWidth - element.clientWidth,
+          };
+        })
+      );
+      assert(
+        metrics.every(time => time.lines === 1 && time.nowrap === 'nowrap' && time.overflow <= 1),
+        `${zoom}缩放保持完整时间单行`
+      );
+      zoomEvidence.push({ zoom, timestamps: metrics });
+      await page.screenshot({
+        path: `${OUTPUT}/custom-columns-zoom-${Math.round(zoom * 100)}.png`,
+      });
+    }
+    fs.writeFileSync(`${OUTPUT}/zoom-metrics.json`, JSON.stringify(zoomEvidence, null, 2));
     assert.deepEqual(errors, []);
     process.stdout.write(
-      'PASS: 四种屏宽、纯文字商品、默认列、精确选择范围、统计移除、条件组独立移除、完成与焦点、空态、错误重试、详情与列设置、桌面密度与单滚动层、横向翻阅与身份固定\n'
+      'PASS: 响应式、纯文字商品、默认列、选择范围、筛选与焦点、加载状态、详情与列设置、' +
+        '桌面密度、原生滚动与固定列、九项筛选同排、完整时间单行、布局缩放与版本\n'
     );
   } finally {
     await browser.close();
