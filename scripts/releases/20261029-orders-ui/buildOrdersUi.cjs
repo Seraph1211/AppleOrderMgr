@@ -13,6 +13,10 @@ const digest = value => crypto.createHash('sha256').update(value).digest('hex');
 /** 从已发布公开树构造限定制品，保留其他路由的函数及既有资源。失败时不产生可发布清单。 */
 async function main() {
   try {
+    const branch = require('node:child_process')
+      .execFileSync('git', ['branch', '--show-current'], { cwd: repo, encoding: 'utf8' })
+      .trim();
+    assert.equal(branch, 'main', '正式订单UI制品必须从本地main构建');
     const [baseline, output, beforeCssFile, afterCssFile] = process.argv
       .slice(2)
       .map(value => path.resolve(value));
@@ -22,6 +26,28 @@ async function main() {
     const entry = html.match(/<script[^>]+src="(\/assets\/[^"?]+\.js)"/)[1];
     const original = fs.readFileSync(path.join(baseline, entry), 'utf8');
     const ast = parser.parse(original, { sourceType: 'module' });
+    // 已发布 V1.0 的 Orders/Layout 是包装函数；用保留的原入口辨识共享上下文。
+    const contextEntry = process.env.ORDERS_UI_CONTEXT_ENTRY;
+    const contextOriginal = contextEntry
+      ? fs.readFileSync(path.join(baseline, contextEntry), 'utf8')
+      : original;
+    const contextAst = parser.parse(contextOriginal, { sourceType: 'module' });
+    const contextFunctions = contextAst.program.body.filter(
+      node => node.type === 'FunctionDeclaration'
+    );
+    const contextSource = node => contextOriginal.slice(node.start, node.end);
+    const buildVersion = new Intl.DateTimeFormat('sv-SE', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    })
+      .format(new Date())
+      .replace(/\D/g, '');
     const functions = ast.program.body.filter(node => node.type === 'FunctionDeclaration');
     const source = node => original.slice(node.start, node.end);
     const one = (items, description) => {
@@ -30,64 +56,82 @@ async function main() {
     };
     const orders = one(
       functions.filter(
-        node => source(node).includes('全选本页') && source(node).includes('订单管理')
+        node =>
+          (source(node).includes('全选本页') && source(node).includes('订单管理')) ||
+          source(node).includes('OrdersUiV1.Orders(')
       ),
       '订单路由组件'
     );
     const layout = one(
-      functions.filter(node => source(node).includes('navigation-groups:v1:')),
+      functions.filter(
+        node =>
+          source(node).includes('navigation-groups:v1:') ||
+          source(node).includes('OrdersUiV1.Layout(')
+      ),
       '共享导航组件'
     );
+    const contextLayout = one(
+      contextFunctions.filter(node => contextSource(node).includes('navigation-groups:v1:')),
+      '原导航上下文'
+    );
     const auth = one(
-      functions.filter(node => source(node).includes('useAuth must be used within')),
+      contextFunctions.filter(node => contextSource(node).includes('useAuth must be used within')),
       '现有认证上下文'
     );
-    const react = source(auth).match(/(\w+)\.useContext\(/)[1];
+    const react = contextSource(auth).match(/(\w+)\.useContext\(/)[1];
     const location = one(
-      functions.filter(node => source(node).includes('useLocation() may be used only')),
+      contextFunctions.filter(node =>
+        contextSource(node).includes('useLocation() may be used only')
+      ),
       '路由位置'
     );
     const navigation = one(
-      functions.filter(node => /function \w+\(\)\{let\{isDataRoute:/.test(source(node))),
+      contextFunctions.filter(node =>
+        /function \w+\(\)\{let\{isDataRoute:/.test(contextSource(node))
+      ),
       '路由跳转'
     );
     const linkRenderer = one(
-      functions.filter(
+      contextFunctions.filter(
         node =>
-          source(node).includes('"aria-current"') &&
-          source(node).includes('.href') &&
-          source(node).includes('pathname:')
+          contextSource(node).includes('"aria-current"') &&
+          contextSource(node).includes('.href') &&
+          contextSource(node).includes('pathname:')
       ),
       '导航链接'
     );
-    const link = source(linkRenderer).match(/\.jsxs\((\w+),/)[1];
-    const portal = original.match(/(\w+)\.createPortal\(/)[1];
+    const link = contextSource(linkRenderer).match(/\.jsxs\((\w+),/)[1];
+    const portal = contextOriginal.match(/(\w+)\.createPortal\(/)[1];
     const navigationConfig = fs.readFileSync(
       path.join(repo, 'frontend/src/constants/navigation.js'),
       'utf8'
     );
     // 配置直接沿用当前生产定义，避免本次发布改变菜单权限或名称。
-    const navGroups = source(layout).match(/filter\(\w+=>(\w+)\.some\(/)[1];
+    const navGroups = contextSource(contextLayout).match(/filter\(\w+=>(\w+)\.some\(/)[1];
     const visible = one(
-      functions.filter(
+      contextFunctions.filter(
         node =>
-          source(node).includes('adminOnly') &&
-          source(node).includes('children:') &&
-          source(node).includes('.filter(')
+          contextSource(node).includes('adminOnly') &&
+          contextSource(node).includes('children:') &&
+          contextSource(node).includes('.filter(')
       ),
       '原菜单权限过滤'
     );
     const active = one(
-      functions.filter(node => /return \w+===\w+\.href\|\|!\w+\.exact/.test(source(node))),
+      contextFunctions.filter(node =>
+        /return \w+===\w+\.href\|\|!\w+\.exact/.test(contextSource(node))
+      ),
       '原路由选中判定'
     );
-    const dashboard = original.match(/(?:const|,)\s*(\w+)=\{name:"仪表板",href:"\/"/)[1];
-    const profile = original.match(/(?:const|,)\s*(\w+)=\{name:"个人设置",href:"\/profile"/)[1];
-    const permissions = original.match(/(\w+)\.ORDERS_READ/)[1];
+    const dashboard = contextOriginal.match(/(?:const|,)\s*(\w+)=\{name:"仪表板",href:"\/"/)[1];
+    const profile = contextOriginal.match(
+      /(?:const|,)\s*(\w+)=\{name:"个人设置",href:"\/profile"/
+    )[1];
+    const permissions = contextOriginal.match(/(\w+)\.ORDERS_READ/)[1];
     const facade = {
       react: `const React=${react}; export default React; ${['Children', 'Component', 'Fragment', 'PureComponent', 'cloneElement', 'createContext', 'createElement', 'forwardRef', 'isValidElement', 'memo', 'useCallback', 'useContext', 'useEffect', 'useId', 'useImperativeHandle', 'useLayoutEffect', 'useMemo', 'useReducer', 'useRef', 'useState', 'useSyncExternalStore'].map(name => `export const ${name}=React.${name};`).join('')}`,
       'react-dom': `export const createPortal=${portal}.createPortal;`,
-      'react/jsx-runtime': `export const jsx=${original.match(/\.render\((\w+)\.jsx/)[1]}.jsx,jsxs=${original.match(/\.render\((\w+)\.jsx/)[1]}.jsxs,Fragment=${react}.Fragment;`,
+      'react/jsx-runtime': `export const jsx=${contextOriginal.match(/\.render\((\w+)\.jsx/)[1]}.jsx,jsxs=${contextOriginal.match(/\.render\((\w+)\.jsx/)[1]}.jsxs,Fragment=${react}.Fragment;`,
       'react-router-dom': `export const Link=${link},useLocation=${location.id.name},useNavigate=${navigation.id.name};`,
       auth: `export const useAuth=${auth.id.name};`,
       permissions: `export const PERMISSIONS=${permissions};`,
@@ -118,6 +162,7 @@ async function main() {
           DEV: false,
           PROD: true,
           VITE_API_BASE_URL: '/api',
+          VITE_APP_VERSION: buildVersion,
         }),
         'process.env.NODE_ENV': '"production"',
       },
@@ -159,7 +204,14 @@ async function main() {
       ),
       '原页面挂载'
     );
+    const previousOverlays = ast.program.body.filter(
+      node =>
+        node.type === 'VariableDeclaration' &&
+        node.declarations.some(item => ['OrdersUiV1', '__ordersReact'].includes(item.id.name))
+    );
+    assert(previousOverlays.length === 0 || previousOverlays.length === 2, '旧UI模块边界必须明确');
     const replacements = [
+      ...previousOverlays.map(node => ({ start: node.start, end: node.end, text: '' })),
       {
         start: orders.start,
         end: orders.end,
@@ -177,7 +229,9 @@ async function main() {
       next = next.slice(0, item.start) + item.text + next.slice(item.end);
     parser.parse(next, { sourceType: 'module' });
     // 校验除两个目标函数和新增模块外，其余 AST 顶层语句逐字节保持。
-    const kept = ast.program.body.filter(node => node !== orders && node !== layout).map(source);
+    const kept = ast.program.body
+      .filter(node => node !== orders && node !== layout && !previousOverlays.includes(node))
+      .map(source);
     assert(
       kept.every(statement => next.includes(statement)),
       '范围外顶层语句必须逐字节保留'
@@ -254,6 +308,9 @@ async function main() {
     );
     const manifest = {
       baselineEntry: entry,
+      contextEntry: contextEntry || entry,
+      buildVersion,
+      replacedPreviousOverlay: previousOverlays.length > 0,
       baselineSha256: digest(original),
       entry: `/assets/${jsName}`,
       css: `/assets/${cssName}`,

@@ -63,21 +63,6 @@
   align-items: center;
   gap: 6px;
 }
-.orders-scroll-navigation {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 6px;
-  min-height: 28px;
-  padding-bottom: 4px;
-  font-size: 12px;
-  color: var(--orders-muted);
-}
-.orders-workspace .orders-scroll-navigation .btn {
-  min-height: 24px;
-  padding: 2px 4px;
-}
 .orders-filters {
   padding: 0 0 16px;
 }
@@ -146,6 +131,7 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
+  justify-content: flex-end;
 }
 .orders-active-filters {
   display: flex;
@@ -643,16 +629,26 @@
     font-size: 12px;
     line-height: 17px;
   }
+  .orders-workspace .orders-table .order-timestamp {
+    display: inline-block;
+    font-size: 11px;
+    line-height: 16px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .orders-workspace .orders-table p.order-timestamp {
+    display: block;
+  }
   .orders-table [data-column='products'] .text-sm {
     font-size: 12px;
   }
   .orders-table th {
-    padding: 8px;
+    padding: 8px 6px;
     font-size: 12px;
     line-height: 18px;
   }
   .orders-table td {
-    padding: 5px 8px;
+    padding: 5px 6px;
     line-height: 17px;
   }
   .orders-table [data-column='orderNumber'] {
@@ -673,7 +669,7 @@
     min-width: 86px !important;
   }
   .orders-table [data-column='emailPickupInfo'] {
-    min-width: 170px !important;
+    min-width: 158px !important;
   }
   .orders-table [data-column='actualPickupDate'] {
     min-width: 98px !important;
@@ -796,9 +792,6 @@
   .orders-heading-tools .input {
     padding-left: 40px;
   }
-  .orders-scroll-navigation {
-    display: none;
-  }
 }
 
 .orders-workspace {
@@ -847,6 +840,47 @@
 
 /* 用户反馈：正文缩小一档，操作始终带文字；大屏一行，中等宽度2×2。 */
 @media (min-width: 1600px) {
+  /* 六项多选占剩余宽度，三组日期固定在右侧；摘要截断不影响完整无障碍名称。 */
+  .orders-filter-controls {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 512px;
+    align-items: start;
+    gap: 8px;
+  }
+  .orders-workspace .order-filter-fields {
+    gap: 6px;
+  }
+  body .orders-workspace .orders-page .order-filter-trigger {
+    gap: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+  }
+  .orders-workspace .orders-filters .order-date-filters {
+    display: grid;
+    grid-template-columns: 152px 152px 176px 14px;
+    grid-column: auto;
+    gap: 6px;
+    margin-top: 0;
+    padding-bottom: 0;
+    border-bottom: 0;
+  }
+  body .orders-workspace .orders-page .order-date-filters .date-range-trigger {
+    width: 100%;
+    gap: 4px;
+    padding-left: 6px;
+    padding-right: 6px;
+    white-space: nowrap;
+  }
+  .orders-workspace .order-date-filters .date-range-trigger > svg {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+  }
+  .orders-workspace .order-date-filters .date-range-summary {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
   .orders-workspace .orders-row-actions {
     grid-template-columns: repeat(4, max-content);
   }

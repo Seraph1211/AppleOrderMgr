@@ -29,7 +29,9 @@ export default function OfficialOrderStatus({ status, observedAt, loading = fals
       ) : !loading ? (
         <span className="text-gray-400">尚未更新</span>
       ) : null}
-      {observedAt && <p className="text-xs text-gray-500">{formatOrderTime(observedAt)}</p>}
+      {observedAt && (
+        <p className="order-timestamp text-xs text-gray-500">{formatOrderTime(observedAt)}</p>
+      )}
     </div>
   );
 }

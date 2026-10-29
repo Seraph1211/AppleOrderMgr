@@ -26,9 +26,7 @@ import {
   ChevronDown,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { getEmailProcessingMetrics } from '../api';
 import AlertModal from './AlertModal';
-import { PERMISSIONS } from '../constants/permissions';
 import {
   DASHBOARD_NAVIGATION,
   PROFILE_NAVIGATION,
@@ -76,7 +74,6 @@ export default function Layout({ children }) {
   const [logoutError, setLogoutError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [emailWorker, setEmailWorker] = useState(null);
   const menuRef = useRef(null);
   const sidebarRef = useRef(null);
   const navigationTriggerRef = useRef(null);
@@ -213,28 +210,6 @@ export default function Layout({ children }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!can(PERMISSIONS.EMAIL_READ)) {
-      setEmailWorker(null);
-      return undefined;
-    }
-    let active = true;
-    const loadStatus = async () => {
-      try {
-        const response = await getEmailProcessingMetrics();
-        if (active) setEmailWorker(response.data.worker || null);
-      } catch (_error) {
-        if (active) setEmailWorker(null);
-      }
-    };
-    loadStatus();
-    const timer = setInterval(loadStatus, 30_000);
-    return () => {
-      active = false;
-      clearInterval(timer);
-    };
-  }, [can]);
-
   return (
     <div
       className={`min-h-screen bg-gray-50 ${location.pathname === '/orders' ? 'orders-workspace' : ''}`}
@@ -344,12 +319,8 @@ export default function Layout({ children }) {
               onNavigate={() => setSidebarOpen(false)}
             />
           </div>
-          {/* 底部信息 */}
-          <div className="shrink-0 p-4 border-t border-gray-200">
-            <div className="text-xs text-gray-500">
-              <p>Apple 订单管理系统</p>
-              <p className="mt-1">v1.0.0</p>
-            </div>
+          <div className="app-version shrink-0 border-t border-gray-200 px-4 py-3 text-xs text-gray-500">
+            <span aria-label="系统版本">v{import.meta.env.VITE_APP_VERSION}</span>
           </div>
         </div>
       </aside>
@@ -379,30 +350,6 @@ export default function Layout({ children }) {
             <div className="flex-1" />
 
             <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-              {can(PERMISSIONS.EMAIL_READ) && (
-                <Link
-                  to="/email-processing"
-                  className="hidden md:flex items-center space-x-2 text-sm text-gray-500 hover:text-primary"
-                  title={
-                    emailWorker?.heartbeatAt
-                      ? `最近心跳：${new Date(emailWorker.heartbeatAt).toLocaleString()}`
-                      : '暂无 Worker 心跳'
-                  }
-                >
-                  <Mail
-                    className={`w-4 h-4 ${emailWorker?.isRunning && emailWorker?.isConnected ? 'text-green-600' : 'text-gray-400'}`}
-                  />
-                  <span>
-                    {emailWorker?.isRunning && emailWorker?.isConnected
-                      ? '邮件监听正常'
-                      : '邮件监听未连接'}
-                  </span>
-                </Link>
-              )}
-
-              {/* 分隔线 */}
-              <div className="hidden md:block h-6 w-px bg-gray-200"></div>
-
               {/* 用户信息 */}
               <div className="flex items-center gap-2 sm:gap-3 min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
