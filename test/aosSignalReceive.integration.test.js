@@ -122,12 +122,36 @@ suite('AOS日志实际新增事件的行表／压缩块事务入队', () => {
           'loggedAt',
           'byteOffset',
           'receivedAt',
+          'accountNumber',
         ].sort()
       );
       await models.AosSignalInbox.destroy({ where: {} });
       await receive(deviceId, { entries: [row] });
       expect(await models.AosSignalInbox.count()).toBe(0);
       expect(await models.MonitorLogEntry.count()).toBe(mode === 'blocks' ? 0 : 1);
+    }
+  );
+  test.each(['rows', 'shadow', 'blocks'])(
+    '%s独立有货事件无需提交也入队，重传不重计',
+    async mode => {
+      await db.query(
+        'INSERT INTO monitor_log_storage_scopes(device_id,local_id,mode) VALUES(:deviceId,:localId,:mode)',
+        { replacements: { deviceId, localId, mode } }
+      );
+      const row = entry(11, {
+        message: '2026-10-19 08:00:00.000 [2][013]A77-消息20110501\r\n',
+      });
+      await receive(deviceId, { entries: [row, row] });
+      expect(await models.AosSignalInbox.count()).toBe(1);
+      expect((await models.AosSignalInbox.findByPk(row.id)).body).toMatchObject({
+        deviceId,
+        localId,
+        kind: 'stock',
+        accountNumber: '013',
+      });
+      await models.AosSignalInbox.destroy({ where: {} });
+      await receive(deviceId, { entries: [row] });
+      expect(await models.AosSignalInbox.count()).toBe(0);
     }
   );
   test('队列存储失败会回滚原始日志及块回执，重试正常一次入队', async () => {

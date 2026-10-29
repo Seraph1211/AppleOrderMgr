@@ -5,6 +5,7 @@ const policy = require('./aosSignalPolicy');
 const inventoryFailure = require('../utils/inventoryFailure');
 const accountConfigs = require('./aosAccountConfigService');
 const accountRatios = require('./aosAccountRatioService');
+const stockTasks = require('./aosStockTaskPolicy');
 
 /** 接收事务仅写脱敏队列，不获取库存全局锁。 @param {Object[]} rows 实际新增日志 @param {Object} transaction 日志事务 @returns {Promise<number>} 入队数 */
 async function enqueue(rows, transaction) {
@@ -46,10 +47,18 @@ class AosSignalService {
   }
 
   /** 生成单条概览，保存全部分组明细供投递历史查询。 */
-  async queue(groups, context, immediate, from, to, association, accountTracker) {
+  async queue(groups, context, immediate, from, to, association, accountTracker, initial = false) {
     try {
       if (!Object.keys(groups).length) return;
-      const { transaction, settings, now } = context;
+      const { transaction, settings, now, state } = context;
+      if (accountTracker && !immediate)
+        accountTracker.stock = stockTasks.snapshot(
+          state.aosStockTasks,
+          accountTracker,
+          from,
+          to,
+          initial
+        );
       const ratioEnabled = Boolean(this.s.m.AosTaskConfigVersion || this.s.m.AosAccountRegistry);
       const aosAccountRatio =
         ratioEnabled && !immediate
@@ -101,7 +110,13 @@ class AosSignalService {
           window.from,
           window.until,
           window.association,
-          window.accountTracker
+          window.accountTracker,
+          window.initial
+        );
+      if (state.aosStockTasks)
+        state.aosStockTasks.closedUntil = Math.max(
+          state.aosStockTasks.closedUntil || 0,
+          window.until
         );
       if (!Object.keys(window.groups).length || at >= window.until + policy.WINDOW_MS)
         state.aosSignals = null;
@@ -137,7 +152,7 @@ class AosSignalService {
             row.status === 'pending' &&
             !row.aosImmediate &&
             row.aosGroups &&
-            row.aosAccountRatio?.version !== 2
+            row.aosAccountRatio?.version !== 3
           ) {
             row.aosAccountRatio = await accountRatios.evaluate(
               row.aosAccountTracker,
@@ -169,7 +184,7 @@ class AosSignalService {
           transaction,
         }),
         this.s.m.AosSignalInbox.findAll({
-          where: { 'body.taskKey': { [Op.in]: keys } },
+          // 有货但未提交的任务也必须进入复核，不能只读提交任务的inbox。
           order: [
             ['createdAt', 'ASC'],
             ['id', 'ASC'],
@@ -179,6 +194,32 @@ class AosSignalService {
         }),
       ]);
       const contexts = new Map(stored.map(row => [row.id, row.body]));
+      const missingKeys = [...new Set(inbox.map(row => row.body.taskKey))].filter(
+        key => !contexts.has(key)
+      );
+      if (missingKeys.length) {
+        const extra = await this.s.m.AosSignalContext.findAll({
+          where: { id: { [Op.in]: missingKeys } },
+          transaction,
+        });
+        for (const row of extra) contexts.set(row.id, row.body);
+      }
+      const unloadedKeys = [...new Set(inbox.map(row => row.body.taskKey))].filter(
+        key => !contexts.has(key)
+      );
+      if (unloadedKeys.length) {
+        const sourceMap = await this.sources(
+          inbox.map(row => row.body),
+          transaction
+        );
+        for (const row of inbox) {
+          if (unloadedKeys.includes(row.body.taskKey))
+            contexts.set(row.body.taskKey, {
+              source: sourceMap.get(`${row.body.deviceId}:${row.body.localId}`),
+              events: [],
+            });
+        }
+      }
       const additions = new Map();
       for (const row of inbox) {
         const entry = { id: row.id, ...row.body };
@@ -193,7 +234,18 @@ class AosSignalService {
           contexts.set(key, {
             ...previous,
             events: [...(previous.events || []), ...entries.filter(row => row.kind !== 'anchor')],
+            configuration: stockTasks.configuration(previous, entries),
           });
+      }
+      if (state.aosStockTasks) {
+        state.aosStockTasks = stockTasks.collect(
+          state.aosStockTasks,
+          inbox.map(row => ({ id: row.id, ...row.body })),
+          contexts,
+          context.now,
+          context.settings?.aosSignalsSince || state.aosStockTasks.since
+        );
+        state.aosStockTasks.reason = inbox.length >= 1000 ? 'STOCK_PENDING_QUEUE_LIMIT' : null;
       }
       if (state.aosSignals?.association) {
         state.aosSignals = {
@@ -220,6 +272,12 @@ class AosSignalService {
           );
         for (const row of updated) {
           row.aosAccountTracker = accountRatios.refresh(row.aosAccountTracker, row.aosAssociation);
+          if (row.aosAccountTracker?.stock)
+            row.aosAccountTracker.stock = stockTasks.refreshSnapshot(
+              row.aosAccountTracker.stock,
+              state.aosStockTasks,
+              contexts
+            );
           row.aosAccountRatio = row.aosImmediate
             ? null
             : await accountRatios.evaluate(row.aosAccountTracker, this.s.m, transaction);
@@ -350,7 +408,19 @@ class AosSignalService {
             settings.config.aosSignalsEnabled &&
             settings.webhookCipher &&
             settings.testedDestination === settings.destinationId;
-          if (!enabled) state.aosSignals = null;
+          if (!enabled) {
+            state.aosSignals = null;
+            state.aosStockTasks = null;
+          } else {
+            state.aosStockTasks = stockTasks.collect(
+              state.aosStockTasks,
+              entries,
+              contexts,
+              now,
+              settings.aosSignalsSince
+            );
+            state.aosStockTasks.reason = queue.length >= 1000 ? 'STOCK_PENDING_QUEUE_LIMIT' : null;
+          }
           if (enabled) await this.reconcile(context);
           const anchors = (
             await accountConfigs.attachAccounts(
@@ -392,6 +462,7 @@ class AosSignalService {
                 ...structuredClone(first),
                 from: anchor.receivedAt,
                 until: anchor.receivedAt + policy.WINDOW_MS,
+                initial: true,
               };
             } else {
               policy.addAssociation(state.aosSignals, anchor, item, task);

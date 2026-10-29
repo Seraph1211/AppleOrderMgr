@@ -149,7 +149,7 @@ test('消息明确同城任务；缺分母只保留命中，不出现残缺分�
     groups,
     await service.evaluate({ refs: [ref()] }, models([version()]))
   );
-  expect(good).toContain('同城任务 1/3');
+  expect(good).toContain('1/—/3');
   const missing = content.formatSummary(
     groups,
     await service.evaluate({ refs: [ref()] }, models([]))
@@ -183,7 +183,7 @@ test('旧pending没有关联引用也升级任务格式，不保留N/—', async
   const owner = { m: models([]), put: jest.fn().mockResolvedValue(null) };
   const service = new AosSignalService(owner);
   const result = await service.reconcile({ state: {}, transaction: null }, [old]);
-  expect(result[0].aosAccountRatio.version).toBe(2);
+  expect(result[0].aosAccountRatio.version).toBe(3);
   expect(result[0].content).toContain('4次命中');
   expect(result[0].content).not.toContain('/—');
   expect(owner.put).toHaveBeenCalled();
@@ -229,7 +229,7 @@ test('总查询预算耗尽后不再读取后续来源，已完成比例与原�
   };
   const text = content.formatSummary(groups, result);
   expect(text).toContain('7次命中');
-  expect(text).toContain('1号实例｜同城任务 1/3');
+  expect(text).toContain('1号实例｜1/—/3');
   expect(text).toContain('2号实例｜4次命中');
   expect(tracker.refs).toHaveLength(2);
 });

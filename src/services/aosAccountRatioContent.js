@@ -78,7 +78,7 @@ function scopesFor(rows) {
 const numberText = value => (Number.isSafeInteger(value) && value >= 0 ? String(value) : '—');
 
 function sourceLine(source, scope, ratios) {
-  const ratio = [1, 2].includes(ratios?.version)
+  const ratio = [1, 2, 3].includes(ratios?.version)
     ? ratios.scopes?.[scope.key]?.sources?.[source.key]
     : null;
   const numerator = ratio?.numerator;
@@ -86,7 +86,7 @@ function sourceLine(source, scope, ratios) {
   const inconsistent =
     Number.isFinite(numerator) && Number.isFinite(denominator) && numerator > denominator;
   const label = `${shorten(serverName(source.server), 12)} / ${shorten(source.instance, 10)}`;
-  if (ratios?.version === 2) {
+  if ([2, 3].includes(ratios?.version)) {
     if (
       inconsistent ||
       !Number.isSafeInteger(numerator) ||
@@ -95,6 +95,15 @@ function sourceLine(source, scope, ratios) {
       ratio.reason
     )
       return `${label}｜${count(source.count)}次命中`;
+    if (ratios.version === 3) {
+      const stock = ratio.stockCount;
+      const invalidStock =
+        ratio.stockReason ||
+        !Number.isSafeInteger(stock) ||
+        stock < numerator ||
+        stock > denominator;
+      return `${label}｜${numerator}/${numberText(invalidStock ? null : stock)}/${denominator}`;
+    }
     return `${label}｜同城任务 ${numerator}/${denominator}`;
   }
   return `${label}｜${numberText(numerator)}/${numberText(inconsistent ? null : denominator)}`;
@@ -121,7 +130,8 @@ function scopeText(scope, ratios, storeLimit, sourceLimit) {
   if (omittedStores) lines.push(omittedStores);
   for (const source of scope.sources.slice(0, sourceLimit))
     lines.push(sourceLine(source, scope, ratios));
-  if (!scope.sources.length) lines.push(ratios?.version === 2 ? '未知来源' : '未知来源｜—/—');
+  if (!scope.sources.length)
+    lines.push([2, 3].includes(ratios?.version) ? '未知来源' : '未知来源｜—/—');
   const omittedSources = sourceMarker(scope.sources.slice(sourceLimit));
   if (omittedSources) lines.push(omittedSources);
   return lines.join('\n');
@@ -149,6 +159,14 @@ function formatSummary(groups, ratios) {
   const blocks = [`3分钟汇总｜${sum(rows)}次命中｜${location}`];
   const time = timeRange(rows);
   const scopes = scopesFor(rows);
+  if (ratios?.version === 3) {
+    for (const scope of scopes) {
+      for (const [key, ratio] of Object.entries(ratios.scopes?.[scope.key]?.sources || {})) {
+        if (!scope.sources.some(source => source.key === key) && ratio.source)
+          scope.sources.push({ ...ratio.source, key, count: 0 });
+      }
+    }
+  }
   const render = (extra, omitted) => [...blocks, extra, omitted, time].filter(Boolean).join('\n\n');
   for (const [index, scope] of scopes.entries()) {
     const remaining = remainingMarker(scopes.slice(index + 1));

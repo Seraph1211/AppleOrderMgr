@@ -1,6 +1,7 @@
 const { createHash } = require('crypto');
 const stores = require('../config/proxyStores.json');
 const { resolveProductName } = require('../utils/productNaming');
+const stockTasks = require('./aosStockTaskPolicy');
 
 const WINDOW_MS = 180000;
 const CONTEXT_MS = 86400000;
@@ -26,16 +27,27 @@ function parseEntry(row, receivedAt) {
     receivedAt - loggedAt > WINDOW_MS
   )
     return null;
-  const match = row.message.match(
-    /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+(\[[^\]\r\n]+\]\[[^\]\r\n]+\][^\s\r\n]+?)-([^\r\n]*)/
-  );
+  const match = row.message
+    .replace(/^\uFEFF/, '')
+    .match(
+      /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+(\[[^\]\r\n]+\]\[[^\]\r\n]+\][^\s\r\n]+?)-([^\r\n]*)/
+    );
   if (!match) return null;
   const text = match[2];
   let kind;
   let details = {};
   if (/取货信息\s*[:：]\s*取货日期待付款完成后确定/.test(text)) kind = 'anchor';
-  else if (text.includes('消息20110501')) kind = 'stock';
-  else if (/^(?:开始登录|加入购物车成功)/.test(text)) kind = 'reset';
+  else if (/^消息20110501(?:\s|[:：]|$)/.test(text)) kind = 'stock';
+  else if (/^(?:开始下单|开始监控库存状态|消息(?:24093001|21101002))/.test(text)) {
+    const parsed = require('./aosAccountConfigPolicy').parse([{ ...row, message: row.message }]);
+    const event = parsed.events[0];
+    if (!event || !['start', 'city'].includes(event.kind)) return null;
+    kind = event.kind === 'start' ? 'configStart' : 'configCity';
+    details =
+      event.kind === 'start'
+        ? { ...(!event.body.invalid ? event.body.product || {} : {}) }
+        : { cities: event.body.cities, unknown: Boolean(event.body.unknown || event.body.invalid) };
+  } else if (/^(?:开始登录|加入购物车成功)/.test(text)) kind = 'reset';
   else if (/尝试预约\s*[:：]/.test(text)) {
     kind = 'booking';
     const name = text.match(/尝试预约\s*[:：]\s*([^,，\r\n]+)/)?.[1].trim();
@@ -67,7 +79,7 @@ function parseEntry(row, receivedAt) {
 
 /** 同一片段存在多个标准记录时逐行提取；无时间续行不猜任务和时间。 */
 function parseEntries(row, receivedAt) {
-  const lines = row.message.split(/\r?\n/);
+  const lines = row.message.replace(/^\uFEFF/, '').split(/\r?\n/);
   if (lines.filter(Boolean).length <= 1) return [parseEntry(row, receivedAt)].filter(Boolean);
   return lines.flatMap((message, lineIndex) => {
     const match = message.match(/^(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2}\.\d{3})/);
@@ -86,6 +98,7 @@ function mergeContext(previous, entries, source, now) {
   const unique = new Map(events.map(row => [row.id, row]));
   return {
     events: [...unique.values()].sort(order).slice(-MAX_CONTEXT_EVENTS),
+    configuration: stockTasks.configuration(previous, entries),
     source,
     updatedAt: now,
   };
