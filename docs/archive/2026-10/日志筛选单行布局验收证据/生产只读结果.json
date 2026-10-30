@@ -1,0 +1,371 @@
+{
+  "passed": true,
+  "results": [
+    {
+      "width": 1440,
+      "passed": true,
+      "devices": 22,
+      "instances": 24,
+      "taggedDevices": 22,
+      "taggedInstances": 0,
+      "desktopSingleRow": true,
+      "layoutStates": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 269,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 269,
+              "width": 212.078125,
+              "height": 36
+            }
+          ]
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 269,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 269,
+              "width": 212.078125,
+              "height": 36
+            }
+          ]
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 222.671875,
+              "height": 36
+            },
+            {
+              "x": 474.671875,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 664.9375,
+              "y": 269,
+              "width": 180.265625,
+              "height": 36
+            },
+            {
+              "x": 855.203125,
+              "y": 269,
+              "width": 328.71875,
+              "height": 36
+            },
+            {
+              "x": 1193.921875,
+              "y": 269,
+              "width": 212.078125,
+              "height": 36
+            }
+          ]
+        }
+      ],
+      "inlineDropdown": true,
+      "labelsPresent": true,
+      "managerReadOnlyInspection": true,
+      "rangeAndExportEntrancesPreserved": true,
+      "productionWrites": 0,
+      "rawLogsRequested": false
+    },
+    {
+      "width": 3598,
+      "passed": true,
+      "devices": 22,
+      "instances": 24,
+      "taggedDevices": 22,
+      "taggedInstances": 0,
+      "desktopSingleRow": true,
+      "layoutStates": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 269,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 269,
+              "width": 619.234375,
+              "height": 36
+            }
+          ]
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 269,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 269,
+              "width": 619.234375,
+              "height": 36
+            }
+          ]
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 242,
+              "y": 269,
+              "width": 650.203125,
+              "height": 36
+            },
+            {
+              "x": 902.203125,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1438.5625,
+              "y": 269,
+              "width": 526.359375,
+              "height": 36
+            },
+            {
+              "x": 1974.921875,
+              "y": 269,
+              "width": 959.828125,
+              "height": 36
+            },
+            {
+              "x": 2944.75,
+              "y": 269,
+              "width": 619.234375,
+              "height": 36
+            }
+          ]
+        }
+      ],
+      "inlineDropdown": true,
+      "labelsPresent": true,
+      "managerReadOnlyInspection": true,
+      "rangeAndExportEntrancesPreserved": true,
+      "productionWrites": 0,
+      "rawLogsRequested": false
+    },
+    {
+      "width": 375,
+      "passed": true,
+      "devices": 22,
+      "instances": 24,
+      "taggedDevices": 22,
+      "taggedInstances": 0,
+      "desktopSingleRow": false,
+      "layoutStates": [
+        {
+          "state": "闭合",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 339,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 418,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 497,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 576,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 655,
+              "width": 323,
+              "height": 44
+            }
+          ]
+        },
+        {
+          "state": "服务器展开",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 152,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 552,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 631,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 710,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 789,
+              "width": 323,
+              "height": 44
+            }
+          ]
+        },
+        {
+          "state": "实例展开",
+          "boxes": [
+            {
+              "x": 26,
+              "y": 152,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 231,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 467,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 546,
+              "width": 323,
+              "height": 44
+            },
+            {
+              "x": 26,
+              "y": 625,
+              "width": 323,
+              "height": 44
+            }
+          ]
+        }
+      ],
+      "inlineDropdown": true,
+      "labelsPresent": true,
+      "managerReadOnlyInspection": true,
+      "rangeAndExportEntrancesPreserved": true,
+      "productionWrites": 0,
+      "rawLogsRequested": false
+    }
+  ]
+}

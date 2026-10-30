@@ -1,0 +1,48 @@
+{
+  "jest": {
+    "suitesPassed": 207,
+    "testsPassed": 4240,
+    "testsSkipped": 1120
+  },
+  "postgresIntegrationTests": {
+    "apple_order_mgr_proxy_cancel_test_20261025": 12,
+    "monitor_tags_test": "see-log",
+    "aos_payment_code_test_convergence": 25,
+    "aos_log_test_convergence": 16
+  },
+  "releaseToolTests": {
+    "run": 112,
+    "skipped": 1
+  },
+  "otherUiComparisons": 96,
+  "logViewports": [
+    "1440x1000",
+    "1920x1080",
+    "1080x1920",
+    "375x740"
+  ],
+  "tagViewports": [
+    320,
+    390,
+    768,
+    1440,
+    1920
+  ],
+  "capabilities": 12,
+  "productionWritesDuringTests": false,
+  "backup": {
+    "bytes": 1628615340,
+    "sha256": "4f56aa2f3af5cc36cd3abd6b556110fec215c947469387a58fc94c633a56e220",
+    "businessTables": 123,
+    "migrations": 93,
+    "completeRestorePassed": true,
+    "schemaMethod": "postgresql-native-schema-archive-replay",
+    "aosLogDataExcluded": true
+  },
+  "migrationHistory": {
+    "production": 93,
+    "source": 93,
+    "pending": 0,
+    "readIndexMatchesProduction": true
+  }
+}

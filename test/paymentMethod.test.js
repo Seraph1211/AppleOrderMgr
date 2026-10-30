@@ -4,12 +4,14 @@ const {
   isWechatPayment,
   getSourcePaymentMethod,
   normalizePaymentMethod,
+  supportsOrderRecordPaymentCode,
 } = require('../src/utils/paymentMethod');
 const { serializeTask } = require('../src/services/paymentTaskService');
 
 test.each(PAYMENT_METHODS)('%s 分类只接受普通微信付款码', method => {
   expect(isWechatPayment(method)).toBe(method === '微信');
   expect(isAlipayPayment(method)).toBe(method === '支付宝');
+  expect(supportsOrderRecordPaymentCode(method)).toBe(['微信', '招行24期'].includes(method));
 });
 
 test.each(['花呗24期', '微信分付', '招行36期', '', null])('未知方式 %s 不冒充已支持', method => {

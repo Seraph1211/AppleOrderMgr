@@ -109,65 +109,75 @@ const { buildAosLine } = require('./fixtures/aosRecords');
     );
     return `https://openapi.alipay.com/gateway.do?${params}`;
   }
-  test('订单原文第17列直接读取，保留加密、权限、审计且不回填业务数据', async () => {
-    const date = new Date(new Date(order.orderDate).getTime() + 8 * 3600000)
-      .toISOString()
-      .replace('T', ' ')
-      .replace('Z', '');
-    const rawLine = buildAosLine({
-      0: order.orderNumber,
-      13: order.orderUrl,
-      14: date,
-      16: makePng(4),
-    });
-    const source = await models.AosRecord.create({
-      id: crypto.randomUUID(),
-      deviceId: device.id,
-      eventId: crypto.randomUUID(),
-      payloadHash: 'a'.repeat(64),
-      payload: { rawLine },
-      fileName: 'AOS订单记录-0918(test).txt',
-      lineNumber: 1,
-      receivedAt: new Date(),
-      orderId: order.id,
-      orderNumber: order.orderNumber,
-      orderDate: order.orderDate,
-      status: 'succeeded',
-      eligibility: 'allowed',
-    });
-    try {
-      const before = (await Order.findByPk(order.id)).toJSON();
-      const sourceBefore = (await models.AosRecord.findByPk(source.id)).toJSON();
-      const events = await models.PaymentTaskEvent.count();
-      const result = await service.getPaymentCode(Number(task.id), actor.id);
-      expect(result).toMatchObject({
-        availability: 'available',
-        imageDataUrl: makePng(4),
-        sourceTime: new Date(order.orderDate).toISOString(),
+  test.each(['微信', '招行24期'])(
+    '%s 订单原文第17列直接读取，保留加密、权限、审计且不回填业务数据',
+    async paymentMethod => {
+      await order.update({ paymentMethod });
+      const date = new Date(new Date(order.orderDate).getTime() + 8 * 3600000)
+        .toISOString()
+        .replace('T', ' ')
+        .replace('Z', '');
+      const rawLine = buildAosLine({
+        0: order.orderNumber,
+        11: paymentMethod,
+        13: order.orderUrl,
+        14: date,
+        16: makePng(4),
       });
-      await expect(service.getPaymentCode(Number(task.id), other.id)).rejects.toThrow(
-        '付款任务不存在或已转派'
-      );
-      expect(await models.PaymentTaskEvent.count()).toBe(events + 1);
-      expect(await OrderPaymentCode.count()).toBe(0);
-      expect((await Order.findByPk(order.id)).toJSON()).toEqual(before);
-      expect((await models.AosRecord.findByPk(source.id)).toJSON()).toEqual(sourceBefore);
-      const [raw] = await sequelize.query('SELECT payload::text FROM aos_records WHERE id=:id', {
-        replacements: { id: source.id },
+      const source = await models.AosRecord.create({
+        id: crypto.randomUUID(),
+        deviceId: device.id,
+        eventId: crypto.randomUUID(),
+        payloadHash: 'a'.repeat(64),
+        payload: { rawLine },
+        fileName: 'AOS订单记录-0918(test).txt',
+        lineNumber: 1,
+        receivedAt: new Date(),
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        orderDate: order.orderDate,
+        status: 'succeeded',
+        eligibility: 'allowed',
       });
-      expect(raw[0].payload).not.toContain('base64');
-      await source.update({ status: 'duplicate' });
-      expect((await service.getPaymentCode(Number(task.id), actor.id)).availability).toBe(
-        'available'
-      );
-      await source.update({ status: 'manual_review' });
-      expect((await service.getPaymentCode(Number(task.id), actor.id)).availability).toBe(
-        'missing'
-      );
-    } finally {
-      await source.destroy();
+      try {
+        const before = (await Order.findByPk(order.id)).toJSON();
+        const sourceBefore = (await models.AosRecord.findByPk(source.id)).toJSON();
+        const events = await models.PaymentTaskEvent.count();
+        const result = await service.getPaymentCode(Number(task.id), actor.id);
+        expect(result).toMatchObject({
+          availability: 'available',
+          paymentMethod,
+          imageDataUrl: makePng(4),
+          sourceTime: new Date(order.orderDate).toISOString(),
+        });
+        await expect(service.getPaymentCode(Number(task.id), other.id)).rejects.toThrow(
+          '付款任务不存在或已转派'
+        );
+        expect(await models.PaymentTaskEvent.count()).toBe(events + 1);
+        expect(await OrderPaymentCode.count()).toBe(0);
+        expect((await Order.findByPk(order.id)).toJSON()).toEqual(before);
+        expect((await models.AosRecord.findByPk(source.id)).toJSON()).toEqual(sourceBefore);
+        const [raw] = await sequelize.query('SELECT payload::text FROM aos_records WHERE id=:id', {
+          replacements: { id: source.id },
+        });
+        expect(raw[0].payload).not.toContain('base64');
+        await source.update({ status: 'duplicate' });
+        expect((await service.getPaymentCode(Number(task.id), actor.id)).availability).toBe(
+          'available'
+        );
+        expect((await service.getPaymentCode(Number(task.id), actor.id, false)).availability).toBe(
+          'available'
+        );
+        await source.update({ status: 'manual_review' });
+        expect((await service.getPaymentCode(Number(task.id), actor.id)).availability).toBe(
+          'missing'
+        );
+      } finally {
+        await source.destroy();
+        await order.update({ paymentMethod: '微信' });
+      }
     }
-  });
+  );
   test('支付宝第17列签名链接按调度或本人任务权限读取，原文和审计不泄露链接', async () => {
     const paymentUrl = alipayPaymentLink();
     const date = new Date(new Date(order.orderDate).getTime() + 8 * 3600000)
@@ -320,12 +330,16 @@ const { buildAosLine } = require('./fixtures/aosRecords');
   });
   test.each(
     require('../src/utils/paymentMethod').PAYMENT_METHODS.filter(method => method !== '微信')
-  )('%s 只返回无法获取提示，不返回历史图片或链接', async paymentMethod => {
+  )('%s 无匹配来源时不返回历史微信图片或链接，列表保留完整来源方式', async paymentMethod => {
     await order.update({ paymentMethod: 'WECHAT', sourceSnapshot: { paymentMethod } });
-    expect(await service.getPaymentCode(Number(task.id), other.id)).toEqual({
-      availability: 'unsupported',
-      message: `${paymentMethod}暂无法获取付款码`,
-    });
+    const code = await service.getPaymentCode(Number(task.id), other.id);
+    if (paymentMethod === '招行24期')
+      expect(code).toMatchObject({ availability: 'missing', imageDataUrl: null });
+    else
+      expect(code).toEqual({
+        availability: 'unsupported',
+        message: `${paymentMethod}暂无法获取付款码`,
+      });
     const own = await require('../src/services/paymentTaskService').listOwnTasks(other.id, {});
     const dispatch = await require('../src/services/paymentDispatchService').listDispatchTasks(
       {},

@@ -1,0 +1,110 @@
+diff --git a/frontend/src/components/MonitorLogs.jsx b/frontend/src/components/MonitorLogs.jsx
+--- a/frontend/src/components/MonitorLogs.jsx
++++ b/frontend/src/components/MonitorLogs.jsx
+@@ -754,47 +754,2 @@
+-        <div className="monitor-log-filter-actions mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+-          <button
+-            className="btn btn-primary inline-flex items-center justify-center min-h-11 sm:min-h-0"
+-            disabled={!filters.localId || loading}
+-          >
+-            <Search className="mr-1 h-4 w-4" />
+-            查询
+-          </button>
+-          <button
+-            type="button"
+-            className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
+-            disabled={!filters.localId || exporting}
+-            onClick={exportRange}
+-            title="导出已查询时间范围内该实例的全部原文，不受账号和关键词筛选影响"
+-          >
+-            <Download className="mr-1 h-4 w-4" />
+-            {exporting ? '正在导出…' : '导出范围日志'}
+-          </button>
+-          <button
+-            type="button"
+-            className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
+-            onClick={() => {
+-              const defaults = { ...logRangePreset(), account: '', keyword: '' };
+-              setDraft(defaults);
+-              setRangeError('');
+-              setAccountAfter('');
+-              setAccountNext(null);
+-              setAccounts([]);
+-              setFilters(value => ({
+-                ...value,
+-                ...defaults,
+-              }));
+-              reload();
+-            }}
+-          >
+-            清空筛选
+-          </button>
+-          <button
+-            type="button"
+-            className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
+-            disabled={loading}
+-            onClick={reload}
+-          >
+-            <RefreshCw className="mr-1 h-4 w-4" />
+-            重新查询
+-          </button>
+-          <label className="inline-flex min-h-11 items-center gap-2 text-sm text-gray-600 sm:min-h-0 sm:ml-auto">
++        <div className="monitor-log-filter-actions mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
++          <label className="inline-flex min-h-11 shrink-0 items-center gap-2 text-sm text-gray-600 sm:min-h-[34px]">
+@@ -813,0 +769,52 @@
++          <div className="w-full min-w-0 sm:ml-auto sm:w-auto sm:max-w-xl">
++            <div role="group" aria-label="日志查询操作" className="flex flex-wrap items-center justify-end gap-2">
++              <button
++                className="btn btn-primary inline-flex items-center justify-center min-h-11 sm:min-h-0"
++                disabled={!filters.localId || loading}
++              >
++                <Search className="mr-1 h-4 w-4" />
++                查询
++              </button>
++              <button
++                type="button"
++                className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
++                disabled={!filters.localId || exporting}
++                onClick={exportRange}
++                title="导出已查询时间范围内该实例的全部原文，不受账号和关键词筛选影响"
++              >
++                <Download className="mr-1 h-4 w-4" />
++                {exporting ? '正在导出…' : '导出范围日志'}
++              </button>
++              <button
++                type="button"
++                className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
++                onClick={() => {
++                  const defaults = { ...logRangePreset(), account: '', keyword: '' };
++                  setDraft(defaults);
++                  setRangeError('');
++                  setAccountAfter('');
++                  setAccountNext(null);
++                  setAccounts([]);
++                  setFilters(value => ({
++                    ...value,
++                    ...defaults,
++                  }));
++                  reload();
++                }}
++              >
++                清空筛选
++              </button>
++              <button
++                type="button"
++                className="btn btn-secondary inline-flex items-center justify-center min-h-11 sm:min-h-0"
++                disabled={loading}
++                onClick={reload}
++              >
++                <RefreshCw className="mr-1 h-4 w-4" />
++                重新查询
++              </button>
++            </div>
++            <p className="mt-2 text-left text-xs leading-5 text-gray-500 sm:text-right">
++              导出使用已查询的时间范围，包含该实例全部原文，不受账号和关键词影响。
++            </p>
++          </div>
+@@ -815,3 +821,0 @@
+-        <p className="mt-2 text-xs text-gray-400">
+-          导出使用已查询的时间范围，包含该实例全部原文，不受账号和关键词影响。
+-        </p>

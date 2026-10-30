@@ -14,7 +14,7 @@ import uuid
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent / 'officialOrder'))
 from iproyalApi import generate_proxy, read_private
-from runHttpSample import IMAGE, probe, run, writePrivate
+from runHttpSample import IMAGE, official_http_evidence_version, probe, run, writePrivate
 
 ROOT = pathlib.Path(os.environ.get('OFFICIAL_ORDER_ROOT', '/var/www/apple-order-mgr/shared/official-http-refresh'))
 API_CONTAINER = os.environ.get('OFFICIAL_API_CONTAINER', 'apple-order-mgr-prod-api-1')
@@ -57,7 +57,9 @@ def command(action, payload=None):
 
 
 def stopped():
-    return STOPPING or (ROOT / 'private/STOP').exists() or (ROOT / 'private/http-cleanup-blocked.json').exists()
+    return (STOPPING or (ROOT / 'private/STOP').exists() or
+            (ROOT / 'private/http-cleanup-blocked.json').exists() or
+            (ROOT / 'private/http-evidence-v2-maintenance.lock').exists())
 
 
 def probe_with_retry(proxy, audit, key):
@@ -66,9 +68,13 @@ def probe_with_retry(proxy, audit, key):
         if stopped():
             raise RuntimeError('REQUEST_STOPPED')
         audit[key] = index + 1
+        diagnostics = audit.setdefault(key + 'Diagnostics', [])
         try:
-            return probe(proxy)
+            return probe(proxy, diagnostics=diagnostics)
         except Exception as error:
+            # kill switch 已明确拒绝此会话，继续同会话探测不会恢复出口。
+            if diagnostics and diagnostics[-1].get('proxyConnectStatus') == 410:
+                raise
             if index or failure_code(error, 'probe-before') not in PROBE_RETRYABLE:
                 raise
 
@@ -100,6 +106,7 @@ def attempt(job, rejected):
     result = None
     stage = 'input-read'
     try:
+        evidence_version = official_http_evidence_version()
         if stopped():
             raise RuntimeError('REQUEST_STOPPED')
         data = json.loads(run(['docker', 'exec', '-i', '-e', 'OFFICIAL_ORDER_IDS=' + str(job['orderId']),
@@ -131,6 +138,7 @@ def attempt(job, rejected):
              '--user', '1000:1000', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
              '--memory', '512m', '--cpus', '1', '--pids-limit', '64', '--tmpfs', '/tmp:rw,nosuid,size=67108864',
              '-e', 'HOME=/tmp', '-e', 'NODE_PATH=/research/node_modules',
+             '-e', 'OFFICIAL_HTTP_EVIDENCE_VERSION=' + evidence_version,
              '-v', str(ROOT) + ':/research:rw', '-v', str(ROOT / 'deps') + ':/research/node_modules:ro',
              '-v', RUNTIME + ':/runtime:ro', '--entrypoint', 'node', IMAGE,
              '/research/release/scripts/collectOfficialRefreshHttp.js', '/research', attempt_id], timeout=30)
@@ -143,6 +151,10 @@ def attempt(job, rejected):
         if not isinstance(code, str) or not re.fullmatch(r'[A-Z_0-9]{1,80}', code):
             raise RuntimeError('COLLECTOR_OUTPUT_INVALID')
         audit.update(outcome=code, collectorOutcome=code, runId=summary.get('runId'))
+        # 仅精确失败协议可证明没有成功结果；未知退出或部分成功不自动重放。
+        audit['collectorFailureVerified'] = (
+            output.returncode == 2 and set(summary) == {'outcome', 'runId'} and
+            type(summary.get('runId')) is int and summary['runId'] > 0 and code in RETRYABLE)
         stage = 'probe-after'
         after = probe_with_retry(proxy, audit, 'probeAfterAttempts')
         audit['egressAfter'] = after
@@ -195,8 +207,16 @@ def collect(job):
         if audit.get('egressBefore'):
             rejected.add(audit['egressBefore'])
         retryable = (audit['outcome'] in RETRYABLE or
-                     (audit.get('failedStage') == 'probe-before' and audit['outcome'] in PROBE_RETRYABLE))
-        if stopped() or not audit['cleanupVerified'] or not retryable or audit.get('egressAfterError'):
+                     (audit.get('failedStage') == 'probe-before' and
+                      audit['outcome'] in PROBE_RETRYABLE | {'EGRESS_PREVIOUSLY_REJECTED'}))
+        after_error = audit.get('egressAfterError')
+        failed_read_only = (
+            audit.get('collectorFailureVerified') is True and
+            audit.get('collectorOutcome') == audit['outcome'] and
+            audit['outcome'] in RETRYABLE and
+            audit.get('failedStage') == 'probe-after' and after_error in PROBE_RETRYABLE)
+        if (stopped() or not audit['cleanupVerified'] or not retryable or
+                (after_error and not failed_read_only)):
             break
     return dict(job, outcome=audit['outcome'], transport='http')
 

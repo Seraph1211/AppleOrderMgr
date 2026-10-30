@@ -1,0 +1,6 @@
+FROM apple-order-mgr-frontend-builder:20261024-duo-quotes-amd64
+COPY frontend/src/components/MonitorLogs.jsx /app/src/components/MonitorLogs.jsx
+COPY frontend/src/components/monitorResourceSelect.jsx /app/src/components/monitorResourceSelect.jsx
+COPY frontend/src/components/monitorLogTags.jsx /app/src/components/monitorLogTags.jsx
+COPY frontend/src/components/monitorLogs.css /app/src/components/monitorLogs.css
+RUN npm run lint && npm run build

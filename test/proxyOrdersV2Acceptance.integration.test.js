@@ -165,14 +165,14 @@ suite('代抢二期独立真实 PostgreSQL/API 验收', () => {
     await first.update({ emailOrderStatus: 'cancelled' });
     await service.reconcile();
     expect((await row.reload()).status).toBe('succeeded');
-    await change(row, 'status', { status: 'cancelled' });
+    await change(row, 'status', { status: 'cancelled', confirmedStopped: true });
     const third = await official(row);
     await service.reconcile();
     expect((await row.reload()).status).toBe('cancelled');
     expect((await service.detail(row.id)).officialOrders.map(order => order.id)).toContain(
       third.id
     );
-    expect(await models.ProxyAssignment.count({ where: { endedAt: null } })).toBe(1);
+    expect(await models.ProxyAssignment.count({ where: { endedAt: null } })).toBe(0);
   });
 
   test('四态任意恢复及原因审计，不强制额外重抢表单，不覆盖客户备注', async () => {

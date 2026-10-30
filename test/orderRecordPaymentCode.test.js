@@ -2,10 +2,27 @@ const crypto = require('crypto');
 jest.mock('../src/models', () => ({
   OrderPaymentCode: { findOne: jest.fn() },
   AosRecord: { findAll: jest.fn() },
+  Order: { findByPk: jest.fn() },
+  PaymentTask: { findOne: jest.fn() },
+  PaymentTaskEvent: { create: jest.fn() },
+  sequelize: { transaction: jest.fn() },
 }));
 jest.mock('../src/utils/logger', () => ({ debug: jest.fn() }));
-const { OrderPaymentCode, AosRecord } = require('../src/models');
-const { findOrderPaymentCode } = require('../src/services/paymentCodeService');
+jest.mock('../src/services/orderAccessService', () => ({ assertCurrentOrderAccess: jest.fn() }));
+const {
+  OrderPaymentCode,
+  AosRecord,
+  Order,
+  PaymentTask,
+  PaymentTaskEvent,
+  sequelize,
+} = require('../src/models');
+const { assertCurrentOrderAccess } = require('../src/services/orderAccessService');
+const {
+  findOrderPaymentCode,
+  getPaymentCode,
+  receivePaymentCodes,
+} = require('../src/services/paymentCodeService');
 const { makePng } = require('./fixtures/paymentCode');
 const { buildAosLine } = require('./fixtures/aosRecords');
 const { validatePaymentPng } = require('../src/services/paymentCodeValidation');
@@ -30,7 +47,7 @@ beforeEach(() => {
   OrderPaymentCode.findOne.mockResolvedValue(null);
   AosRecord.findAll.mockResolvedValue([source()]);
 });
-test.each(['招行24期', '微信分付12期', '微信分付24期', 'VISA'])(
+test.each(['招行12期', '微信分付12期', '微信分付24期', 'VISA'])(
   '来源 %s 即使遗留已关联微信码也不读取',
   async paymentMethod => {
     const result = await findOrderPaymentCode(
@@ -42,6 +59,111 @@ test.each(['招行24期', '微信分付12期', '微信分付24期', 'VISA'])(
     expect(AosRecord.findAll).not.toHaveBeenCalled();
   }
 );
+
+test('招行24期从来源原文读取，绝不读取历史独立微信码', async () => {
+  AosRecord.findAll.mockResolvedValue([source({ 11: '招行24期' })]);
+  const result = await findOrderPaymentCode(
+    { ...order, sourceSnapshot: { paymentMethod: '招行24期' } },
+    transaction
+  );
+  expect(result.payload.paymentMethod).toBe('招行24期');
+  expect(result.payload.imageDataUrl).toBe(makePng());
+  expect(result.sourceTime).toBe('2026-09-10T02:00:00.123Z');
+  expect(OrderPaymentCode.findOne).not.toHaveBeenCalled();
+});
+
+test.each([
+  ['遗留微信原文', { 11: '微信' }],
+  ['其他分期', { 11: '招行12期' }],
+  ['其他银行', { 11: '工行24期' }],
+  ['异账号', { 11: '招行24期', 2: 'other@example.com' }],
+  [
+    '异联系邮箱',
+    {
+      11: '招行24期',
+      1: 'other@example.com',
+      13: 'https://www.apple.com.cn/xc/cn/vieworder/W9900000001/other@example.com',
+    },
+  ],
+  ['异日期', { 11: '招行24期', 14: '2026-09-11 10:00:00.123' }],
+  [
+    '异订单',
+    {
+      11: '招行24期',
+      0: 'W9900000002',
+      13: 'https://www.apple.com.cn/xc/cn/vieworder/W9900000002/contact@example.com',
+    },
+  ],
+  ['缺码', { 11: '招行24期', 16: '' }],
+  ['坏图', { 11: '招行24期', 16: 'data:image/png;base64,aGVsbG8=' }],
+])('招行24期拒绝%s，不回退独立微信码', async (_label, fields) => {
+  OrderPaymentCode.findOne.mockResolvedValue({ payload: { imageDataUrl: makePng() } });
+  AosRecord.findAll.mockResolvedValue([source(fields)]);
+  expect(
+    await findOrderPaymentCode({ ...order, paymentMethod: '招行24期' }, transaction)
+  ).toBeNull();
+  expect(OrderPaymentCode.findOne).not.toHaveBeenCalled();
+});
+
+test('微信订单不能误挂招行24期原文码', async () => {
+  AosRecord.findAll.mockResolvedValue([source({ 11: '招行24期' })]);
+  expect(await findOrderPaymentCode(order, transaction)).toBeNull();
+});
+
+test.each([true, false])(
+  '招行码按本人／调度范围读取，终态保留来源方式与图片（own=%s）',
+  async own => {
+    const tx = { LOCK: { SHARE: 'SHARE' } };
+    sequelize.transaction.mockImplementation(callback => callback(tx));
+    PaymentTask.findOne.mockResolvedValue({
+      id: 91,
+      orderId: order.id,
+      processingStatus: 'completed',
+    });
+    Order.findByPk.mockResolvedValue({
+      ...order,
+      emailOrderStatus: 'cancelled',
+      sourceSnapshot: { paymentMethod: '招行24期' },
+    });
+    AosRecord.findAll.mockResolvedValue([source({ 11: '招行24期' })]);
+    const result = await getPaymentCode(91, 3, own);
+    expect(PaymentTask.findOne).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 91, ...(own ? { assigneeUserId: 3 } : {}) } })
+    );
+    expect(assertCurrentOrderAccess).toHaveBeenCalledWith(3, [order.id], { transaction: tx });
+    expect(result).toMatchObject({
+      availability: 'available',
+      paymentMethod: '招行24期',
+      emailOrderStatus: 'cancelled',
+      imageDataUrl: makePng(),
+    });
+    expect(PaymentTaskEvent.create).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'payment_code_accessed', details: {} }),
+      { transaction: tx }
+    );
+  }
+);
+
+test('招行任务转派或 TAG 撤权后不得返回图片', async () => {
+  const tx = { LOCK: { SHARE: 'SHARE' } };
+  sequelize.transaction.mockImplementation(callback => callback(tx));
+  PaymentTask.findOne.mockResolvedValue(null);
+  await expect(getPaymentCode(91, 3)).rejects.toMatchObject({ statusCode: 404 });
+  expect(AosRecord.findAll).not.toHaveBeenCalled();
+  PaymentTask.findOne.mockResolvedValue({ id: 91, orderId: order.id });
+  assertCurrentOrderAccess.mockRejectedValueOnce(new Error('TAG access denied'));
+  await expect(getPaymentCode(91, 3)).rejects.toThrow('TAG access denied');
+  expect(AosRecord.findAll).not.toHaveBeenCalled();
+});
+
+test('独立设备上传仍不接收招行分期，来源只读扩展不改变采集协议', async () => {
+  const result = await receivePaymentCodes('synthetic-device', {
+    records: [
+      { eventId: crypto.randomUUID(), orderNumber: order.orderNumber, paymentMethod: '招行24期' },
+    ],
+  });
+  expect(result.results[0]).toMatchObject({ receiptStatus: 'rejected', retryable: false });
+});
 test('17 列订单直接返回有效图片，来源时间保留原文下单时间', async () => {
   const result = await findOrderPaymentCode(order, transaction);
   expect(result.payload.imageDataUrl).toBe(makePng());

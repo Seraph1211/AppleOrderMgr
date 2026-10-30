@@ -1,6 +1,11 @@
 const { serializePublicProducts } = require('../utils/orderSerialization');
 const { assertCurrentOrderAccess } = require('./orderAccessService');
-const { getSourcePaymentMethod, isWechatPayment } = require('../utils/paymentMethod');
+const {
+  getSourcePaymentMethod,
+  isWechatPayment,
+  normalizePaymentMethod,
+  supportsOrderRecordPaymentCode,
+} = require('../utils/paymentMethod');
 const { getPaymentDeadline } = require('./paymentEligibility');
 const crypto = require('crypto');
 const {
@@ -17,7 +22,7 @@ const ApiError = require('../utils/ApiError');
 const { parseAosLine } = require('./aosParser');
 const logger = require('../utils/logger');
 
-function validateRecord(input) {
+function validateRecord(input, fromOrderRecord = false) {
   repo.assertFields(input, [
     'eventId',
     'orderNumber',
@@ -29,7 +34,12 @@ function validateRecord(input) {
     'imageDataUrl',
   ]);
   repo.requireUuid(input.eventId);
-  if (!/^W\d{10}$/.test(input.orderNumber) || input.paymentMethod !== '微信')
+  if (
+    !/^W\d{10}$/.test(input.orderNumber) ||
+    !(fromOrderRecord
+      ? supportsOrderRecordPaymentCode(input.paymentMethod)
+      : input.paymentMethod === '微信')
+  )
     throw ApiError.badRequest('付款码订单或支付方式无效');
   for (const key of ['orderDate', 'sourceTime']) {
     if (
@@ -65,7 +75,9 @@ function assertOrderIdentity(order, input) {
     contactEmail?.toLowerCase() !== input.contactEmail.toLowerCase() ||
     !order.orderDate ||
     repo.businessDate(order.orderDate) !== repo.businessDate(input.orderDate) ||
-    !isWechatPayment(getSourcePaymentMethod(order))
+    !supportsOrderRecordPaymentCode(getSourcePaymentMethod(order)) ||
+    normalizePaymentMethod(getSourcePaymentMethod(order)) !==
+      normalizePaymentMethod(input.paymentMethod)
   ) {
     throw new ApiError(409, 'PAYMENT_CODE_IDENTITY_MISMATCH', '付款码与订单身份不一致');
   }
@@ -79,16 +91,21 @@ function assertOrderIdentity(order, input) {
  */
 async function findOrderPaymentCode(order, transaction) {
   try {
-    if (!isWechatPayment(getSourcePaymentMethod(order))) return null;
-    let selected = await OrderPaymentCode.findOne({
-      where: { orderId: order.id },
-      order: [
-        ['sourceTime', 'DESC'],
-        ['imageHash', 'DESC'],
-        ['id', 'ASC'],
-      ],
-      transaction,
-    });
+    const paymentMethod = getSourcePaymentMethod(order);
+    if (!supportsOrderRecordPaymentCode(paymentMethod)) return null;
+    // 独立采集记录仅支持微信；招行分期不可复用历史微信码。
+    let selected = null;
+    if (isWechatPayment(paymentMethod)) {
+      selected = await OrderPaymentCode.findOne({
+        where: { orderId: order.id },
+        order: [
+          ['sourceTime', 'DESC'],
+          ['imageHash', 'DESC'],
+          ['id', 'ASC'],
+        ],
+        transaction,
+      });
+    }
     const records = await AosRecord.findAll({
       where: {
         orderId: order.id,
@@ -103,7 +120,8 @@ async function findOrderPaymentCode(order, transaction) {
       const imageDataUrl = typeof rawLine === 'string' ? rawLine.split('\t')[16] : null;
       if (!imageDataUrl?.startsWith('data:image/png;base64,')) continue;
       const parsed = parseAosLine(rawLine);
-      if (parsed.issues.length || parsed.data.paymentMethod !== '微信') continue;
+      if (parsed.issues.length || !supportsOrderRecordPaymentCode(parsed.data.paymentMethod))
+        continue;
       const input = {
         eventId: record.eventId,
         orderNumber: parsed.data.orderNumber,
@@ -116,7 +134,7 @@ async function findOrderPaymentCode(order, transaction) {
       };
       let imageHash;
       try {
-        imageHash = validateRecord(input);
+        imageHash = validateRecord(input, true);
         if (input.orderNumber !== order.orderNumber) continue;
         assertOrderIdentity(order, input);
       } catch (error) {
@@ -256,7 +274,7 @@ async function getPaymentCode(id, userId, own = true) {
           { transaction }
         );
         const paymentMethod = getSourcePaymentMethod(order);
-        if (!isWechatPayment(paymentMethod)) {
+        if (!supportsOrderRecordPaymentCode(paymentMethod)) {
           const label = paymentMethod?.toLowerCase() === 'alipay' ? '支付宝' : paymentMethod;
           return {
             availability: 'unsupported',

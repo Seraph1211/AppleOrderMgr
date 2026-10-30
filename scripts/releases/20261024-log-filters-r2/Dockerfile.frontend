@@ -1,0 +1,8 @@
+FROM apple-order-mgr-frontend-builder:20261024-log-labels-amd64
+COPY frontend/src/components/MonitorLogs.jsx /app/src/components/MonitorLogs.jsx
+COPY frontend/src/components/monitorLogs.css /app/src/components/monitorLogs.css
+COPY frontend/src/components/monitorLogRangeFilter.jsx /app/src/components/monitorLogRangeFilter.jsx
+COPY frontend/src/components/monitorResourceSelect.jsx /app/src/components/monitorResourceSelect.jsx
+COPY frontend/src/components/monitorResourceSelect.css /app/src/components/monitorResourceSelect.css
+COPY frontend/src/components/monitorFilterLayout.css /app/src/components/monitorFilterLayout.css
+RUN npm run lint && npm run build

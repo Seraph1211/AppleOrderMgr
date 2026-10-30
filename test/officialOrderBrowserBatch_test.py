@@ -67,12 +67,12 @@ class BrowserBatchTests(unittest.TestCase):
             'receiptEgressVerifiedAfter': True}
         if self.sampleOutcome in batch.DEFERRED:
             input_path = self.save('request-' + str(order) + '.json', {'private': 'no-password'})
-            value.update(requests=0, preflightOnly=True, preflight={'version': 2, 'mode': 'browser', 'requiredAttempts': 2,
+            value.update(requests=0, preflightOnly=True, preflight={'version': 3, 'mode': 'browser', 'requiredAttempts': 2,
                 'outcome': self.sampleOutcome, 'orderId': order, 'checkedAt': stamp,
                 'planSha256': hashlib.sha256((self.private / 'plan.json').read_bytes()).hexdigest(),
                 'inputSha256': hashlib.sha256(input_path.read_bytes()).hexdigest(),
                 'accountPaused': self.sampleOutcome == 'ACCOUNT_COOLDOWN', 'loginPaused': self.sampleOutcome == 'LOGIN_COOLDOWN',
-                'attempts': 9 if self.sampleOutcome == 'RECEIPT_ATTEMPT_LIMIT' else 0},
+                'attempts': 49 if self.sampleOutcome == 'RECEIPT_ATTEMPT_LIMIT' else 0},
                 egressHash=None, egressAfterHash=None, egressVerifiedAfter=False, proxyHash=None,
                 receiptEgressVerifiedAfter=False, cleanup={'attempted': False, 'removed': False, 'outcome': 'NOT_NEEDED'})
         else:
@@ -215,6 +215,15 @@ class BrowserBatchTests(unittest.TestCase):
             self.rewrite_deferred(1, 0, reason, account, login)
             self.calls.clear()
             self.assertEqual(self.execute(apply=True, ids=[1])['processedThisRun'], 0)
+            self.assertFalse(self.calls)
+
+    def test_historical_v2_and_current_v3_keep_receipt_headroom(self):
+        self.sampleOutcome = 'RECEIPT_ATTEMPT_LIMIT'
+        self.execute(ids=[1])
+        for version, attempts in ((2, 9), (3, 49)):
+            self.rewrite_deferred(version, attempts, 'RECEIPT_ATTEMPT_LIMIT')
+            self.calls.clear()
+            self.assertEqual(self.execute(ids=[1])['processedThisRun'], 0)
             self.assertFalse(self.calls)
 
     def test_historical_preflight_version_keeps_its_original_threshold(self):

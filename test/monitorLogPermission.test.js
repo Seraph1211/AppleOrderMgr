@@ -13,6 +13,10 @@ jest.mock('../src/services/monitorService', () => ({
 jest.mock('../src/services/monitorLogService', () => ({
   states: jest.fn(() => []),
 }));
+jest.mock('../src/services/monitorResourceTagService', () => ({
+  states: jest.fn(() => ({ devices: [], instances: [] })),
+  save: jest.fn(() => ({ tag: '合成标签', tagVersion: 1 })),
+}));
 jest.mock('../src/services/monitorNotificationService', () => ({}));
 
 const express = require('express');
@@ -83,6 +87,7 @@ describe('完整日志独立权限', () => {
     actor.permissions = [PERMISSIONS.MONITOR_LOGS_READ];
     expect((await fetch(baseUrl + '/api/server-monitor/logs/states')).status).toBe(200);
     expect((await fetch(baseUrl + '/api/server-monitor/overview')).status).toBe(403);
+    expect((await fetch(baseUrl + '/api/server-monitor/logs/tags', { method: 'PUT' })).status).toBe(403);
     actor.permissions = [PERMISSIONS.MONITOR_LOGS_READ, PERMISSIONS.MONITOR_MANAGE];
     expect((await fetch(baseUrl + '/api/server-monitor/overview')).status).toBe(200);
   });

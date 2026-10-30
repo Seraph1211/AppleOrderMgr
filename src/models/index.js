@@ -84,6 +84,7 @@ const models = {
   MonitorLogEntry: require('./MonitorLogEntry')(sequelize),
   MonitorLogBlock: require('./MonitorLogBlock')(sequelize),
   MonitorLogState: require('./MonitorLogState')(sequelize),
+  MonitorResourceTag: require('./MonitorResourceTag')(sequelize),
   MonitorRule: require('./MonitorRule')(sequelize),
   MonitorInstance: require('./MonitorInstance')(sequelize),
   MonitorTraffic: require('./MonitorTraffic')(sequelize),

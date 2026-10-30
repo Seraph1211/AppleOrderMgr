@@ -7,7 +7,7 @@ import client from '../api/client';
 import { getPaymentStageLabel } from '../utils/paymentStage';
 import { formatPaymentDeadline, getPaymentDeadlineTime } from '../utils/paymentDeadline';
 
-/** 按服务端当前任务权限读取付款码；所有非微信方式保留按钮并显示明确提示。 */
+/** 按服务端当前任务权限读取付款码；支持方式及缺码提示由服务端决定。 */
 export default function PaymentCodeButton({ taskId, orderDate, dispatch = false }) {
   const [open, setOpen] = useState(false);
   const [data, setData] = useState(null);
@@ -137,7 +137,7 @@ export default function PaymentCodeButton({ taskId, orderDate, dispatch = false 
                       <div className="text-center mt-4">
                         <img
                           src={data.imageDataUrl}
-                          alt={`订单 ${data.orderNumber} 的微信付款码`}
+                          alt={`订单 ${data.orderNumber} 的${data.paymentMethod || ''}付款码`}
                           className="mx-auto w-[250px] max-w-full h-auto"
                           style={{ imageRendering: 'pixelated', WebkitTouchCallout: 'default' }}
                         />

@@ -12,6 +12,7 @@ import { isAlipayPayment } from '../utils/paymentMethod';
 const COLUMNS = [
   '订单',
   '商品信息',
+  '支付方式',
   '官网订单状态',
   '订单TAG',
   '下单时间',
@@ -136,6 +137,12 @@ export default function PaymentOrdersTable({
                         <ProductSummary products={task.products} selectedKeys={selectedKeys} />
                         <OrderAmount amount={task.orderAmount} compact />
                       </div>
+                    </td>
+                    <td
+                      data-label="支付方式"
+                      className="px-4 py-4 text-sm text-gray-700 whitespace-nowrap"
+                    >
+                      {task.paymentMethod || '—'}
                     </td>
                     <td data-label="官网订单状态" className="px-4 py-4">
                       <OfficialOrderStatus

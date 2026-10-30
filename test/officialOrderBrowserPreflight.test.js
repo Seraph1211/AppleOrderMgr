@@ -56,14 +56,15 @@ test.each([
   [false, false, 0, 'BROWSER_PREFLIGHT_ALLOWED'],
   [false, false, 1, 'BROWSER_PREFLIGHT_ALLOWED'],
   [false, false, 3, 'BROWSER_PREFLIGHT_ALLOWED'],
-  [false, false, 8, 'BROWSER_PREFLIGHT_ALLOWED'],
-  [false, false, 9, 'RECEIPT_ATTEMPT_LIMIT'],
-  [false, false, 10, 'RECEIPT_ATTEMPT_LIMIT'],
+  [false, false, 48, 'BROWSER_PREFLIGHT_ALLOWED'],
+  [false, false, 49, 'RECEIPT_ATTEMPT_LIMIT'],
+  [false, false, 50, 'RECEIPT_ATTEMPT_LIMIT'],
+  [false, false, 10, 'BROWSER_PREFLIGHT_ALLOWED'],
 ])('浏览器账号=%s 登录=%s 已用=%s → %s', async (paused, login, attempts, outcome) => {
   const client = mockClient(paused, login, attempts);
   const result = await preflightBrowser(client, root, 1);
   expect(result).toMatchObject({
-    version: 2,
+    version: 3,
     mode: 'browser',
     requiredAttempts: 2,
     outcome,
@@ -178,7 +179,7 @@ describe('真实隔离 PostgreSQL：双暂停和两次余量', () => {
         [hash(order)]
       );
       await client.query(
-        "INSERT INTO collector_attempts SELECT $1,'another',now() FROM generate_series(1,7)",
+        "INSERT INTO collector_attempts SELECT $1,'another',now() FROM generate_series(1,47)",
         [hash(order)]
       );
       const query = client.query.bind(client);
@@ -200,7 +201,7 @@ describe('真实隔离 PostgreSQL：双暂停和两次余量', () => {
       expect(reads).toEqual(['on', 'on']);
       expect(
         (await client.query('SELECT count(*)::int AS n FROM collector_attempts')).rows[0].n
-      ).toBe(10);
+      ).toBe(50);
     } catch (error) {
       throw Object.assign(error, { component: 'browser-preflight-test' });
     }

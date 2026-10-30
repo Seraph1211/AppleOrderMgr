@@ -32,6 +32,24 @@ beforeEach(() => {
 });
 
 describe('Shld JSON 解析与类型分派', () => {
+  test.each([null, '3', 0, 4, -1, 1.5, true, {}, []])('拒绝未知或非法挑战版本 %p', version => {
+    expect(() => parseShieldChallenge(hashBody(4, { ['challenge_version']: version }))).toThrow(
+      'SHIELD_VERSION_UNSUPPORTED'
+    );
+  });
+
+  test('显式挑战版本必须与因数或哈希类型一致', () => {
+    expect(() => parseShieldChallenge(hashBody(4, { ['challenge_version']: 1 }))).toThrow(
+      'SHIELD_TYPE_AMBIGUOUS'
+    );
+    for (const version of [2, 3])
+      expect(() => parseShieldChallenge(factorBody({ ['challenge_version']: version }))).toThrow(
+        'SHIELD_TYPE_AMBIGUOUS'
+      );
+    expect(solveShieldChallenge(factorBody({ ['challenge_version']: 1 })).found).toBe(true);
+    expect(solveShieldChallenge(hashBody(4, { ['challenge_version']: 2 })).number).toBe(4);
+  });
+
   test('使用 JSON 属性分派，空白格式不影响；不复制未复原的提交字段', () => {
     const source = JSON.parse(hashBody());
     source.flagskv = { patSkip: true };
@@ -130,6 +148,44 @@ describe('Shld JSON 解析与类型分派', () => {
 });
 
 describe('有界离线计算', () => {
+  test.each([
+    ['SHA256', '7d4dd725e798bfb982f0f9e9e49e18666f4bcf941a5fdb8c7db6800d16f48c88'],
+    [
+      'sha-384',
+      '843eab8cb04216c455ede250962197c4576d129a17f1cf980edf9fd0c07a714ffe61d3974880a8a8a5d8d6d897948a86',
+    ],
+    [
+      'SHA512',
+      '9a9bb3d5521b1294cba4ab35d88fe73032030c0ea495dabc0ce459ed6c987d57f598cfcc259bdd596dc4ac465c7eb84f15d074280d98d19e49f3ef085dea33bc',
+    ],
+  ])('v3 使用独立固定向量核对末尾四字节反转 %s', (algorithm, challenge) => {
+    const body = hashBody(4, { algorithm, challenge, ['challenge_version']: 3 });
+    expect(solveShieldChallenge(body)).toMatchObject({ found: true, number: 4, operations: 5 });
+    expect(solveShieldChallenge(body, { maxOperations: 4 })).toMatchObject({
+      found: false,
+      number: null,
+      reason: 'OPERATION_LIMIT',
+    });
+    expect(JSON.parse(body).challenge).toBe(challenge);
+  });
+
+  test('v3 保留空盐和零答案，不能把未反转摘要误当作成功', () => {
+    expect(
+      solveShieldChallenge(
+        hashBody(0, {
+          salt: '',
+          challenge: '5feceb66ffc86f38d952786c6d696c79c2dbc239dd4e91b46729d73ae957fb27',
+          ['challenge_version']: 3,
+        })
+      )
+    ).toMatchObject({ found: true, number: 0 });
+    expect(
+      solveShieldChallenge(hashBody(0, { ['challenge_version']: 3 }), {
+        maxOperations: 1,
+      })
+    ).toMatchObject({ found: false, number: null });
+  });
+
   test.each(['SHA256', 'sha-384', 'SHA512'])('按 UTF-8 salt + 数字求解 %s', algorithm => {
     const result = solveShieldChallenge(hashBody(4, { algorithm }));
     expect(result).toEqual({

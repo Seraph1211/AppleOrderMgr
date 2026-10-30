@@ -87,13 +87,13 @@ class BrowserSampleTests(unittest.TestCase):
             return subprocess.CompletedProcess(args, self.inputExit, json.dumps(self.input).encode(),
                 b'{"outcome":"ACCOUNT_MARKED_INVALID"}')
         if args[:2] == ['docker', 'run'] and '--browser' in args:
-            value = {'version': 2, 'mode': 'browser', 'requiredAttempts': 2, 'outcome': self.preflightOutcome,
+            value = {'version': 3, 'mode': 'browser', 'requiredAttempts': 2, 'outcome': self.preflightOutcome,
                 'orderId': 240, 'checkedAt': self.now,
                 'planSha256': hashlib.sha256((self.private / 'plan.json').read_bytes()).hexdigest(),
                 'inputSha256': hashlib.sha256((self.private / 'request-240.json').read_bytes()).hexdigest(),
                 'accountPaused': self.preflightOutcome == 'ACCOUNT_COOLDOWN',
                 'loginPaused': self.preflightOutcome == 'LOGIN_COOLDOWN',
-                'attempts': 9 if self.preflightOutcome == 'RECEIPT_ATTEMPT_LIMIT' else 1}
+                'attempts': 49 if self.preflightOutcome == 'RECEIPT_ATTEMPT_LIMIT' else 1}
             return subprocess.CompletedProcess(args, 0, json.dumps(value).encode(), b'')
         if args[:2] == ['docker', 'start']:
             if self.timeout:
@@ -177,7 +177,7 @@ class BrowserSampleTests(unittest.TestCase):
 
     def test_preflight_rejects_forged_hash_boolean_attempt_and_wrong_mode(self):
         original = self.command
-        for change in ({'version': 1}, {'version': 3}, {'version': True}, {'version': 2.0},
+        for change in ({'version': 1}, {'version': 2}, {'version': 4}, {'version': True}, {'version': 3.0},
                        {'inputSha256': 'a' * 64}, {'attempts': True}, {'mode': 'http'},
                        {'requiredAttempts': 1}, {'checkedAt': self.now + 1}, {'loginPaused': 0}):
             def command(args, **kwargs):
@@ -192,14 +192,14 @@ class BrowserSampleTests(unittest.TestCase):
             self.assertEqual(value['outcome'], 'GATE_PREFLIGHT_FAILED')
             probe.assert_not_called()
 
-    def test_v2_preflight_reserves_two_of_ten_attempts_and_checks_reported_reason(self):
+    def test_v3_preflight_reserves_two_of_fifty_attempts_and_checks_reported_reason(self):
         original = self.command
         cases = [(2, 'BROWSER_PREFLIGHT_ALLOWED', 'SUCCEEDED'),
-                 (8, 'BROWSER_PREFLIGHT_ALLOWED', 'SUCCEEDED'),
-                 (9, 'RECEIPT_ATTEMPT_LIMIT', 'RECEIPT_ATTEMPT_LIMIT'),
-                 (10, 'RECEIPT_ATTEMPT_LIMIT', 'RECEIPT_ATTEMPT_LIMIT'),
-                 (8, 'RECEIPT_ATTEMPT_LIMIT', 'GATE_PREFLIGHT_FAILED'),
-                 (9, 'BROWSER_PREFLIGHT_ALLOWED', 'GATE_PREFLIGHT_FAILED')]
+                 (48, 'BROWSER_PREFLIGHT_ALLOWED', 'SUCCEEDED'),
+                 (49, 'RECEIPT_ATTEMPT_LIMIT', 'RECEIPT_ATTEMPT_LIMIT'),
+                 (50, 'RECEIPT_ATTEMPT_LIMIT', 'RECEIPT_ATTEMPT_LIMIT'),
+                 (48, 'RECEIPT_ATTEMPT_LIMIT', 'GATE_PREFLIGHT_FAILED'),
+                 (49, 'BROWSER_PREFLIGHT_ALLOWED', 'GATE_PREFLIGHT_FAILED')]
         for attempts, reason, expected in cases:
             def command(args, **kwargs):
                 result = original(args, **kwargs)

@@ -1,0 +1,79 @@
+2026-10-24 14:53:43 [WARN]: 权限不足 {"service":"apple-order-manager","userId":1,"role":"operator","permission":"monitor.logs.read","path":"/tags"}
+2026-10-24 14:53:43 [WARN]: 权限不足 {"service":"apple-order-manager","userId":1,"role":"operator","permission":"monitor.logs.read","path":"/states"}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":null,"version":1}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":null,"version":1}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":null,"version":2}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":null,"version":3}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":"93264780-fbfa-45e0-9451-e70fb3e74ab7","version":1}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"7e750010-d51e-4a97-b7c6-23c1c8f872b0","localId":"93264780-fbfa-45e0-9451-e70fb3e74ab7","version":1}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":"56552acf-f9a9-4cb8-a035-b6e55b28adeb","version":1}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 文本格式无效 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 文本格式无效 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 文本格式无效 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 文本格式无效 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 标签须为单行文本 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 标签须为单行文本 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 文本格式无效 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 标签须为单行文本 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 整数超出范围 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 整数超出范围 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 整数超出范围 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 资源标识无效 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 资源标识无效 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 请求字段无效 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"VALIDATION_ERROR"}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":null,"version":1}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":null,"version":2}
+2026-10-24 14:53:43 [WARN]: 监控标签保存失败 {"service":"apple-order-manager","actorId":1,"errorCode":"NOT_FOUND"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"NOT_FOUND"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 服务器不存在 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"NOT_FOUND"}
+2026-10-24 14:53:43 [WARN]: 监控标签保存失败 {"service":"apple-order-manager","actorId":1,"errorCode":"NOT_FOUND"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"NOT_FOUND"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 实例不存在 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"NOT_FOUND"}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":null,"version":1}
+2026-10-24 14:53:43 [WARN]: 监控标签保存失败 {"service":"apple-order-manager","actorId":1,"errorCode":"CONCURRENT_MODIFICATION"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"CONCURRENT_MODIFICATION"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 标签已被修改，请重新读取后再保存 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"CONCURRENT_MODIFICATION"}
+2026-10-24 14:53:43 [WARN]: 监控标签保存失败 {"service":"apple-order-manager","actorId":1,"errorCode":"CONCURRENT_MODIFICATION"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"CONCURRENT_MODIFICATION"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 标签已被修改，请重新读取后再保存 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"CONCURRENT_MODIFICATION"}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":null,"version":2}
+2026-10-24 14:53:43 [WARN]: 监控标签保存失败 {"service":"apple-order-manager","actorId":1,"errorCode":"CONCURRENT_MODIFICATION"}
+2026-10-24 14:53:43 [WARN]: 监控标签请求未完成 {"service":"apple-order-manager","actorId":1,"errorCode":"CONCURRENT_MODIFICATION"}
+2026-10-24 14:53:43 [WARN]: API 业务错误 标签已被修改，请重新读取后再保存 {"service":"apple-order-manager","method":"PUT","url":"/logs/tags","code":"CONCURRENT_MODIFICATION"}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":"93264780-fbfa-45e0-9451-e70fb3e74ab7","version":1}
+2026-10-24 14:53:43 [INFO]: 监控人工标签已保存 {"service":"apple-order-manager","actorId":1,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":null,"version":1}
+2026-10-24 14:53:43 [WARN]: 权限不足 {"service":"apple-order-manager","userId":1,"role":"operator","permission":"monitor.manage","path":"/logs/tags"}
+2026-10-24 14:53:43 [INFO]: 限定用途 JWT token 生成成功 {"service":"apple-order-manager","userId":1,"purpose":"monitor-log-export","expiresIn":60}
+2026-10-24 14:53:43 [INFO]: 完整日志导出指标 {"service":"apple-order-manager","exported":2,"aborted":false,"durationMs":0,"deviceId":"8b810c71-973f-4d61-be5a-363e4ec780c4","localId":"93264780-fbfa-45e0-9451-e70fb3e74ab7","startAt":"2026-10-23T23:59:58","endAt":"2026-10-24T00:00:02","storage":"rows"}
+PASS test/monitorResourceTagsAcceptance.integration.test.js
+  人工监控标签：独立 PostgreSQL 与真实 HTTP 验收
+    ✓ 正式 migration down/up 保留原设备、实例和采集日志状态 (43 ms)
+    ✓ 匿名401、无权限403；读写均 no-store 且无凭据 (96 ms)
+    ✓ 新增修改清空后独立读取，原名和版本保留 (38 ms)
+    ✓ 实例以服务器与localId联合绑定，历史实例及停用服务器可配置 (22 ms)
+    ✓ 输入边界非法类型未知字段拒绝，100字纯文本与Unicode可保存 (68 ms)
+    ✓ 未知服务器和跨服务器实例返回404，不创建孤立标签 (15 ms)
+    ✓ 并发首次创建和更新只接受一次，旧版本409且不覆盖 (18 ms)
+    ✓ 采集器新状态上报更新实例原名但不覆盖人工标签，也无法注入人工标签 (13 ms)
+    ✓ 生产组合只读日志用户能读取标签，但PUT403且无数据库变更 (8 ms)
+    ✓ 生产组合保留跨日筛选、元信息及全范围原文导出和短期票据 (24 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        3.932 s
+Ran all test suites matching /test\/monitorResourceTagsAcceptance.integration.test.js/i.

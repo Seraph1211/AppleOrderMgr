@@ -1,0 +1,226 @@
+.monitor-resource-select {
+  min-width: 0;
+  color: #4b5563;
+}
+.monitor-resource-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  color: #6b7280;
+}
+.monitor-resource-select .monitor-resource-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 36px;
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  background: white;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: left;
+  box-shadow: none;
+  transition:
+    border-color 150ms,
+    background-color 150ms;
+}
+.monitor-resource-select .monitor-resource-trigger:hover:not(:disabled) {
+  border-color: #93a4be;
+}
+.monitor-resource-select .monitor-resource-trigger:focus-visible {
+  outline: 2px solid #bfdbfe;
+  outline-offset: 1px;
+  border-color: #1e3a8a;
+}
+.monitor-resource-select .monitor-resource-trigger:disabled {
+  background: #f9fafb;
+  color: #9ca3af;
+  cursor: not-allowed;
+}
+.monitor-resource-trigger-content {
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+  align-items: center;
+  gap: 6px;
+}
+.monitor-resource-trigger-name {
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 0 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #111827;
+}
+.monitor-resource-placeholder {
+  color: #9ca3af;
+}
+.monitor-resource-trigger-tag {
+  min-width: 0;
+  max-width: 30%;
+  flex: 0 1 auto;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  border: 1px solid #dbeafe;
+  border-radius: 4px;
+  background: #eff6ff;
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 18px;
+  color: #1e3a8a;
+}
+.monitor-resource-menu {
+  margin-top: 5px;
+  padding: 4px;
+  border: 1px solid #dbe3ef;
+  border-radius: 8px;
+  background: white;
+}
+.monitor-resource-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  border-radius: 5px;
+  background: #f3f4f6;
+}
+.monitor-resource-select .monitor-resource-search-input {
+  width: 100%;
+  min-width: 0;
+  height: 30px;
+  min-height: 30px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  font-size: 13px;
+  color: #111827;
+  outline: none;
+  box-shadow: none;
+}
+.monitor-resource-options {
+  max-height: 256px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-top: 4px;
+}
+.monitor-resource-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 36px;
+  padding: 7px 8px;
+  border-radius: 5px;
+  color: #374151;
+  text-align: left;
+}
+.monitor-resource-option:hover {
+  background: #f8fafc;
+}
+.monitor-resource-option[data-active='true'],
+.monitor-resource-option[aria-selected='true'] {
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+.monitor-resource-option-content {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 6px;
+  min-width: 0;
+  flex: 1;
+  font-size: 13px;
+  line-height: 19px;
+  overflow-wrap: anywhere;
+}
+.monitor-resource-option-name {
+  min-width: 0;
+  max-width: 100%;
+  font-weight: 500;
+}
+.monitor-resource-option-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 11px;
+  line-height: 18px;
+  color: #6b7280;
+}
+.monitor-resource-option-tag {
+  border-radius: 4px;
+  background: #eff6ff;
+  padding: 0 5px;
+  color: #1e3a8a;
+}
+@media (max-width: 767px) {
+  .monitor-resource-select .monitor-resource-trigger {
+    height: 44px;
+    min-height: 44px;
+    font-size: 16px;
+  }
+  .monitor-resource-select .monitor-resource-search-input {
+    min-height: 36px;
+    font-size: 16px;
+  }
+  .monitor-resource-option {
+    min-height: 44px;
+  }
+  .monitor-resource-option-content {
+    font-size: 14px;
+    line-height: 21px;
+  }
+}
+
+/* 日志页焦点统一：单层提示，组合搜索框由外层承载焦点。 */
+section[aria-label='完整日志查询'] .input:focus-visible,
+[aria-label='日志时间范围选择'] .input:focus-visible {
+  border-color: #1e3a8a;
+  outline: 2px solid #bfdbfe;
+  outline-offset: 1px;
+  box-shadow: none;
+}
+section[aria-label='完整日志查询'] input.input:focus,
+.monitor-log-tags-dialog input.input:focus,
+[aria-label='日志时间范围选择'] input.input:focus {
+  border-color: #1e3a8a;
+  outline: none;
+  box-shadow: none;
+}
+.monitor-resource-select .monitor-resource-search {
+  border: 1px solid transparent;
+  transition:
+    border-color 150ms,
+    box-shadow 150ms;
+}
+.monitor-resource-select .monitor-resource-search:focus-within {
+  border-color: #93a4be;
+  box-shadow: 0 0 0 2px #dbeafe;
+}
+.monitor-resource-select .monitor-resource-search .monitor-resource-search-input,
+.monitor-resource-select .monitor-resource-search .monitor-resource-search-input:focus,
+.monitor-resource-select .monitor-resource-search .monitor-resource-search-input:focus-visible {
+  height: 30px;
+  min-height: 30px;
+  border: 0;
+  border-radius: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+}
+@media (max-width: 767px) {
+  .monitor-resource-select .monitor-resource-search .monitor-resource-search-input {
+    height: 36px;
+    min-height: 36px;
+  }
+}

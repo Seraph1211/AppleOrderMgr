@@ -287,6 +287,76 @@ describe('每一跳请求的只读边界', () => {
 });
 
 describe('挑战与 Cookie 不构成订单成功', () => {
+  test('当前 s3 官方脚本映射到同源挑战路由', () => {
+    expect(discoverShieldUrl(SHIELD_SCRIPT.replace('v1_2', 's3'), GUEST)).toBe(
+      `${ORIGIN}/shop/shld/work/s3/q`
+    );
+  });
+
+  test.each(['s2', 's4', 's30', 's3_extra', 's%33', 's3/other'])(
+    '不从 s3 泛化允许未验证脚本版本 %s',
+    version => {
+      expect(() => discoverShieldUrl(SHIELD_SCRIPT.replace('v1_2', version), GUEST)).toThrow();
+      for (const method of ['GET', 'POST'])
+        expect(() => validateReadUrl(SHIELD_ROUTE.replace('v1_2', version), method)).toThrow(
+          'READ_DESTINATION_DENIED'
+        );
+    }
+  );
+
+  test.each(['?redirect=1', '#fragment'])('s3 脚本继续拒绝附加 URL 内容 %s', suffix => {
+    const script = SHIELD_SCRIPT.replace('v1_2', 's3').replace('verify.js', `verify.js${suffix}`);
+    expect(() => discoverShieldUrl(script, GUEST)).toThrow('SHIELD_ROUTE_INVALID');
+  });
+
+  test('s3 继续拒绝其他官方主机及其他挑战动作', () => {
+    const script = SHIELD_SCRIPT.replace(
+      '/shop/shld/v1_2/',
+      'https://secure7.www.apple.com.cn/shop/shld/s3/'
+    );
+    expect(() => discoverShieldUrl(script, GUEST)).toThrow('SHIELD_ROUTE_INVALID');
+    for (const method of ['GET', 'POST'])
+      for (const suffix of ['/pat', '/q?jr=0', '/q?jr=255&jr_r=env&extra=1'])
+        expect(() => validateReadUrl(`${ORIGIN}/shop/shld/work/s3${suffix}`, method)).toThrow();
+  });
+
+  test('s3 GET 与 POST 使用同一路由，完整订单和原文证据通过后才成功', async () => {
+    collector.collectReceipt = false;
+    const challengeV3 = {
+      ...JSON.parse(challenge()),
+      algorithm: 'SHA-384',
+      challenge:
+        '0c438353b8b85dd42e4a92d30fd495954707ab72986fb7dfabd3b4581bab6e6607a6507a7e7ed03b5db25e976ccf83bf',
+      ['challenge_version']: 3,
+    };
+    queue(
+      response(guestPage().replace('/shop/shld/v1_2/', '/shop/shld/s3/')),
+      response(JSON.stringify(challengeV3)),
+      response('{}', { cookies: [cookie()] }),
+      response(detail())
+    );
+    const summary = await collector.collect();
+    expect(summary).toMatchObject({
+      outcome: 'SUCCEEDED',
+      receiptOutcome: 'RECEIPT_NOT_REQUESTED',
+    });
+    expect(transport.request.mock.calls.map(([input]) => [input.url, input.method])).toEqual([
+      [GUEST, 'GET'],
+      [SHIELD_ROUTE.replace('v1_2', 's3'), 'GET'],
+      [SHIELD_ROUTE.replace('v1_2', 's3'), 'POST'],
+      [ACTION, 'POST'],
+    ]);
+    expect(JSON.parse(transport.request.mock.calls[2][0].body)).toMatchObject({
+      ...challengeV3,
+      number: 0,
+    });
+    const result = readPrivate(summary.resultFile);
+    expect(result).toMatchObject({ orderNumber: ORDER, identityMatched: true });
+    expect(decrypt(fs.readFileSync(`${collector.directory}/${result.source.file}`), key)).toEqual(
+      Buffer.from(detail())
+    );
+  });
+
   test('只发现同源且唯一的版本化官方脚本地址，不执行脚本', () => {
     expect(discoverShieldUrl(SHIELD_SCRIPT, GUEST)).toBe(SHIELD_ROUTE.split('?')[0]);
     for (const html of [

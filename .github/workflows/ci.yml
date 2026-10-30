@@ -24,6 +24,8 @@ jobs:
       - run: npm run lint -- --quiet
       - run: npm test -- --runInBand
       - run: npm run docs:check
+      - run: python3 scripts/productionSourceGuard.py source
+      - run: npm run test:release
       - run: npm audit --audit-level=high
 
   frontend:
@@ -41,6 +43,8 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+      - run: mkdir -p ../coverage/frontend-capabilities && cp -a dist ../coverage/frontend-capabilities/frontend
+      - run: python3 ../scripts/productionSourceGuard.py frontend --root .. --release ../coverage/frontend-capabilities --output ../coverage/frontend-capabilities/capabilities.json
       - run: npm audit --audit-level=high
 
   secret-scan:

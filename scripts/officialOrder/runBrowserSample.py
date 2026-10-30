@@ -78,7 +78,7 @@ def browserPreflight(root, orderId, attemptId):
         value = json.loads(output.decode('utf-8'))
         if (not isinstance(value, dict) or set(value) != {'version', 'mode', 'requiredAttempts', 'outcome',
                 'orderId', 'checkedAt', 'planSha256', 'inputSha256', 'accountPaused', 'loginPaused', 'attempts'} or
-                type(value['version']) is not int or value['version'] != 2 or value['mode'] != 'browser' or
+                type(value['version']) is not int or value['version'] != 3 or value['mode'] != 'browser' or
                 type(value['requiredAttempts']) is not int or value['requiredAttempts'] != 2 or
                 type(value['orderId']) is not int or value['orderId'] != orderId or
                 type(value['accountPaused']) is not bool or type(value['loginPaused']) is not bool or
@@ -89,7 +89,7 @@ def browserPreflight(root, orderId, attemptId):
                 value['inputSha256'] != hashlib.sha256((root / ('private/request-' + str(orderId) + '.json')).read_bytes()).hexdigest()):
             raise ValueError()
         expected = ('ACCOUNT_COOLDOWN' if value['accountPaused'] else 'LOGIN_COOLDOWN' if value['loginPaused'] else
-                    'RECEIPT_ATTEMPT_LIMIT' if value['attempts'] >= 9 else 'BROWSER_PREFLIGHT_ALLOWED')
+                    'RECEIPT_ATTEMPT_LIMIT' if value['attempts'] >= 49 else 'BROWSER_PREFLIGHT_ALLOWED')
         if value['outcome'] != expected:
             raise ValueError()
         return value

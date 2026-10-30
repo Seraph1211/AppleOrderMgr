@@ -15,6 +15,7 @@ const {
 } = require('../../src/services/officialOrderReceipt');
 const { validateReadUrl } = require('../../src/services/officialOrderHttpCollector');
 const { buildGuestRequestEvidence } = require('../../src/services/officialOrderRequestEvidence');
+const { readHttpResponseEvidence } = require('../../src/services/officialHttpEvidence');
 
 const LIMITS = Object.freeze({
   metadataBytes: 1048576,
@@ -221,21 +222,33 @@ function sourceEvidence(root, source, key, runId, events, window, now) {
   const index = Number(fileMatch[1]);
   if (!Number.isSafeInteger(index)) throw fault('HTTP_RECEIPT_SOURCE_INVALID');
   const prefix = `evidence/run-${runId}`;
-  const body = readEncrypted(root, `${prefix}/${source.file}`, key);
-  const response = readEncrypted(root, `${prefix}/response-${index}.enc`, key, true);
-  const request = readEncrypted(root, `${prefix}/request-${index}.enc`, key, true);
+  let evidence;
+  try {
+    evidence = readHttpResponseEvidence({
+      responseBytes: readFile(root, `${prefix}/response-${index}.enc`, LIMITS.evidenceBytes),
+      requestBytes: readFile(root, `${prefix}/request-${index}.enc`, LIMITS.evidenceBytes),
+      key,
+      runId,
+      index,
+      expectedBodyFile: source.file,
+      readBody: file => readEncrypted(root, `${prefix}/${file}`, key),
+    });
+  } catch (error) {
+    if (/^HTTP_EVIDENCE_/.test(error.code || '')) {
+      throw fault('HTTP_RECEIPT_EVIDENCE_MISMATCH');
+    }
+    throw error;
+  }
+  const { body, response, request } = evidence;
   const url = permittedUrl(response.url);
-  const decoded =
-    typeof response.bodyBase64 === 'string' ? Buffer.from(response.bodyBase64, 'base64') : null;
   const responseType = Object.entries(response.headers || {}).find(
     ([name]) => name.toLowerCase() === 'content-type'
   )?.[1];
   const logged = events.filter(event => event.file === source.file);
   if (
     hash(body) !== source.sha256 ||
-    !decoded ||
-    decoded.toString('base64') !== response.bodyBase64 ||
-    !decoded.equals(body) ||
+    evidence.bodyFile !== source.file ||
+    (evidence.version === 2 && response.observedAt !== source.observedAt) ||
     response.status !== HTTP_OK ||
     hash(url.href) !== source.urlHash ||
     source.host !== url.hostname ||

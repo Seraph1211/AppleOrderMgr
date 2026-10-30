@@ -1,0 +1,94 @@
+{
+  "passed": true,
+  "realProduction": false,
+  "results": [
+    {
+      "width": 1440,
+      "passed": true,
+      "tagBeforeFilterSameRow": true,
+      "rightAnchored": true,
+      "tagButtonOutsideForm": true,
+      "controls": [
+        {
+          "x": 242,
+          "y": 223,
+          "width": 222.671875,
+          "height": 36
+        },
+        {
+          "x": 474.671875,
+          "y": 223,
+          "width": 180.265625,
+          "height": 36
+        },
+        {
+          "x": 664.9375,
+          "y": 223,
+          "width": 180.265625,
+          "height": 36
+        },
+        {
+          "x": 855.203125,
+          "y": 223,
+          "width": 328.71875,
+          "height": 36
+        },
+        {
+          "x": 1193.921875,
+          "y": 223,
+          "width": 212.078125,
+          "height": 36
+        }
+      ],
+      "collapsedThenOpen": true,
+      "ariaStatesValid": true,
+      "readOnlyHiddenVerified": true,
+      "businessWrites": 0,
+      "rawLogsRequested": 0
+    },
+    {
+      "width": 375,
+      "passed": true,
+      "tagBeforeFilterSameRow": true,
+      "rightAnchored": true,
+      "tagButtonOutsideForm": true,
+      "controls": [
+        {
+          "x": 26,
+          "y": 293,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 372,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 451,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 530,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 609,
+          "width": 323,
+          "height": 44
+        }
+      ],
+      "collapsedThenOpen": true,
+      "ariaStatesValid": true,
+      "readOnlyHiddenVerified": true,
+      "businessWrites": 0,
+      "rawLogsRequested": 0
+    }
+  ]
+}

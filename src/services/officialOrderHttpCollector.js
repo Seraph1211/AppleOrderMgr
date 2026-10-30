@@ -12,6 +12,7 @@ const {
   encrypt,
   writePrivate,
 } = require('./officialOrderSupport');
+const { createHttpResponseEvidenceV2 } = require('./officialHttpEvidence');
 
 const MAX_REDIRECTS = 8;
 const HTTP_OK = 200;
@@ -20,6 +21,13 @@ const REDIRECT_STATUSES = [301, 302, 303, 307, 308];
 const SHIELD_ENVIRONMENT = Object.freeze({ s: 255, f: Object.freeze([]), r: 'env' });
 const SHIELD_ENVIRONMENT_QUERY = 'jr=255&jr_r=env';
 
+/** v2 写入必须在全部消费者双读发布后显式开启，缺省继续生成可回退的 v1。 */
+function resolveEvidenceVersion(value = process.env.OFFICIAL_HTTP_EVIDENCE_VERSION || '1') {
+  const version = Number(value);
+  if (![1, 2].includes(version)) throw fault('HTTP_EVIDENCE_VERSION_INVALID');
+  return version;
+}
+
 /** 从本次页面的官方验证脚本定位挑战路由；不执行页面代码。 */
 function discoverShieldUrl(body, documentUrl) {
   const $ = cheerio.load(body);
@@ -27,7 +35,7 @@ function discoverShieldUrl(body, documentUrl) {
   if (sources.length !== 1) throw fault('SHIELD_ROUTE_MISSING');
   const origin = permittedUrl(documentUrl).origin;
   const script = permittedUrl(new URL($(sources[0]).attr('src'), origin).href);
-  const match = /^\/shop\/shld\/(v[0-9_]+)\/verify\.js$/.exec(script.pathname);
+  const match = /^\/shop\/shld\/(v[0-9_]+|s3)\/verify\.js$/.exec(script.pathname);
   if (script.origin !== origin || !match || script.search || script.hash)
     throw fault('SHIELD_ROUTE_INVALID');
   return `${origin}/shop/shld/work/${match[1]}/q`;
@@ -50,7 +58,7 @@ function validateReadUrl(value, method = 'GET', allowLoginBootstrap = false) {
         ['/shop/signIn', '/shop/signIn/account'].includes(url.pathname)));
   if (loginBootstrap && !url.href.includes('#')) return url;
   const readPath = /^\/(?:xc\/cn\/vieworder\/|shop\/order\/(?:list|guest|detail|print\/invoice)\/)/;
-  const challenge = /^\/shop\/shld\/work\/v[0-9_]+\/q$/;
+  const challenge = /^\/shop\/shld\/work\/(?:v[0-9_]+|s3)\/q$/;
   const action = /^\/shop\/orderx\/guestx\//;
   if (
     (method === 'GET' && !readPath.test(url.pathname) && !challenge.test(url.pathname)) ||
@@ -98,6 +106,7 @@ class OfficialOrderHttpCollector {
     runId,
     allowLoginBootstrap = false,
     collectReceipt = true,
+    evidenceVersion,
   }) {
     this.transport = transport;
     this.sample = sample;
@@ -106,6 +115,7 @@ class OfficialOrderHttpCollector {
     this.runId = runId;
     this.allowLoginBootstrap = allowLoginBootstrap === true;
     this.collectReceipt = collectReceipt !== false;
+    this.evidenceVersion = resolveEvidenceVersion(evidenceVersion);
     this.index = 0;
     this.cookies = [];
     this.directory = `${root}/evidence/run-${runId}`;
@@ -115,18 +125,17 @@ class OfficialOrderHttpCollector {
   async request(url, method = 'GET', headers = {}, body = undefined) {
     try {
       const target = validateReadUrl(url, method, this.allowLoginBootstrap);
+      const request = {
+        url: target.href,
+        method,
+        headers,
+        body: body ?? null,
+        observedAt: new Date().toISOString(),
+      };
+      const requestBytes = Buffer.from(JSON.stringify(request));
       writePrivate(
         `${this.directory}/request-${this.index + 1}.enc`,
-        encrypt(
-          {
-            url: target.href,
-            method,
-            headers,
-            body: body ?? null,
-            observedAt: new Date().toISOString(),
-          },
-          this.key
-        )
+        encrypt(requestBytes, this.key)
       );
       const response = await this.transport.request({ url: target.href, method, headers, body });
       if (response.url !== target.href) throw fault('UNEXPECTED_TRANSPORT_REDIRECT');
@@ -135,7 +144,22 @@ class OfficialOrderHttpCollector {
       const file = `body-${++this.index}-${sha256.slice(0, 16)}.enc`;
       const observedAt = new Date().toISOString();
       writePrivate(`${this.directory}/${file}`, encrypt(bytes, this.key));
-      writePrivate(`${this.directory}/response-${this.index}.enc`, encrypt(response, this.key));
+      let responseEvidence = response;
+      if (this.evidenceVersion === 2) {
+        responseEvidence = createHttpResponseEvidenceV2({
+          response,
+          requestBytes,
+          runId: this.runId,
+          index: this.index,
+          observedAt,
+          bodyFile: file,
+          body: bytes,
+        });
+      }
+      writePrivate(
+        `${this.directory}/response-${this.index}.enc`,
+        encrypt(responseEvidence, this.key)
+      );
       const source = {
         provider: 'Apple official website',
         status: response.status,
@@ -346,4 +370,9 @@ class OfficialOrderHttpCollector {
   }
 }
 
-module.exports = { OfficialOrderHttpCollector, discoverShieldUrl, validateReadUrl };
+module.exports = {
+  OfficialOrderHttpCollector,
+  discoverShieldUrl,
+  validateReadUrl,
+  resolveEvidenceVersion,
+};

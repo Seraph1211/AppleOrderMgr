@@ -9,6 +9,7 @@ const {
   validateReadUrl,
   discoverShieldUrl,
 } = require('../../src/services/officialOrderHttpCollector');
+const { readHttpResponseEvidence } = require('../../src/services/officialHttpEvidence');
 
 const MAX_BYTES = 8 * 1024 * 1024;
 const REDIRECT_NOTICE =
@@ -185,8 +186,7 @@ function verifyHttpFailureQuarantine(root, proofName, proofSha, at, replayClosed
     assert(typeof audit.startedAt === 'number' && typeof audit.finishedAt === 'number');
     assert(audit.startedAt <= audit.finishedAt && audit.finishedAt <= proof.observedAt);
     const inputName = `private/request-${proof.orderId}.json`;
-    const archivedInput =
-      `private/http-quarantine-input-${proof.orderId}-${proof.sampleAttemptId}.json`;
+    const archivedInput = `private/http-quarantine-input-${proof.orderId}-${proof.sampleAttemptId}.json`;
     const useArchive = replayClosed && fs.existsSync(path.join(root, archivedInput));
     const inputBytes = read(useArchive ? archivedInput : inputName);
     if (useArchive) {
@@ -273,6 +273,16 @@ function verifyHttpFailureQuarantine(root, proofName, proofSha, at, replayClosed
     const requests = Array.from({ length: requestCount }, (_value, index) =>
       decoded(`request-${index + 1}.enc`)
     );
+    const responseEvidence = Array.from({ length: responseCount }, (_value, index) =>
+      readHttpResponseEvidence({
+        responseBytes: read(`${directory}/response-${index + 1}.enc`),
+        requestBytes: read(`${directory}/request-${index + 1}.enc`),
+        key,
+        runId: proof.runId,
+        index: index + 1,
+        readBody: file => decrypt(read(`${directory}/${file}`), key),
+      })
+    );
     for (const request of requests) {
       if (!completeUnverified) assert(request.method === 'GET' && request.body === null);
       validateReadUrl(request.url, request.method);
@@ -339,7 +349,8 @@ function verifyHttpFailureQuarantine(root, proofName, proofSha, at, replayClosed
     assert(events.length === responseCount);
     let redirectBody;
     for (let index = 0; index < responseCount; index++) {
-      const response = decoded(`response-${index + 1}.enc`);
+      const evidence = responseEvidence[index];
+      const response = evidence.response;
       const event = events[index];
       const status = redirectLimit ? (index === 0 ? 303 : 307) : index < 2 ? 303 : 200;
       assert(response.status === status && response.url === requests[index].url);
@@ -369,10 +380,10 @@ function verifyHttpFailureQuarantine(root, proofName, proofSha, at, replayClosed
             new URL(locations[0][1], response.url).href === requests[index + 1].url
         );
       else assert(locations.length === 0);
-      const body = Buffer.from(response.bodyBase64, 'base64');
-      assert(body.toString('base64') === response.bodyBase64);
+      const body = evidence.body;
       const bodyName = `body-${index + 1}-${sha(body).slice(0, 16)}.enc`;
-      assert.deepEqual(decrypt(read(`${directory}/${bodyName}`), key), body);
+      assert(evidence.bodyFile === bodyName);
+      if (evidence.version === 2) assert(response.observedAt === event.observedAt);
       assert(
         event.message === 'http_response' &&
           event.method === requests[index].method &&
@@ -404,8 +415,7 @@ function verifyHttpFailureQuarantine(root, proofName, proofSha, at, replayClosed
     }
     if (completeUnverified) {
       const result = json(`private/results/order-${proof.orderId}-run-${proof.runId}.json`);
-      const response = decoded('response-6.enc');
-      const body = Buffer.from(response.bodyBase64, 'base64');
+      const body = responseEvidence[5].body;
       const source = result.source;
       const parsed = parseOfficialOrderDetail(body.toString('utf8'), entry.orderNumber);
       assert(parsed && parsed.identityMatched === true);

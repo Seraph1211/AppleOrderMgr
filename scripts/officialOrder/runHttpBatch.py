@@ -437,7 +437,7 @@ def journal_order_state(path, lines, plan_sha, scope, retries, pending, quaranti
 
 
 def validate_preflight_sample(root, sample, order_id, plan_sha, current=False):
-    """新调用仅接受 v2；历史 v1/v2 分别按当时阈值重验零采集审计。"""
+    """新调用仅接受 v3；历史 v1/v2/v3 分别按当时阈值重验零采集审计。"""
     try:
         expected_keys = {'outcome', 'requests', 'preflightOnly', 'preflight', 'attemptId', 'targetOrderId',
                          'proxyIndex', 'startedAt', 'finishedAt', 'elapsedSeconds', 'egressHash',
@@ -456,8 +456,8 @@ def validate_preflight_sample(root, sample, order_id, plan_sha, current=False):
                     {'attempted': False, 'removed': False, 'outcome': 'NOT_NEEDED'}, sort_keys=True) or
                 not isinstance(preflight, dict) or set(preflight) != {
                     'version', 'outcome', 'orderId', 'checkedAt', 'planSha256', 'inputSha256', 'accountPaused', 'attempts'} or
-                type(preflight['version']) is not int or preflight['version'] not in (1, 2) or
-                (current and preflight['version'] != 2) or
+                type(preflight['version']) is not int or preflight['version'] not in (1, 2, 3) or
+                (current and preflight['version'] != 3) or
                 not valid_int(preflight['orderId']) or preflight['orderId'] != order_id or
                 type(preflight['accountPaused']) is not bool or not valid_int(preflight['attempts'], 0) or
                 preflight['planSha256'] != plan_sha or not valid_hash(preflight['inputSha256']) or
@@ -467,7 +467,7 @@ def validate_preflight_sample(root, sample, order_id, plan_sha, current=False):
                 type(sample['elapsedSeconds']) not in (int, float) or
                 sample['elapsedSeconds'] != round(sample['finishedAt'] - sample['startedAt'], 3)):
             raise ValueError()
-        attempt_limit = 3 if preflight['version'] == 1 else 10
+        attempt_limit = {1: 3, 2: 10, 3: 50}[preflight['version']]
         expected = ('ACCOUNT_COOLDOWN' if preflight['accountPaused'] else
                     'ORDER_ATTEMPT_LIMIT' if preflight['attempts'] >= attempt_limit else 'HTTP_PREFLIGHT_ALLOWED')
         if sample['outcome'] != expected or preflight['outcome'] != expected:
@@ -693,7 +693,7 @@ def _execute(root, ids, limit, apply, proxy_index, concurrency=1):
             check_boundary(root, plan_sha)
             if proxy_index >= len(proxies) or probes >= MAX_PROBES:
                 raise RuntimeError('NO_FRESH_EGRESS')
-            # 每个采样器仍调用持久 PostgreSQL Gate；541三次上限独立于滚动24小时十次。
+            # 每个采样器仍调用持久 PostgreSQL Gate；541三次上限独立于滚动24小时五十次。
             sample = child(['python3', str(root / 'release/scripts/officialOrder/runHttpSample.py'),
                             '--root', str(root), '--id', str(order_id), '--proxy-index', str(proxy_index)], 420)
             append(journal, dict(record, event='sample_finished', at=time.time(), sample=sample))

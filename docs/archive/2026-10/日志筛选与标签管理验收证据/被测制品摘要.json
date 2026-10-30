@@ -1,0 +1,52 @@
+{
+  "releaseId": "20261024-log-labels",
+  "apiImage": "apple-order-mgr-api:20261024-log-labels-amd64",
+  "apiRootFSLayers": [
+    "sha256:29df493baa13de438d6d2ece3a8333032e0b7b9b9d8cce4ee82194da255f61e1",
+    "sha256:4983b93ee7967564f02cbf6162b75010ce557404a539fba05ee19a0eae01acbc",
+    "sha256:e10358715ead9b47009dd04bcd77ac1c8e247f7249ab06517ff913c473a8e38e",
+    "sha256:afa543f85b4685a84338df3e2c429edca49bb372b0f49e0c5cc9724c820ad094",
+    "sha256:cc48f41bb8d1f67f6f802a2746cfa556b9fdc04c80a22f465ec43fb06e42ac26",
+    "sha256:376da0015e35cf06b5d36cd2466e01e471ca51d7f9875a4fd9276e89c92622e7",
+    "sha256:e0bed5f088561b000747e7ad6dcdd4ed88afa8e4d4b4b3c9ebd8491b1c4f3576",
+    "sha256:c13af0cecadfa6a17a6fbee1ba6365102f542bd9b6c0c634b61b89297473855f",
+    "sha256:d1abd2a6066a0d4c392589cc25d8ea7157ddb34a4a165e4c6950f3398ea7fecb",
+    "sha256:0e93f64d7a7834b06db1d3008a841070f712d5f800d060171cf87640c1da957b",
+    "sha256:a564e1212740f2c527304a2d2d9bbb4ec9c70a725acdcd72ede6ddddfa215db3",
+    "sha256:5f0cf73a94093e1d50fb609fd601ea97f22fc1e2d8cb4d1873bf1565b2a613af",
+    "sha256:ccd57bac97a492360231f550a92c61fd4350e775a8728f939452c130212604db",
+    "sha256:6a6a552a13b387b5fd293af7802800de9bf4a531c96b524256fa6e1ce7b94bc5",
+    "sha256:2205048b19379a751cb48aefb8a77d4a99cab4bd2e604ea0ec610e29f38b32cb",
+    "sha256:5019352cd3d62a37f8e2d3c92fbac35b81e2889997ded8576ce8ac39157b1f40",
+    "sha256:00119c6754fb85aa5dc5e635461ecbb8c4dac93b57ee129032719a97cd8187fc",
+    "sha256:34223e9d33c3208382afc2b0167cc460fc96ef1731cba3023a4849bb8e00299a",
+    "sha256:3f827c2e8a7e6e22cea6f90af4c2e7b4cb7d974702ad433b069ee0daa1440d6c",
+    "sha256:fd912fd5eadfed95ac62d516c8b7fa4fedd69b23cc92d03fd2b71705c3a2faa7",
+    "sha256:b240e24554b711f6ac5aafe3cc3923178cfc90f37e8bff44a3e85ea4bae4e51b"
+  ],
+  "apiChangedSourceHashes": {
+    "src/models/index.js": "5e2b8a789b00ce6a7695175654d27dafb23a0e43a254768ed529c8772d38785c",
+    "src/models/MonitorResourceTag.js": "f1b69f43230a10a1511a7abd83b9b4abad087a28b60cdf9d12334b90606f0845",
+    "src/routes/serverMonitor.js": "39e2bcb798d7ec6bfc2cc208654ba7508219da1c6d74a765e88dd1b5513ea1aa",
+    "src/services/monitorResourceTagService.js": "6f7ff2e0dc33e3ab3c0ea4087f720ef7ee285cf6edb305f994bca90d82cad973"
+  },
+  "frontendFileHashes": {
+    "assets/Stock-B2_x4eNN.js": "dd6be4a1b7c4015cf8521124b62954634e64572b02712c40e05ab0c1c7786e65",
+    "assets/Stock-D6365Qtz.css": "a91f93f2e72b18d799a44cbc18f2204ce3b818cc348cec2455ad5ef6e07219af",
+    "assets/index-84469jgD.js": "d3de843dea10a158cbf88fe1134fea4f1a21a33aae24d2cf975e163542720c71",
+    "assets/index-Caip50rE.js": "1b480fc151bfab6926c4b62ad419abf430952b9b0dcfc6100f2f02a14dab78e9",
+    "assets/index-CzFnS5vd.js": "2a06328590ebaa44392889951af4efdf4ad66c0700f5577f9d4c28754dfe4c6d",
+    "assets/index-pvpAQp3a.css": "2e862f286a9f7990b4e17ab52baffad6375c9d8c72f2a97f3e937d3676c34d21",
+    "assets/jsQR-D48Fp1SE.js": "f6ecb01e87ecf18b20b53f815528983006999d29f4962681512881988eeadd8a",
+    "debug.html": "6b7fbea26323ab37180c0822bfeae695f42fd333743ca9babb8f6f6213b9b6ec",
+    "index.html": "59fcfd9590a22482867204f12208f0e6b7ca33e690501711c7df7ebdd5fb51b3",
+    "templates/apple_ids_import_template.xlsx": "d35963212f1311d186668726f233e72df59b10c28538db4781d0dd27afa6d40b",
+    "templates/recipients_import_template.xlsx": "251052ff1ec8d919e74f1cfa17a7b42b5f58f91f80f32075d316cf317f0858d2"
+  },
+  "frozenManifestSha256": "bc63dcfe5bbfd6f620110cdb6d9b30a49889dfb139645ee001aa2ecd480b681d",
+  "frozenArchiveSha256": "3cef51141311efcd32d84ac649f4ca87e8c2e42cacf9bb7924edc85c76785e70",
+  "frozenFrontendArchiveSha256": "4d0aadc1b6a784f25cb6fca71e0674723e36868a10ba0e8987a5fb15db13dac3",
+  "finalPackageMatchesTestedFrontend": true,
+  "finalFrontendTarTreeMatchesTestedFrontend": true,
+  "frontendTarFileCount": 11
+}

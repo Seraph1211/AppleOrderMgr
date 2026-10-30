@@ -18,6 +18,19 @@ from urllib.parse import quote
 IMAGE = 'mcr.microsoft.com/playwright@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27'
 
 
+def official_http_evidence_version():
+    """只把已批准的 v1/v2 写入开关传入隔离采集容器。"""
+    value = os.environ.get('OFFICIAL_HTTP_EVIDENCE_VERSION', '1')
+    if value not in ('1', '2'):
+        raise RuntimeError('HTTP_EVIDENCE_VERSION_INVALID')
+    return value
+
+
+def evidence_migration_locked(root):
+    """迁移 maintenance latch 存在时不启动或提交新的官网采集。"""
+    return os.path.lexists(str(root / 'private/http-evidence-v2-maintenance.lock'))
+
+
 def writePrivate(path, value):
     """以 0600 独占临时文件原子替换私密配置或审计。"""
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -106,13 +119,36 @@ def run(args, **kwargs):
     return result.stdout
 
 
-def probe(proxy):
+def probe(proxy, diagnostics=None):
+    """核验健康和唯一公网出口；队列可额外保存无凭据的 CONNECT 数字诊断。"""
     token = 'http-rebuild-' + uuid.uuid4().hex
     auth = quote(proxy['username'], safe='') + ':' + quote(proxy['password'], safe='')
     proxyUrl = 'http://' + auth + '@' + proxy['host'] + ':' + str(proxy['port'])
     config = 'proxy = "' + proxyUrl + '"\nurl = "https://apple.godp.me/api/health/ready?' + token + '"\n'
-    output = run(['curl', '-fsS', '--noproxy', '', '--max-time', '20', '--config', '-'],
-                 input=config.encode(), timeout=25)
+    args = ['curl', '-fsS', '--noproxy', '', '--max-time', '20', '--config', '-']
+    if diagnostics is None:
+        output = run(args, input=config.encode(), timeout=25)
+    else:
+        marker = b'\nOFFICIAL_PROXY_METRICS='
+        args += ['--write-out', '\nOFFICIAL_PROXY_METRICS=%{http_connect},%{http_code}']
+        try:
+            response = subprocess.run(args, input=config.encode(), stdout=subprocess.PIPE,
+                                      stderr=subprocess.PIPE, timeout=25)
+        except subprocess.TimeoutExpired:
+            diagnostics.append({'curlExitCode': 28, 'commandTimedOut': True})
+            raise RuntimeCommandError(28) from None
+        output, separator, metrics = response.stdout.rpartition(marker)
+        entry = {'curlExitCode': response.returncode}
+        if separator and re.fullmatch(rb'[0-9]{3},[0-9]{3}', metrics):
+            connect, status = metrics.decode('ascii').split(',')
+            entry.update(proxyConnectStatus=int(connect), httpStatus=int(status))
+        diagnostics.append(entry)
+        if response.returncode:
+            raise RuntimeCommandError(response.returncode)
+        if 'proxyConnectStatus' not in entry:
+            raise RuntimeError('EGRESS_PROBE_METADATA_INVALID')
+        if entry['proxyConnectStatus'] != 200 or entry['httpStatus'] != 200:
+            raise RuntimeError('EGRESS_PROBE_HTTP_FAILED')
     if json.loads(output).get('success') is not True:
         raise RuntimeError('API_HEALTH_FAILED')
     with open('/var/log/nginx/apple-order-mgr-access.log', 'rb') as source:
@@ -145,7 +181,7 @@ def preflightGate(root, order_id, attempt_id):
         value = json.loads(output.decode('utf-8'))
         if (not isinstance(value, dict) or set(value) != {
                 'version', 'outcome', 'orderId', 'checkedAt', 'planSha256', 'inputSha256', 'accountPaused', 'attempts'} or
-                type(value['version']) is not int or value['version'] != 2 or
+                type(value['version']) is not int or value['version'] != 3 or
                 type(value['orderId']) is not int or value['orderId'] != order_id or
                 type(value['accountPaused']) is not bool or type(value['attempts']) is not int or value['attempts'] < 0 or
                 type(value['checkedAt']) not in (int, float) or not math.isfinite(value['checkedAt']) or
@@ -154,7 +190,7 @@ def preflightGate(root, order_id, attempt_id):
                 value['inputSha256'] != hashlib.sha256((root / ('private/request-' + str(order_id) + '.json')).read_bytes()).hexdigest()):
             raise ValueError()
         expected = ('ACCOUNT_COOLDOWN' if value['accountPaused'] else
-                    'ORDER_ATTEMPT_LIMIT' if value['attempts'] >= 10 else 'HTTP_PREFLIGHT_ALLOWED')
+                    'ORDER_ATTEMPT_LIMIT' if value['attempts'] >= 50 else 'HTTP_PREFLIGHT_ALLOWED')
         if value['outcome'] != expected:
             raise ValueError()
         return value
@@ -172,7 +208,8 @@ def safeFailure(error):
     """只返回执行器定义的错误码，不记录命令、异常明文或代理凭据。"""
     codes = {'INPUT_INVALID', 'HTTP_SAMPLE_BUSY', 'HTTP_SAMPLE_CLEANUP_PENDING', 'BACKFILL_SCOPE_INVALID', 'PROXY_INDEX_INVALID',
              'RUNTIME_COMMAND_FAILED', 'API_HEALTH_FAILED', 'EGRESS_LOG_UNAVAILABLE', 'EGRESS_NOT_PUBLIC',
-             'EGRESS_PREVIOUSLY_REJECTED', 'GATE_PREFLIGHT_FAILED', 'REQUEST_STOPPED'}
+             'EGRESS_PREVIOUSLY_REJECTED', 'GATE_PREFLIGHT_FAILED', 'REQUEST_STOPPED',
+             'HTTP_EVIDENCE_VERSION_INVALID', 'HTTP_EVIDENCE_MIGRATION_ACTIVE'}
     if isinstance(error, subprocess.TimeoutExpired):
         return 'HTTP_SAMPLE_TIMEOUT'
     return str(error) if isinstance(error, RuntimeError) and str(error) in codes else 'HTTP_SAMPLE_FAILED'
@@ -222,6 +259,9 @@ def main():
     try:
         if not root.is_absolute() or args.id < 1:
             raise RuntimeError('INPUT_INVALID')
+        evidenceVersion = official_http_evidence_version()
+        if evidence_migration_locked(root):
+            raise RuntimeError('HTTP_EVIDENCE_MIGRATION_ACTIVE')
         stage = 'lock'
         lockPath = root / 'private/http-sample.lock'
         if args.sample_lock_fd is None:
@@ -246,7 +286,7 @@ def main():
         stage = 'cleanup-pending'
         if (root / 'private/http-cleanup-blocked.json').exists():
             raise RuntimeError('HTTP_SAMPLE_CLEANUP_PENDING')
-        if (root / 'private/STOP').exists():
+        if (root / 'private/STOP').exists() or evidence_migration_locked(root):
             raise RuntimeError('REQUEST_STOPPED')
         stage = 'plan'
         plan = json.loads((root / 'private/plan.json').read_text(encoding='utf-8'))
@@ -289,6 +329,8 @@ def main():
                 'pythonPath': '/runtime/venv/bin/python', 'healthVerifiedAt': time.time(),
             },
         })
+        if evidence_migration_locked(root):
+            raise RuntimeError('HTTP_EVIDENCE_MIGRATION_ACTIVE')
         stage = 'container-create'
         # create 超时也可能已创建容器，因此在发起命令之前登记清理责任。
         cleanupNeeded = True
@@ -296,6 +338,7 @@ def main():
              '--user', '1000:1000', '--read-only', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges',
              '--memory', '512m', '--cpus', '1', '--pids-limit', '64', '--tmpfs', '/tmp:rw,nosuid,size=67108864',
              '-e', 'HOME=/tmp', '-e', 'NODE_PATH=/research/node_modules',
+             '-e', 'OFFICIAL_HTTP_EVIDENCE_VERSION=' + evidenceVersion,
              '-v', str(root) + ':/research:rw', '-v', str(root / 'deps') + ':/research/node_modules:ro',
              '-v', '/var/tmp/official-http-runtime-20261008:/runtime:ro',
              '--entrypoint', 'node', IMAGE, '/research/release/scripts/collectOfficialOrderHttp.js',

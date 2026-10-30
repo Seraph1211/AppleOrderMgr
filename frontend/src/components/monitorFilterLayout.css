@@ -1,0 +1,222 @@
+/* 日志筛选：桌面全部条件在同一行，宽度不足仅滚动筛选区。 */
+.monitor-log-filter-form {
+  min-width: 0;
+}
+.monitor-log-filter-scroll {
+  min-width: 0;
+  max-width: 100%;
+  padding: 1px 1px 7px;
+}
+.monitor-log-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+}
+.monitor-log-filter-grid > * {
+  min-width: 0;
+  grid-column: auto;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+}
+.monitor-log-filter-grid .monitor-filter-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  min-height: 18px;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.monitor-log-filter-grid .input,
+.monitor-log-filter-grid .monitor-log-range-trigger {
+  height: 44px;
+  min-height: 44px;
+  border-color: #d1d5db;
+  border-radius: 7px;
+  font-size: 16px;
+  font-weight: 400;
+  line-height: 20px;
+  box-shadow: none;
+}
+.monitor-log-filter-grid .input {
+  margin-top: 0;
+}
+.monitor-log-filter-grid .input:hover:not(:disabled) {
+  border-color: #93a4be;
+}
+.monitor-log-filter-grid .input:disabled {
+  background: #f9fafb;
+}
+.monitor-log-filter-grid .monitor-filter-account > div {
+  margin-top: 0;
+}
+.monitor-log-filter-grid .monitor-log-range-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  color: #374151;
+  background: white;
+  text-align: left;
+}
+.monitor-log-range-summary {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.monitor-filter-keyword-control {
+  position: relative;
+}
+.monitor-filter-keyword-icon {
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #9ca3af;
+}
+.monitor-log-filter-grid .monitor-filter-keyword-control .input {
+  padding-left: 32px;
+}
+@media (min-width: 768px) {
+  .monitor-log-filter-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: thin;
+    scrollbar-color: #cbd5e1 transparent;
+  }
+  .monitor-log-filter-grid {
+    min-width: 1000px;
+    grid-template-columns:
+      minmax(184px, 1.05fr)
+      minmax(144px, 0.85fr)
+      minmax(144px, 0.85fr)
+      minmax(300px, 1.55fr)
+      minmax(160px, 1fr);
+    column-gap: 10px;
+  }
+  .monitor-log-filter-grid.monitor-log-filter-grid-legacy {
+    min-width: 1200px;
+    grid-template-columns:
+      minmax(184px, 1.05fr)
+      minmax(144px, 0.85fr)
+      minmax(140px, 0.85fr)
+      minmax(144px, 0.85fr)
+      minmax(124px, 0.75fr)
+      minmax(124px, 0.75fr)
+      minmax(160px, 1fr);
+  }
+  .monitor-log-filter-grid .input,
+  .monitor-log-filter-grid .monitor-log-range-trigger {
+    height: 36px;
+    min-height: 36px;
+    font-size: 13px;
+  }
+}
+
+/* 平板保留跨天查询原有的两列布局；避免与新增资源选择器合并后挤出可视区。 */
+@media (min-width: 768px) and (max-width: 1279px) {
+  .monitor-log-filter-grid:not(.monitor-log-filter-grid-legacy) {
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .monitor-log-filter-grid:not(.monitor-log-filter-grid-legacy) > :last-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* 标签管理独立于筛选区；原生 dialog 使用浏览器顶层与焦点隔离。 */
+.monitor-log-tags-dialog {
+  width: min(1040px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 48px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 16px 48px rgb(15 23 42 / 16%);
+}
+section[aria-label='完整日志查询'] > .monitor-log-tags-dialog[open] {
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+}
+.monitor-log-tags-dialog::backdrop {
+  background: rgb(15 23 42 / 28%);
+}
+.monitor-log-tags-dialog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+}
+.monitor-log-tags-dialog-header h2 {
+  font-size: 18px;
+  font-weight: 600;
+}
+.monitor-log-tags-dialog-body {
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px;
+}
+.monitor-log-tags-dialog-body > section {
+  padding: 0;
+  border: 0;
+}
+.monitor-log-tags-dialog-footer {
+  padding: 12px 20px;
+  border-top: 1px solid #e5e7eb;
+  font-size: 12px;
+  color: #6b7280;
+}
+.monitor-filter-toggle {
+  display: inline-flex;
+  min-height: 36px;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.monitor-filter-toggle[aria-expanded='true'] {
+  border-color: #dbeafe;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+.monitor-filter-toggle svg {
+  transition: transform 150ms;
+}
+@media (max-width: 767px) {
+  .monitor-log-tags-dialog {
+    width: calc(100vw - 24px);
+    max-height: calc(100dvh - 32px);
+  }
+  .monitor-log-tags-dialog-header,
+  .monitor-log-tags-dialog-body,
+  .monitor-log-tags-dialog-footer {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+  .monitor-filter-toggle,
+  .monitor-log-tags-dialog-header .btn {
+    min-height: 44px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .monitor-filter-toggle svg {
+    transition: none;
+  }
+}

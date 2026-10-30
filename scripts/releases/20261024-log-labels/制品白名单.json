@@ -1,0 +1,58 @@
+{
+  "releaseId": "20261024-log-labels",
+  "baseRuntimeImage": "apple-order-mgr-api:20261024-duo-quotes-amd64",
+  "baseRuntimeImageIdentity": "compareRootfsDiffIdsAndSourceHashes",
+  "baseFrontendImage": "apple-order-mgr-frontend-builder:20261024-duo-quotes-amd64",
+  "baseMigratorImage": "apple-order-mgr-migrator:20261019T135812Z-b8423620ac9d-amd64",
+  "files": {
+    "src/models/index.js": {
+      "beforeSha256": "96d6dc4a0ed3e88e0c6eb8d01f9acd599c77f2ec02dcfc038d6f7cff25f4f78b",
+      "afterSha256": "5e2b8a789b00ce6a7695175654d27dafb23a0e43a254768ed529c8772d38785c"
+    },
+    "src/models/MonitorResourceTag.js": {
+      "beforeSha256": null,
+      "afterSha256": "f1b69f43230a10a1511a7abd83b9b4abad087a28b60cdf9d12334b90606f0845"
+    },
+    "src/routes/serverMonitor.js": {
+      "beforeSha256": "dd8ac974c7c2b1e398e4e8827f1a74d64d3b1fcf373ab7b2c3e75dd219dcb85b",
+      "afterSha256": "39e2bcb798d7ec6bfc2cc208654ba7508219da1c6d74a765e88dd1b5513ea1aa"
+    },
+    "src/services/monitorResourceTagService.js": {
+      "beforeSha256": null,
+      "afterSha256": "6f7ff2e0dc33e3ab3c0ea4087f720ef7ee285cf6edb305f994bca90d82cad973"
+    },
+    "frontend/src/components/MonitorLogs.jsx": {
+      "beforeSha256": "094a8fbe08de6081a408ca0779e4438e463ce5d5f98a9a38ca42a99d0b0d7efa",
+      "afterSha256": "a2c52eba8b0e67400926829ce8a13f7c574b47cf3c53938baa74c69fe42507b0"
+    },
+    "frontend/src/components/monitorResourceSelect.jsx": {
+      "beforeSha256": null,
+      "afterSha256": "6adf97590a6a65e01266184efa9964624d9f44e6ed5fc9593d71cdc7ef8c8a14"
+    },
+    "frontend/src/components/monitorLogTags.jsx": {
+      "beforeSha256": null,
+      "afterSha256": "5ce7ebd5547cfef922f90d056969966374f946028059067eb96b8d6634ed61d9"
+    },
+    "frontend/src/components/monitorLogs.css": {
+      "beforeSha256": "6ca1fbb53076a37f1fe3fc164df2adf1acfde36ee069d0f9cc2995343482d9ee",
+      "afterSha256": "4c793deb699cabea7d6aa53d49e677c64d2f3e997e0711ce8fdc4825a9287334"
+    },
+    "migrations/20261024000001-add-monitor-resource-tags.js": {
+      "beforeSha256": null,
+      "afterSha256": "d6bb14691e68df50c77d89ae318a8048c9e51aae647bc65bc507099367fb116c"
+    }
+  },
+  "schemaMigration": "20261024000001-add-monitor-resource-tags.js",
+  "sourceOverlayOnly": true,
+  "preservedProductionFeatures": [
+    "跨日范围筛选",
+    "日志原文导出",
+    "日志元数据",
+    "monitor.logs.read独立读取权限",
+    "通知权限与生产模型注册"
+  ],
+  "runtimeExpectedSourceFileCount": 368,
+  "productionOnlyFiles": [
+    "frontend/src/components/monitorLogs.css"
+  ]
+}

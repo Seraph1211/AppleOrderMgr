@@ -88,7 +88,7 @@ class HttpPreflightTests(unittest.TestCase):
         self.assertEqual(self.case.calls, [])
 
     def test_malformed_wrong_identity_or_database_failure_never_becomes_deferred(self):
-        changes = [{'version': 1}, {'version': 3}, {'version': True}, {'version': 2.0},
+        changes = [{'version': 1}, {'version': 2}, {'version': 4}, {'version': True}, {'version': 3.0},
                    {'orderId': 241}, {'attempts': True}, {'accountPaused': 1},
                    {'checkedAt': 1}, {'planSha256': 'f' * 64}, {'inputSha256': 'f' * 64},
                    {'outcome': 'SUCCEEDED'}, {'outcome': 'ACCOUNT_COOLDOWN'}, {'extra': 'not-allowed'}]
@@ -110,14 +110,14 @@ class HttpPreflightTests(unittest.TestCase):
             self.assertEqual(probes.call_count, 0)
             self.assertNotIn('private-server-details', json.dumps(value))
 
-    def test_v2_allows_ninth_and_denies_tenth_existing_attempt(self):
+    def test_v3_allows_forty_ninth_and_denies_fiftieth_existing_attempt(self):
         original = self.case.subprocess
         cases = [(3, 'HTTP_PREFLIGHT_ALLOWED', 'SUCCEEDED'),
-                 (9, 'HTTP_PREFLIGHT_ALLOWED', 'SUCCEEDED'),
-                 (10, 'ORDER_ATTEMPT_LIMIT', 'ORDER_ATTEMPT_LIMIT'),
-                 (11, 'ORDER_ATTEMPT_LIMIT', 'ORDER_ATTEMPT_LIMIT'),
-                 (9, 'ORDER_ATTEMPT_LIMIT', 'GATE_PREFLIGHT_FAILED'),
-                 (10, 'HTTP_PREFLIGHT_ALLOWED', 'GATE_PREFLIGHT_FAILED')]
+                 (49, 'HTTP_PREFLIGHT_ALLOWED', 'SUCCEEDED'),
+                 (50, 'ORDER_ATTEMPT_LIMIT', 'ORDER_ATTEMPT_LIMIT'),
+                 (51, 'ORDER_ATTEMPT_LIMIT', 'ORDER_ATTEMPT_LIMIT'),
+                 (49, 'ORDER_ATTEMPT_LIMIT', 'GATE_PREFLIGHT_FAILED'),
+                 (50, 'HTTP_PREFLIGHT_ALLOWED', 'GATE_PREFLIGHT_FAILED')]
         for attempts, reason, expected in cases:
             def altered(args, **kwargs):
                 result = original(args, **kwargs)
@@ -167,7 +167,7 @@ class BatchPreflightTests(unittest.TestCase):
                   'startedAt': now - 2, 'finishedAt': now, 'elapsedSeconds': 2.0,
                   'egressHash': None, 'egressAfterHash': None, 'egressVerifiedAfter': False,
                   'businessWrites': 0, 'cleanup': {'attempted': False, 'removed': False, 'outcome': 'NOT_NEEDED'},
-                  'preflight': {'version': 2, 'outcome': 'ACCOUNT_COOLDOWN', 'orderId': order,
+                  'preflight': {'version': 3, 'outcome': 'ACCOUNT_COOLDOWN', 'orderId': order,
                                 'checkedAt': now - 1, 'accountPaused': True, 'attempts': 0,
                                 'planSha256': hashlib.sha256((self.case.root / 'private/plan.json').read_bytes()).hexdigest(),
                                 'inputSha256': hashlib.sha256(input_path.read_bytes()).hexdigest()}}
@@ -241,6 +241,13 @@ class BatchPreflightTests(unittest.TestCase):
     def test_v2_tenth_attempt_limit_replays(self):
         self.execute()
         self.rewrite_deferred(2, 10, 'ORDER_ATTEMPT_LIMIT')
+        self.calls.clear()
+        self.assertEqual(self.execute()['processedThisRun'], 0)
+        self.assertFalse(self.calls)
+
+    def test_v3_fiftieth_attempt_limit_replays(self):
+        self.execute()
+        self.rewrite_deferred(3, 50, 'ORDER_ATTEMPT_LIMIT')
         self.calls.clear()
         self.assertEqual(self.execute()['processedThisRun'], 0)
         self.assertFalse(self.calls)

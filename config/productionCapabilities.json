@@ -1,0 +1,218 @@
+{
+  "schemaVersion": 1,
+  "capabilities": [
+    {
+      "id": "logs-resource-tags",
+      "source": {
+        "frontend/src/components/MonitorLogs.jsx": [
+          "MonitorResourceSelect",
+          "MonitorLogTagsDialog",
+          "priority(a.name)"
+        ],
+        "src/routes/serverMonitor.js": [
+          "tags.states()",
+          "tags.save(req.user.id, req.body)"
+        ],
+        "src/models/index.js": [
+          "MonitorResourceTag:"
+        ]
+      },
+      "frontendTokens": [
+        "搜索名称、编号或标签",
+        "标签按行保存",
+        "展开筛选"
+      ]
+    },
+    {
+      "id": "logs-cross-day",
+      "source": {
+        "frontend/src/components/MonitorLogs.jsx": [
+          "MonitorLogRangeFilter",
+          "describeLogRange",
+          "exportRange"
+        ],
+        "src/services/monitorLogPolicy.js": [
+          "startAt",
+          "endAt",
+          "RETENTION_DAYS = 90"
+        ],
+        "src/services/monitorLogService.js": [
+          "accountConfigs.ingest",
+          "aosSignals.enqueue"
+        ]
+      },
+      "frontendTokens": [
+        "支持跨天查询",
+        "导出范围日志"
+      ]
+    },
+    {
+      "id": "logs-independent-permission",
+      "source": {
+        "frontend/src/constants/navigation.js": [
+          "permission: PERMISSIONS.MONITOR_LOGS_READ"
+        ],
+        "src/routes/serverMonitor.js": [
+          "router.use('/logs', requirePermission(PERMISSIONS.MONITOR_LOGS_READ))"
+        ]
+      },
+      "frontendTokens": [
+        "monitor.logs.read"
+      ]
+    },
+    {
+      "id": "proxy-cancel-release",
+      "source": {
+        "src/services/proxyOrderService.js": [
+          "requiresStoppedConfirmation",
+          "releaseAssignments(assignments, transaction)",
+          "source: 'cancel'"
+        ],
+        "frontend/src/pages/ProxyOrders.jsx": [
+          "confirmedStopped: statusTarget.confirmedStopped",
+          "normalizeStoreScope(response.data, stores)"
+        ]
+      },
+      "frontendTokens": [
+        "取消订单并释放全部占用账号",
+        "确认取消并释放"
+      ]
+    },
+    {
+      "id": "payment-cmb-24",
+      "source": {
+        "src/utils/paymentMethod.js": [
+          "['微信', '招行24期']"
+        ],
+        "src/services/paymentCodeService.js": [
+          "supportsOrderRecordPaymentCode"
+        ],
+        "frontend/src/components/PaymentOrdersTable.jsx": [
+          "data-label=\"支付方式\""
+        ],
+        "frontend/src/components/PaymentCodeButton.jsx": [
+          "查看付款码"
+        ]
+      },
+      "frontendTokens": [
+        "支付方式",
+        "查看付款码"
+      ]
+    },
+    {
+      "id": "official-query-50",
+      "source": {
+        "src/services/officialOrderGate.js": [
+          "DAILY_ORDER_ATTEMPTS = 50"
+        ],
+        "scripts/officialPickupBackfill/preflightGate.js": [
+          "50"
+        ],
+        "frontend/src/components/OfficialOrderRefreshPanel.jsx": [
+          "最近24小时查询已达50次"
+        ]
+      },
+      "frontendTokens": [
+        "最近24小时查询已达50次"
+      ]
+    },
+    {
+      "id": "official-shield-v3",
+      "source": {
+        "src/services/officialOrderShield.js": [
+          "HASH_REVERSED_TAIL_VERSION = 3",
+          "expectedBytes.subarray(-HASH_REVERSED_TAIL_BYTES).reverse()"
+        ]
+      },
+      "frontendTokens": []
+    },
+    {
+      "id": "official-evidence-v2",
+      "source": {
+        "src/services/officialRefreshEvidence.js": [
+          "readHttpResponseEvidence"
+        ],
+        "src/services/officialOrderHttpCollector.js": [
+          "createHttpResponseEvidenceV2",
+          "resolveEvidenceVersion"
+        ],
+        "scripts/officialPickupBackfill/verifyHttpReceipt.js": [
+          "readHttpResponseEvidence"
+        ]
+      },
+      "frontendTokens": []
+    },
+    {
+      "id": "duo-price-history",
+      "source": {
+        "frontend/src/App.jsx": [
+          "quote/duo/history"
+        ],
+        "src/routes/publicQuotes.js": [
+          "history"
+        ],
+        "src/repositories/quoteSourceRepository.js": [
+          "fetchDuoHistory"
+        ]
+      },
+      "frontendTokens": [
+        "/quote/duo/history"
+      ]
+    },
+    {
+      "id": "orders-workspace",
+      "source": {
+        "frontend/src/pages/Orders.jsx": [
+          "OrdersUiProvider",
+          "../components/orderColumnConfigModal"
+        ],
+        "frontend/src/components/Layout.jsx": [
+          "VITE_APP_VERSION"
+        ]
+      },
+      "frontendTokens": [
+        "orders-workspace"
+      ]
+    },
+    {
+      "id": "recipient-credit",
+      "source": {
+        "src/models/Recipient.js": [
+          "creditRating"
+        ],
+        "frontend/src/pages/Recipients.jsx": [
+          "creditRating"
+        ]
+      },
+      "frontendTokens": [
+        "信用评级"
+      ]
+    },
+    {
+      "id": "aos-current-task-statistics",
+      "source": {
+        "src/services/aosStockTaskPolicy.js": [
+          "STOCK_SUBMISSION_NOT_OBSERVED"
+        ],
+        "src/services/aosSignalService.js": [
+          "stockConfigurations",
+          "configurationOnly: true"
+        ],
+        "frontend/src/components/serverTaskConfigs.jsx": [
+          "任务配置"
+        ],
+        "migrations/20261026000002-add-aos-account-config-read-index.js": [
+          "INCLUDE (kind)",
+          "WHERE kind <> 'signal'"
+        ],
+        "migrations/20261028000001-create-aos-complete-signals.js": [
+          "aos_signal_windows",
+          "aos_record_signal_roster"
+        ]
+      },
+      "frontendTokens": [
+        "任务配置"
+      ]
+    }
+  ]
+}

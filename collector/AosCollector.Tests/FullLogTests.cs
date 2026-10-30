@@ -62,11 +62,11 @@ internal static class FullLogTests
       File.AppendAllText(file, "成\n"); File.SetLastWriteTimeUtc(file, now.AddSeconds(1).UtcDateTime);
       new FullLogScanner(store).Scan(directory, "utf-8", now.AddSeconds(7));
       check(store.PendingFullLogs().Last().PartIndex == 1 && store.PendingFullLogs().Last().LineNumber == 3, "稳定尾行后追加继续同一物理行");
-      File.WriteAllText(Path.Combine(path, "Log20260831_old.txt"), "2026-08-31 01:00:00.000 [9][128]历史\n");
-      File.WriteAllText(Path.Combine(path, "Log20260830_expired.txt"), "2026-08-30 01:00:00.000 [9][128]过期\n");
+      File.WriteAllText(Path.Combine(path, "Log20260702_old.txt"), "2026-07-02 01:00:00.000 [9][128]历史\n");
+      File.WriteAllText(Path.Combine(path, "Log20260701_expired.txt"), "2026-07-01 01:00:00.000 [9][128]过期\n");
       var state = new FullLogScanner(store).Scan(directory, "utf-8", now);
-      check(state.Dates.Contains("2026-08-31") && !state.Dates.Contains("2026-08-30"), "30天旧日志覆盖与自然日边界");
-      check(store.PendingFullLogs().Any(e => e.BusinessDate == "2026-08-31"), "历史文件首次补采");
+      check(state.Dates.Contains("2026-07-02") && !state.Dates.Contains("2026-07-01"), "90天旧日志覆盖与自然日边界");
+      check(store.PendingFullLogs().Any(e => e.BusinessDate == "2026-07-02"), "历史文件首次补采");
       File.WriteAllBytes(Path.Combine(path, "Log20260929_bad.txt"), [0xff, 0x00, 0x0a]);
       new FullLogScanner(store).Scan(directory, "utf-8", now);
       check(store.PendingFullLogs().Any(e => e.ParseState == "encoding_error" && e.RawBase64 == "/wAK"), "损坏编码保存原始字节，正文不含数据库零字节");
@@ -77,14 +77,65 @@ internal static class FullLogTests
       File.AppendAllText(partial, "28]完整账号\n");
       new FullLogScanner(store).Scan(directory, "utf-8", now);
       check(store.PendingFullLogs().Any(e => e.FileName.EndsWith("partial.txt") && e.AccountNumber == "128"), "账号头补全后完整索引");
-      check(store.ExpireFullLogs("2026-09-01") > 0 && store.PendingFullLogs().All(e => e.BusinessDate != "2026-08-31"), "过期补传计数可见");
+      check(store.ExpireFullLogs("2026-09-01") > 0 && store.PendingFullLogs().All(e => e.BusinessDate != "2026-07-02"), "过期补传计数可见");
     }
+    RunBackfill(check, root);
     var gbPath = Path.Combine(root, "full-logs-gb"); Directory.CreateDirectory(gbPath);
     Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
     File.WriteAllBytes(Path.Combine(gbPath, "Log20260929_gb.txt"), Encoding.GetEncoding("gb18030").GetBytes(first));
     using var gbStore = new QueueStore(Path.Combine(root, "full-gb.sqlite"), new TestProtector());
     new FullLogScanner(gbStore).Scan(new(Guid.NewGuid().ToString(), "GB实例", gbPath), "gb18030", now);
     check(gbStore.PendingFullLogs().Single().Message == first, "GB18030完整原文与账号解析");
+  }
+  private static void RunBackfill(Action<bool, string> check, string root)
+  {
+    // 模拟1.3.0已有已确认游标和跨30天未确认队列，再升级扩大窗口。
+    var now = new DateTimeOffset(2026, 10, 20, 0, 0, 0, TimeSpan.FromHours(8));
+    check(FullLogScanner.FirstDate(now) == "2026-07-23" && FullLogScanner.FirstDate(now.ToUniversalTime()) == "2026-07-23", "90天窗口按北京时间计算且不受调用者时区影响");
+    check(FullLogScanner.FirstDate(now.AddMilliseconds(-1)) == "2026-07-22", "北京时间午夜滚动90天窗口");
+    var path = Path.Combine(root, "backfill-90"); Directory.CreateDirectory(path);
+    var directory = new DirectoryConfig(Guid.NewGuid().ToString(), "补采实例", path);
+    var db = Path.Combine(root, "backfill-90.sqlite");
+    var protector = new TestProtector();
+    void Write(string day, string suffix = "history") {
+      var file = Path.Combine(path, "Log" + day.Replace("-", "") + "_" + suffix + ".txt");
+      File.WriteAllText(file, day + " 00:00:00.000 [2][128]历史原文\n", new UTF8Encoding(false));
+      File.SetLastWriteTimeUtc(file, now.AddMinutes(-1).UtcDateTime);
+    }
+    Write("2026-10-20");
+    FullLogEntry pending;
+    using (var store = new QueueStore(db, protector)) {
+      new FullLogScanner(store).Scan(directory, "utf-8", now);
+      store.AcknowledgeFullLogs(store.PendingFullLogs().Select(e => e.Id));
+      pending = new(Guid.NewGuid().ToString(), directory.DirectoryId, Guid.NewGuid().ToString(), "Log20260917_pending.txt", "2026-09-17", null, null, 1, 0, 0, "待回执原文\n", null, "unparsed");
+      store.CommitFullLogs("upgrade-pending", new(pending.FileId, 0, 12, "", 12, 0, 2, 0, null, null, "unparsed", null, null, 0), [pending], "2026-09-17");
+    }
+    foreach (var day in new[] { "2026-07-22", "2026-07-23", "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17", "2026-10-21" }) Write(day);
+    using (var store = new QueueStore(db, protector)) {
+      var scanner = new FullLogScanner(store);
+      var blocked = new FullLogScanner(store, 1).Scan(directory, "utf-8", now);
+      check(blocked.State == "backpressure" && store.PendingFullLogs().Single().Id == pending.Id, "扩大窗口时反压保留30天外未确认原事件");
+      var state = scanner.Scan(directory, "utf-8", now);
+      var batch = store.PendingFullLogs();
+      check(state.Dates.Contains("2026-07-23") && !state.Dates.Contains("2026-07-22") && !state.Dates.Contains("2026-10-21"), "只扫描第90天至今天，不读取第91天或未来文件");
+      check(new[] { "2026-09-14", "2026-09-15", "2026-09-16", "2026-09-17" }.All(day => batch.Any(e => e.BusinessDate == day)), "升级自动补录9月14至17日现存日志");
+      check(batch.Any(e => e == pending) && !batch.Any(e => e.BusinessDate == "2026-10-20"), "旧待传载荷不变，已确认的有效游标不重放");
+      check(state.ScannedBytes == state.TotalBytes && state.State == "catching_up", "文件读完但未获回执仍显示补采中");
+      store.AcknowledgeFullLogs(batch.Select(e => e.Id));
+      check(scanner.Scan(directory, "utf-8", now).State == "ready" && store.FullLogCounts().Pending == 0, "历史回执清空后完成补采，复扫无重复事件");
+      Write("2026-09-14", "restored");
+      scanner.Scan(directory, "utf-8", now);
+      var restored = store.PendingFullLogs().Single();
+      check(restored.FileName == "Log20260914_restored.txt", "已完成后新放回的历史文件自动补采");
+      var dayNinetyPending = new FullLogEntry(Guid.NewGuid().ToString(), directory.DirectoryId, Guid.NewGuid().ToString(), "Log20260723_pending.txt", "2026-07-23", null, null, 1, 0, 0, "第90天未回执原文\n", null, "unparsed");
+      store.CommitFullLogs("day-90-pending", new(dayNinetyPending.FileId, 0, 16, "", 16, 0, 2, 0, null, null, "unparsed", null, null, 0), [dayNinetyPending], "2026-07-23");
+      Write("2026-07-24");
+      var nextDay = scanner.Scan(directory, "utf-8", now.AddDays(1));
+      var afterMidnight = store.PendingFullLogs();
+      check(!nextDay.Dates.Contains("2026-07-23") && nextDay.Dates.Contains("2026-07-24"), "午夜滚动后旧首日退出扫描日期，新首日仍在窗口");
+      check(nextDay.Expired > 0 && !afterMidnight.Any(e => e.Id == dayNinetyPending.Id), "跨出90天窗口的未确认事件过期并计数");
+      check(afterMidnight.Any(e => e.Id == restored.Id && e.BusinessDate == "2026-09-14"), "窗口内后来恢复的历史事件继续保留");
+    }
   }
   public static async Task RunAsync(Action<bool, string> check, string root)
   {

@@ -1,0 +1,141 @@
+{
+  "passed": true,
+  "realProduction": false,
+  "results": [
+    {
+      "width": 1440,
+      "passed": true,
+      "fourButtonsRightAligned": true,
+      "checkboxLeftOrAbove": true,
+      "dividerRemoved": true,
+      "hintContrast": 4.834490081424352,
+      "queryClearRefreshExportCallbacks": true,
+      "unassignedAndAccountCursorReset": true,
+      "checkboxToggleVerified": true,
+      "controls": [
+        {
+          "x": 242,
+          "y": 223,
+          "width": 222.671875,
+          "height": 36
+        },
+        {
+          "x": 474.671875,
+          "y": 223,
+          "width": 180.265625,
+          "height": 36
+        },
+        {
+          "x": 664.9375,
+          "y": 223,
+          "width": 180.265625,
+          "height": 36
+        },
+        {
+          "x": 855.203125,
+          "y": 223,
+          "width": 328.71875,
+          "height": 36
+        },
+        {
+          "x": 1193.921875,
+          "y": 223,
+          "width": 212.078125,
+          "height": 36
+        }
+      ],
+      "productionWrites": 0,
+      "productionRawRequests": 0
+    },
+    {
+      "width": 1920,
+      "passed": true,
+      "fourButtonsRightAligned": true,
+      "checkboxLeftOrAbove": true,
+      "dividerRemoved": true,
+      "hintContrast": 4.834490081424352,
+      "queryClearRefreshExportCallbacks": true,
+      "unassignedAndAccountCursorReset": true,
+      "checkboxToggleVerified": true,
+      "controls": [
+        {
+          "x": 242,
+          "y": 223,
+          "width": 317.765625,
+          "height": 36
+        },
+        {
+          "x": 569.765625,
+          "y": 223,
+          "width": 257.25,
+          "height": 36
+        },
+        {
+          "x": 837.015625,
+          "y": 223,
+          "width": 257.234375,
+          "height": 36
+        },
+        {
+          "x": 1104.25,
+          "y": 223,
+          "width": 469.09375,
+          "height": 36
+        },
+        {
+          "x": 1583.34375,
+          "y": 223,
+          "width": 302.65625,
+          "height": 36
+        }
+      ],
+      "productionWrites": 0,
+      "productionRawRequests": 0
+    },
+    {
+      "width": 375,
+      "passed": true,
+      "fourButtonsRightAligned": true,
+      "checkboxLeftOrAbove": true,
+      "dividerRemoved": true,
+      "hintContrast": 4.834490081424352,
+      "queryClearRefreshExportCallbacks": true,
+      "unassignedAndAccountCursorReset": true,
+      "checkboxToggleVerified": true,
+      "controls": [
+        {
+          "x": 26,
+          "y": 293,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 372,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 451,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 530,
+          "width": 323,
+          "height": 44
+        },
+        {
+          "x": 26,
+          "y": 609,
+          "width": 323,
+          "height": 44
+        }
+      ],
+      "productionWrites": 0,
+      "productionRawRequests": 0
+    }
+  ]
+}

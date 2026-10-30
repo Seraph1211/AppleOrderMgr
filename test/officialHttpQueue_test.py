@@ -17,6 +17,13 @@ spec.loader.exec_module(queue)
 
 
 class HttpQueueTest(unittest.TestCase):
+    def test_evidence_migration_latch_stops_queue(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'private/http-evidence-v2-maintenance.lock').mkdir(parents=True)
+            with patch.object(queue, 'ROOT', root), patch.object(queue, 'STOPPING', False):
+                self.assertTrue(queue.stopped())
+
     def test_command_failure_keeps_exit_code_without_secret_output(self):
         result = MagicMock(returncode=28, stderr=b'https://secret:password@proxy', stdout=b'secret')
         with patch.object(runHttpSample.subprocess, 'run', return_value=result):
@@ -65,7 +72,63 @@ class HttpQueueTest(unittest.TestCase):
                     patch.object(queue, 'probe', side_effect=[runHttpSample.RuntimeCommandError(22), 'verified']) as probe:
                 self.assertEqual(queue.probe_with_retry(proxy, audit, key), 'verified')
             self.assertEqual(audit[key], 2)
-            self.assertEqual([call.args for call in probe.call_args_list], [(proxy,), (proxy,)])
+            self.assertEqual([call[0] for call in probe.call_args_list], [(proxy,), (proxy,)])
+            self.assertTrue(all('diagnostics' in call[1] for call in probe.call_args_list))
+
+    def test_dead_sticky_session_is_not_probed_twice(self):
+        def unavailable(_proxy, diagnostics):
+            diagnostics.append({'curlExitCode': 22, 'proxyConnectStatus': 410, 'httpStatus': 0})
+            raise runHttpSample.RuntimeCommandError(22)
+        audit = {}
+        with patch.object(queue, 'stopped', return_value=False), patch.object(queue, 'probe', side_effect=unavailable) as probe:
+            with self.assertRaises(runHttpSample.RuntimeCommandError):
+                queue.probe_with_retry({}, audit, 'probeAfterAttempts')
+        self.assertEqual(probe.call_count, 1)
+        self.assertEqual(audit['probeAfterAttemptsDiagnostics'][0]['proxyConnectStatus'], 410)
+
+    def test_verified_network_failure_with_dead_post_probe_uses_fresh_attempt(self):
+        for code in queue.RETRYABLE:
+            failure = {'outcome': code, 'collectorOutcome': code, 'collectorFailureVerified': True,
+                       'cleanupVerified': True, 'failedStage': 'probe-after',
+                       'egressAfterError': 'EGRESS_PROBE_HTTP_FAILED', 'egressBefore': 'rejected'}
+            with patch.object(queue, 'stopped', return_value=False), patch.object(queue, 'attempt', side_effect=[
+                    (failure, None), ({'outcome': 'SUCCEEDED', 'cleanupVerified': True}, {'verified': True})]) as attempt:
+                result = queue.collect({'id': 'test', 'orderId': 1})
+            self.assertEqual(result['outcome'], 'SUCCEEDED')
+            self.assertEqual(attempt.call_count, 2)
+            self.assertIn('rejected', attempt.call_args[0][1])
+
+    def test_dead_post_probe_retry_is_bounded_and_fail_closed(self):
+        valid = {'outcome': 'HTTP_TIMEOUT', 'collectorOutcome': 'HTTP_TIMEOUT',
+                 'collectorFailureVerified': True, 'cleanupVerified': True,
+                 'failedStage': 'probe-after', 'egressAfterError': 'EGRESS_PROBE_HTTP_FAILED'}
+        for changes, count in [({}, 3), ({'collectorFailureVerified': False}, 1),
+                               ({'collectorOutcome': 'SUCCEEDED'}, 1), ({'cleanupVerified': False}, 1),
+                               ({'egressAfterError': 'EGRESS_PROBE_TLS_FAILED'}, 1),
+                               ({'egressAfterError': 'EGRESS_CHANGED_OR_UNVERIFIED'}, 1),
+                               ({'egressAfterError': 'EGRESS_LOG_UNAVAILABLE'}, 1),
+                               ({'failedStage': 'collector'}, 1)]:
+            with self.subTest(changes=changes), patch.object(queue, 'stopped', return_value=False), \
+                    patch.object(queue, 'attempt', return_value=(dict(valid, **changes), None)) as attempt:
+                queue.collect({'id': 'test', 'orderId': 1})
+                self.assertEqual(attempt.call_count, count)
+
+    def test_success_with_unknown_exit_cannot_be_replayed(self):
+        audit = {'outcome': 'EGRESS_PROBE_HTTP_FAILED', 'collectorOutcome': 'SUCCEEDED',
+                 'collectorFailureVerified': False, 'cleanupVerified': True,
+                 'failedStage': 'probe-after', 'egressAfterError': 'EGRESS_PROBE_HTTP_FAILED'}
+        with patch.object(queue, 'stopped', return_value=False), patch.object(queue, 'attempt', return_value=(audit, None)) as attempt:
+            self.assertEqual(queue.collect({'id': 'test'})['outcome'], 'EGRESS_PROBE_HTTP_FAILED')
+            self.assertEqual(attempt.call_count, 1)
+
+    def test_previously_rejected_exit_uses_bounded_fresh_sessions_and_obeys_stop(self):
+        audit = {'outcome': 'EGRESS_PREVIOUSLY_REJECTED', 'failedStage': 'probe-before',
+                 'cleanupVerified': True, 'egressBefore': 'rejected'}
+        for stopping, expected in [(False, 3), (True, 1)]:
+            with patch.object(queue, 'stopped', return_value=stopping), \
+                    patch.object(queue, 'attempt', return_value=(audit, None)) as attempt:
+                queue.collect({'id': 'test'})
+            self.assertEqual(attempt.call_count, expected)
 
     def test_probe_retry_does_not_accept_tls_or_unverified_egress(self):
         for error in (runHttpSample.RuntimeCommandError(60), RuntimeError('EGRESS_LOG_UNAVAILABLE'), RuntimeError('API_HEALTH_FAILED')):
@@ -87,7 +150,14 @@ class HttpQueueTest(unittest.TestCase):
         self.assertEqual(probe.call_count, 1)
 
     def test_post_probe_failure_preserves_site_failure_and_denies_success_write(self):
-        for code, expected in [('SHIELD_HTTP_404', 'SHIELD_HTTP_404'), ('SUCCEEDED', 'EGRESS_PROBE_TIMEOUT')]:
+        for code, expected, exit_code, extra in [
+                ('SHIELD_HTTP_404', 'SHIELD_HTTP_404', 2, {}),
+                ('SUCCEEDED', 'EGRESS_PROBE_TIMEOUT', 0, {}),
+                ('HTTP_TIMEOUT', 'HTTP_TIMEOUT', 2, {}),
+                ('HTTP_TIMEOUT', 'HTTP_TIMEOUT', 0, {}),
+                ('HTTP_TIMEOUT', 'HTTP_TIMEOUT', 137, {}),
+                ('HTTP_TIMEOUT', 'HTTP_TIMEOUT', 2, {'resultFile': '/private/partial.json'}),
+                ('HTTP_TIMEOUT', 'HTTP_TIMEOUT', 2, {'runId': True})]:
             with tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / 'private').mkdir()
@@ -95,7 +165,8 @@ class HttpQueueTest(unittest.TestCase):
                 source.mkdir(parents=True)
                 (source / 'readOfficialOrderLinkInput.js').write_text('synthetic')
                 data = {'capturedAt': 'synthetic', 'samples': [{'id': 1, 'orderNumber': 'W1234567890'}]}
-                output = MagicMock(stdout=json.dumps({'outcome': code, 'runId': 12}).encode(), returncode=0)
+                summary = dict({'outcome': code, 'runId': 12}, **extra)
+                output = MagicMock(stdout=json.dumps(summary).encode(), returncode=exit_code)
                 with patch.object(queue, 'ROOT', root), patch.object(queue, 'stopped', return_value=False), \
                         patch.object(queue, 'read_private', return_value={}), patch.object(queue, 'writePrivate'), \
                         patch.object(queue, 'generate_proxy', return_value={}), patch.object(queue, 'egress_state'), \
@@ -110,6 +181,7 @@ class HttpQueueTest(unittest.TestCase):
             self.assertEqual(audit['failedStage'], 'probe-after')
             self.assertEqual(audit['commandExitCode'], 28)
             self.assertTrue(audit['cleanupVerified'])
+            self.assertEqual(audit['collectorFailureVerified'], code == 'HTTP_TIMEOUT' and exit_code == 2 and not extra)
 
     def test_main_executes_ten_jobs_simultaneously(self):
         started = []

@@ -1093,7 +1093,7 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 - POST `/`、PUT `/:id` 保存完整资料，编辑带 expectedVersion；新增必填 orderSource，productCandidates 完整任选数组，旧 productModel/color/storage 兼容。`storeCities` 接受1个或多个已核实城市，兼容只传单值 `storeCity` 的旧客户端；服务端规范为有序去重数组，并返回兼容 `storeCity` 串。`city_any` 在新建或用户明确改变城市选择时展开所选城市的当前门店并固定保存；读取或未改变范围的编辑沿用已有 `storeCodes`，不得因目录变化自动扩张。`selected` 可选择所选城市内一家或多家门店。城市文本明确“全店”且另给显式门店子集时拒绝范围冲突。至少一座城市和一家有效门店，账单参考门店须在范围内。平台订单号允许重复。新建疑似重复返回409并附 duplicateIds，明确继续时传 confirmedDuplicate=true；无可用账号仍建单。创建返回 assigned（数字）、assignmentStatus=assigned|awaiting_account、assignmentMessage，空池明确提示待分配。分配只允许专用池中状态未使用或使用中、且无活跃占用的账号；自动与手选共用规则，不纳入普通池或重置账号状态。
 - 列表和详情为每笔委托返回派生 `storeCities`；历史单优先从有效 `storeCodes` 推导，无法推导时兼容解析 `storeCity`。模板仍按固定 `storeCodes` 生成，自动匹配只需官方订单门店代码属于该集合，不改变客户身份、商品和数量条件。
 - GET `/:id` 返回详情、assignments、events、officialOrders 活跃关联数组、links 历史及兼容 officialOrder 首项。官网摘要含 officialRawStatus/officialStatusObservedAt，status 仅官网原始状态，无观测显示 null；不使用邮件状态。
-- POST `/:id/status` 输入 expectedVersion,status（pending/rushing/succeeded/cancelled）；四态自由修改，人工成功优先使用 reason、notes 或已有备注作为原因，无说明时记录人工确认事件；加密记录并保留原客户备注。notes 可选仅用于本次原因，不覆盖客户备注。
+- POST `/:id/status` 输入 expectedVersion,status（pending/rushing/succeeded/cancelled）；四态自由修改，人工成功优先使用 reason、notes 或已有备注作为原因，无说明时记录人工确认事件；加密记录并保留原客户备注。notes 可选仅用于本次原因，不覆盖客户备注。取消有活跃账号占用时必须 confirmedStopped=true，否则409并带 requiresStoppedConfirmation=true；确认后同一事务内取消、结束全部活跃占用，沿用手动释放将“使用中”账号改为“未使用”（其他账号状态保持），保留分配历史并记录 source=cancel 的释放事件及状态事件。无占用无需确认；取消响应 `{id,version,released}`，released为本次释放数量，其他状态仍返回 `{id,version}`。任一步失败或版本冲突全部回滚，不自动清理历史已取消单。此取消联动契约于2026-10-25生产发布。
 - POST `/:id/notes` 输入 expectedVersion,notes，只修改备注。
 - POST `/:id/delete` 输入 expectedVersion（正整数），沿用 proxy_orders.read。返回 `{id,version,deleted:true}`；有活跃账号占用时必须 confirmedStopped=true，否则409并带 requiresStoppedConfirmation=true，提示先停止外部软件任务。确认后事务内结束占用、记录释放及删除事件，保留账号状态和全部历史。无活跃占用无需停抢确认。无恢复接口，已删详情或再次操作404，版本冲突409，非法版本400。
 
@@ -1118,6 +1118,10 @@ Excel／CSV 文本导出禁止公式执行：以 =、+、-、@ 等开头的用�
 - POST `/api/server-monitor/logs/export-ticket`：body 只接受 `{deviceId,localId,startAt,endAt}` 或兼容的 `{deviceId,localId,date}`。先验证范围和首批日志可读性，再设置60秒有效、HttpOnly、SameSite=Strict、仅限导出路径的短期 Cookie；生产同时设置 Secure。响应只返回 `expiresInSeconds`，不向前端脚本暴露凭证。
 - GET `/api/server-monitor/logs/export?deviceId=&localId=&startAt=&endAt=`：按指定服务器、实例和北京时间范围流式导出全部已入库日志，兼容 `date` 全天模式，响应 `text/plain; charset=utf-8` 附件；不接受账号或关键词筛选。支持正常 Bearer 鉴权，或只在该路径读取上一步短期 Cookie；短期凭证必须与全部范围查询字段完全一致，且下载时重新核对用户、会话和 `monitor.logs.read`，接受后清除 Cookie。服务端按稳定顺序有界分页写出，浏览器在响应头到达后原生落盘，不把全部内容一次性载入服务端或浏览器内存；客户端断开后停止继续扫描。导出只包含请求期间可读的数据，历史补采尚未完成时不代表范围内完整。
 - GET `/api/server-monitor/logs/:id/context?scope=account|instance&cursor=&direction=&limit=`：首次以选中片段为锚点，默认返回前后各100个片段及 `hasMoreBefore/hasMoreAfter`；继续加载时 cursor 为当前边界事件 UUID，direction 为 `before` 或 `after`，limit 最大100，返回单向 items/hasMore。所有页限定同设备和实例，在最近90个北京时间日期（first 至 today，均包含）内按 sort_at/file_id/byte_offset/id 连续升序查看，跨午夜及中间无日志日期自动衔接，不受主列表起止日期、关键词或账号筛选影响；账号上下文始终限定锚点的同一已识别账号，实例上下文包含其他账号及未识别行。后续请求的路径锚点 ID 保持最初选中片段不变；cursor 可以来自其他业务日，但必须仍在保留期且符合相同设备／实例／账号范围。返回中每页片段保留自己的 businessDate 和原始来源。服务端从当前锚点或游标所在业务日起按方向逐日查询，单日使用 date 等值筛选与既有索引，取得 limit+1 个候选即停止；不足则跨空日继续至保留期边界，恰好 limit 个且后续无日志时 hasMore 为 false。不对90日正文做整体范围排序，不提高既有压缩块快照查询的单条SQL 5秒超时。锚点不存在或已过保留期返回404；游标不存在、过期或跨设备／实例／账号范围返回400。
+
+- PUT `/api/server-monitor/logs/tags`：要求 `monitor.manage`，输入 `{deviceId,localId?,tag,expectedVersion}`。省略或传 `null` 的 `localId` 表示服务器，否则定位该服务器下的实例；`tag` 为最多100字符的单行文本，去首尾空格，空字符串清空；不接受未知字段。`expectedVersion` 为最近读取的 `tagVersion`，首次为0。成功返回 `{deviceId,localId,tag,tagVersion}`，并递增版本；并发修改返回409，资源不存在404。允许维护停用服务器、已移除但仍有配置或日志状态的实例。标签独立持久化，不改原名称、编号或采集状态，不随采集器同步和90天日志清理覆盖。
+
+设备和实例状态返回人工标签`tag`及`tagVersion`；仅标签写入额外要求`monitor.manage`，日志读取权限不变。
 
 设备协议使用已有设备认证与解压后1MiB请求限制（完整日志上传使用gzip），`/logs` 独立60次／分钟限流，不消耗原订单及监控请求配额，不接受 body.deviceId。完整日志请求必须带 `X-AOS-Device-Id`，其值必须等于凭证认证设备ID，防止误配凭证把旧队列归到另一设备：
 

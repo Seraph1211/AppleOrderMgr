@@ -1,0 +1,15 @@
+{
+  "releaseId": "20261025-log-filter-actions",
+  "description": "标签管理入口移到收起筛选左侧并排，纯前端单文件调整",
+  "frontendOnly": true,
+  "previousRelease": "20261024-log-filters-r2",
+  "baseFrontendImage": "apple-order-mgr-frontend-builder:20261024-log-filters-r2-amd64",
+  "preservedApiImage": "apple-order-mgr-api:20261024-log-labels-amd64",
+  "reusedBackupEvidence": "20261024-log-filters-r2",
+  "files": {
+    "frontend/src/components/MonitorLogs.jsx": {
+      "beforeSha256": "6b277a4a594820f25a4a0c6b1cfcf53e04f8459321215aebdb6be32e4fbe8717",
+      "afterSha256": "9ae61c292a5bf81a26c8182506466277de4426eb5d3e3d560e3d6cbe3d1eb8ac"
+    }
+  }
+}

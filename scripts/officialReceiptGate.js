@@ -7,6 +7,7 @@ const {
   writePrivate,
 } = require('../src/services/officialOrderSupport');
 const { verifyReceiptEvidence } = require('../src/services/officialReceiptEvidence');
+const DAILY_ORDER_ATTEMPTS = 50;
 
 /** 采集调度预检与采后只读 Gate 对账；最终网络准入仍由共享 Gate 决定。 */
 async function main() {
@@ -62,7 +63,7 @@ async function main() {
       const settings = readPrivate(`${root}/private/settings.json`);
       if (!budget.rows.length || budget.rows[0].requests >= settings.totalRequestLimit)
         throw fault('REQUEST_BUDGET');
-      const until = attempts.rows[0].count >= 10 ? attempts.rows[0].until : pauses.rows[0].until;
+      const until = attempts.rows[0].count >= DAILY_ORDER_ATTEMPTS ? attempts.rows[0].until : pauses.rows[0].until;
       value = {
         outcome: until ? 'RECEIPT_DEFERRED' : 'RECEIPT_READY',
         retryAt: until || null,

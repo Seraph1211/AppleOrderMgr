@@ -1,6 +1,7 @@
 const { readPrivate, decrypt, hash, fault } = require('./officialOrderSupport');
 const { parseOfficialOrderDetail } = require('./officialOrderParser');
 const { validateReadUrl } = require('./officialOrderHttpCollector');
+const { readHttpResponseEvidence } = require('./officialHttpEvidence');
 
 /** 从 AES-GCM 原响应重解析手动 HTTP 结果，不信任结果文件中的商品与日期。 */
 function verifyRefreshEvidence(root, result) {
@@ -17,13 +18,16 @@ function verifyRefreshEvidence(root, result) {
   }
   const directory = `${root}/evidence/run-${source.runId}`;
   const key = readPrivate(`${root}/private/evidence.key`, false);
-  const body = decrypt(readPrivate(`${directory}/${source.file}`, false), key);
-  const response = JSON.parse(
-    decrypt(readPrivate(`${directory}/response-${match[1]}.enc`, false), key)
-  );
-  const request = JSON.parse(
-    decrypt(readPrivate(`${directory}/request-${match[1]}.enc`, false), key)
-  );
+  const evidence = readHttpResponseEvidence({
+    responseBytes: readPrivate(`${directory}/response-${match[1]}.enc`, false),
+    requestBytes: readPrivate(`${directory}/request-${match[1]}.enc`, false),
+    key,
+    runId: source.runId,
+    index: Number(match[1]),
+    expectedBodyFile: source.file,
+    readBody: file => decrypt(readPrivate(`${directory}/${file}`, false), key),
+  });
+  const { body, response, request } = evidence;
   const url = validateReadUrl(request.url, request.method);
   const events = readPrivate(`${directory}/events.jsonl`, false)
     .toString('utf8')
@@ -39,7 +43,8 @@ function verifyRefreshEvidence(root, result) {
     url.hostname !== source.host ||
     hash(url.href) !== source.urlHash ||
     hash(body) !== source.sha256 ||
-    body.toString('base64') !== response.bodyBase64 ||
+    evidence.bodyFile !== source.file ||
+    (evidence.version === 2 && response.observedAt !== source.observedAt) ||
     event.length !== 1 ||
     event[0].sha256 !== source.sha256 ||
     event[0].observedAt !== source.observedAt

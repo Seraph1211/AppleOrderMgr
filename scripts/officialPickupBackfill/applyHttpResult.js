@@ -13,6 +13,7 @@ const { parseOfficialOrderDetail } = require('../../src/services/officialOrderPa
 const { validateOfficialStatusResult } = require('../../src/services/officialOrderStatusSync');
 const { deriveOfficialPickupDate } = require('../../src/services/officialPickupDate');
 const { buildGuestRequestEvidence } = require('../../src/services/officialOrderRequestEvidence');
+const { readHttpResponseEvidence } = require('../../src/services/officialHttpEvidence');
 
 const LIMITS = Object.freeze({
   planAgeMs: 86400000,
@@ -239,20 +240,21 @@ function verifyHttpEvidence(root, auditName, now = Date.now()) {
   const key = privateBytes(root, path.join(root, 'private/evidence.key'), LIMITS.keyBytes);
   if (key.length !== LIMITS.keyBytes) throw fault('HTTP_APPLY_KEY_INVALID');
   const directory = path.join(root, `evidence/run-${audit.runId}`);
-  const bytes = decrypt(privateBytes(root, path.join(directory, source.file)), key);
-  const responseBytes = decrypt(
-    privateBytes(root, path.join(directory, `response-${match[1]}.enc`)),
-    key
-  );
-  const response = JSON.parse(responseBytes.toString('utf8'));
-  const requestBytes = decrypt(
-    privateBytes(root, path.join(directory, `request-${match[1]}.enc`)),
-    key
-  );
-  const request = JSON.parse(requestBytes.toString('utf8'));
+  const evidence = readHttpResponseEvidence({
+    responseBytes: privateBytes(root, path.join(directory, `response-${match[1]}.enc`)),
+    requestBytes: privateBytes(root, path.join(directory, `request-${match[1]}.enc`)),
+    key,
+    runId: audit.runId,
+    index: Number(match[1]),
+    expectedBodyFile: source.file,
+    readBody: file => decrypt(privateBytes(root, path.join(directory, file)), key),
+  });
+  const bytes = evidence.body;
+  const responseBytes = evidence.responsePlaintext;
+  const requestBytes = evidence.requestPlaintext;
+  const { response, request } = evidence;
   const url = permittedUrl(response.url);
   validateDetailRequest(request, url, entry.orderNumber);
-  const responseBody = Buffer.from(response.bodyBase64 || '', 'base64');
   const rawContentTypes = response.rawHeaders?.filter(
     pair =>
       Array.isArray(pair) && typeof pair[0] === 'string' && pair[0].toLowerCase() === 'content-type'
@@ -274,8 +276,8 @@ function verifyHttpEvidence(root, auditName, now = Date.now()) {
     safePath(url.pathname) !== source.path ||
     hash(url.href) !== source.urlHash ||
     hash(bytes) !== source.sha256 ||
-    !bytes.equals(responseBody) ||
-    responseBody.toString('base64') !== response.bodyBase64 ||
+    evidence.bodyFile !== source.file ||
+    (evidence.version === 2 && response.observedAt !== source.observedAt) ||
     rawContentTypes?.length !== 1 ||
     rawContentTypes[0][1] !== source.contentType ||
     !Number.isFinite(Date.parse(request.observedAt)) ||

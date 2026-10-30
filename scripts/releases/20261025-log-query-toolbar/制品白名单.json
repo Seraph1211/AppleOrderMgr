@@ -1,0 +1,15 @@
+{
+  "releaseId": "20261025-log-query-toolbar",
+  "description": "复选项左侧，查询工具栏四按钮整组靠右，移除分割线并整理导出说明；仅前端单文件",
+  "frontendOnly": true,
+  "previousRelease": "20261025-log-filter-actions",
+  "baseFrontendImage": "apple-order-mgr-frontend-builder:20261025-log-filter-actions-amd64",
+  "preservedApiImage": "apple-order-mgr-api:20261024-log-labels-amd64",
+  "reusedBackupEvidence": "20261024-log-filters-r2",
+  "files": {
+    "frontend/src/components/MonitorLogs.jsx": {
+      "beforeSha256": "9ae61c292a5bf81a26c8182506466277de4426eb5d3e3d560e3d6cbe3d1eb8ac",
+      "afterSha256": "11b04658b4ded32561677bcf4c8b94067c0009d50336ca48fdde7ccf4a5c2362"
+    }
+  }
+}

@@ -1,6 +1,10 @@
-import ResponsiveSelect from './responsiveSelect';
+import MonitorResourceSelect from './monitorResourceSelect';
+import './monitorFilterLayout.css';
+import MonitorLogTagsDialog from './monitorLogTagsDialog';
+import { useAuth } from '../contexts/AuthContext';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  ChevronDown,
   Copy,
   Download,
   Maximize2,
@@ -62,6 +66,9 @@ const initial = () => ({
 
 /** 完整日志筛选与上下文；原文只作为文本渲染。 */
 export default function MonitorLogs({ standalone = false }) {
+  const { can } = useAuth();
+  const canManageTags = can('monitor.manage');
+  const [tagsOpen, setTagsOpen] = useState(false);
   const Heading = standalone ? 'h1' : 'h2';
   const [catalog, setCatalog] = useState(null);
   const [catalogError, setCatalogError] = useState('');
@@ -110,6 +117,25 @@ export default function MonitorLogs({ standalone = false }) {
   const activeInstance = catalog?.instances.find(
     row => row.deviceId === filters.deviceId && row.localId === filters.localId
   );
+  const displayResource = (name, tag) => (tag ? `${name} · ${tag}` : name);
+  function updateTag(saved) {
+    setCatalog(
+      current =>
+        current && {
+          ...current,
+          devices: current.devices.map(row =>
+            !saved.localId && row.id === saved.deviceId
+              ? { ...row, tag: saved.tag, tagVersion: saved.tagVersion }
+              : row
+          ),
+          instances: current.instances.map(row =>
+            saved.localId && row.deviceId === saved.deviceId && row.localId === saved.localId
+              ? { ...row, tag: saved.tag, tagVersion: saved.tagVersion }
+              : row
+          ),
+        }
+    );
+  }
   const snapshot = activeInstance?.snapshot;
   const chosenDevice = catalog?.devices.find(row => row.id === filters.deviceId);
 
@@ -567,7 +593,9 @@ export default function MonitorLogs({ standalone = false }) {
                         {highlighted(row.message.replace(/\r?\n$/, '') || '（空行）')}
                       </span>
                       {PARSE[row.parseState] && (
-                        <span className="ml-2 text-xs text-amber-700">[{PARSE[row.parseState]}]</span>
+                        <span className="ml-2 text-xs text-amber-700">
+                          [{PARSE[row.parseState]}]
+                        </span>
                       )}
                     </button>
                   )}
@@ -603,128 +631,169 @@ export default function MonitorLogs({ standalone = false }) {
       {!catalog && !catalogError && <p className="text-gray-500">正在读取服务器与实例…</p>}
       <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
         <p className="min-w-0 break-words text-gray-600">
-          {chosenDevice?.name || '未选择服务器'} / {activeInstance?.label || '未选择实例'} ·{' '}
+          {displayResource(chosenDevice?.name, chosenDevice?.tag) || '未选择服务器'} /{' '}
+          {displayResource(activeInstance?.label, activeInstance?.tag) || '未选择实例'} ·{' '}
           {describeLogRange(filters.startAt, filters.endAt)}
           {filters.account &&
             ` · 账号 ${filters.account === '__unassigned__' ? '未识别' : filters.account}`}
           {filters.keyword && ` · 关键词：${filters.keyword}`}
         </p>
-        <button
-          type="button"
-          className="btn btn-secondary shrink-0"
-          aria-expanded={filtersOpen}
-          aria-controls="log-query-filters"
-          onClick={() => setFiltersOpen(value => !value)}
-        >
-          {filtersOpen ? '收起筛选' : '修改筛选'}
-        </button>
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {canManageTags && (
+            <button
+              type="button"
+              className="btn btn-secondary min-h-11 shrink-0 whitespace-nowrap sm:min-h-0"
+              aria-haspopup="dialog"
+              aria-controls="log-tag-management"
+              disabled={!catalog}
+              onClick={() => setTagsOpen(true)}
+            >
+              标签管理
+            </button>
+          )}
+          <button
+            type="button"
+            className="btn btn-secondary monitor-filter-toggle"
+            aria-expanded={filtersOpen}
+            aria-controls="log-query-filters"
+            onClick={() => setFiltersOpen(value => !value)}
+          >
+            {filtersOpen ? '收起筛选' : '展开筛选'}
+            <ChevronDown
+              className={`h-4 w-4 ${filtersOpen ? 'rotate-180' : ''}`}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
       </div>
+      {canManageTags && catalog && (
+        <MonitorLogTagsDialog
+          open={tagsOpen}
+          onClose={() => setTagsOpen(false)}
+          catalog={catalog}
+          onSaved={updateTag}
+          onCatalog={setCatalog}
+        />
+      )}
       <form
         id="log-query-filters"
         hidden={!filtersOpen}
         onSubmit={submit}
         className="monitor-log-filter-form rounded-xl border border-gray-200 bg-white p-3 sm:p-4"
       >
-        <div className="monitor-log-filter-grid">
-          <label className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
-            服务器
-            <ResponsiveSelect
-              className="input mt-1 w-full text-base sm:text-sm"
-              aria-label="服务器"
+        <div
+          className="monitor-log-filter-scroll"
+          role="region"
+          aria-label="日志筛选条件"
+          tabIndex={0}
+        >
+          <div className="monitor-log-filter-grid">
+            <MonitorResourceSelect
+              label="服务器"
+              placeholder="请选择服务器"
               value={filters.deviceId}
-              onChange={e => change('deviceId', e.target.value)}
-            >
-              <option value="">请选择服务器</option>
-              {catalog?.devices.map(device => (
-                <option key={device.id} value={device.id}>
-                  {device.name}
-                  {device.enabled ? '' : '（已停用）'}
-                </option>
-              ))}
-            </ResponsiveSelect>
-          </label>
-          <label className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
-            软件实例
-            <ResponsiveSelect
-              className="input mt-1 w-full text-base sm:text-sm"
-              aria-label="软件实例"
+              onChange={value => change('deviceId', value)}
+              options={[...(catalog?.devices || [])]
+                .sort((a, b) => {
+                  const priority = name => {
+                    const match = /^US(?:\s+Server\s+(?:No\.)?)?0*(\d+)$/i.exec(name);
+                    const number = match ? Number(match[1]) : 0;
+                    return number >= 1 && number <= 10 ? number : 11;
+                  };
+                  return (
+                    priority(a.name) - priority(b.name) ||
+                    a.name.localeCompare(b.name, 'zh-CN', { numeric: true })
+                  );
+                })
+                .map(device => ({
+                  value: device.id,
+                  name: device.name,
+                  tag: device.tag,
+                  status: device.enabled ? '' : '已停用',
+                  label: `${displayResource(device.name, device.tag)}${device.enabled ? '' : '（已停用）'}`,
+                }))}
+            />
+            <MonitorResourceSelect
+              label="软件实例"
+              placeholder="请选择实例"
               value={filters.localId}
               disabled={!filters.deviceId}
-              onChange={e => change('localId', e.target.value)}
-            >
-              <option value="">请选择实例</option>
-              {catalog?.instances
+              onChange={value => change('localId', value)}
+              options={(catalog?.instances || [])
                 .filter(item => item.deviceId === filters.deviceId)
-                .map(item => (
-                  <option key={item.localId} value={item.localId}>
-                    {item.label}
-                    {item.active === false ? '（已移除）' : ''}
-                  </option>
-                ))}
-            </ResponsiveSelect>
-          </label>
-          <div className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
-            <span>账号编号</span>
-            <MonitorLogAccountSelect
-              value={draft.account === '__unassigned__' ? '' : draft.account}
-              options={accounts}
-              loading={accountsLoading}
-              error={accountError}
-              disabled={!filtersOpen || !filters.localId || draft.account === '__unassigned__'}
-              nextCursor={accountNext}
-              hasPrevious={Boolean(accountAfter)}
-              onChange={account => {
-                if (account === draft.account) return;
-                setDraft(value => ({ ...value, account }));
-                setAccounts([]);
-                setAccountNext(null);
-                setAccountAfter('');
-              }}
-              onNext={() => {
-                setAccounts([]);
-                setAccountAfter(accountNext);
-              }}
-              onFirst={() => {
-                setAccounts([]);
-                setAccountAfter('');
-              }}
+                .map(item => ({
+                  value: item.localId,
+                  name: item.label,
+                  tag: item.tag,
+                  status: item.active === false ? '已移除' : '',
+                  label: `${displayResource(item.label, item.tag)}${item.active === false ? '（已移除）' : ''}`,
+                }))}
             />
+            <div className="monitor-log-filter-field monitor-filter-account">
+              <span className="monitor-filter-label">账号编号</span>
+              <MonitorLogAccountSelect
+                value={draft.account === '__unassigned__' ? '' : draft.account}
+                options={accounts}
+                loading={accountsLoading}
+                error={accountError}
+                disabled={!filtersOpen || !filters.localId || draft.account === '__unassigned__'}
+                nextCursor={accountNext}
+                hasPrevious={Boolean(accountAfter)}
+                onChange={account => {
+                  if (account === draft.account) return;
+                  setDraft(value => ({ ...value, account }));
+                  setAccounts([]);
+                  setAccountNext(null);
+                  setAccountAfter('');
+                }}
+                onNext={() => {
+                  setAccounts([]);
+                  setAccountAfter(accountNext);
+                }}
+                onFirst={() => {
+                  setAccounts([]);
+                  setAccountAfter('');
+                }}
+              />
+            </div>
+            <div className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
+              <span className="monitor-filter-label">
+                日志时间范围 <span className="text-xs text-gray-400">（北京时间）</span>
+              </span>
+              <MonitorLogRangeFilter
+                startAt={draft.startAt}
+                endAt={draft.endAt}
+                first={catalog?.first || logDay(-89)}
+                onChange={range => {
+                  setDraft(value => ({ ...value, ...range }));
+                  setRangeError('');
+                  setAccounts([]);
+                  setAccountAfter('');
+                  setAccountNext(null);
+                }}
+              />
+            </div>
+            <label className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
+              <span className="monitor-filter-label">正文关键词</span>
+              <div className="monitor-filter-keyword-control">
+                <input
+                  className="input mt-1 w-full text-base sm:text-sm"
+                  maxLength={200}
+                  placeholder="输入关键词"
+                  aria-label="正文关键词"
+                  value={draft.keyword}
+                  onChange={e => setDraft(value => ({ ...value, keyword: e.target.value }))}
+                />
+              </div>
+            </label>
           </div>
-          <div className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
-            <span className="mb-1 block">
-              日志时间范围 <span className="text-xs text-gray-400">（北京时间）</span>
-            </span>
-            <MonitorLogRangeFilter
-              startAt={draft.startAt}
-              endAt={draft.endAt}
-              first={catalog?.first || logDay(-89)}
-              onChange={range => {
-                setDraft(value => ({ ...value, ...range }));
-                setRangeError('');
-                setAccounts([]);
-                setAccountAfter('');
-                setAccountNext(null);
-              }}
-            />
-          </div>
-          <label className="monitor-log-filter-field min-w-0 text-sm text-gray-600">
-            正文关键词
-            <input
-              className="input mt-1 w-full text-base sm:text-sm"
-              maxLength={200}
-              placeholder="例如：加入购物车、店铺编号"
-              aria-label="正文关键词"
-              value={draft.keyword}
-              onChange={e => setDraft(value => ({ ...value, keyword: e.target.value }))}
-            />
-          </label>
         </div>
         {rangeError && (
           <p role="alert" className="mt-2 text-sm text-red-700">
             {rangeError}
           </p>
         )}
-        <div className="monitor-log-filter-actions mt-3 flex flex-wrap items-center gap-2 border-t border-gray-100 pt-3">
+        <div className="monitor-log-filter-actions mt-3 flex flex-wrap items-center justify-end gap-2 border-t border-gray-100 pt-3">
           <button
             className="btn btn-primary inline-flex items-center justify-center min-h-11 sm:min-h-0"
             disabled={!filters.localId || loading}

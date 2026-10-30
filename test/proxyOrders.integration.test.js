@@ -378,7 +378,7 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
     await service.changeOrder(
       'status',
       row.id,
-      { expectedVersion: row.version, status: 'cancelled' },
+      { expectedVersion: row.version, status: 'cancelled', confirmedStopped: true },
       actor.id
     );
     await official(row);
@@ -704,7 +704,7 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
     await service.changeOrder(
       'status',
       row.id,
-      { expectedVersion: row.version, status: 'cancelled' },
+      { expectedVersion: row.version, status: 'cancelled', confirmedStopped: true },
       actor.id
     );
     await row.reload();

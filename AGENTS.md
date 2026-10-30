@@ -9,9 +9,12 @@ Apple 订单管理系统已有 React 管理台、Express API、PostgreSQL/Sequel
 - 图片生成、编辑、延展、重绘或变体必须主动加载 imagegen Skill。
 - 保留其他未提交工作；不为文档整理改变业务代码、数据库或线上状态。提交、推送、生产写入等遵循当前会话授权。
 
-- 生产发布备份和恢复演练排除 AOS 监控日志明细及原始日志文件；其余业务数据仍须备份并验证迁移，不删除生产日志。具体命令与范围见[生产环境部署指南](docs/deployment/生产环境部署指南.md#发布前备份和演练)。
+- 生产发布先按[生产发布分级执行规范](docs/deployment/生产发布分级执行规范.md)生成并绑定分级证据：A级纯静态前端、B级严格无写入仅在24小时内完整恢复证明有效时复用；C级业务写入、D级Migration或数据转换必须做本次完整业务数据库备份与隔离恢复，D级追加正式迁移演练。无法证明时自动升级。备份范围排除AOS监控日志明细及原始日志文件，不删除生产日志；具体命令与范围见[生产环境部署指南](docs/deployment/生产环境部署指南.md#发布前备份和演练)。
+- 所有生产发布（含仅 API 增量）使用 `scripts/productionFrontendGate.py`：公开树 `prepare`，正式服务切换前以实际 Nginx 用户 `check`，版本指针通过 `switch` 切换并验证网页与资源，失败回退。禁止临时脚本直接切换 `current` 绕过门禁；命令和业务回退边界见[生产切换顺序](docs/deployment/生产环境部署指南.md#生产切换顺序)。
 
 ## 开发前必读
+
+全量构建前运行 `npm run check:production-source`，构建后绑定 `source-capabilities.json`、`runtime-source-proof.json` 和 `capabilities.json`。生产增量先收敛进 main；不得以干净工作树替代生产能力核对。能力清单丢失或缩减必须阻断；回退仅使用预先记录且摘要匹配的目标，详见[源码与生产能力收敛](docs/deployment/生产环境部署指南.md#源码与生产能力收敛)。
 
 1. 本文件及[文档导航](docs/README.md)。
 2. [编码规范](docs/development/编码规范.md)，所有代码强制遵循。

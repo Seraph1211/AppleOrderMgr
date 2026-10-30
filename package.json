@@ -64,6 +64,7 @@
     "official:collect": "node scripts/collectOfficialOrder.js",
     "official:migrate": "node scripts/migrateOfficialOrderResearch.js",
     "test:official-queue": "python3 -m unittest discover -s test -p 'officialOrderQueue_test.py' -v",
+    "test:official-egress:nginx": "python3 -B -m unittest discover -s test -p 'nginxOfficialEgress_test.py' -v",
     "test:browser:official": "node scripts/testOfficialOrderRefreshBrowser.js",
     "test:stock": "jest test/stockMoney.test.js test/stockRules.test.js test/stockCommand.test.js test/stockImport.test.js test/stockEvidence.test.js test/stockImportCleanup.test.js --runInBand",
     "test:stock:integration": "jest test/stock.integration.test.js test/stockImport.integration.test.js test/stockLegacy.integration.test.js test/stockLedger.integration.test.js --runInBand",
@@ -79,7 +80,10 @@
     "official:backfill:http": "python3 scripts/officialOrder/runHttpBatch.py",
     "official:backfill:historical-date": "python3 scripts/officialOrder/applyHistoricalDate.py",
     "official:backfill:browser": "python3 scripts/officialOrder/runBrowserBatch.py",
-    "official:queue:http": "python3 scripts/runOfficialOrderHttpQueue.py"
+    "official:queue:http": "python3 scripts/runOfficialOrderHttpQueue.py",
+    "check:production-source": "python3 scripts/productionSourceGuard.py source",
+    "test:release": "python3 -m unittest discover -s test -p 'production*test.py'",
+    "test:browser:production-capabilities": "node test/browser/productionCapabilitiesAcceptance.cjs"
   },
   "keywords": [
     "apple",

@@ -1,0 +1,113 @@
+{
+  "current": "/var/www/apple-order-mgr/releases/20261030-http-evidence-v2-compat-r2",
+  "releases": [
+    {
+      "release": "20261028-log-tags-dialog-r3",
+      "entry": "/assets/index-log-dialog-497891c297.js",
+      "sha256": "497891c297120b9c4b3c0d003d8ec3ba9261d2223d8994e641a84f1d998ec249",
+      "resourceSearch": true,
+      "expandFilter": true,
+      "usPrioritySort": true,
+      "serverSelectorSnippet": "ole:\"region\",\"aria-label\":\"日志筛选条件\",tabIndex:0,children:r.jsxs(\"div\",{className:\"monitor-log-filter-grid\",children:[r.jsx(eC,{label:\"服务器\",placeholder:\"请选择服务器\",value:h.deviceId,onChange:fe=>G(\"deviceId\",fe),options:((o==null?void 0:o.devices)||[]).slice().sort((a, b) => {\n              const priority "
+    },
+    {
+      "release": "20261028-aos-task-multi-spec",
+      "entry": "/assets/index-task-multi-spec-a09e6ce84042.js",
+      "sha256": "a09e6ce84042adb841c70dca16c9fc2f73e84c4f664153805f3b891b0a176d29",
+      "resourceSearch": true,
+      "expandFilter": true,
+      "usPrioritySort": true,
+      "serverSelectorSnippet": "ole:\"region\",\"aria-label\":\"日志筛选条件\",tabIndex:0,children:r.jsxs(\"div\",{className:\"monitor-log-filter-grid\",children:[r.jsx(eC,{label:\"服务器\",placeholder:\"请选择服务器\",value:h.deviceId,onChange:fe=>G(\"deviceId\",fe),options:((o==null?void 0:o.devices)||[]).slice().sort((a, b) => {\n              const priority "
+    },
+    {
+      "release": "20261029-orders-ui-v1",
+      "entry": "/assets/orders-ui-c2859f86dea9.js",
+      "sha256": "c2859f86dea936cea2f6ee2b8603722f6d927edbda6b43a9832357724e306efd",
+      "resourceSearch": true,
+      "expandFilter": true,
+      "usPrioritySort": true,
+      "serverSelectorSnippet": "ole:\"region\",\"aria-label\":\"日志筛选条件\",tabIndex:0,children:r.jsxs(\"div\",{className:\"monitor-log-filter-grid\",children:[r.jsx(eC,{label:\"服务器\",placeholder:\"请选择服务器\",value:h.deviceId,onChange:fe=>G(\"deviceId\",fe),options:((o==null?void 0:o.devices)||[]).slice().sort((a, b) => {\n              const priority "
+    },
+    {
+      "release": "20261029-aos-stock-evidence-fix",
+      "entry": "/assets/orders-ui-c2859f86dea9.js",
+      "sha256": "c2859f86dea936cea2f6ee2b8603722f6d927edbda6b43a9832357724e306efd",
+      "resourceSearch": true,
+      "expandFilter": true,
+      "usPrioritySort": true,
+      "serverSelectorSnippet": "ole:\"region\",\"aria-label\":\"日志筛选条件\",tabIndex:0,children:r.jsxs(\"div\",{className:\"monitor-log-filter-grid\",children:[r.jsx(eC,{label:\"服务器\",placeholder:\"请选择服务器\",value:h.deviceId,onChange:fe=>G(\"deviceId\",fe),options:((o==null?void 0:o.devices)||[]).slice().sort((a, b) => {\n              const priority "
+    },
+    {
+      "release": "20261029-orders-ui-followup",
+      "entry": "/assets/orders-ui-b0bca66b3d14.js",
+      "sha256": "b0bca66b3d146576c57378cb94d2e2811c86dbb23e03ea66f1df1257148cc0b8",
+      "resourceSearch": true,
+      "expandFilter": true,
+      "usPrioritySort": true,
+      "serverSelectorSnippet": "ole:\"region\",\"aria-label\":\"日志筛选条件\",tabIndex:0,children:r.jsxs(\"div\",{className:\"monitor-log-filter-grid\",children:[r.jsx(eC,{label:\"服务器\",placeholder:\"请选择服务器\",value:h.deviceId,onChange:fe=>G(\"deviceId\",fe),options:((o==null?void 0:o.devices)||[]).slice().sort((a, b) => {\n              const priority "
+    },
+    {
+      "release": "20261030-stock-cache-hotfix-r2",
+      "entry": "/assets/orders-ui-stock-cache-hotfix-20261030-r2.js",
+      "sha256": "cbb717737e76a12544358604caef9b071208d840878305bb6b2ccd64e0a6d2c9",
+      "resourceSearch": true,
+      "expandFilter": true,
+      "usPrioritySort": true,
+      "serverSelectorSnippet": "ole:\"region\",\"aria-label\":\"日志筛选条件\",tabIndex:0,children:r.jsxs(\"div\",{className:\"monitor-log-filter-grid\",children:[r.jsx(eC,{label:\"服务器\",placeholder:\"请选择服务器\",value:h.deviceId,onChange:fe=>G(\"deviceId\",fe),options:((o==null?void 0:o.devices)||[]).slice().sort((a, b) => {\n              const priority "
+    },
+    {
+      "release": "20261030-duo-price-history",
+      "entry": "/assets/index-CXR18qWx.js",
+      "sha256": "cebb95fae5511543d66d0dd7e3d5559575398529394abf92eea679fdbf314674",
+      "resourceSearch": false,
+      "expandFilter": false,
+      "usPrioritySort": false,
+      "serverSelectorSnippet": "ll text-base sm:text-sm\",\"aria-label\":\"服务器\",value:o.deviceId,onChange:ce=>Pt(\"deviceId\",ce.target.value),children:[r.jsx(\"option\",{value:\"\",children:\"请选择服务器\"}),n==null?void 0:n.devices.map(ce=>r.jsxs(\"option\",{value:ce.id,children:[ce.name,ce.enabled?\"\":\"（已停用）\"]},ce.id))]})]}),r.jsxs(\"label\",{classN"
+    },
+    {
+      "release": "20261030-http-evidence-v2-compat-r2",
+      "entry": "/assets/index-CXR18qWx.js",
+      "sha256": "cebb95fae5511543d66d0dd7e3d5559575398529394abf92eea679fdbf314674",
+      "resourceSearch": false,
+      "expandFilter": false,
+      "usPrioritySort": false,
+      "serverSelectorSnippet": "ll text-base sm:text-sm\",\"aria-label\":\"服务器\",value:o.deviceId,onChange:ce=>Pt(\"deviceId\",ce.target.value),children:[r.jsx(\"option\",{value:\"\",children:\"请选择服务器\"}),n==null?void 0:n.devices.map(ce=>r.jsxs(\"option\",{value:ce.id,children:[ce.name,ce.enabled?\"\":\"（已停用）\"]},ce.id))]})]}),r.jsxs(\"label\",{classN"
+    }
+  ],
+  "duoManifest": {
+    "builtAtUtc": "2026-10-30T06:42:47Z",
+    "branch": "main",
+    "sourceCommit": "4276f189f5c8a91f4bb8b7330881e872d3653c12",
+    "sourceTree": "c579f6342b630a4d4ce647e473e9f34cf8324fef",
+    "workingTreeClean": true
+  },
+  "duoDeployment": {
+    "finishedAtUtc": "2026-10-30T06:59:08Z",
+    "passed": true,
+    "previousFrontend": "20261030-stock-cache-hotfix-r2",
+    "releaseId": "20261030-duo-price-history"
+  },
+  "currentFrontendProvenance": {
+    "sourceMode": "preserved-production-bytes",
+    "version": "20261030-duo-price-history",
+    "siteArchiveSha256": "25243b18167515d4d3a193a1b13de92e4a07caa6a52c3055a9b8c10b13fe86f7",
+    "treeDigest": "6acf26cf3cb4e393c55825ae32e7993ddf356f77f5f09f098fb2248f5f401b6a",
+    "contentInventoryDigest": "19c01cd612a95c2cfd4ddb2e352f91bfd65045e7bf78a5092d86f8719ccbd9bd",
+    "fileCount": 12
+  },
+  "checkedAtBeijing": "2026-10-30T21:02:01.229333+08:00",
+  "publicReadback": {
+    "entry": "/assets/index-CXR18qWx.js",
+    "sha256": "cebb95fae5511543d66d0dd7e3d5559575398529394abf92eea679fdbf314674",
+    "cacheControl": "max-age=31536000",
+    "matchesCurrentRelease": true
+  },
+  "mainAncestry": {
+    "eab01296": false,
+    "811de4a3": false
+  },
+  "sourceFiles": {
+    "localLogComponent": "frontend/src/components/MonitorLogs.jsx",
+    "duoSourceLogBlob": "bbedcf87b4e23326da8a1160df2ff624481c59cb"
+  }
+}

@@ -56,15 +56,16 @@ const mockClient = (accountPaused = false, attempts = 0) => ({
 test.each([
   [true, 0, 'ACCOUNT_COOLDOWN'],
   [true, 10, 'ACCOUNT_COOLDOWN'],
-  [false, 10, 'ORDER_ATTEMPT_LIMIT'],
-  [false, 11, 'ORDER_ATTEMPT_LIMIT'],
-  [false, 9, 'HTTP_PREFLIGHT_ALLOWED'],
+  [false, 50, 'ORDER_ATTEMPT_LIMIT'],
+  [false, 51, 'ORDER_ATTEMPT_LIMIT'],
+  [false, 49, 'HTTP_PREFLIGHT_ALLOWED'],
+  [false, 10, 'HTTP_PREFLIGHT_ALLOWED'],
   [false, 3, 'HTTP_PREFLIGHT_ALLOWED'],
 ])('当前账号=%s、尝试=%s：%s，只读查询不需要本订单旧run', async (paused, attempts, outcome) => {
   const client = mockClient(paused, attempts);
   const result = await preflightHttp(client, root, 1);
   expect(result).toMatchObject({
-    version: 2,
+    version: 3,
     outcome,
     orderId: 1,
     accountPaused: paused,
@@ -255,7 +256,7 @@ describeDb('真实隔离 PostgreSQL 预检语义', () => {
     );
     expect((await preflightHttp(client, root, 1)).attempts).toBe(2);
     await client.query(
-      "INSERT INTO collector_attempts SELECT $1,'other',now() FROM generate_series(1,7)",
+      "INSERT INTO collector_attempts SELECT $1,'other',now() FROM generate_series(1,47)",
       [orderHash]
     );
     expect((await preflightHttp(client, root, 1)).outcome).toBe('HTTP_PREFLIGHT_ALLOWED');
@@ -276,7 +277,7 @@ describeDb('真实隔离 PostgreSQL 预检语义', () => {
     expect((await preflightHttp(observing, root, 1)).outcome).toBe('ORDER_ATTEMPT_LIMIT');
     expect(
       (await client.query('SELECT count(*)::int AS count FROM collector_attempts')).rows[0].count
-    ).toBe(12);
+    ).toBe(52);
   });
   test('已过期account pause不拦截，预检通过后原保护记录仍可变化', async () => {
     await client.query(

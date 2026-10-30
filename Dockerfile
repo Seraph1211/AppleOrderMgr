@@ -15,6 +15,7 @@ ENV NODE_ENV=production
 COPY --from=runtime-dependencies --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node package.json ./
 COPY --chown=node:node src ./src
+COPY --chown=node:node scripts ./scripts
 COPY --chown=node:node templates ./templates
 RUN mkdir -p /app/logs /app/uploads/import && chown -R node:node /app/logs /app/uploads
 USER node

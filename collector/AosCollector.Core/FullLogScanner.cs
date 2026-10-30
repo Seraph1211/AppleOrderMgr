@@ -13,7 +13,8 @@ public sealed class FullLogScanner(QueueStore store, long maxQueueBytes = QueueS
   private static readonly Regex FileName = new(@"^Log(\d{8})_[A-Za-z0-9_-]+\.txt$", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
   private static readonly Regex Header = new(@"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+\[[^\]\r\n]*\]\[([0-9]{1,64})\]", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
   private static readonly Regex Xml = new(@"^\s*<[/!?A-Za-z_:]", RegexOptions.CultureInvariant, TimeSpan.FromSeconds(1));
-  public static string FirstDate(DateTimeOffset now) => Protocol.BusinessDate(now.AddDays(-29));
+  public const int RETENTION_DAYS = 90;
+  public static string FirstDate(DateTimeOffset now) => Protocol.BusinessDate(now.AddDays(1 - RETENTION_DAYS));
   private static string Hash(byte[] value) => Convert.ToHexString(SHA256.HashData(value));
   private static string Key(string localId, string path, string encoding) => "full-log:" + localId + ":" + Hash(Encoding.UTF8.GetBytes(Path.GetFullPath(path) + ":" + encoding));
   private static string Checkpoint(FileStream stream, long offset)

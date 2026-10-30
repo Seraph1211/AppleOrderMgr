@@ -6,6 +6,7 @@ const asyncHandler = require('../utils/asyncHandler');
 const service = require('../services/monitorService');
 const logs = require('../services/monitorLogService');
 const downloadTicket = require('../services/monitorLogDownloadTicket');
+const tags = require('../services/monitorResourceTagService');
 const notifications = require('../services/monitorNotificationService');
 const notificationQueries = require('../services/monitorNotificationQueries');
 const router = express.Router();
@@ -46,7 +47,12 @@ function waitForDrain(res) {
 router.use('/logs', requirePermission(PERMISSIONS.MONITOR_LOGS_READ));
 router.get(
   '/logs/states',
-  respond(() => logs.states())
+  respond(() => tags.states())
+);
+router.put(
+  '/logs/tags',
+  requirePermission('monitor.manage'),
+  respond(req => tags.save(req.user.id, req.body))
 );
 router.get(
   '/logs/accounts',

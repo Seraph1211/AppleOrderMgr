@@ -204,8 +204,8 @@ def validate_sample(root, sample, order_id, proxy, plan_sha, current=False):
             pre = sample['preflight']
             if (set(sample) != keys or not isinstance(pre, dict) or set(pre) != {'version', 'mode', 'requiredAttempts',
                     'outcome', 'orderId', 'checkedAt', 'planSha256', 'inputSha256', 'accountPaused', 'loginPaused', 'attempts'} or
-                    pre.get('mode') != 'browser' or type(pre.get('version')) is not int or pre['version'] not in (1, 2) or
-                    (current and pre['version'] != 2) or
+                    pre.get('mode') != 'browser' or type(pre.get('version')) is not int or pre['version'] not in (1, 2, 3) or
+                    (current and pre['version'] != 3) or
                     type(pre.get('requiredAttempts')) is not int or pre['requiredAttempts'] != 2 or
                     type(pre.get('orderId')) is not int or pre['orderId'] != order_id or
                     pre.get('planSha256') != plan_sha or not http.valid_hash(pre.get('inputSha256')) or
@@ -218,7 +218,7 @@ def validate_sample(root, sample, order_id, proxy, plan_sha, current=False):
                     sample.get('receiptEgressVerifiedAfter') is not False or
                     not same(sample['cleanup'], {'attempted': False, 'removed': False, 'outcome': 'NOT_NEEDED'})):
                 raise ValueError()
-            attempt_limit = 2 if pre['version'] == 1 else 9
+            attempt_limit = {1: 2, 2: 9, 3: 49}[pre['version']]
             reason = ('ACCOUNT_COOLDOWN' if pre['accountPaused'] else 'LOGIN_COOLDOWN' if pre['loginPaused'] else
                       'RECEIPT_ATTEMPT_LIMIT' if pre['attempts'] >= attempt_limit else 'BROWSER_PREFLIGHT_ALLOWED')
             if sample['outcome'] != reason or pre['outcome'] != reason or reason not in DEFERRED:

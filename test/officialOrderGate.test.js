@@ -62,22 +62,28 @@ test.each(['locked', 'paused', 'attempts', 'budget'])(
     const gate = new OfficialOrderGate(CONFIG, 100);
     if (kind === 'locked') state.locked = false;
     if (kind === 'paused') state.paused = true;
-    if (kind === 'attempts') state.count = 10;
+    if (kind === 'attempts') state.count = 50;
     if (kind === 'budget') state.requests = 100;
     await expect(gate.open(SAMPLE, 'proxy')).rejects.toThrow();
     expect(state.queries.some(q => q.sql.includes('INSERT INTO runs'))).toBe(false);
     await gate.close('REJECTED');
   }
 );
-test('滚动24小时已用9次允许第10次，达到10次不新建运行或清理历史', async () => {
+test('旧10次上限已放开，滚动24小时已有10次仍可新建尝试', async () => {
   const gate = new OfficialOrderGate(CONFIG, 100);
-  state.count = 9;
+  state.count = 10;
+  await expect(gate.open(SAMPLE, 'proxy')).resolves.toBe(21);
+  await gate.close('SUCCEEDED');
+});
+test('滚动24小时已用49次允许第50次，达到50次不新建运行或清理历史', async () => {
+  const gate = new OfficialOrderGate(CONFIG, 100);
+  state.count = 49;
   await expect(gate.open(SAMPLE, 'proxy')).resolves.toBe(21);
   expect(state.queries.filter(q => q.sql.includes('INSERT INTO collector_attempts'))).toHaveLength(
     1
   );
   await gate.finishOrder('SUCCEEDED');
-  state.count = 10;
+  state.count = 50;
   await expect(gate.startOrder(SAMPLE)).rejects.toThrow('ORDER_ATTEMPT_LIMIT');
   expect(state.queries.filter(q => q.sql.includes('INSERT INTO runs'))).toHaveLength(1);
   const counts = state.queries.filter(q => q.sql.includes('SELECT count'));
@@ -194,8 +200,8 @@ test('三次541策略只跳过旧541代理冷却，其他暂停仍有效', async
   await expect(gate.assertAvailable('proxy', 'proxy')).rejects.toThrow('PROXY_COOLDOWN');
 });
 
-test('每日10次不会把541轮换策略从3次改为10次', async () => {
-  const gate = new OfficialOrderGate(CONFIG, 1000, 300, { proxy541Limit: 10 });
+test('每日50次不会把541轮换策略从3次改为50次', async () => {
+  const gate = new OfficialOrderGate(CONFIG, 1000, 300, { proxy541Limit: 50 });
   gate.proxyHash = 'proxy';
   gate.lockClient.query.mockResolvedValue({ rows: [{ reason: 'HTTP_541' }] });
   await expect(gate.assertAvailable('proxy', 'proxy')).rejects.toThrow('PROXY_COOLDOWN');
@@ -223,7 +229,7 @@ test('账号组多单沿用账号锁、时间与总请求计数，每单独立�
     2
   );
   await gate.finishOrder('SUCCEEDED');
-  state.count = 10;
+  state.count = 50;
   await expect(gate.startOrder({ ...SAMPLE, id: 13 })).rejects.toThrow('ORDER_ATTEMPT_LIMIT');
   await expect(gate.startOrder({ ...SAMPLE, accountHash: 'another' })).rejects.toThrow(
     'ACCOUNT_MISMATCH'

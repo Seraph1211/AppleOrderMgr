@@ -40,6 +40,11 @@ function isAlipayPayment(value) {
   return normalizePaymentMethod(value) === '支付宝';
 }
 
+/** 已确认可从订单原文读取 PNG 的支付方式。 @param {*} value 方式 @returns {boolean} 是否支持 */
+function supportsOrderRecordPaymentCode(value) {
+  return ['微信', '招行24期'].includes(normalizePaymentMethod(value));
+}
+
 /** 读取完整来源方式，兼容历史已被官网覆盖的订单，不回写数据。 @param {Object} order 订单 @returns {string|null} 方式 */
 function getSourcePaymentMethod(order) {
   const source = order?.sourceSnapshot?.paymentMethod;
@@ -53,5 +58,6 @@ module.exports = {
   normalizePaymentMethod,
   isWechatPayment,
   isAlipayPayment,
+  supportsOrderRecordPaymentCode,
   getSourcePaymentMethod,
 };

@@ -1,0 +1,5 @@
+FROM apple-order-mgr-api:20261024-duo-quotes-amd64
+COPY --chown=node:node src/models/index.js /app/src/models/index.js
+COPY --chown=node:node src/models/MonitorResourceTag.js /app/src/models/MonitorResourceTag.js
+COPY --chown=node:node src/routes/serverMonitor.js /app/src/routes/serverMonitor.js
+COPY --chown=node:node src/services/monitorResourceTagService.js /app/src/services/monitorResourceTagService.js

@@ -49,6 +49,11 @@ class HttpSampleTests(unittest.TestCase):
         self.inputFailure = False
         self.preflightOutcome = 'HTTP_PREFLIGHT_ALLOWED'
 
+    def test_evidence_migration_latch_blocks_sample(self):
+        latch = self.root / 'private/http-evidence-v2-maintenance.lock'
+        latch.mkdir()
+        self.assertTrue(sample.evidence_migration_locked(self.root))
+
     def quarantineInput(self):
         original = self.root / 'private/request-240.json'
         original.write_bytes(b'{"capturedAt":"old","samples":[]}')
@@ -102,12 +107,12 @@ class HttpSampleTests(unittest.TestCase):
             }]}).encode(), b'')
         if args[:2] == ['docker', 'run']:
             return subprocess.CompletedProcess(args, 0, json.dumps({
-                'version': 2, 'outcome': self.preflightOutcome, 'orderId': 240,
+                'version': 3, 'outcome': self.preflightOutcome, 'orderId': 240,
                 'checkedAt': time.time(),
                 'planSha256': hashlib.sha256((self.root / 'private/plan.json').read_bytes()).hexdigest(),
                 'inputSha256': hashlib.sha256((self.root / 'private/request-240.json').read_bytes()).hexdigest(),
                 'accountPaused': self.preflightOutcome == 'ACCOUNT_COOLDOWN',
-                'attempts': 10 if self.preflightOutcome == 'ORDER_ATTEMPT_LIMIT' else 0,
+                'attempts': 50 if self.preflightOutcome == 'ORDER_ATTEMPT_LIMIT' else 0,
             }).encode(), b'')
         if args[:2] == ['docker', 'start']:
             if self.startTimeout:
@@ -190,6 +195,22 @@ class HttpSampleTests(unittest.TestCase):
             self.assertEqual((self.root / 'private' / path).stat().st_mode & 0o777, 0o600)
         self.assertNotIn('private-password', json.dumps([args for args, _ in self.calls]))
         self.assertTrue(any(args[:2] == ['docker', 'rm'] for args, _ in self.calls))
+
+    def test_v2_evidence_switch_is_passed_to_isolated_collector(self):
+        with patch.dict(sample.os.environ, {'OFFICIAL_HTTP_EVIDENCE_VERSION': '2'}):
+            summary, error, _probe = self.execute()
+        self.assertIsNone(error)
+        self.assertEqual(summary['outcome'], 'SUCCEEDED')
+        create = next(args for args, _kwargs in self.calls if args[:2] == ['docker', 'create'])
+        self.assertIn('OFFICIAL_HTTP_EVIDENCE_VERSION=2', create)
+
+    def test_unknown_evidence_version_fails_before_any_external_command(self):
+        with patch.dict(sample.os.environ, {'OFFICIAL_HTTP_EVIDENCE_VERSION': 'unknown'}):
+            summary, error, probe = self.execute()
+        self.assertIsNone(error)
+        self.assertEqual(summary['outcome'], 'HTTP_EVIDENCE_VERSION_INVALID')
+        self.assertFalse(self.calls)
+        probe.assert_not_called()
 
     def test_shared_configuration_lock_blocks_second_sampler_before_probe(self):
         with open(str(self.root / 'private/http-sample.lock'), 'a') as lock:
@@ -392,6 +413,21 @@ class EgressProbeTests(unittest.TestCase):
         self.assertNotIn('private-password', json.dumps(command.call_args[0]))
         self.assertEqual(command.call_args[1]['timeout'], 25)
 
+    def test_redacted_log_with_separate_probe_field_confirms_public_egress(self):
+        log = ('8.8.8.8 [16/Oct/2026:21:23:49 +0800] '
+               '"GET /api/health/ready HTTP/1.1" 200 170 probe=' + self.token + '\n').encode()
+        with patch.object(sample.uuid, 'uuid4', return_value=SimpleNamespace(hex='1' * 32)), \
+                patch.object(sample, 'run', return_value=b'{"success":true}'), \
+                patch('builtins.open', return_value=io.BytesIO(log)):
+            self.assertEqual(sample.probe(self.proxy), hashlib.sha256(b'8.8.8.8').hexdigest())
+
+    def test_redacted_log_without_probe_token_still_rejects_egress(self):
+        log = b'8.8.8.8 [16/Oct/2026:21:23:49 +0800] "GET /api/health/ready HTTP/1.1" 200 170\n'
+        with patch.object(sample, 'run', return_value=b'{"success":true}'), \
+                patch('builtins.open', return_value=io.BytesIO(log)):
+            with self.assertRaisesRegex(RuntimeError, 'EGRESS_LOG_UNAVAILABLE'):
+                sample.probe(self.proxy)
+
     def test_multiple_log_matches_are_not_assumed_one_exit(self):
         with self.assertRaisesRegex(RuntimeError, 'EGRESS_LOG_UNAVAILABLE'):
             self.probe(['8.8.8.8', '8.8.8.8'])
@@ -403,6 +439,48 @@ class EgressProbeTests(unittest.TestCase):
     def test_unhealthy_probe_never_confirms_egress(self):
         with self.assertRaisesRegex(RuntimeError, 'API_HEALTH_FAILED'):
             self.probe(['8.8.8.8'], health=False)
+
+    def test_connect_410_is_recorded_without_credentials_or_stderr(self):
+        response = SimpleNamespace(returncode=22, stdout=b'\nOFFICIAL_PROXY_METRICS=410,000',
+                                   stderr=b'private-password https://private-user@proxy')
+        diagnostics = []
+        with patch.object(sample.subprocess, 'run', return_value=response) as command:
+            with self.assertRaises(sample.RuntimeCommandError) as caught:
+                sample.probe(self.proxy, diagnostics=diagnostics)
+        self.assertEqual(diagnostics, [{'curlExitCode': 22, 'proxyConnectStatus': 410, 'httpStatus': 0}])
+        self.assertEqual(caught.exception.exit_code, 22)
+        self.assertNotIn('private', json.dumps(diagnostics) + repr(vars(caught.exception)))
+        self.assertNotIn('private-password', repr(command.call_args[0]))
+
+    def test_diagnostic_probe_still_requires_health_and_unique_public_log(self):
+        for status, health, addresses, expected in [('200,200', True, ['8.8.8.8'], None),
+                ('200,200', False, ['8.8.8.8'], 'API_HEALTH_FAILED'),
+                ('200,200', True, [], 'EGRESS_LOG_UNAVAILABLE'),
+                ('200,200', True, ['10.0.0.1'], 'EGRESS_NOT_PUBLIC'),
+                ('200,200', True, ['8.8.8.8', '8.8.8.8'], 'EGRESS_LOG_UNAVAILABLE'),
+                ('410,000', True, ['8.8.8.8'], 'EGRESS_PROBE_HTTP_FAILED'),
+                ('invalid', True, ['8.8.8.8'], 'EGRESS_PROBE_METADATA_INVALID')]:
+            response = SimpleNamespace(returncode=0, stdout=json.dumps({'success': health}).encode() +
+                                       b'\nOFFICIAL_PROXY_METRICS=' + status.encode(), stderr=b'')
+            log = ''.join(address + ' GET ' + self.token + '\n' for address in addresses).encode()
+            with self.subTest(status=status, expected=expected), \
+                    patch.object(sample.uuid, 'uuid4', return_value=SimpleNamespace(hex='1' * 32)), \
+                    patch.object(sample.subprocess, 'run', return_value=response), \
+                    patch('builtins.open', return_value=io.BytesIO(log)):
+                if expected:
+                    with self.assertRaisesRegex(RuntimeError, '^' + expected + '$'):
+                        sample.probe(self.proxy, diagnostics=[])
+                else:
+                    self.assertEqual(sample.probe(self.proxy, diagnostics=[]), hashlib.sha256(b'8.8.8.8').hexdigest())
+
+    def test_diagnostic_timeout_does_not_retain_private_process_output(self):
+        diagnostics = []
+        error = sample.subprocess.TimeoutExpired(['curl'], 25, output=b'private-password', stderr=b'private')
+        with patch.object(sample.subprocess, 'run', side_effect=error):
+            with self.assertRaises(sample.RuntimeCommandError) as caught:
+                sample.probe(self.proxy, diagnostics=diagnostics)
+        self.assertEqual(diagnostics, [{'curlExitCode': 28, 'commandTimedOut': True}])
+        self.assertNotIn('private', repr(vars(caught.exception)))
 
 
 if __name__ == '__main__':

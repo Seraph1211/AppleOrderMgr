@@ -105,18 +105,30 @@ async function assertLogFilterGeometry(page, panel, mode) {
       Math.max(...boxes.map(box => box.height)) - Math.min(...boxes.map(box => box.height)) <= 3,
       '宽屏五框控件高度对齐'
     );
-    assert(boxes.every(box => box.width / gridBox.width >= 0.1), '宽屏五框宽度合理');
+    assert(
+      boxes.every(box => box.width / gridBox.width >= 0.1),
+      '宽屏五框宽度合理'
+    );
     assert(boxes[3].width / gridBox.width >= 0.15, '宽屏时间范围文字有可读宽度');
     assert(boxes[4].width / gridBox.width >= 0.15, '宽屏关键词有可读宽度');
-    assert(boxes.every((box, index) => index === 0 || boxes[index - 1].x < box.x), '宽屏字段顺序正确');
+    assert(
+      boxes.every((box, index) => index === 0 || boxes[index - 1].x < box.x),
+      '宽屏字段顺序正确'
+    );
   } else if (viewport.width >= 640) {
     assert(Math.abs(boxes[0].y - boxes[1].y) < 4, '中等屏服务器和实例同排');
     assert(Math.abs(boxes[2].y - boxes[3].y) < 4, '中等屏账号和时间范围同排');
     assert(boxes[0].x < boxes[1].x && boxes[2].x < boxes[3].x, '中等屏字段顺序正确');
     assert(boxes[4].y > boxes[3].y, '中等屏关键词自然换行');
-    assert(boxes.every(box => box.width / gridBox.width >= 0.38), '中等屏字段保持可读宽度');
+    assert(
+      boxes.every(box => box.width / gridBox.width >= 0.38),
+      '中等屏字段保持可读宽度'
+    );
   } else {
-    assert(boxes.every(box => box.width / gridBox.width >= 0.85), '手机五框占满可用行宽');
+    assert(
+      boxes.every(box => box.width / gridBox.width >= 0.85),
+      '手机五框占满可用行宽'
+    );
     assert(
       boxes.every((box, index) => index === 0 || box.y > boxes[index - 1].y),
       '手机五框按字段顺序逐行排列'
@@ -124,13 +136,16 @@ async function assertLogFilterGeometry(page, panel, mode) {
   }
   const rangeButton = controls[3];
   const rangeLabel = await rangeButton.getAttribute('aria-label');
-  const visibleText = await rangeButton.locator('span').first().evaluate(element => ({
-    text: element.innerText,
-    clientWidth: element.clientWidth,
-    scrollWidth: element.scrollWidth,
-    clientHeight: element.clientHeight,
-    scrollHeight: element.scrollHeight,
-  }));
+  const visibleText = await rangeButton
+    .locator('span')
+    .first()
+    .evaluate(element => ({
+      text: element.innerText,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+      clientHeight: element.clientHeight,
+      scrollHeight: element.scrollHeight,
+    }));
   assert.equal(visibleText.text, rangeLabel.replace(/^日志时间范围：/, ''), '范围文字完整可见');
   assert(visibleText.scrollWidth <= visibleText.clientWidth + 1, '范围文字不横向裁切');
   assert(visibleText.scrollHeight <= visibleText.clientHeight + 1, '范围文字不纵向裁切');
@@ -423,21 +438,13 @@ async function main() {
       await context.addInitScript(() => localStorage.setItem('token', 'synthetic-full-log-token'));
       await page.goto(`${BASE_URL}/server-monitor/logs`);
       const panel = page.getByRole('region', { name: '完整日志查询', exact: true });
-      const chooseSelect = async (label, value, optionName) => {
-        const control = panel.getByLabel(label, { exact: true });
-        if ((await control.evaluate(element => element.tagName)) === 'SELECT')
-          await control.selectOption(value);
-        else {
-          await control.click();
-          await page
-            .getByRole('dialog', { name: label, exact: true })
-            .getByRole('option', { name: optionName, exact: true })
-            .click();
-          assert.equal(
-            await panel.locator(`select[data-responsive-select="${label}"]`).inputValue(),
-            value
-          );
-        }
+      const chooseSelect = async (label, _value, optionName) => {
+        const control = panel.getByRole('button', { name: label, exact: true });
+        assert.equal(await control.getAttribute('aria-haspopup'), 'listbox');
+        await control.click();
+        await panel.getByRole('listbox', { name: label, exact: true })
+          .getByRole('option', { name: optionName, exact: true }).click();
+        assert.equal(await control.getAttribute('aria-expanded'), 'false');
       };
       await chooseSelect('服务器', deviceId, '测试服务器01');
       await chooseSelect('软件实例', localId, '软件实例1');
@@ -639,7 +646,7 @@ async function main() {
           .getByRole('button', { name: '展开阅读' })
           .evaluate(element => element === document.activeElement)
       );
-      await panel.getByRole('button', { name: '修改筛选', exact: true }).click();
+      await panel.getByRole('button', { name: '展开筛选', exact: true }).click();
       const rangeButton = panel.getByRole('button', { name: /^日志时间范围：/ });
       await rangeButton.click();
       const rangeDialog = page.getByRole('dialog', { name: '日志时间范围选择', exact: true });
