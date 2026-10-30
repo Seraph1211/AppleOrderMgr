@@ -368,6 +368,7 @@ class ProductionFrontendGateTest(unittest.TestCase):
                           'if sys.argv[1]=="run":\n'
                           ' with tarfile.open(fileobj=sys.stdout.buffer,mode="w|") as t:\n'
                           '  t.add("src",arcname="src")\n'
+                          '  t.add("scripts",arcname="scripts")\n'
                           'elif sys.argv[1:3]==["image","inspect"]: print("sha256:synthetic")\n'
                           'elif sys.argv[1]=="create": print("synthetic")\n'
                           'elif sys.argv[1]=="cp":\n'

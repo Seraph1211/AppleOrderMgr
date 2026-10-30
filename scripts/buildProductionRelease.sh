@@ -100,6 +100,7 @@ frontend_tree_digest="$({
 python3 scripts/productionFrontendGate.py prepare "$release_dir" >&2
 python3 scripts/productionFrontendGate.py check "$release_dir" --permissions-only >&2
 cp scripts/productionFrontendGate.py "$release_dir/productionFrontendGate.py"
+cp scripts/productionSourceGuard.py "$release_dir/productionSourceGuard.py"
 cp scripts/productionRelease.py "$release_dir/productionRelease.py"
 cp scripts/productionReleaseBackup.py "$release_dir/productionReleaseBackup.py"
 cp scripts/productionReleaseFiles.py "$release_dir/productionReleaseFiles.py"

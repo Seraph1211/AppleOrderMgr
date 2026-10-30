@@ -10,6 +10,8 @@ import io
 import tarfile
 from pathlib import Path
 
+SOURCE_SUFFIXES = ('.js', '.jsx', '.cjs', '.mjs', '.py', '.json', '.css', '.sql', '.sh')
+
 
 class SourceGuardError(Exception):
     """固定错误码；不输出源码、业务信息或凭据。"""
@@ -45,7 +47,7 @@ def checkSource(root):
     inventory = {}
     for directory in ('src', 'scripts', 'migrations', 'frontend/src', 'config'):
         for path in sorted((root / directory).rglob('*')):
-            if path.is_file() and path.suffix in ('.js', '.jsx', '.py', '.json', '.css', '.sql'):
+            if path.is_file() and path.suffix in SOURCE_SUFFIXES:
                 if path.is_symlink():
                     raise SourceGuardError('SOURCE_SYMLINK_REJECTED')
                 inventory[str(path.relative_to(root))] = digest(path.read_bytes())
@@ -84,14 +86,14 @@ def runtimeProof(image, manifest):
     """在断网只读容器读取源码，拒绝运行镜像与已检查源码不一致。"""
     expected = json.loads(Path(manifest).read_text(encoding='utf-8'))
     source = {name: value for name, value in expected['sourceInventory'].items()
-              if name.startswith('src/')}
+              if name.startswith(('src/', 'scripts/'))}
     archive = subprocess.check_output(['docker', 'run', '--rm', '--network', 'none',
                                       '--read-only', '--entrypoint', 'tar', image,
-                                      '-C', '/app', '-cf', '-', 'src'])
+                                      '-C', '/app', '-cf', '-', 'src', 'scripts'])
     actual = {}
     with tarfile.open(fileobj=io.BytesIO(archive)) as stream:
         for entry in stream:
-            if entry.isfile() and entry.name.endswith(('.js', '.json')):
+            if entry.isfile() and entry.name.endswith(SOURCE_SUFFIXES):
                 actual[entry.name] = digest(stream.extractfile(entry).read())
     if source != actual:
         raise SourceGuardError('RUNTIME_SOURCE_MISMATCH')

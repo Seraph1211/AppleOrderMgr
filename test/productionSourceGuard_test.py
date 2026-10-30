@@ -152,15 +152,24 @@ class ProductionSourceGuardTest(unittest.TestCase):
             GATE.rejectDroppedCapabilities(candidate, previous)
 
     def test_runtime_must_contain_checked_source_bytes(self):
+        (self.root / 'scripts').mkdir()
+        (self.root / 'scripts/helper.py').write_text('restored_helper = True')
         source = GUARD.checkSource(self.root)
         manifest = self.root / 'source-capabilities.json'
         manifest.write_text(json.dumps(source))
-        for text, passes in ((b'function restoredFeature() {}', True), (b'old image', False)):
+        for text, helper, passes in (
+            (b'function restoredFeature() {}', b'restored_helper = True', True),
+            (b'old image', b'restored_helper = True', False),
+            (b'function restoredFeature() {}', b'old_helper = True', False),
+        ):
             data = io.BytesIO()
             with tarfile.open(fileobj=data, mode='w') as archive:
                 entry = tarfile.TarInfo('src/feature.js')
                 entry.size = len(text)
                 archive.addfile(entry, io.BytesIO(text))
+                entry = tarfile.TarInfo('scripts/helper.py')
+                entry.size = len(helper)
+                archive.addfile(entry, io.BytesIO(helper))
             with mock.patch.object(GUARD.subprocess, 'check_output',
                                    side_effect=[data.getvalue(), b'sha256:synthetic']):
                 if passes:
