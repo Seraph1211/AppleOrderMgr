@@ -90,6 +90,9 @@
 
 - `GET /api/public/apple-quotes`：无需登录，每 IP 每分钟最多 120 次，且不写入内部操作日志。公开开关关闭返回 503 `QUOTE_PAGE_PAUSED`；来源不可用、空批次、无效／重复商品身份或非法数字价格返回 503 `QUOTE_SOURCE_UNAVAILABLE`，电询和商品组合变动不阻断页面。成功仅返回 `enabled`、`updatedAt`、`stale`、筛选候选及 `items[{productKey,productName,productModel,storageGb,color,quotePrice,officialPrice}]`，不返回明威价、调价字段、规格码、来源地址或操作人。
 - `GET /api/public/iphone18-quotes`：历史兼容别名，返回内容与 `/api/public/apple-quotes` 相同；新客户端不得继续使用该地址。
+- `GET /api/public/duo-quotes`：无需登录，返回全国8款Duo当前公开零售价、官网价、溢价及版本；严格排除批发价、加价、操作人与来源指纹，使用公开接口限流与 `Cache-Control: no-store`。
+- `GET /api/public/duo-quotes/history?range=24h|7d|30d|all`：无需登录，默认 `7d`。返回 `range`、`rangeStart`、`rangeEnd`、`availableFrom`、`updatedAt`、`lastCheckedAt`、`stale`，以及按容量组织的 `retailSeries`、`officialSeries`。点只含 `changedAt`、`price`、`baseline`；缺价为 `null`。同容量两色官网价一致时合并为 `official`，不一致时分别返回，禁止静默覆盖。
+- `GET /api/public/duo-quotes/events`：无需登录的同源SSE，仅发送 `quote-version` 和非负整数版本；不发送商品、价格、来源或账号信息。
 - `GET /api/quote-pricing/iphone18`：仅管理员。返回公开设置版本、来源批次、完整商品列表及每项明威价、官网价、百分比、固定金额和最终报价。
 - `PUT /api/quote-pricing/iphone18/availability`：仅管理员；请求 `{enabled:boolean,expectedVersion:integer}`，切换固定公开链接，不改调价规则。
 - `PUT /api/quote-pricing/iphone18/display-order`：仅管理员；请求 `{productKeys:string[1..1000],expectedVersion:integer}`，`productKeys` 必须恰好包含当前全部商品且不得重复。保存后公开页和报价复制立即同序；商品来源变化返回 `QUOTE_PRODUCTS_CHANGED`（409），设置版本冲突返回 `CONCURRENT_MODIFICATION`（409）。
@@ -97,6 +100,7 @@
 - `POST /api/quote-pricing/iphone18/adjustments/reset`：仅管理员；请求 `{productKeys:string[1..100],expectedVersion:integer}`，删除选中规则并生成新版本。
 - `GET /api/quote-pricing/iphone18/versions?limit=20`：仅管理员；返回最近价格版本元数据，不直接返回完整快照。
 - `POST /api/quote-pricing/iphone18/versions/:id/restore`：仅管理员；请求 `{expectedVersion:integer}`，恢复目标快照并生成新的恢复版本。
+- `/api/quote-pricing/duo` 下的读取、预览、调整、重置、历史及恢复接口仅管理员使用；写请求同时校验设置版本与来源指纹，预览不写库，确认只持久化加价额。
 
 最终报价固定为 `round(basePrice × (1 + percentage / 100) + fixedAmount)`。服务端重新计算且拒绝负值；不接收客户端提交最终价格或明威价格。来源价格为电询、空值或 0 时，`basePrice`／`quotePrice` 为 `null`，页面和复制文本显示“暂未报价”；缺失或为 0 的 `officialPrice` 返回 `null` 并显示“—”。无基价商品仍可保存调价规则，待来源恢复数字价格后自动应用，当前不得以 0 或固定调整金额生成报价。商品数量、型号是否同时出现、各容量的颜色集合不作为批次拒绝条件；来源空批次、商品身份无效、重复商品或非法价格仍返回受控 503。
 
