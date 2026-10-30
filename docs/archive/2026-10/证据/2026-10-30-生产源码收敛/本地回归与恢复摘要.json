@@ -6,12 +6,13 @@
   },
   "postgresIntegrationTests": {
     "apple_order_mgr_proxy_cancel_test_20261025": 12,
-    "monitor_tags_test": "see-log",
+    "monitor_tags_test": 8,
     "aos_payment_code_test_convergence": 25,
     "aos_log_test_convergence": 16
   },
   "releaseToolTests": {
-    "run": 112,
+    "run": 113,
+    "passed": 112,
     "skipped": 1
   },
   "otherUiComparisons": 96,
@@ -44,5 +45,9 @@
     "source": 93,
     "pending": 0,
     "readIndexMatchesProduction": true
-  }
+  },
+  "monitorTagsSkipped": 2,
+  "historicalMigrationsUpDownPassed": 2,
+  "isolatedProductionImageHealthPassed": true,
+  "trackedOnlyDocumentationCheckPassed": true
 }
