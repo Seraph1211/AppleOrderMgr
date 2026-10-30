@@ -1,95 +1,235 @@
-import ProductName from '../components/ProductName';
-import { formatStorageCapacity } from '../utils/productStorage';
-import { getProductDisplayName } from '../utils/productNaming';
-import ResponsiveSelect from '../components/responsiveSelect';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import useModalScrollLock from '../components/useModalScrollLock';
 import {
-  BadgeDollarSign,
-  Check,
-  Copy,
   ExternalLink,
-  GripVertical,
+  Eye,
   History,
   Loader2,
   RefreshCw,
   RotateCcw,
   Save,
+  X,
 } from 'lucide-react';
+import { formatStorageCapacity } from '../utils/productStorage';
 import {
-  getIphone18QuotePricing,
-  getIphone18QuoteVersions,
-  resetIphone18QuoteAdjustments,
-  restoreIphone18QuoteVersion,
-  saveIphone18QuoteAdjustments,
-  saveIphone18QuoteDisplayOrder,
-  setIphone18QuoteAvailability,
+  getDuoQuotePricing,
+  getDuoQuoteVersions,
+  previewDuoQuotePricing,
+  resetDuoQuoteAdjustments,
+  restoreDuoQuoteVersion,
+  saveDuoQuoteAdjustments,
 } from '../api/quotePricingApi';
+import './duoQuotePricing.css';
 
-const formatCurrency = (value, emptyLabel = '—') =>
+const currency = value =>
   value === null || value === undefined
-    ? emptyLabel
-    : new Intl.NumberFormat('zh-CN', {
-        style: 'currency',
-        currency: 'CNY',
-        maximumFractionDigits: 0,
-      }).format(value);
-
-const formatTime = value =>
+    ? '—'
+    : `¥${new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value)}`;
+const signed = value =>
+  value === null || value === undefined
+    ? '—'
+    : `${value > 0 ? '+' : ''}${currency(value)}`;
+const time = value =>
   value
     ? new Date(value).toLocaleString('zh-CN', {
         timeZone: 'Asia/Shanghai',
         hour12: false,
       })
-    : '-';
-
-const colorOrder = ['黑色', '银色', '冰川蓝色', '勃艮第酒红色'];
-const compareColors = (left, right) => {
-  const leftIndex = colorOrder.indexOf(left);
-  const rightIndex = colorOrder.indexOf(right);
-  if (leftIndex === -1 && rightIndex === -1) return left.localeCompare(right, 'zh-CN');
-  if (leftIndex === -1) return 1;
-  if (rightIndex === -1) return -1;
-  return leftIndex - rightIndex;
-};
-
+    : '—';
 const actionLabels = {
-  bulk_adjust: '批量调价',
-  reset: '恢复原价',
-  restore: '版本回退',
+  adjust: '设置报价',
+  reset: '恢复默认加价',
+  restore: '恢复历史加价',
 };
 
-/** 管理员 Apple 报价调整与版本管理。 */
+/** 报价弹窗：隔离背景、约束焦点，并适配手机可视区域与软键盘。 */
+function PricingDialog({
+  title,
+  busy,
+  onClose,
+  children,
+  footer,
+  returnFocusRef,
+}) {
+  useModalScrollLock();
+  const dialogRef = useRef(null);
+  const overlayRef = useRef(null);
+  const latest = useRef({ busy, onClose });
+  latest.current = { busy, onClose };
+
+  useEffect(() => {
+    const previousFocus = returnFocusRef.current || document.activeElement;
+    const background = document.querySelector('.duo-pricing-page');
+    const previousAriaHidden = background?.getAttribute('aria-hidden');
+    const wasInert = background?.hasAttribute('inert');
+    background?.setAttribute('inert', '');
+    background?.setAttribute('aria-hidden', 'true');
+    dialogRef.current?.focus({ preventScroll: true });
+    const resize = () => {
+      const viewport = window.visualViewport;
+      if (overlayRef.current) {
+        overlayRef.current.style.height = `${viewport?.height || window.innerHeight}px`;
+        overlayRef.current.style.top = `${viewport?.offsetTop || 0}px`;
+      }
+    };
+    resize();
+    window.visualViewport?.addEventListener('resize', resize);
+    window.visualViewport?.addEventListener('scroll', resize);
+    const onKeyDown = event => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        if (!latest.current.busy) latest.current.onClose();
+      }
+      if (event.key === 'Tab') {
+        const focusable = [
+          ...dialogRef.current.querySelectorAll(
+            'button:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]'
+          ),
+        ].filter(node => node.getClientRects().length);
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (!first) {
+          event.preventDefault();
+          dialogRef.current.focus();
+        } else if (
+          event.shiftKey &&
+          (document.activeElement === first ||
+            document.activeElement === dialogRef.current)
+        ) {
+          event.preventDefault();
+          last.focus();
+        } else if (
+          !event.shiftKey &&
+          (document.activeElement === last ||
+            !dialogRef.current.contains(document.activeElement))
+        ) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    const onFocusIn = event => {
+      if (dialogRef.current && !dialogRef.current.contains(event.target))
+        dialogRef.current.focus({ preventScroll: true });
+    };
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('focusin', onFocusIn);
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('focusin', onFocusIn);
+      window.visualViewport?.removeEventListener('resize', resize);
+      window.visualViewport?.removeEventListener('scroll', resize);
+      if (!wasInert) background?.removeAttribute('inert');
+      if (previousAriaHidden === null)
+        background?.removeAttribute('aria-hidden');
+      else if (previousAriaHidden !== undefined)
+        background?.setAttribute('aria-hidden', previousAriaHidden);
+      requestAnimationFrame(() => {
+        if (
+          previousFocus?.isConnected &&
+          !document.querySelector('.duo-pricing-dialog')
+        )
+          previousFocus.focus({ preventScroll: true });
+      });
+    };
+  }, [returnFocusRef]);
+
+  return createPortal(
+    <div
+      ref={overlayRef}
+      className="duo-pricing duo-pricing-overlay"
+      onMouseDown={event => {
+        if (event.target === event.currentTarget && !busy) onClose();
+      }}
+    >
+      <section
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="duo-pricing-dialog-title"
+        aria-describedby="duo-pricing-dialog-description"
+        tabIndex={-1}
+        className="duo-pricing-dialog"
+        aria-busy={busy}
+      >
+        <header className="duo-pricing-dialog-header">
+          <div>
+            <h2
+              id="duo-pricing-dialog-title"
+              className="text-lg font-semibold text-gray-900"
+            >
+              {title}
+            </h2>
+            <p
+              id="duo-pricing-dialog-description"
+              className="mt-1 text-sm text-gray-500"
+            >
+              先预览并核对，确认后保存加价额。
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn btn-secondary duo-pricing-close"
+            aria-label="关闭报价设置弹窗"
+            disabled={busy}
+            onClick={onClose}
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </header>
+        <div className="duo-pricing-dialog-body">{children}</div>
+        <footer className="duo-pricing-dialog-footer">{footer}</footer>
+      </section>
+    </div>,
+    document.body
+  );
+}
+
+/** 管理员 Duo 八款商品的随行加价和历史版本。 */
 export default function Iphone18QuotePricing() {
   const [data, setData] = useState(null);
   const [versions, setVersions] = useState([]);
+  const [historyTotal, setHistoryTotal] = useState(0);
   const [selected, setSelected] = useState(new Set());
-  const [draftOrder, setDraftOrder] = useState([]);
-  const [draggingKey, setDraggingKey] = useState('');
-  const [filters, setFilters] = useState({ productModel: '', storageGb: '', color: '' });
-  const [percentage, setPercentage] = useState('0');
-  const [fixedAmount, setFixedAmount] = useState('0');
+  const [mode, setMode] = useState('markup');
+  const [amount, setAmount] = useState('50');
+  const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState('');
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [copied, setCopied] = useState(false);
+  const [needsReview, setNeedsReview] = useState(false);
+  const [dialog, setDialog] = useState(null);
+  const previewRef = useRef(null);
+  const pending = useRef(false);
+  const returnFocusRef = useRef(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       const [pricing, history] = await Promise.all([
-        getIphone18QuotePricing(),
-        getIphone18QuoteVersions(),
+        getDuoQuotePricing(),
+        getDuoQuoteVersions(),
       ]);
       setData(pricing.data);
-      setDraftOrder(pricing.data.items.map(item => item.productKey));
       setVersions(history.data.items);
-      setSelected(previous => {
-        const valid = new Set(pricing.data.items.map(item => item.productKey));
-        return new Set([...previous].filter(key => valid.has(key)));
-      });
+      setHistoryTotal(history.data.total ?? history.data.items.length);
+      setSelected(
+        previous =>
+          new Set(
+            [...previous].filter(key =>
+              pricing.data.items.some(item => item.productKey === key)
+            )
+          )
+      );
+      setPreview(null);
+      setNeedsReview(false);
       setError('');
+      return true;
     } catch (failure) {
       setError(failure.message || '读取报价管理数据失败');
+      return false;
     } finally {
       setLoading(false);
     }
@@ -99,540 +239,900 @@ export default function Iphone18QuotePricing() {
     load();
   }, [load]);
 
-  const filterOptions = useMemo(
-    () => ({
-      models: [...new Set((data?.items || []).map(item => item.productModel))],
-      storages: [...new Set((data?.items || []).map(item => item.storageGb))].sort((a, b) => a - b),
-      colors: [...new Set((data?.items || []).map(item => item.color))].sort(compareColors),
-    }),
-    [data?.items]
+  const items = data?.items || [];
+  const disabled = loading || Boolean(busy);
+  const allSelected =
+    items.length > 0 && items.every(item => selected.has(item.productKey));
+  const missingBase = items.some(
+    item => selected.has(item.productKey) && item.wholesalePrice == null
   );
 
-  const orderedItems = useMemo(() => {
-    const items = data?.items || [];
-    const byKey = new Map(items.map(item => [item.productKey, item]));
-    const ordered = draftOrder.map(key => byKey.get(key)).filter(Boolean);
-    const included = new Set(ordered.map(item => item.productKey));
-    return [...ordered, ...items.filter(item => !included.has(item.productKey))];
-  }, [data?.items, draftOrder]);
-
-  const filteredItems = useMemo(
-    () =>
-      orderedItems.filter(
-        item =>
-          (!filters.productModel || item.productModel === filters.productModel) &&
-          (!filters.storageGb || item.storageGb === Number(filters.storageGb)) &&
-          (!filters.color || item.color === filters.color)
-      ),
-    [orderedItems, filters]
-  );
-
-  const hasActiveFilters = Object.values(filters).some(Boolean);
-  const defaultOrder = data?.defaultOrder || [];
-  const savedOrder = (data?.items || []).map(item => item.productKey);
-  const orderChanged =
-    draftOrder.length === savedOrder.length &&
-    draftOrder.some((productKey, index) => productKey !== savedOrder[index]);
-
-  const allFilteredSelected =
-    filteredItems.length > 0 && filteredItems.every(item => selected.has(item.productKey));
+  function changeDraft(update) {
+    setPreview(null);
+    setNotice('');
+    update();
+  }
 
   function toggleOne(key) {
-    setSelected(previous => {
-      const next = new Set(previous);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+    changeDraft(() =>
+      setSelected(previous => {
+        const next = new Set(previous);
+        if (next.has(key)) next.delete(key);
+        else next.add(key);
+        return next;
+      })
+    );
   }
 
-  function toggleFiltered() {
-    setSelected(previous => {
-      const next = new Set(previous);
-      filteredItems.forEach(item => {
-        if (allFilteredSelected) next.delete(item.productKey);
-        else next.add(item.productKey);
-      });
-      return next;
-    });
+  function handleFailure(failure) {
+    setPreview(null);
+    if (failure.response?.status === 409) {
+      setNeedsReview(true);
+      setError(
+        '报价来源或设置版本已变化。输入已保留，请点击“刷新并核对”，核对最新批发价后重新预览。'
+      );
+    } else {
+      setError(failure.message || '操作失败，请稍后重试');
+    }
   }
 
-  function moveItem(sourceKey, targetKey) {
-    if (hasActiveFilters || sourceKey === targetKey) return;
-    setDraftOrder(previous => {
-      const sourceIndex = previous.indexOf(sourceKey);
-      const targetIndex = previous.indexOf(targetKey);
-      if (sourceIndex < 0 || targetIndex < 0) return previous;
-      const next = [...previous];
-      const [moved] = next.splice(sourceIndex, 1);
-      next.splice(targetIndex, 0, moved);
-      return next;
-    });
-  }
-
-  function startDragging(event, productKey) {
-    if (hasActiveFilters || busy) {
-      event.preventDefault();
+  async function createPreview(operation, versionId) {
+    if (pending.current || disabled || needsReview || !data) return;
+    if (operation !== 'restore' && !selected.size) {
+      setError('请先选择需要设置的商品');
       return;
     }
-    setDraggingKey(productKey);
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData('text/plain', productKey);
-  }
-
-  function moveWithKeyboard(event, productKey) {
-    if (hasActiveFilters || busy || !['ArrowUp', 'ArrowDown'].includes(event.key)) return;
-    event.preventDefault();
-    const currentIndex = draftOrder.indexOf(productKey);
-    const targetIndex = currentIndex + (event.key === 'ArrowUp' ? -1 : 1);
-    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= draftOrder.length) return;
-    moveItem(productKey, draftOrder[targetIndex]);
-  }
-
-  async function run(busyKey, action, successMessage) {
-    setBusy(busyKey);
+    if (operation === 'adjust') {
+      if (
+        !/^-?\d+(\.\d{1,2})?$/.test(amount) ||
+        !Number.isFinite(Number(amount))
+      ) {
+        setError('请输入金额，最多保留两位小数');
+        return;
+      }
+      if (
+        (mode === 'markup' && Math.abs(Number(amount)) > 100000) ||
+        (mode === 'retail' &&
+          (Number(amount) < 0 || Number(amount) > 99999999.99))
+      ) {
+        setError(
+          mode === 'markup'
+            ? '加价额应在 -100000 至 100000 元之间'
+            : '零售价应在 0 至 99999999.99 元之间'
+        );
+        return;
+      }
+      if (mode === 'retail' && missingBase) {
+        setError('所选商品缺少批发价，无法按零售价换算加价额');
+        return;
+      }
+    }
+    const body = {
+      expectedVersion: data.version,
+      expectedSourceVersion: data.sourceVersion,
+      ...(operation === 'restore'
+        ? { versionId }
+        : { productKeys: [...selected] }),
+      ...(operation === 'adjust' ? { mode, amount } : {}),
+    };
+    pending.current = true;
+    setBusy('preview');
     setError('');
     setNotice('');
+    setPreview(null);
     try {
-      await action();
-      setNotice(successMessage);
-      await load();
+      const result = await previewDuoQuotePricing({ operation, ...body });
+      setPreview({ operation, body, data: result.data });
+      requestAnimationFrame(() =>
+        previewRef.current?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'nearest',
+        })
+      );
     } catch (failure) {
-      setError(failure.message || '操作失败');
+      handleFailure(failure);
     } finally {
+      pending.current = false;
       setBusy('');
     }
   }
 
-  function applyAdjustments() {
-    if (selected.size === 0) return setError('请先选择商品');
-    const percent = Number(percentage);
-    const fixed = Number(fixedAmount);
-    if (!Number.isFinite(percent) || !Number.isFinite(fixed)) return setError('请输入有效调价值');
-    return run(
-      'save',
-      () =>
-        saveIphone18QuoteAdjustments({
-          productKeys: [...selected],
-          percentage: percent,
-          fixedAmount: fixed,
-          expectedVersion: data.version,
-        }),
-      `已更新 ${selected.size} 款商品，公开报价立即生效。`
-    );
-  }
-
-  function resetSelected() {
-    if (selected.size === 0) return setError('请先选择商品');
-    if (!window.confirm(`确定将选中的 ${selected.size} 款商品恢复为明威原价吗？`)) return;
-    return run(
-      'reset',
-      () =>
-        resetIphone18QuoteAdjustments({
-          productKeys: [...selected],
-          expectedVersion: data.version,
-        }),
-      `已恢复 ${selected.size} 款商品原价。`
-    );
-  }
-
-  function toggleAvailability() {
-    const enabled = !data.publicEnabled;
-    return run(
-      'availability',
-      () => setIphone18QuoteAvailability({ enabled, expectedVersion: data.version }),
-      enabled ? '公开报价链接已开放。' : '公开报价链接已暂停。'
-    );
-  }
-
-  function saveDisplayOrder() {
-    if (!orderChanged) return;
-    return run(
-      'display-order',
-      () =>
-        saveIphone18QuoteDisplayOrder({
-          productKeys: draftOrder,
-          expectedVersion: data.version,
-        }),
-      '展示顺序已保存，公开报价页面立即生效。'
-    );
-  }
-
-  function restore(version) {
-    if (!window.confirm(`确定恢复到报价版本 #${version.revision} 吗？此操作会生成新版本。`)) {
-      return;
-    }
-    return run(
-      `restore-${version.id}`,
-      () => restoreIphone18QuoteVersion(version.id, { expectedVersion: data.version }),
-      `已恢复报价版本 #${version.revision}。`
-    );
-  }
-
-  async function copyPublicLink() {
+  async function savePreview() {
+    if (!preview || disabled || pending.current || needsReview) return;
+    pending.current = true;
+    setBusy('save');
+    setError('');
     try {
-      await navigator.clipboard.writeText(`${window.location.origin}${data.publicPath}`);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1800);
-    } catch (_error) {
-      setError('复制链接失败，请检查浏览器剪贴板权限');
+      const { operation, body } = preview;
+      if (operation === 'adjust') await saveDuoQuoteAdjustments(body);
+      else if (operation === 'reset') await resetDuoQuoteAdjustments(body);
+      else {
+        const { versionId, ...tokens } = body;
+        await restoreDuoQuoteVersion(versionId, tokens);
+      }
+      setPreview(null);
+      const refreshed = await load();
+      setDialog(null);
+      setNotice(
+        refreshed
+          ? '已保存加价额，Duo 公开报价已生效。'
+          : '已保存加价额；最新数据读取失败，请刷新核对。'
+      );
+    } catch (failure) {
+      handleFailure(failure);
+    } finally {
+      pending.current = false;
+      setBusy('');
     }
   }
 
-  if (loading && !data) {
-    return (
-      <div className="flex min-h-[50vh] items-center justify-center text-gray-500">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" /> 正在加载报价…
-      </div>
-    );
+  async function loadMoreHistory() {
+    if (pending.current || disabled) return;
+    pending.current = true;
+    setBusy('history');
+    setError('');
+    try {
+      const result = await getDuoQuoteVersions(20, versions.length);
+      setVersions(previous => [...previous, ...result.data.items]);
+      setHistoryTotal(result.data.total);
+    } catch (failure) {
+      setError(failure.message || '读取更多历史失败，请重试');
+    } finally {
+      pending.current = false;
+      setBusy('');
+    }
   }
+
+  async function refresh() {
+    if (pending.current || disabled) return;
+    pending.current = true;
+    setPreview(null);
+    setNotice('');
+    try {
+      if (await load())
+        setNotice('已读取最新报价。输入与选择已保留，请核对后重新预览。');
+    } finally {
+      pending.current = false;
+    }
+  }
+
+  function openEditor(item, trigger) {
+    if (disabled) return;
+    returnFocusRef.current = trigger || document.activeElement;
+    setPreview(null);
+    setNotice('');
+    if (!needsReview) setError('');
+    if (item) {
+      setSelected(new Set([item.productKey]));
+      const currentAmount = mode === 'markup' ? item.markup : item.retailPrice;
+      setAmount(currentAmount == null ? '' : String(currentAmount));
+    } else {
+      setAmount('');
+    }
+    setDialog({ type: 'edit' });
+  }
+
+  function closeDialog() {
+    if (disabled || pending.current) return;
+    setDialog(null);
+    setPreview(null);
+    if (!needsReview) setError('');
+  }
+
+  function openHistory(version, trigger) {
+    returnFocusRef.current = trigger || document.activeElement;
+    setDialog({
+      type: 'restore',
+      versionId: version.id,
+      revision: version.revision,
+      changes: version.changes || [],
+    });
+    createPreview('restore', version.id);
+  }
+
+  const selectedItems =
+    dialog?.type === 'restore'
+      ? items
+      : items.filter(item => selected.has(item.productKey));
+  const summaryItems = preview
+    ? preview.data.items.filter(item => item.selected)
+    : selectedItems;
+  const errorBanner = error && (
+    <div
+      role="alert"
+      className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+    >
+      {error}
+    </div>
+  );
+  const noticeBanner = notice && (
+    <div
+      role="status"
+      className="rounded-lg border border-blue-100 bg-blue-50 p-3 text-sm text-blue-900"
+    >
+      {notice}
+    </div>
+  );
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary-50">
-            <BadgeDollarSign className="h-5 w-5 text-primary" />
-          </div>
+    <>
+      <div
+        className={`duo-pricing duo-pricing-page space-y-4 ${selected.size ? 'duo-pricing-has-selection' : ''} ${dialog ? 'duo-pricing-dialog-open' : ''}`}
+        aria-busy={disabled}
+      >
+        <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Apple 报价管理</h1>
-            <p className="mt-1 text-sm text-gray-500">选择商品并批量设置对外报价调整</p>
-          </div>
-        </div>
-        <button className="btn btn-secondary inline-flex items-center gap-2" onClick={load}>
-          <RefreshCw className="h-4 w-4" /> 刷新数据
-        </button>
-      </div>
-
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          {error}
-        </div>
-      )}
-      {notice && (
-        <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">
-          {notice}
-        </div>
-      )}
-
-      {data && (
-        <>
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`badge ${data.publicEnabled ? 'badge-success' : 'badge-warning'}`}
-                  >
-                    {data.publicEnabled ? '公开中' : '已暂停'}
-                  </span>
-                  <span className="text-sm font-medium text-gray-900">固定公开报价链接</span>
-                </div>
-                <p className="mt-2 break-all font-mono text-sm text-primary">
-                  {window.location.origin}
-                  {data.publicPath}
-                </p>
-                <p className="mt-2 text-xs text-gray-500">
-                  来源报价：{formatTime(data.sourceUpdatedAt)} · 最近检查：
-                  {formatTime(data.lastCheckedAt)}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="btn btn-secondary inline-flex items-center gap-2"
-                  onClick={copyPublicLink}
-                >
-                  {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
-                  {copied ? '已复制' : '复制链接'}
-                </button>
-                <a
-                  href={data.publicPath}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="btn btn-secondary inline-flex items-center gap-2"
-                >
-                  <ExternalLink className="h-4 w-4" /> 打开链接
-                </a>
-                <button
-                  className={`btn ${data.publicEnabled ? 'btn-secondary' : 'btn-primary'}`}
-                  onClick={toggleAvailability}
-                  disabled={Boolean(busy)}
-                >
-                  {data.publicEnabled ? '暂停公开' : '开放链接'}
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
-            <div className="grid gap-3 md:grid-cols-3">
-              <ResponsiveSelect
-                className="input"
-                value={filters.productModel}
-                aria-label="型号筛选"
-                onChange={event =>
-                  setFilters(previous => ({ ...previous, productModel: event.target.value }))
-                }
-              >
-                <option value="">全部型号</option>
-                {filterOptions.models.map(value => (
-                  <option key={value} value={value}>
-                    iPhone {value}
-                  </option>
-                ))}
-              </ResponsiveSelect>
-              <ResponsiveSelect
-                className="input"
-                value={filters.storageGb}
-                aria-label="容量筛选"
-                onChange={event =>
-                  setFilters(previous => ({ ...previous, storageGb: event.target.value }))
-                }
-              >
-                <option value="">全部容量</option>
-                {filterOptions.storages.map(value => (
-                  <option key={value} value={value}>
-                    {formatStorageCapacity(value)}
-                  </option>
-                ))}
-              </ResponsiveSelect>
-              <ResponsiveSelect
-                className="input"
-                value={filters.color}
-                aria-label="颜色筛选"
-                onChange={event =>
-                  setFilters(previous => ({ ...previous, color: event.target.value }))
-                }
-              >
-                <option value="">全部颜色</option>
-                {filterOptions.colors.map(value => (
-                  <option key={value} value={value}>
-                    {value}
-                  </option>
-                ))}
-              </ResponsiveSelect>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-end gap-3 border-t border-gray-100 pt-4">
-              <label className="min-w-[180px] flex-1 text-sm text-gray-700">
-                百分比调整
-                <div className="relative mt-1">
-                  <input
-                    className="input pr-9"
-                    type="number"
-                    min="-100"
-                    max="1000"
-                    step="0.01"
-                    value={percentage}
-                    onChange={event => setPercentage(event.target.value)}
-                  />
-                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400">%</span>
-                </div>
-              </label>
-              <label className="min-w-[180px] flex-1 text-sm text-gray-700">
-                固定金额调整
-                <div className="relative mt-1">
-                  <input
-                    className="input pl-8"
-                    type="number"
-                    min="-100000"
-                    max="100000"
-                    step="1"
-                    value={fixedAmount}
-                    onChange={event => setFixedAmount(event.target.value)}
-                  />
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">¥</span>
-                </div>
-              </label>
-              <button
-                className="btn btn-primary inline-flex items-center gap-2"
-                onClick={applyAdjustments}
-                disabled={Boolean(busy) || selected.size === 0}
-              >
-                <Save className="h-4 w-4" /> 应用到 {selected.size} 款
-              </button>
-              <button
-                className="btn btn-secondary inline-flex items-center gap-2"
-                onClick={resetSelected}
-                disabled={Boolean(busy) || selected.size === 0}
-              >
-                <RotateCcw className="h-4 w-4" /> 恢复原价
-              </button>
-            </div>
-            <p className="mt-3 text-xs text-gray-500">
-              计算顺序：明威原价 ×（1 + 百分比）+
-              固定金额，最后四舍五入到整数元。重复保存会覆盖当前规则，不会累加。
+            <h1 className="text-2xl font-bold text-gray-900">报价管理</h1>
+            <p className="text-gray-500 mt-1 text-sm">
+              iPhone Duo · 8 款商品 · 默认加价 +50 元
             </p>
-          </section>
-
-          <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-4 py-3">
-              <div>
-                <p className="text-sm text-gray-600">
-                  已选择 <span className="font-semibold text-primary">{selected.size}</span> /{' '}
-                  {data.items.length} 款
-                </p>
-                <p className="mt-1 text-xs text-gray-500">
-                  {hasActiveFilters
-                    ? '清除筛选后可拖动商品行调整公开展示顺序。'
-                    : '拖动每行左侧排序图标，保存后公开页面立即按新顺序展示。'}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="btn btn-primary inline-flex items-center gap-2"
-                  onClick={saveDisplayOrder}
-                  disabled={Boolean(busy) || !orderChanged || hasActiveFilters}
-                >
-                  <Save className="h-4 w-4" /> 保存展示顺序
-                </button>
-                <button
-                  className="btn btn-secondary inline-flex items-center gap-2"
-                  onClick={() => setDraftOrder(defaultOrder)}
-                  disabled={Boolean(busy) || hasActiveFilters || defaultOrder.length === 0}
-                >
-                  <RotateCcw className="h-4 w-4" /> 恢复默认顺序
-                </button>
-                <button className="btn btn-secondary" onClick={toggleFiltered}>
-                  {allFilteredSelected ? '取消当前结果' : `全选当前结果（${filteredItems.length}）`}
-                </button>
-                <button
-                  className="btn btn-secondary"
-                  onClick={() => setSelected(new Set(data.items.map(item => item.productKey)))}
-                >
-                  选择全部商品
-                </button>
-                <button className="btn btn-secondary" onClick={() => setSelected(new Set())}>
-                  清空选择
-                </button>
-              </div>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="min-w-[1040px] w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                  <tr className="text-left text-xs font-medium text-gray-500">
-                    <th className="w-12 px-3 py-3 text-center">排序</th>
-                    <th className="w-12 px-4 py-3">
-                      <input
-                        type="checkbox"
-                        aria-label="全选当前结果"
-                        checked={allFilteredSelected}
-                        onChange={toggleFiltered}
-                      />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/quote/duo"
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary"
+            >
+              <ExternalLink className="w-4 h-4" />
+              查看公开报价
+            </a>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              disabled={disabled}
+              onClick={refresh}
+            >
+              <RefreshCw
+                className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+              />
+              刷新并核对
+            </button>
+          </div>
+        </header>
+        <div className="duo-pricing-times text-sm text-gray-500">
+          <p>
+            批发价更新时间：
+            <span className="text-gray-700">
+              <time dateTime={data?.sourceUpdatedAt || undefined}>
+                {time(data?.sourceUpdatedAt)}
+              </time>
+            </span>
+          </p>
+          <p>
+            最近调价时间：
+            <span className="text-gray-700">
+              {data?.pricingUpdatedAt
+                ? time(data.pricingUpdatedAt)
+                : '暂未调价'}
+            </span>
+          </p>
+        </div>
+        {!dialog && errorBanner}
+        {!dialog && noticeBanner}
+        {data?.stale && (
+          <p role="alert" className="text-sm text-amber-700">
+            批发报价更新延迟，请核对批发价更新时间后操作。
+          </p>
+        )}
+        <section
+          className="rounded-xl border border-gray-200 bg-white overflow-hidden"
+          aria-label="Duo 报价列表"
+        >
+          <div className="duo-pricing-list-toolbar">
+            <span className="text-sm text-gray-500">
+              已选 <strong className="text-primary">{selected.size}</strong> /{' '}
+              {items.length} 款
+            </span>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={disabled || !selected.size}
+              onClick={event => openEditor(undefined, event.currentTarget)}
+              aria-label={`批量设置（已选 ${selected.size} 款）`}
+            >
+              批量设置{selected.size ? `（${selected.size}）` : ''}
+            </button>
+          </div>
+          <div className="duo-pricing-list-wrap">
+            {items.length ? (
+              <table className="duo-pricing-list w-full text-sm">
+                <thead className="bg-gray-50 text-gray-600">
+                  <tr>
+                    <th className="duo-pricing-mobile duo-pricing-product-heading">
+                      <label className="duo-pricing-check">
+                        <input
+                          type="checkbox"
+                          aria-label="全选 Duo 商品"
+                          checked={allSelected}
+                          disabled={disabled || !items.length}
+                          onChange={() =>
+                            changeDraft(() =>
+                              setSelected(
+                                allSelected
+                                  ? new Set()
+                                  : new Set(items.map(item => item.productKey))
+                              )
+                            )
+                          }
+                        />
+                        <span>商品</span>
+                      </label>
                     </th>
-                    <th className="px-4 py-3">商品</th>
-                    <th className="px-4 py-3">规格码</th>
-                    <th className="px-4 py-3">明威原价</th>
-                    <th className="px-4 py-3">官网价</th>
-                    <th className="px-4 py-3">百分比</th>
-                    <th className="px-4 py-3">固定金额</th>
-                    <th className="px-4 py-3">公开报价</th>
+                    <th className="duo-pricing-mobile text-right">价格摘要</th>
+                    <th className="duo-pricing-desktop px-3 py-3">
+                      <label className="duo-pricing-check">
+                        <input
+                          type="checkbox"
+                          aria-label="全选 Duo 商品"
+                          checked={allSelected}
+                          disabled={disabled || !items.length}
+                          onChange={() =>
+                            changeDraft(() =>
+                              setSelected(
+                                allSelected
+                                  ? new Set()
+                                  : new Set(items.map(item => item.productKey))
+                              )
+                            )
+                          }
+                        />
+                      </label>
+                    </th>
+                    {[
+                      '容量',
+                      '颜色',
+                      '批发价',
+                      '官网价',
+                      '加价额',
+                      '零售价',
+                      '溢价额',
+                    ].map(label => (
+                      <th
+                        key={label}
+                        className={`duo-pricing-desktop px-3 py-3 ${label === '容量' || label === '颜色' ? 'text-left' : 'text-right'}`}
+                      >
+                        {label}
+                      </th>
+                    ))}
+                    <th className="duo-pricing-action-heading text-right">
+                      操作
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredItems.map(item => (
-                    <tr
-                      key={item.productKey}
-                      onDragEnter={() => moveItem(draggingKey, item.productKey)}
-                      onDragOver={event => {
-                        if (!hasActiveFilters) event.preventDefault();
-                      }}
-                      onDrop={event => {
-                        event.preventDefault();
-                        setDraggingKey('');
-                      }}
-                      className={`${selected.has(item.productKey) ? 'bg-blue-50' : 'hover:bg-gray-50'} ${draggingKey === item.productKey ? 'opacity-50' : ''}`}
-                    >
-                      <td className="px-3 py-3 text-center">
+                  {items.map(item => (
+                    <tr key={item.productKey} className="hover:bg-gray-50">
+                      <td className="duo-pricing-mobile">
+                        <div className="duo-pricing-mobile-product">
+                          <label className="duo-pricing-check">
+                            <input
+                              type="checkbox"
+                              aria-label={`选择 ${formatStorageCapacity(item.storageGb)} ${item.color}`}
+                              checked={selected.has(item.productKey)}
+                              disabled={disabled}
+                              onChange={() => toggleOne(item.productKey)}
+                            />
+                          </label>
+                          <span>
+                            <strong>
+                              {formatStorageCapacity(item.storageGb)}
+                            </strong>
+                            <span className="block text-gray-500">
+                              {item.color}
+                            </span>
+                          </span>
+                        </div>
+                      </td>
+                      <td className="duo-pricing-mobile duo-pricing-mobile-price">
+                        <strong className="block text-primary">
+                          {currency(item.retailPrice)}
+                        </strong>
+                        <span>批发 {currency(item.wholesalePrice)}</span>
+                        <span>加价 {signed(item.markup)}</span>
+                        {item.pricingError && (
+                          <span className="text-amber-700">零售价异常</span>
+                        )}
+                      </td>
+                      <td className="duo-pricing-desktop px-3">
+                        <label className="duo-pricing-check">
+                          <input
+                            type="checkbox"
+                            aria-label={`选择 ${formatStorageCapacity(item.storageGb)} ${item.color}`}
+                            checked={selected.has(item.productKey)}
+                            disabled={disabled}
+                            onChange={() => toggleOne(item.productKey)}
+                          />
+                        </label>
+                      </td>
+                      <td className="duo-pricing-desktop px-3 py-3 font-medium text-gray-900">
+                        {formatStorageCapacity(item.storageGb)}
+                      </td>
+                      <td className="duo-pricing-desktop px-3 py-3 text-gray-600">
+                        {item.color}
+                      </td>
+                      <td className="duo-pricing-desktop px-3 py-3 text-right text-gray-600">
+                        {currency(item.wholesalePrice)}
+                      </td>
+                      <td className="duo-pricing-desktop px-3 py-3 text-right text-gray-500">
+                        {currency(item.officialPrice)}
+                      </td>
+                      <td className="duo-pricing-desktop px-3 py-3 text-right text-gray-900">
+                        {signed(item.markup)}
+                      </td>
+                      <td className="duo-pricing-desktop px-3 py-3 text-right font-semibold text-primary">
+                        {currency(item.retailPrice)}
+                        {item.pricingError && (
+                          <div className="mt-1 text-xs font-normal text-amber-700">
+                            零售价异常，请调整加价
+                          </div>
+                        )}
+                      </td>
+                      <td className="duo-pricing-desktop px-3 py-3 text-right text-gray-600">
+                        {signed(item.premiumAmount)}
+                      </td>
+                      <td className="duo-pricing-action">
                         <button
                           type="button"
-                          draggable={!hasActiveFilters && !busy}
-                          aria-label={`拖动 ${getProductDisplayName(item)} 调整顺序`}
-                          title={hasActiveFilters ? '清除筛选后可调整顺序' : '拖动调整展示顺序'}
-                          onDragStart={event => startDragging(event, item.productKey)}
-                          onDragEnd={() => setDraggingKey('')}
-                          onKeyDown={event => moveWithKeyboard(event, item.productKey)}
-                          className="inline-flex h-8 w-8 cursor-grab items-center justify-center rounded-md text-gray-400 hover:bg-blue-50 hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-40 active:cursor-grabbing"
-                          disabled={hasActiveFilters || Boolean(busy)}
+                          className="btn btn-secondary"
+                          disabled={disabled}
+                          aria-label={`设置 ${formatStorageCapacity(item.storageGb)} ${item.color}`}
+                          onClick={event =>
+                            openEditor(item, event.currentTarget)
+                          }
                         >
-                          <GripVertical className="h-5 w-5" />
+                          设置
                         </button>
-                      </td>
-                      <td className="px-4 py-3">
-                        <input
-                          type="checkbox"
-                          aria-label={`选择 ${getProductDisplayName(item)}`}
-                          checked={selected.has(item.productKey)}
-                          onChange={() => toggleOne(item.productKey)}
-                        />
-                      </td>
-                      <td className="min-w-[260px] px-4 py-3 font-medium text-gray-900">
-                        <ProductName product={item} />
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 font-mono text-xs text-gray-500">
-                        {item.specCode || '-'}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {formatCurrency(item.basePrice, '暂未报价')}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-gray-500">
-                        {formatCurrency(item.officialPrice)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {item.percentage > 0 ? '+' : ''}
-                        {item.percentage}%
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        {item.fixedAmount > 0 ? '+' : ''}
-                        {formatCurrency(item.fixedAmount)}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-primary">
-                        {formatCurrency(item.quotePrice, '暂未报价')}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-            </div>
-          </section>
-
-          <section className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-            <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-3">
-              <History className="h-4 w-4 text-primary" />
-              <h2 className="font-semibold text-gray-900">调价版本记录</h2>
-            </div>
-            {versions.length ? (
-              <div className="divide-y divide-gray-100">
-                {versions.map(version => (
-                  <div
-                    key={version.id}
-                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
-                  >
-                    <div>
-                      <p className="text-sm font-medium text-gray-900">
-                        #{version.revision} · {actionLabels[version.action] || version.action}
-                      </p>
-                      <p className="mt-1 text-xs text-gray-500">
-                        {version.actorName} · {formatTime(version.createdAt)} · 当前规则{' '}
-                        {version.summary?.itemCount ?? 0} 条
-                      </p>
-                    </div>
-                    <button
-                      className="btn btn-secondary inline-flex items-center gap-2"
-                      onClick={() => restore(version)}
-                      disabled={Boolean(busy)}
-                    >
-                      <RotateCcw className="h-4 w-4" /> 恢复此版本
-                    </button>
-                  </div>
-                ))}
-              </div>
             ) : (
-              <div className="px-4 py-10 text-center text-sm text-gray-500">暂无调价记录</div>
+              <div
+                role="status"
+                className="flex min-h-32 items-center justify-center p-6 text-center text-sm text-gray-500"
+              >
+                {loading
+                  ? '正在加载报价…'
+                  : error
+                    ? '报价读取失败，请刷新重试'
+                    : '暂无 Duo 商品'}
+              </div>
             )}
+          </div>
+        </section>
+        <p className="text-xs text-gray-500">
+          零售价随批发价涨跌；按零售价设置时，仅将本次输入换算为加价额。
+        </p>
+        <section
+          className="rounded-xl border border-gray-200 bg-white overflow-hidden"
+          aria-label="报价历史"
+        >
+          <h2 className="p-4 flex items-center gap-2 font-semibold text-gray-900">
+            <History className="w-5 h-5" />
+            调价历史
+          </h2>
+          <div className="overflow-x-auto">
+            {versions.length ? (
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 text-left text-gray-600">
+                  <tr>
+                    <th className="duo-pricing-history-mobile">
+                      版本 / 操作人
+                    </th>
+                    <th className="duo-pricing-history-mobile">变更摘要</th>
+                    {['版本 / 时间', '操作人', '变更'].map(label => (
+                      <th
+                        key={label}
+                        className="duo-pricing-history-desktop px-4 py-3 whitespace-nowrap"
+                      >
+                        {label}
+                      </th>
+                    ))}
+                    <th className="duo-pricing-history-action">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {versions.map(version => (
+                    <tr key={version.id} className="hover:bg-gray-50">
+                      <td className="duo-pricing-history-mobile">
+                        <strong className="text-gray-900">
+                          版本 {version.revision}
+                        </strong>
+                        <time
+                          className="block text-gray-500"
+                          dateTime={version.createdAt}
+                        >
+                          {time(version.createdAt)}
+                        </time>
+                        <span className="block text-gray-600">
+                          {version.actorName || '—'}
+                        </span>
+                      </td>
+                      <td className="duo-pricing-history-mobile">
+                        <p>{actionLabels[version.action] || version.action}</p>
+                        <p className="mt-1 text-gray-500">
+                          {version.changes?.length
+                            ? `${version.changes.length} 款加价额变更`
+                            : '加价额无变化'}
+                        </p>
+                      </td>
+                      <td className="duo-pricing-history-desktop px-4 py-3 whitespace-nowrap">
+                        <span className="font-medium text-gray-900">
+                          版本 {version.revision}
+                        </span>
+                        <div className="mt-1 text-gray-500">
+                          {time(version.createdAt)}
+                        </div>
+                      </td>
+                      <td className="duo-pricing-history-desktop px-4 py-3 whitespace-nowrap text-gray-600">
+                        {version.actorName || '—'}
+                      </td>
+                      <td className="duo-pricing-history-desktop px-4 py-3 text-gray-600">
+                        <div>
+                          {actionLabels[version.action] || version.action}
+                        </div>
+                        {version.changes?.length ? (
+                          <ul className="mt-1 space-y-1">
+                            {version.changes.map(change => (
+                              <li key={change.productKey}>
+                                {formatStorageCapacity(change.storageGb)}{' '}
+                                {change.color}：{signed(change.previousMarkup)}{' '}
+                                → {signed(change.markup)}
+                                <div className="text-gray-500">
+                                  零售价：{currency(change.previousRetailPrice)}{' '}
+                                  → {currency(change.retailPrice)}（当时批发价{' '}
+                                  {currency(change.wholesalePrice)}）
+                                </div>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="mt-1 text-gray-500">加价额无变化</p>
+                        )}
+                      </td>
+                      <td className="duo-pricing-history-action">
+                        <button
+                          type="button"
+                          className="btn btn-secondary whitespace-nowrap"
+                          disabled={disabled || needsReview}
+                          aria-label={`预览恢复版本 ${version.revision}`}
+                          onClick={event =>
+                            openHistory(version, event.currentTarget)
+                          }
+                        >
+                          <span className="duo-pricing-history-desktop">
+                            预览恢复
+                          </span>
+                          <span className="duo-pricing-history-mobile">
+                            恢复
+                          </span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div
+                role="status"
+                className="flex min-h-32 items-center justify-center p-6 text-center text-sm text-gray-500"
+              >
+                {loading ? '正在加载历史…' : '暂无调价历史'}
+              </div>
+            )}
+          </div>
+          <div className="p-4 flex flex-wrap justify-between items-center gap-2 text-sm text-gray-500">
+            <span>
+              已显示 {versions.length} / {historyTotal} 条
+            </span>
+            {versions.length < historyTotal && (
+              <button
+                type="button"
+                className="btn btn-secondary"
+                disabled={disabled}
+                onClick={loadMoreHistory}
+              >
+                {busy === 'history' ? '正在加载…' : '加载更多历史'}
+              </button>
+            )}
+          </div>
+        </section>
+      </div>
+      {dialog && (
+        <PricingDialog
+          title={
+            dialog.type === 'restore'
+              ? `恢复历史版本 ${dialog.revision}`
+              : selected.size === 1
+                ? '设置单款报价'
+                : `批量设置 ${selected.size} 款报价`
+          }
+          busy={disabled}
+          returnFocusRef={returnFocusRef}
+          onClose={closeDialog}
+          footer={
+            needsReview ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={disabled}
+                onClick={refresh}
+              >
+                <RefreshCw className="w-4 h-4" />
+                刷新并核对
+              </button>
+            ) : preview ? (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={disabled}
+                  onClick={() => setPreview(null)}
+                >
+                  取消预览
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={disabled}
+                  onClick={savePreview}
+                >
+                  {busy === 'save' ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4" />
+                  )}
+                  确认保存加价额
+                </button>
+              </>
+            ) : dialog.type === 'restore' ? (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={disabled}
+                onClick={() => createPreview('restore', dialog.versionId)}
+              >
+                <Eye className="w-4 h-4" />
+                重新预览恢复
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  disabled={disabled || !selected.size}
+                  onClick={() => createPreview('reset')}
+                >
+                  <RotateCcw className="w-4 h-4" />
+                  恢复默认 +50
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  disabled={
+                    disabled ||
+                    !selected.size ||
+                    (mode === 'retail' && missingBase)
+                  }
+                  onClick={() => createPreview('adjust')}
+                >
+                  <Eye className="w-4 h-4" />
+                  预览设置
+                </button>
+              </>
+            )
+          }
+        >
+          {errorBanner}
+          {noticeBanner}
+          <div className="duo-pricing-dialog-times text-xs text-gray-500">
+            <p>
+              批发价更新时间：
+              <time dateTime={data?.sourceUpdatedAt || undefined}>
+                {time(data?.sourceUpdatedAt)}
+              </time>
+            </p>
+            <p>
+              最近调价时间：
+              {data?.pricingUpdatedAt
+                ? time(data.pricingUpdatedAt)
+                : '暂未调价'}
+            </p>
+          </div>
+          {dialog.type === 'edit' && (
+            <section aria-label="设置报价">
+              <fieldset disabled={disabled} className="flex flex-wrap gap-x-4">
+                <legend className="sr-only">设置方式</legend>
+                {[
+                  ['markup', '按加价额设置'],
+                  ['retail', '按零售价设置'],
+                ].map(([value, label]) => (
+                  <label key={value} className="duo-pricing-choice">
+                    <input
+                      type="radio"
+                      name="duo-pricing-mode"
+                      value={value}
+                      checked={mode === value}
+                      onChange={() =>
+                        changeDraft(() => {
+                          setMode(value);
+                          setAmount('');
+                        })
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </fieldset>
+              <label className="block mt-2 text-sm font-medium text-gray-700">
+                {mode === 'markup' ? '加价额（元）' : '零售价（元）'}
+                <input
+                  className="input mt-2 duo-pricing-amount-input"
+                  aria-label={
+                    mode === 'markup' ? '加价额（元）' : '零售价（元）'
+                  }
+                  inputMode="decimal"
+                  value={amount}
+                  disabled={disabled}
+                  placeholder={
+                    mode === 'markup' ? '例如 50 或 -20' : '请输入零售价'
+                  }
+                  onChange={event =>
+                    changeDraft(() => setAmount(event.target.value))
+                  }
+                />
+              </label>
+              <p className="mt-2 text-xs text-gray-500">
+                仅保存加价额，后续零售价随批发价涨跌。批量输入同一零售价时，逐款换算不同加价额。
+              </p>
+              {mode === 'retail' && missingBase && (
+                <p role="alert" className="mt-2 text-sm text-amber-700">
+                  所选商品缺少批发价，无法按零售价换算；可按加价额设置。
+                </p>
+              )}
+            </section>
+          )}
+          {busy === 'preview' && (
+            <p
+              role="status"
+              className="flex items-center gap-2 text-sm text-gray-500"
+            >
+              <Loader2 className="w-4 h-4 animate-spin" />
+              正在生成预览…
+            </p>
+          )}
+          {preview && (
+            <section
+              ref={previewRef}
+              aria-label="报价变更预览"
+              className="duo-pricing-preview"
+            >
+              <h3 className="font-semibold text-gray-900">
+                确认变更 · {actionLabels[preview.operation]}
+              </h3>
+              <p className="mt-1 mb-3 text-xs text-gray-500">
+                共 {preview.data.selectedCount}{' '}
+                款；确认后保存以下加价额。恢复历史按最新批发价重算零售价。
+              </p>
+              <table className="duo-pricing-preview-table">
+                <thead>
+                  <tr>
+                    <th>商品</th>
+                    <th>加价额</th>
+                    <th>零售价</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summaryItems.map(item => (
+                    <tr key={item.productKey}>
+                      <td>
+                        <strong>{formatStorageCapacity(item.storageGb)}</strong>
+                        <span className="block">{item.color}</span>
+                      </td>
+                      <td>
+                        <span className="block text-gray-500">
+                          {signed(item.previousMarkup)}
+                        </span>
+                        <strong className="block text-primary">
+                          → {signed(item.markup)}
+                        </strong>
+                      </td>
+                      <td>
+                        <span className="block text-gray-500">
+                          {currency(item.previousRetailPrice)}
+                        </span>
+                        <strong className="block text-primary">
+                          → {currency(item.retailPrice)}
+                        </strong>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </section>
+          )}
+          {dialog.type === 'restore' && (
+            <details className="duo-pricing-history-details">
+              <summary className="text-sm font-medium text-primary">
+                查看该次历史完整变更（{dialog.changes.length} 款）
+              </summary>
+              <table className="duo-pricing-summary-table">
+                <thead>
+                  <tr>
+                    <th>商品</th>
+                    <th>当时的变更</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {dialog.changes.map(change => (
+                    <tr key={change.productKey}>
+                      <td>
+                        {formatStorageCapacity(change.storageGb)}
+                        <span className="block">{change.color}</span>
+                      </td>
+                      <td>
+                        <p>
+                          加价 {signed(change.previousMarkup)} →{' '}
+                          {signed(change.markup)}
+                        </p>
+                        <p>
+                          零售 {currency(change.previousRetailPrice)} →{' '}
+                          {currency(change.retailPrice)}
+                        </p>
+                        <p>当时批发 {currency(change.wholesalePrice)}</p>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </details>
+          )}
+          <section aria-label="选中商品报价摘要">
+            <h3 className="font-semibold text-gray-900">
+              {preview ? '拟保存商品摘要' : '当前商品摘要'}
+            </h3>
+            <table className="duo-pricing-summary-table">
+              <thead>
+                <tr>
+                  <th>商品</th>
+                  <th>报价摘要</th>
+                </tr>
+              </thead>
+              <tbody>
+                {summaryItems.map(item => (
+                  <tr key={item.productKey}>
+                    <td>
+                      <strong>{formatStorageCapacity(item.storageGb)}</strong>
+                      <span className="block">{item.color}</span>
+                    </td>
+                    <td>
+                      <p className="font-semibold text-primary">
+                        零售 {currency(item.retailPrice)}
+                      </p>
+                      <p>
+                        批发 {currency(item.wholesalePrice)} · 加价{' '}
+                        {signed(item.markup)}
+                      </p>
+                      <p>
+                        官网 {currency(item.officialPrice)} · 溢价{' '}
+                        {signed(item.premiumAmount)}
+                      </p>
+                      {item.pricingError && (
+                        <p className="text-amber-700">零售价异常，请调整加价</p>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className="mt-2 text-xs text-gray-500">
+              溢价额为零售价减官网价后向下取整至十元。
+            </p>
           </section>
-        </>
+        </PricingDialog>
       )}
-    </div>
+    </>
   );
 }

@@ -27,6 +27,8 @@ import PaymentTasks from './pages/PaymentTasks';
 import PaymentDispatch from './pages/PaymentDispatch';
 import IdentityVerifications from './pages/IdentityVerifications';
 import PublicIphone18Quotes from './pages/PublicIphone18Quotes';
+import PublicDuoQuotes from './pages/PublicDuoQuotes';
+import DuoQuoteHistory from './pages/DuoQuoteHistory';
 import Iphone18QuotePricing from './pages/Iphone18QuotePricing';
 import { PERMISSIONS } from './constants/permissions';
 import { useAuth } from './contexts/AuthContext';
@@ -233,6 +235,8 @@ function App() {
   return (
     <Routes>
       <Route path="/quote/apple" element={<PublicIphone18Quotes />} />
+      <Route path="/quote/duo" element={<PublicDuoQuotes />} />
+      <Route path="/quote/duo/history" element={<DuoQuoteHistory />} />
       <Route path="/quote/iphone18" element={<Navigate to="/quote/apple" replace />} />
       <Route path="/*" element={<ManagementApp />} />
     </Routes>

@@ -90,4 +90,56 @@ describe('iPhone 18 报价来源仓库', () => {
     const result = await repository.fetchLatestIphone18Batch();
     expect(result.items[0]).toMatchObject({ basePrice: null, officialPrice: null });
   });
+
+  test('应该独立读取最新Duo批次且重叠跳过不作为有效检查', async () => {
+    await repository.fetchLatestDuoBatch();
+    expect(mockConnection.execute.mock.calls[0][0]).toContain("product_model = 'Duo'");
+    expect(mockConnection.execute.mock.calls[1][0]).toContain(
+      "spider_name = 'ecommerce.hnmwdx.duo'"
+    );
+    expect(mockConnection.execute.mock.calls[1][0]).toContain(
+      "error_message LIKE '页面更新时间未变化:%'"
+    );
+    expect(mockConnection.release).toHaveBeenCalled();
+  });
+
+  test('应该只读查询Duo历史并补入范围开始前的基准批次', async () => {
+    mockConnection.execute.mockReset();
+    mockConnection.execute
+      .mockResolvedValueOnce([
+        [
+          {
+            available_from: new Date('2026-10-24T11:08:06.000Z'),
+            source_updated_at: new Date('2026-10-30T05:03:56.000Z'),
+          },
+        ],
+      ])
+      .mockResolvedValueOnce([
+        [
+          {
+            product_model: 'Duo',
+            storage_gb: 256,
+            color: '夜空色',
+            wholesale_price: '15900',
+            official_price: '15999',
+            site_update_time: new Date('2026-10-29T05:00:00.000Z'),
+          },
+        ],
+      ]);
+    const result = await repository.fetchDuoHistory({
+      from: new Date('2026-10-30T00:00:00.000Z'),
+      to: new Date('2026-10-30T06:00:00.000Z'),
+    });
+    const sql = mockConnection.execute.mock.calls[1][0];
+    expect(sql).toContain('MAX(previous.site_update_time)');
+    expect(sql).toContain('site_update_time >= ?');
+    expect(result.batches).toHaveLength(1);
+    expect(result.batches[0].items[0]).toMatchObject({
+      productModel: 'Duo',
+      storageGb: 256,
+      wholesalePrice: '15900',
+    });
+    expect(mockConnection.rollback).toHaveBeenCalled();
+    expect(mockConnection.release).toHaveBeenCalled();
+  });
 });

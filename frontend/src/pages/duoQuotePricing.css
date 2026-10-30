@@ -1,0 +1,364 @@
+.duo-pricing {
+  min-width: 0;
+  max-width: 100%;
+}
+.duo-pricing .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  white-space: nowrap;
+  min-height: 44px;
+}
+.duo-pricing .btn:disabled {
+  opacity: 0.5;
+}
+.duo-pricing .input {
+  min-height: 44px;
+}
+.duo-pricing-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.duo-pricing input[type='checkbox'],
+.duo-pricing input[type='radio'] {
+  width: 18px;
+  height: 18px;
+  accent-color: #1e3a8a;
+  cursor: pointer;
+}
+.duo-pricing-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.duo-pricing-amount {
+  width: 220px;
+  max-width: 100%;
+}
+.duo-pricing button:disabled,
+.duo-pricing input:disabled {
+  cursor: not-allowed;
+}
+
+.duo-pricing section[aria-label='报价历史'] table {
+  min-width: 760px;
+}
+.duo-pricing section[aria-label='报价历史'] th:nth-child(3) {
+  min-width: 300px;
+}
+
+.duo-pricing-times {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 24px;
+}
+.duo-pricing-list-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+}
+.duo-pricing-list-wrap {
+  overflow-x: auto;
+}
+.duo-pricing-list th,
+.duo-pricing-list td {
+  white-space: nowrap;
+}
+.duo-pricing-mobile {
+  display: none;
+}
+.duo-pricing-action-heading,
+.duo-pricing-action {
+  padding: 8px 12px;
+}
+.duo-pricing-overlay {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgb(15 23 42 / 45%);
+  overscroll-behavior: contain;
+}
+.duo-pricing-dialog {
+  display: flex;
+  flex-direction: column;
+  width: min(760px, 100%);
+  max-height: 100%;
+  min-height: 0;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgb(15 23 42 / 20%);
+  overflow: hidden;
+  outline: none;
+}
+.duo-pricing-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+.duo-pricing-close {
+  width: 44px;
+  flex-shrink: 0;
+}
+.duo-pricing-dialog-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  -webkit-overflow-scrolling: touch;
+}
+.duo-pricing-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 20px max(12px, env(safe-area-inset-bottom));
+  background: #f8fafc;
+  border-top: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+.duo-pricing .duo-pricing-amount-input {
+  font-size: 16px;
+}
+.duo-pricing-summary-table,
+.duo-pricing-preview-table {
+  width: 100%;
+  font-size: 13px;
+  text-align: left;
+  table-layout: fixed;
+  margin-top: 8px;
+}
+.duo-pricing-summary-table th,
+.duo-pricing-preview-table th {
+  background: #eff6ff;
+  color: #475569;
+  padding: 10px 8px;
+  font-weight: 500;
+}
+.duo-pricing-summary-table td,
+.duo-pricing-preview-table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid #e5e7eb;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.duo-pricing-summary-table th:first-child {
+  width: 28%;
+}
+.duo-pricing-summary-table p {
+  margin-bottom: 4px;
+}
+.duo-pricing-preview-table th:first-child {
+  width: 28%;
+}
+.duo-pricing-preview-table th:nth-child(n + 2),
+.duo-pricing-preview-table td:nth-child(n + 2) {
+  text-align: right;
+}
+@media (max-width: 767px) {
+  .duo-pricing-mobile {
+    display: table-cell;
+  }
+  .duo-pricing-desktop {
+    display: none;
+  }
+  .duo-pricing-list {
+    table-layout: fixed;
+  }
+  .duo-pricing-list th,
+  .duo-pricing-list td {
+    white-space: normal;
+  }
+  .duo-pricing-product-heading {
+    width: 40%;
+  }
+  .duo-pricing-action-heading {
+    width: 64px;
+  }
+  .duo-pricing-list th {
+    padding: 8px 4px;
+    font-size: 12px;
+  }
+  .duo-pricing-mobile-product {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .duo-pricing-mobile-product > span {
+    min-width: 0;
+  }
+  .duo-pricing-mobile-product .duo-pricing-check {
+    min-width: 44px;
+  }
+  .duo-pricing-product-heading .duo-pricing-check {
+    justify-content: flex-start;
+    gap: 12px;
+    padding-left: 9px;
+  }
+  .duo-pricing-mobile-price {
+    padding: 10px 2px;
+    text-align: right;
+  }
+  .duo-pricing-mobile-price strong {
+    font-size: 15px;
+  }
+  .duo-pricing-mobile-price > span {
+    display: block;
+    margin-top: 2px;
+    color: #6b7280;
+    font-size: 11px;
+  }
+  .duo-pricing-action {
+    padding: 8px 6px;
+    text-align: right;
+  }
+  .duo-pricing-action .btn {
+    padding-left: 9px;
+    padding-right: 9px;
+    min-width: 48px;
+  }
+  .duo-pricing-list-toolbar {
+    padding: 10px 12px;
+  }
+  .duo-pricing-overlay {
+    padding: max(8px, env(safe-area-inset-top)) 6px 0;
+    align-items: stretch;
+  }
+  .duo-pricing-dialog {
+    width: 100%;
+    border-radius: 14px 14px 0 0;
+  }
+  .duo-pricing-dialog-header {
+    padding: 12px;
+  }
+  .duo-pricing-dialog-body {
+    padding: 12px;
+    gap: 14px;
+  }
+  .duo-pricing-dialog-footer {
+    padding: 10px 12px max(10px, env(safe-area-inset-bottom));
+  }
+  .duo-pricing-dialog-footer .btn {
+    flex: 1;
+  }
+  .duo-pricing-summary-table {
+    font-size: 12px;
+  }
+}
+@media (max-height: 450px) {
+  .duo-pricing-overlay {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+  .duo-pricing-dialog-header {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  .duo-pricing-dialog-header #duo-pricing-dialog-description {
+    display: none;
+  }
+  .duo-pricing-dialog-footer {
+    padding-top: 6px;
+    padding-bottom: max(6px, env(safe-area-inset-bottom));
+  }
+}
+
+.duo-pricing-history-mobile {
+  display: none;
+}
+.duo-pricing-history-action {
+  padding: 12px 16px;
+  text-align: right;
+}
+.duo-pricing-history-details summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+@media (max-width: 767px) {
+  .duo-pricing-history-desktop {
+    display: none;
+  }
+  .duo-pricing-history-mobile {
+    display: table-cell;
+  }
+  .duo-pricing section[aria-label='报价历史'] table {
+    min-width: 0;
+    table-layout: fixed;
+  }
+  .duo-pricing section[aria-label='报价历史'] th:first-child {
+    width: 42%;
+  }
+  .duo-pricing section[aria-label='报价历史'] th:nth-child(3) {
+    min-width: 0;
+  }
+  .duo-pricing section[aria-label='报价历史'] .duo-pricing-history-mobile {
+    padding: 12px 8px;
+    font-size: 12px;
+    overflow-wrap: anywhere;
+  }
+  .duo-pricing section[aria-label='报价历史'] .duo-pricing-history-mobile time {
+    margin: 3px 0;
+    font-size: 11px;
+  }
+  .duo-pricing section[aria-label='报价历史'] th.duo-pricing-history-action {
+    width: 66px;
+  }
+  .duo-pricing-history-action {
+    padding: 8px 6px;
+  }
+  .duo-pricing-history-action .btn {
+    min-width: 48px;
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  .duo-pricing-history-action .duo-pricing-history-mobile {
+    padding: 0 !important;
+  }
+}
+
+@media (max-width: 767px) {
+  .duo-pricing-has-selection {
+    padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+  .duo-pricing-has-selection .duo-pricing-list-toolbar {
+    position: fixed;
+    inset: auto 0 0;
+    z-index: 60;
+    padding: 10px 16px max(10px, env(safe-area-inset-bottom));
+    background: white;
+    border-top: 1px solid #dbeafe;
+    box-shadow: 0 -4px 16px rgb(15 23 42 / 8%);
+  }
+  .duo-pricing-dialog-open.duo-pricing-has-selection .duo-pricing-list-toolbar {
+    visibility: hidden;
+  }
+}
+
+/* 背景工具条随弹窗立即显隐，避免 visibility 动画期间无法恢复焦点。 */
+.duo-pricing-list-toolbar .btn {
+  transition-property: background-color, border-color, color, box-shadow, opacity;
+}

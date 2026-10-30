@@ -104,4 +104,148 @@ async function closeQuoteSourcePool() {
   await current.end();
 }
 
-module.exports = { fetchLatestIphone18Batch, closeQuoteSourcePool };
+/** 读取 Duo 最新批次与独立的有效检查时间，不回退历史批次。 @returns {Promise<Object>} 来源批次 */
+async function fetchLatestDuoBatch() {
+  const connection = await getPool().getConnection();
+  try {
+    await connection.query('SET SESSION TRANSACTION READ ONLY');
+    await connection.beginTransaction();
+    const [rows] = await connection.execute(
+      `SELECT product_model, storage_gb, color, wholesale_price, official_price,
+              site_update_time, crawl_time
+         FROM quote_hnmwdx_apple
+        WHERE product_model = 'Duo'
+          AND site_update_time = (
+            SELECT MAX(site_update_time) FROM quote_hnmwdx_apple WHERE product_model = 'Duo'
+          )`,
+      []
+    );
+    const [checks] = await connection.execute(
+      `SELECT MAX(finished_at) AS last_checked_at FROM crawl_job_log
+        WHERE spider_name = 'ecommerce.hnmwdx.duo'
+          AND (status = 'success' OR
+               (status = 'skipped' AND error_message LIKE '页面更新时间未变化:%'))`,
+      []
+    );
+    await connection.rollback();
+    return {
+      sourceUpdatedAt: rows[0]?.site_update_time || null,
+      lastCheckedAt: checks[0]?.last_checked_at || null,
+      items: rows.map(row => ({
+        productModel: row.product_model,
+        storageGb: Number(row.storage_gb),
+        color: row.color,
+        wholesalePrice: row.wholesale_price,
+        officialPrice: row.official_price,
+        sourceUpdatedAt: row.site_update_time,
+      })),
+    };
+  } catch (error) {
+    try {
+      await connection.rollback();
+    } catch (_rollbackError) {
+      // 保留原查询错误。
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+/**
+ * 在显式只读事务中读取Duo历史快照，并在范围开始前补入最近一个完整批次。
+ * @param {{from?: Date|null,to: Date}} range 时间范围
+ * @returns {Promise<{availableFrom: Date|null,sourceUpdatedAt: Date|null,batches:Object[]}>} 历史批次
+ */
+async function fetchDuoHistory(range) {
+  const connection = await getPool().getConnection();
+  try {
+    const to = range?.to instanceof Date ? range.to : new Date(range?.to);
+    const from = range?.from
+      ? range.from instanceof Date
+        ? range.from
+        : new Date(range.from)
+      : null;
+    if (!Number.isFinite(to.getTime()) || (from && !Number.isFinite(from.getTime()))) {
+      throw new TypeError('Duo历史时间范围无效');
+    }
+    await connection.query('SET SESSION TRANSACTION READ ONLY');
+    await connection.beginTransaction();
+    const [bounds] = await connection.execute(
+      `SELECT MIN(site_update_time) AS available_from,
+              MAX(site_update_time) AS source_updated_at
+         FROM quote_hnmwdx_apple
+        WHERE product_model = 'Duo'`,
+      []
+    );
+    let rows;
+    if (from) {
+      [rows] = await connection.execute(
+        `SELECT product_model, storage_gb, color, wholesale_price, official_price,
+                site_update_time
+           FROM quote_hnmwdx_apple
+          WHERE product_model = 'Duo'
+            AND site_update_time <= ?
+            AND (
+              site_update_time >= ?
+              OR site_update_time = (
+                SELECT MAX(previous.site_update_time)
+                  FROM quote_hnmwdx_apple AS previous
+                 WHERE previous.product_model = 'Duo'
+                   AND previous.site_update_time < ?
+              )
+            )
+          ORDER BY site_update_time, storage_gb, color`,
+        [to, from, from]
+      );
+    } else {
+      [rows] = await connection.execute(
+        `SELECT product_model, storage_gb, color, wholesale_price, official_price,
+                site_update_time
+           FROM quote_hnmwdx_apple
+          WHERE product_model = 'Duo'
+            AND site_update_time <= ?
+          ORDER BY site_update_time, storage_gb, color`,
+        [to]
+      );
+    }
+    await connection.rollback();
+    const grouped = new Map();
+    rows.forEach(row => {
+      const timestamp = new Date(row.site_update_time).toISOString();
+      if (!grouped.has(timestamp)) grouped.set(timestamp, []);
+      grouped.get(timestamp).push({
+        productModel: row.product_model,
+        storageGb: Number(row.storage_gb),
+        color: row.color,
+        wholesalePrice: row.wholesale_price,
+        officialPrice: row.official_price,
+        sourceUpdatedAt: row.site_update_time,
+      });
+    });
+    return {
+      availableFrom: bounds[0]?.available_from || null,
+      sourceUpdatedAt: bounds[0]?.source_updated_at || null,
+      batches: [...grouped.entries()].map(([timestamp, items]) => ({
+        sourceUpdatedAt: new Date(timestamp),
+        items,
+      })),
+    };
+  } catch (error) {
+    try {
+      await connection.rollback();
+    } catch (_rollbackError) {
+      // 保留原始查询错误。
+    }
+    throw error;
+  } finally {
+    connection.release();
+  }
+}
+
+module.exports = {
+  fetchLatestIphone18Batch,
+  fetchLatestDuoBatch,
+  fetchDuoHistory,
+  closeQuoteSourcePool,
+};

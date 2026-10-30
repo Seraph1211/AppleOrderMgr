@@ -196,29 +196,33 @@ function shutdown(signal) {
   const proxyStopped = require('./services/proxyOrderScheduler').stop();
   const monitorStopped = require('./services/monitorService').stop();
 
-  server.close(async err => {
-    if (err) {
-      logger.error('关闭 HTTP 服务失败', { error: err.message });
-      process.exit(1);
-    }
+  // 先结束长期SSE与独立PG监听，避免server.close等待这些流形成关闭循环。
+  const quoteEventsStopped = require('./services/duoQuoteEvents').stopDuoQuoteEvents();
+  quoteEventsStopped.then(() =>
+    server.close(async err => {
+      if (err) {
+        logger.error('关闭 HTTP 服务失败', { error: err.message });
+        process.exit(1);
+      }
 
-    try {
-      await stockStopped;
-      await paymentRefreshStopped;
-      await identityStopped;
-      await ingestionStopped;
-      await proxyStopped;
-      await monitorStopped;
-      await emailService.stopEmailService();
-      await require('./repositories/quoteSourceRepository').closeQuoteSourcePool();
-      await sequelize.close();
-      logger.info('数据库连接已关闭');
-    } catch (closeErr) {
-      logger.error('关闭数据库连接失败', { error: closeErr.message });
-    }
+      try {
+        await stockStopped;
+        await paymentRefreshStopped;
+        await identityStopped;
+        await ingestionStopped;
+        await proxyStopped;
+        await monitorStopped;
+        await emailService.stopEmailService();
+        await require('./repositories/quoteSourceRepository').closeQuoteSourcePool();
+        await sequelize.close();
+        logger.info('数据库连接已关闭');
+      } catch (closeErr) {
+        logger.error('关闭数据库连接失败', { error: closeErr.message });
+      }
 
-    process.exit(0);
-  });
+      process.exit(0);
+    })
+  );
 
   // 兜底：10s 强制退出
   setTimeout(() => {
