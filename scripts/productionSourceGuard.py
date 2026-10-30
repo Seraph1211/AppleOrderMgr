@@ -91,7 +91,7 @@ def runtimeProof(image, manifest):
                                       '--read-only', '--entrypoint', 'tar', image,
                                       '-C', '/app', '-cf', '-', 'src', 'scripts'])
     actual = {}
-    with tarfile.open(fileobj=io.BytesIO(archive)) as stream:
+    with tarfile.open(fileobj=io.BytesIO(archive), encoding='utf-8') as stream:
         for entry in stream:
             if entry.isfile() and entry.name.endswith(SOURCE_SUFFIXES):
                 actual[entry.name] = digest(stream.extractfile(entry).read())

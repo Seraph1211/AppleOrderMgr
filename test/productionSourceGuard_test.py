@@ -154,6 +154,7 @@ class ProductionSourceGuardTest(unittest.TestCase):
     def test_runtime_must_contain_checked_source_bytes(self):
         (self.root / 'scripts').mkdir()
         (self.root / 'scripts/helper.py').write_text('restored_helper = True')
+        (self.root / 'scripts/辅助.json').write_bytes(b'{}')
         source = GUARD.checkSource(self.root)
         manifest = self.root / 'source-capabilities.json'
         manifest.write_text(json.dumps(source))
@@ -163,15 +164,23 @@ class ProductionSourceGuardTest(unittest.TestCase):
             (b'function restoredFeature() {}', b'old_helper = True', False),
         ):
             data = io.BytesIO()
-            with tarfile.open(fileobj=data, mode='w') as archive:
+            with tarfile.open(fileobj=data, mode='w', format=tarfile.USTAR_FORMAT, encoding='utf-8') as archive:
                 entry = tarfile.TarInfo('src/feature.js')
                 entry.size = len(text)
                 archive.addfile(entry, io.BytesIO(text))
                 entry = tarfile.TarInfo('scripts/helper.py')
                 entry.size = len(helper)
                 archive.addfile(entry, io.BytesIO(helper))
+                entry = tarfile.TarInfo('scripts/辅助.json')
+                entry.size = 2
+                archive.addfile(entry, io.BytesIO(b'{}'))
+            actualOpen = tarfile.open
+            def asciiLocaleOpen(*args, **kwargs):
+                kwargs.setdefault('encoding', 'ascii')
+                return actualOpen(*args, **kwargs)
             with mock.patch.object(GUARD.subprocess, 'check_output',
-                                   side_effect=[data.getvalue(), b'sha256:synthetic']):
+                                   side_effect=[data.getvalue(), b'sha256:synthetic']), \
+                    mock.patch.object(GUARD.tarfile, 'open', side_effect=asciiLocaleOpen):
                 if passes:
                     self.assertTrue(GUARD.runtimeProof('synthetic', manifest)['passed'])
                 else:
