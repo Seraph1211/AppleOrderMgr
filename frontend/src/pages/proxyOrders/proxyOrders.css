@@ -1405,3 +1405,25 @@ body:has(.proxy-orders-page) .mobile-picker-dialog .proxy-select-option[aria-sel
 .proxy-store-scope-summary {
   overflow-wrap: anywhere;
 }
+/* 代抢的平板区间延伸至1099px，不改变其他路由的共享导航阈值。 */
+@media (min-width: 1024px) and (max-width: 1099px) {
+  .proxy-workspace > aside.invisible {
+    visibility: hidden;
+    transform: translateX(-100%);
+  }
+  .proxy-workspace > aside.visible {
+    visibility: visible;
+    transform: translateX(0);
+  }
+  .proxy-workspace > div {
+    padding-left: 0;
+  }
+  .proxy-workspace .app-navigation-trigger,
+  .proxy-workspace > div > header img,
+  .proxy-workspace > aside .app-brand > button {
+    display: flex;
+  }
+  .proxy-workspace > button[aria-label='关闭导航遮罩'] {
+    display: block;
+  }
+}

@@ -13,7 +13,7 @@ async function main() {
   const browser = await chromium.launch({ headless: true, channel: 'chrome' });
   const results = [];
   try {
-    for (const width of [1920, 1440, 768, 390, 320]) {
+    for (const width of [1920, 1440, 1099, 1024, 768, 390, 320]) {
       const fixture = createFixture();
       let listFailure = false;
       const errors = [];
@@ -57,6 +57,19 @@ async function main() {
       const shot = name => page.screenshot({ path: `${output}/${name}-${width}.png` });
       await page.goto(origin + '/proxy-orders');
       await page.getByRole('button', { name: '#2101 · 陈晓', exact: true }).waitFor();
+      await page.evaluate(() => document.fonts.ready);
+      if (width >= 640 && width < 1100) {
+        assert.equal(await page.locator('aside').isVisible(), false);
+        const navigation = page.getByRole('button', { name: '打开导航', exact: true });
+        assert.equal(await navigation.isVisible(), true);
+        await navigation.click();
+        assert.equal(await page.locator('aside').isVisible(), true);
+        await page.keyboard.press('Escape');
+        await page.waitForFunction(
+          () => getComputedStyle(document.querySelector('aside')).visibility === 'hidden'
+        );
+        assert.equal(await navigation.evaluate(node => node === document.activeElement), true);
+      }
       const measurements = await page.evaluate(() => ({
         pageWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
@@ -227,7 +240,7 @@ async function main() {
     }
     fs.writeFileSync(`${output}/验收结果.json`, JSON.stringify(results, null, 2));
     process.stdout.write(
-      `PASS: 代抢工作台五宽度、弹层/嵌套焦点、账号池、错误与范围隔离 ${JSON.stringify(results)}\n`
+      `PASS: 代抢工作台七宽度、弹层/嵌套焦点、账号池、错误与范围隔离 ${JSON.stringify(results)}\n`
     );
   } finally {
     await browser.close();

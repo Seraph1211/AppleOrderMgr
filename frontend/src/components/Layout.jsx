@@ -165,7 +165,9 @@ export default function Layout({ children }) {
       }
     };
     const desktop = window.matchMedia(
-      location.pathname === '/orders' ? '(min-width: 1100px)' : '(min-width: 1024px)'
+      ['/orders', '/proxy-orders'].includes(location.pathname)
+        ? '(min-width: 1100px)'
+        : '(min-width: 1024px)'
     );
     const closeOnDesktop = () => {
       if (desktop.matches) setSidebarOpen(false);
