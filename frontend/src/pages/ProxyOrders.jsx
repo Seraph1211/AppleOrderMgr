@@ -1518,7 +1518,7 @@ export default function ProxyOrders() {
                           <p>
                             {storeNames(row.storeCodes)}
                             {pickupCities(row, stores).length > 1 && (
-                              <p className="mt-1 text-xs text-gray-500">{pickupCity(row)}</p>
+                              <span className="mt-1 block text-xs text-gray-500">{pickupCity(row)}</span>
                             )}
                           </p>
                         </td>
