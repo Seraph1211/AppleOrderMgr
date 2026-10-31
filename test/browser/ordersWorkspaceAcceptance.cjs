@@ -14,6 +14,8 @@ const ORDERS = [
     official_order_status: 'PROCESSING',
     official_status_observed_at: '2026-10-28T14:31:03Z',
     email_status_evidence_at: '2026-10-28T14:36:28Z',
+    email_status_needs_review: true,
+    email_status_review_reasons: ['合成状态冲突'],
     order_amount: 35998,
     created_at: '2026-10-28T14:24:30Z',
     updated_at: '2026-10-28T14:38:00Z',
@@ -138,7 +140,45 @@ async function main() {
       if (width < 768) {
         const firstRow = await page.locator('.orders-mobile-row').first().boundingBox();
         assert(firstRow.y < 900 * 0.6, '手机首条订单应在首屏前60%开始');
+        const mailStatus = page.getByText('邮件状态', { exact: true }).first().locator('..');
+        assert.equal(
+          (await mailStatus.innerText()).replace(/\s+/g, ' ').trim(),
+          '邮件状态 可取货 2026/10/28 22:36:28'
+        );
       } else {
+        const mailStatus = page.locator('tbody [data-column="emailOrderStatus"]').first();
+        assert.equal(
+          (await mailStatus.innerText()).replace(/\s+/g, ' ').trim(),
+          '可取货 2026/10/28 22:36:28'
+        );
+        assert.equal(
+          await page.locator('tbody [data-column="emailOrderStatus"]').nth(1).locator('p').count(),
+          0,
+          '没有邮件状态时间时不借用下单或其他更新时间'
+        );
+        const timestampStyles = await page
+          .locator('tbody tr')
+          .first()
+          .evaluate(row =>
+            ['officialOrderStatus', 'emailOrderStatus', 'emailPickupInfo'].map(key => {
+              const element = row.querySelector(`[data-column="${key}"] .order-timestamp`);
+              const style = getComputedStyle(element);
+              const range = document.createRange();
+              range.selectNodeContents(element);
+              return {
+                fontSize: style.fontSize,
+                lines: range.getClientRects().length,
+                whiteSpace: style.whiteSpace,
+                overflow: element.scrollWidth - element.clientWidth,
+              };
+            })
+          );
+        assert(timestampStyles.every(time => time.fontSize === timestampStyles[2].fontSize));
+        assert(
+          timestampStyles.every(
+            time => time.lines === 1 && time.whiteSpace === 'nowrap' && time.overflow <= 1
+          )
+        );
         const headers = await page.getByRole('columnheader').allTextContents();
         assert(
           headers.findIndex(value => value.trim() === '商品') <

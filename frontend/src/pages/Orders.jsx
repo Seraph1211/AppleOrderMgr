@@ -570,20 +570,9 @@ function OrdersWorkspace() {
         return (
           <div className="text-sm">
             <span className={`badge ${badge.class}`}>{badge.text}</span>
-            {order.emailStatusNeedsReview && (
-              <p
-                className="mt-1 text-xs text-amber-700"
-                title={order.emailStatusReviewReasons.join('、')}
-              >
-                待核对
-              </p>
-            )}
             {order.emailStatusEvidenceAt && (
-              <p className="mt-1 text-xs text-gray-500">
-                证据{' '}
-                <span className="order-timestamp">
-                  {formatOrderTime(order.emailStatusEvidenceAt)}
-                </span>
+              <p className="order-timestamp mt-1 text-xs text-gray-500">
+                {formatOrderTime(order.emailStatusEvidenceAt)}
               </p>
             )}
           </div>
@@ -1239,15 +1228,16 @@ function OrdersWorkspace() {
                         loading={order.officialRefreshState === 'running'}
                       />
                     </div>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-xs text-gray-500">邮件状态</span>
-                      <span className={`badge ${status.class}`}>{status.text}</span>
-                      {order.emailStatusNeedsReview && (
-                        <span className="text-xs text-amber-700">待核对</span>
-                      )}
-                      <span className="text-xs text-gray-500">
-                        {formatOrderTime(order.orderDate)}
-                      </span>
+                    <div className="mt-2 flex items-start gap-2">
+                      <span className="shrink-0 text-xs text-gray-500">邮件状态</span>
+                      <div>
+                        <span className={`badge ${status.class}`}>{status.text}</span>
+                        {order.emailStatusEvidenceAt && (
+                          <p className="order-timestamp mt-1 text-xs text-gray-500">
+                            {formatOrderTime(order.emailStatusEvidenceAt)}
+                          </p>
+                        )}
+                      </div>
                     </div>
                     <p className="mt-2 line-clamp-2 break-words text-sm text-gray-900">
                       {products.length

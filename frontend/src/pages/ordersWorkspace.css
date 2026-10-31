@@ -1009,6 +1009,12 @@ body .orders-workspace .tag-select-panel .tag-select-footer button {
   height: 14px;
 }
 
+/* 状态更新时间与取货时间共用同一字号；手机也完整单行显示。 */
+.orders-workspace .orders-mobile-row .order-timestamp {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
 /* 桌面日历独立缩小，手机保留原尺寸与44px触控。 */
 @media (min-width: 768px) {
   [data-orders-ui].date-range-popover {
