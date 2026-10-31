@@ -1,5 +1,6 @@
 const { randomInt } = require('node:crypto');
 const ApiError = require('./ApiError');
+const { normalizeProxyFee } = require('./proxyFee');
 const STORES = require('../config/proxyStores.json');
 const COMPOUND_NAMES = [
   '欧阳',
@@ -525,6 +526,7 @@ function field(value, label, max = 100, required = true) {
 function validateProxyInput(input, options = {}) {
   if (!input || typeof input !== 'object') throw ApiError.badRequest('资料格式不正确');
   const result = {};
+  result.proxyFee = normalizeProxyFee(input.proxyFee);
   for (const [key, label, max] of [
     ['lastName', '姓', 50],
     ['firstName', '名', 50],

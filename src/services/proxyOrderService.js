@@ -285,6 +285,7 @@ async function saveOrder(orderId, body, actorId) {
           return {
             id: row.id,
             version: row.version,
+            proxyFee: row.proxyFee,
             assigned: assigned.length,
             assignmentStatus: assigned.length ? 'assigned' : 'awaiting_account',
             assignmentMessage: assigned.length
@@ -324,7 +325,7 @@ async function saveOrder(orderId, body, actorId) {
         });
         await row.update({ ...values, version: row.version + 1 }, { transaction });
         await event('edit', row.id, actorId, { fields: Object.keys(values) }, transaction);
-        return { id: row.id, version: row.version };
+        return { id: row.id, version: row.version, proxyFee: row.proxyFee };
       } catch (error) {
         logger.debug('代抢事务未完成', { errorType: error.name });
         throw error;

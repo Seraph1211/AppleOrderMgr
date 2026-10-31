@@ -24,6 +24,7 @@ module.exports = sequelize =>
       storeCity: DataTypes.STRING(100),
       billing: DataTypes.JSONB,
       paymentMethod: DataTypes.STRING(50),
+      proxyFee: { type: DataTypes.DECIMAL(12, 2), allowNull: true, defaultValue: null },
       notes: DataTypes.TEXT,
       rawText: {
         type: DataTypes.TEXT,

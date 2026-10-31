@@ -1,0 +1,107 @@
+[
+  {
+    "文件": "01-委托列表-1440.jpg",
+    "来源": ".taste-skill/proxy-ui/fee-entry/final/desktop-fold.jpg",
+    "SHA256": "98ffe7e0b62e4b77f92b58b195aad5fc1db72969f13793b6a3455001d39abb89"
+  },
+  {
+    "文件": "02-委托列表-1920.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/委托列表-1920.png",
+    "SHA256": "fcd354314335a6faecb6ffc06b16030a4c876282e24a1e1202d1341f25d098d3"
+  },
+  {
+    "文件": "03-行内状态菜单.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/行内状态-1440.png",
+    "SHA256": "0e441d8ef170cabc75980fa12ee66b1b51aa2617af53540eebc3b1782a8ef108"
+  },
+  {
+    "文件": "04-状态筛选.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/状态筛选-1440.png",
+    "SHA256": "1a912a37ef41ea3469fb687c170cbcf30c2c86a2966ab3b78a4f04a3cc70f252"
+  },
+  {
+    "文件": "05-登记委托与费用.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/浏览器/登记费用-1440.png",
+    "SHA256": "e8d2fdc5502ee5cfe34ab172074f7f42bc96b9fc957403eaac236f7738eaf8e4"
+  },
+  {
+    "文件": "06-编辑委托与费用.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/浏览器/编辑费用-1440.png",
+    "SHA256": "b91bdb34c8d99e9a7bc648c4d28165c03ec75ae3faff450d8d60025b3006bf09"
+  },
+  {
+    "文件": "07-委托详情与费用.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/浏览器/费用详情-1440.png",
+    "SHA256": "cf437c46bb7911ea6240ec22eae7a6be41dd41d7303b95023d088bad64c01e86"
+  },
+  {
+    "文件": "08-专用账号池.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/专用账号池-1440.png",
+    "SHA256": "fa621a2c69e44dc06961396c9daa82a899cf0cd5df1f08e8d061a607cad4d76c"
+  },
+  {
+    "文件": "09-账号编辑.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/账号编辑-1440.png",
+    "SHA256": "8a7e3b8b610843eff0ae18a6b839a55aa6ac517c5048a4842c49ff2b1007aec4"
+  },
+  {
+    "文件": "10-批量修改账号状态.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/账号批量状态-1440.png",
+    "SHA256": "684c5d01830994486b092dbdfe55c20322d3048694bff79eab90e0836578faeb"
+  },
+  {
+    "文件": "11-导入账号.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/账号导入-1440.png",
+    "SHA256": "8c5edcf11ed7d2569c7f4879f14997dc0962137ba435b98b308d223b24b11989"
+  },
+  {
+    "文件": "12-分配账号与错误反馈.png",
+    "来源": "output/proxy-ui/2026-10-31/状态下拉与费用/分配复制/1920-assignment-error.png",
+    "SHA256": "e66a4dcabb00b331832144ac9fcdd16035c810aac9fc6f1f49e7f1f5bf14132c"
+  },
+  {
+    "文件": "13-手动复制降级.png",
+    "来源": "output/proxy-ui/2026-10-31/状态下拉与费用/分配复制/1920-clipboard-rejected.png",
+    "SHA256": "9459cf7c116c410faa22b161054a0c79aa6b0df7bb9b8a275035d36a4704b51b"
+  },
+  {
+    "文件": "14-取消与停抢确认.png",
+    "来源": "output/proxy-ui/2026-10-31/状态下拉与费用/取消停抢/1920-confirmation.png",
+    "SHA256": "c30698648764c582dca2473bd663567e4a3f132cccef586d88cc2c019f6e928a"
+  },
+  {
+    "文件": "15-删除确认.png",
+    "来源": "output/proxy-ui/2026-10-31/状态下拉与费用/删除确认/1920-confirmation.png",
+    "SHA256": "5e9fc2fe83b8a26d0e77bb8fa99d6f874e98e5337c5b3ff8c15305de5bc5d4e7"
+  },
+  {
+    "文件": "16-平板委托列表.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/委托列表-768.png",
+    "SHA256": "b62c681ecbb047651316daa8d0a62513d97be68e31c100a7d64f317e277d0f7d"
+  },
+  {
+    "文件": "17-手机委托列表.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/委托列表-390.png",
+    "SHA256": "2913372aa0546ac7cb0079340315db1df69ae493fece1d377e387e8e62176302"
+  },
+  {
+    "文件": "18-手机登记费用.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/浏览器/登记费用-390.png",
+    "SHA256": "54bc05adb3c172da5f24f5642c87aa95bd4b49f39205d8c273714350c2ac7a7c"
+  },
+  {
+    "文件": "19-小屏编辑费用.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/浏览器/编辑费用-320.png",
+    "SHA256": "74100b952edd971a698e73755a87684c87c7b18ee1688dc42721ab673037ddb9"
+  },
+  {
+    "文件": "20-手机状态选择.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/工作台/行内状态-390.png",
+    "SHA256": "4987572758cb38d6db9c27319e0f08b9e6b3b57cae48a0f5bee4c37bbf991761"
+  },
+  {
+    "文件": "21-实际浏览器费用编辑.png",
+    "来源": "output/proxy-ui/2026-10-31/费用录入/费用录入-实际浏览器.png",
+    "SHA256": "6af4eaaeee889bfa6e597c9147b63cb2e4109a1f2e1bfbc6d4b767b12de7a08d"
+  }
+]

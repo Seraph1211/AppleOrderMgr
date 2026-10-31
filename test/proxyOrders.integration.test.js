@@ -90,6 +90,10 @@ suite('代抢管理真实 PostgreSQL/API 回归', () => {
     await independence.up(m.sequelize.getQueryInterface());
     await v2.up(m.sequelize.getQueryInterface());
     await softDelete.up(m.sequelize.getQueryInterface());
+    // 上方重建代抢基础表后，必须重新应用费用增量以匹配当前正式模型。
+    await require('../migrations/20261031000001-add-proxy-order-fee').up(
+      m.sequelize.getQueryInterface()
+    );
     actor = await m.User.create({
       username: 'proxy_synthetic',
       password: 'Synthetic-Password',

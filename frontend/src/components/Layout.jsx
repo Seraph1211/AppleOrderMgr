@@ -212,7 +212,7 @@ export default function Layout({ children }) {
 
   return (
     <div
-      className={`min-h-screen bg-gray-50 ${location.pathname === '/orders' ? 'orders-workspace' : ''}`}
+      className={`min-h-screen bg-gray-50 ${location.pathname === '/orders' ? 'orders-workspace' : location.pathname === '/proxy-orders' ? 'proxy-workspace' : ''}`}
     >
       {/* 移动端侧边栏遮罩 */}
       {sidebarOpen && (
@@ -339,13 +339,21 @@ export default function Layout({ children }) {
               <Menu className="w-6 h-6" />
             </button>
 
-            {location.pathname === '/orders' && (
+            {['/orders', '/proxy-orders'].includes(location.pathname) && (
               <img
                 src="/order-mark-blue.png"
                 alt=""
                 aria-hidden="true"
                 className="h-9 w-9 object-contain lg:hidden"
               />
+            )}
+            {location.pathname === '/proxy-orders' && (
+              <div className="proxy-shell-context">
+                <ClipboardCheck className="w-4 h-4" aria-hidden="true" />
+                <span>订单工作台</span>
+                <ChevronDown className="w-4 h-4 -rotate-90" aria-hidden="true" />
+                <span>代抢管理</span>
+              </div>
             )}
             <div className="flex-1" />
 

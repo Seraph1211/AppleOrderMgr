@@ -1,6 +1,1371 @@
-.proxy-dialog-panel {
-  height: auto;
+/* 01 参考：灰白框架承托白色工作区，蓝色只用于业务链接和主要操作。
+ * 1440px：232px导航区 + 2×24px间距 + 1160px列表；列表内32px留白，
+ * 表格最小1100px。全部规则限定于本路由及其专属 Portal。 */
+.proxy-workspace,
+.proxy-orders-page,
+.proxy-dialog {
+  --proxy-ground: #f3f5f7;
+  --proxy-surface: #ffffff;
+  --proxy-raised: #f7f8fa;
+  --proxy-active: #edf0f3;
+  --proxy-ink: #20262e;
+  --proxy-muted: #626b76;
+  --proxy-border: #e9edf0;
+  --proxy-rule: #eff1f3;
+  --proxy-control: #d9dee4;
+  --proxy-accent: #1e3a8a;
+  --proxy-hover: #172f70;
+  --proxy-tint: #eff6ff;
+  color: var(--proxy-ink);
+  font-variant-numeric: tabular-nums;
 }
+.proxy-workspace {
+  background: var(--proxy-ground);
+}
+.proxy-workspace > aside {
+  border: 0;
+  background: var(--proxy-surface);
+  box-shadow: none;
+}
+.proxy-workspace > aside nav {
+  padding-top: 16px;
+}
+.proxy-workspace > aside :is(nav a, nav button) {
+  color: var(--proxy-muted);
+  box-shadow: none;
+  font-weight: 400;
+}
+.proxy-workspace > aside :is(nav a, nav button) span {
+  font-weight: 500;
+}
+.proxy-workspace > aside :is(nav a, nav button):hover {
+  color: var(--proxy-ink);
+  background: var(--proxy-raised);
+}
+.proxy-workspace > aside a[aria-current='page'] {
+  background: var(--proxy-active);
+  color: var(--proxy-ink);
+  box-shadow: none;
+}
+.proxy-workspace > aside > div > :last-child,
+.proxy-workspace > aside > div > :nth-last-child(2) {
+  border: 0;
+}
+.proxy-workspace .app-brand-name {
+  color: var(--proxy-ink);
+}
+.proxy-workspace .app-brand-caption,
+.proxy-workspace .app-version {
+  color: var(--proxy-muted);
+}
+.proxy-workspace > div > header {
+  height: 52px;
+  background: var(--proxy-surface);
+}
+.proxy-workspace > div > header .badge {
+  background: var(--proxy-active);
+  color: #505964;
+  border: 0;
+}
+.proxy-shell-context {
+  display: none;
+  align-items: center;
+  gap: 10px;
+  color: var(--proxy-muted);
+  font-size: 12px;
+}
+.proxy-shell-context > :last-child {
+  color: var(--proxy-ink);
+  font-weight: 500;
+}
+.proxy-workspace .app-content {
+  min-width: 0;
+  padding: 24px;
+  background: transparent;
+}
+.proxy-orders-page {
+  min-width: 0;
+}
+.proxy-page-heading {
+  margin-bottom: 18px;
+}
+.proxy-orders-page .proxy-page-heading h1 {
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--proxy-ink);
+}
+.proxy-page-heading p {
+  margin-top: 4px;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--proxy-muted);
+}
+.proxy-orders-page :is(.btn, .input),
+.proxy-dialog :is(.btn, .input) {
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  transition:
+    background-color 140ms ease,
+    border-color 140ms ease,
+    color 140ms ease;
+}
+.proxy-orders-page .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.proxy-orders-page .input {
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  border-color: var(--proxy-control);
+  background-color: var(--proxy-surface);
+  color: var(--proxy-ink);
+}
+.proxy-orders-page .btn-secondary,
+.proxy-dialog .btn-secondary {
+  background: var(--proxy-surface);
+  border-color: var(--proxy-control);
+  color: #424b57;
+}
+.proxy-orders-page .btn-primary,
+.proxy-dialog .btn-primary {
+  background: var(--proxy-accent);
+  border-color: var(--proxy-accent);
+  color: #fff;
+}
+.proxy-orders-page .btn-primary:hover:not(:disabled),
+.proxy-dialog .btn-primary:hover:not(:disabled) {
+  background: var(--proxy-hover);
+  border-color: var(--proxy-hover);
+}
+.proxy-orders-page .btn-secondary:hover:not(:disabled),
+.proxy-dialog .btn-secondary:hover:not(:disabled) {
+  background: var(--proxy-raised);
+  border-color: #b7c0cb;
+  color: var(--proxy-ink);
+}
+.proxy-orders-page .btn:active:not(:disabled),
+.proxy-dialog .btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+.proxy-orders-page .btn:disabled,
+.proxy-dialog .btn:disabled {
+  opacity: 1;
+  color: var(--proxy-muted);
+  border-color: var(--proxy-border);
+  background: var(--proxy-raised);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+.proxy-orders-page :is(.text-primary, a),
+.proxy-dialog .text-primary {
+  color: var(--proxy-accent);
+}
+.proxy-orders-page :is(.text-gray-400, .text-gray-500, .text-gray-600),
+.proxy-dialog :is(.text-gray-400, .text-gray-500, .text-gray-600) {
+  color: var(--proxy-muted);
+}
+.proxy-orders-page :is(.text-gray-700, .text-gray-900),
+.proxy-dialog :is(.text-gray-700, .text-gray-900) {
+  color: var(--proxy-ink);
+}
+.proxy-orders-page :is(input, textarea)::placeholder,
+.proxy-dialog :is(input, textarea)::placeholder {
+  color: var(--proxy-muted);
+  opacity: 1;
+}
+.proxy-orders-page :is(button, a, input, select, textarea):focus,
+.proxy-dialog :is(button, a, input, select, textarea):focus {
+  box-shadow: none;
+}
+.proxy-orders-page :is(.input, input:not([type='checkbox'])):focus,
+.proxy-dialog :is(.input, input:not([type='checkbox'])):focus {
+  border-color: #8798ae;
+  outline: none;
+}
+.proxy-workspace :is(button, a):focus-visible,
+.proxy-orders-page :is(button, a, input[type='checkbox'], [role='region']):focus-visible,
+.proxy-dialog :is(button, a, input[type='checkbox'], summary):focus-visible {
+  outline: 2px solid #7b8da6;
+  outline-offset: 2px;
+  box-shadow: none;
+}
+.proxy-orders-page button:focus:not(:focus-visible),
+.proxy-dialog button:focus:not(:focus-visible) {
+  outline: none;
+}
+.proxy-orders-page input[type='checkbox'],
+.proxy-dialog input[type='checkbox'] {
+  accent-color: var(--proxy-accent);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.proxy-context-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 20px;
+  flex-shrink: 0;
+  margin-bottom: 16px;
+}
+.proxy-context-row > [role] {
+  width: 100%;
+}
+.proxy-workspace-tabs {
+  display: flex;
+  flex-shrink: 0;
+  gap: 24px;
+  margin-bottom: 0;
+}
+.proxy-workspace-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 6px 0 10px;
+  border-bottom: 2px solid transparent;
+  font-size: 13px;
+  line-height: 20px;
+  color: var(--proxy-muted);
+}
+.proxy-workspace-tabs button[aria-pressed='true'] {
+  border-bottom-color: var(--proxy-ink);
+  color: var(--proxy-ink);
+  font-weight: 600;
+}
+.proxy-operations-note {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 0;
+  color: var(--proxy-muted);
+  font-size: 12px;
+  line-height: 20px;
+}
+.proxy-operations-note strong {
+  font-weight: 600;
+  color: var(--proxy-ink);
+}
+.proxy-operations-note button {
+  color: var(--proxy-ink);
+  text-decoration: none;
+  border-bottom: 1px solid #c8cfd6;
+}
+.proxy-pool-explanation {
+  margin-left: auto;
+}
+.proxy-page-feedback,
+.proxy-orders-page > [role='status'] {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+.proxy-list-surface {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--proxy-surface);
+  border-radius: 18px;
+}
+.proxy-list-toolbar {
+  flex-shrink: 0;
+  min-height: 66px;
+  margin: 0;
+  padding: 16px;
+  gap: 10px;
+}
+.proxy-search {
+  max-width: 320px;
+}
+.proxy-search .input {
+  padding-left: 34px;
+  border-color: var(--proxy-border);
+}
+.proxy-search > svg {
+  top: 50%;
+  left: 12px;
+  transform: translateY(-50%);
+  color: var(--proxy-muted);
+}
+.proxy-selection-count {
+  order: 3;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--proxy-muted);
+  white-space: nowrap;
+}
+.proxy-table-scroll {
+  min-width: 0;
+  padding: 0 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c9d0d7 transparent;
+}
+.proxy-table-scroll::-webkit-scrollbar,
+.proxy-dialog-body::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+.proxy-table-scroll::-webkit-scrollbar-thumb,
+.proxy-dialog-body::-webkit-scrollbar-thumb {
+  background: #c9d0d7;
+  border-radius: 999px;
+}
+.proxy-orders-page .proxy-orders-table {
+  table-layout: fixed;
+  min-width: 1100px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.proxy-orders-page .proxy-orders-table :is(th, td) {
+  min-width: 0;
+  max-width: none;
+  padding: 10px 7px;
+  border-color: var(--proxy-rule);
+  vertical-align: top;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.proxy-orders-page .proxy-orders-table th {
+  padding-top: 9px;
+  padding-bottom: 9px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--proxy-muted);
+  background: var(--proxy-surface);
+}
+.proxy-orders-page .proxy-orders-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--proxy-surface);
+}
+.proxy-orders-page .proxy-orders-table th:nth-child(1) {
+  width: 36px;
+}
+.proxy-orders-page .proxy-orders-table th:nth-child(2) {
+  width: 145px;
+}
+.proxy-orders-page .proxy-orders-table th:nth-child(3) {
+  width: 185px;
+}
+.proxy-orders-page .proxy-orders-table th:nth-child(4) {
+  width: 90px;
+}
+.proxy-orders-page .proxy-orders-table th:nth-child(5) {
+  width: 115px;
+}
+.proxy-orders-page .proxy-orders-table th:nth-child(6) {
+  width: 125px;
+}
+.proxy-orders-page .proxy-orders-table th:nth-child(7) {
+  width: 140px;
+}
+.proxy-orders-page .proxy-orders-table th:nth-child(8) {
+  width: 164px;
+}
+.proxy-orders-table td > p {
+  margin-top: 3px;
+}
+.proxy-orders-table .proxy-customer-cell > button {
+  display: block;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--proxy-ink);
+  font-weight: 600;
+}
+.proxy-orders-table .proxy-customer-cell > button:hover {
+  color: var(--proxy-accent);
+}
+.proxy-orders-table .proxy-customer-cell p {
+  font-size: 12px;
+  line-height: 16px;
+  margin-top: 2px;
+}
+.proxy-created-time {
+  color: var(--proxy-muted);
+  white-space: nowrap;
+}
+.proxy-orders-table td[data-label='抢购需求'] > p:first-child {
+  min-width: 0;
+  max-width: none;
+  font-weight: 500;
+  color: var(--proxy-ink);
+}
+.proxy-orders-page .proxy-orders-table tbody tr:hover {
+  background: #fafbfc;
+}
+.proxy-orders-page .proxy-orders-table tr[data-selected='true'] {
+  background: #f2f6fa;
+}
+.proxy-orders-table .proxy-actions-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+}
+.proxy-orders-table .proxy-row-actions .btn {
+  gap: 4px;
+  min-height: 28px;
+  padding: 3px 5px;
+  border-color: transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #4d5763;
+  font-size: 12px;
+  line-height: 20px;
+}
+.proxy-orders-table .proxy-row-actions .btn:hover:not(:disabled) {
+  background: var(--proxy-active);
+  border-color: transparent;
+}
+.proxy-orders-table .proxy-row-actions .btn > svg {
+  width: 14px;
+  height: 14px;
+}
+.proxy-orders-table .proxy-row-actions button[aria-label^='删除'] {
+  color: #9d4a50;
+}
+.proxy-orders-table .proxy-row-actions .btn:disabled {
+  color: var(--proxy-muted);
+  background: transparent;
+}
+.proxy-copy-hint {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--proxy-muted);
+}
+.proxy-orders-page .proxy-orders-table .proxy-row-actions,
+.proxy-orders-page .proxy-orders-table th:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--proxy-surface);
+}
+.proxy-orders-page .proxy-orders-table th:last-child {
+  z-index: 4;
+}
+/* 固定列覆盖滚动容器右侧留白，避免被遮挡列的文字从边缘露出。 */
+@media (min-width: 640px) {
+  .proxy-orders-page .proxy-orders-table :is(.proxy-row-actions, th:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: -1px;
+    left: 100%;
+    width: 16px;
+    background: inherit;
+  }
+}
+.proxy-orders-page .proxy-orders-table tr:hover .proxy-row-actions {
+  background: #fafbfc;
+}
+.proxy-orders-page .proxy-orders-table tr[data-selected='true'] .proxy-row-actions {
+  background: #f2f6fa;
+}
+.proxy-orders-page .proxy-accounts-table {
+  min-width: 680px;
+}
+.proxy-orders-page .proxy-accounts-table th:nth-child(2) {
+  width: 32%;
+}
+.proxy-orders-page .proxy-accounts-table th:nth-child(3) {
+  width: 14%;
+}
+.proxy-orders-page .proxy-accounts-table th:nth-child(4) {
+  width: 16%;
+}
+.proxy-orders-page .proxy-accounts-table th:nth-child(5) {
+  width: auto;
+}
+.proxy-orders-page .proxy-accounts-table th:nth-child(6) {
+  width: 96px;
+}
+.proxy-account-status {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 6px;
+  background: var(--proxy-active);
+  font-size: 12px;
+  white-space: nowrap;
+  color: #505964;
+}
+.proxy-table-footer {
+  flex-shrink: 0;
+  padding: 12px 16px;
+  border-color: var(--proxy-border);
+  font-size: 12px;
+  line-height: 20px;
+  color: var(--proxy-muted);
+}
+.proxy-table-footer .btn {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 12px;
+}
+.proxy-list-toolbar .proxy-table-navigation {
+  display: flex;
+  order: 4;
+  align-items: center;
+  gap: 6px;
+  margin-left: 0;
+  font-size: 12px;
+  color: var(--proxy-muted);
+}
+.proxy-table-navigation .btn {
+  padding: 4px;
+}
+.proxy-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 200px;
+  padding: 24px;
+  color: var(--proxy-muted);
+  font-size: 13px;
+}
+/* 专属弹层：与列表同一套灰阶、圆角与输入，保留原有表单、权限和请求。 */
+.proxy-dialog {
+  background: rgb(29 35 43 / 24%);
+  z-index: 100;
+}
+.proxy-dialog .proxy-dialog-panel {
+  height: auto;
+  max-width: 680px;
+  max-height: calc(100dvh - 48px);
+  border-radius: 20px;
+  background: var(--proxy-surface);
+  box-shadow: 0 20px 64px rgb(29 35 43 / 14%);
+  outline: none;
+}
+.proxy-dialog .proxy-dialog-panel[data-size='large'] {
+  max-width: 980px;
+}
+.proxy-dialog header {
+  padding: 20px 24px;
+  border-color: var(--proxy-border);
+}
+.proxy-dialog header h2 {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  color: var(--proxy-ink);
+}
+.proxy-dialog header > button {
+  width: 32px;
+  min-height: 32px;
+  padding: 6px;
+  border: 0;
+  background: var(--proxy-raised);
+  border-radius: 999px;
+}
+.proxy-dialog-body {
+  min-width: 0;
+  padding: 20px 24px;
+  color: var(--proxy-ink);
+  font-size: 13px;
+  line-height: 1.6;
+  scrollbar-width: thin;
+  scrollbar-color: #c9d0d7 transparent;
+  overscroll-behavior: contain;
+  scroll-padding-bottom: 6rem;
+}
+.proxy-dialog .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 13px;
+}
+.proxy-dialog .input {
+  min-height: 38px;
+  border-color: var(--proxy-control);
+  border-radius: 8px;
+  color: var(--proxy-ink);
+  background-color: var(--proxy-surface);
+  font-size: 13px;
+}
+.proxy-dialog textarea {
+  resize: vertical;
+}
+.proxy-dialog :is(td, th) {
+  font-size: 12px;
+}
+.proxy-dialog thead {
+  background: var(--proxy-surface);
+}
+.proxy-dialog-feedback {
+  position: sticky;
+  top: -20px;
+  z-index: 5;
+  background: var(--proxy-surface);
+  font-size: 13px;
+}
+.proxy-dialog-footer {
+  position: sticky;
+  bottom: -20px;
+  z-index: 4;
+  margin-top: 20px;
+  padding: 16px 0;
+  border-top: 1px solid var(--proxy-border);
+  background: var(--proxy-surface);
+}
+.proxy-dialog-danger .btn-primary {
+  background: #a33e47;
+  border-color: #a33e47;
+}
+.proxy-dialog-danger .btn-primary:hover:not(:disabled) {
+  background: #872f37;
+  border-color: #872f37;
+}
+.proxy-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--proxy-ink);
+}
+.proxy-registration-fields {
+  min-width: 0;
+}
+.proxy-form-section {
+  padding-top: 20px;
+  border-top: 1px solid var(--proxy-border);
+}
+.proxy-registration-steps {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin-bottom: 18px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--proxy-border);
+  color: var(--proxy-muted);
+  font-size: 12px;
+}
+.proxy-registration-steps li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.proxy-registration-steps li:not(:last-child)::after {
+  content: '›';
+  margin-left: 12px;
+  color: var(--proxy-muted);
+}
+.proxy-registration-steps [aria-current='step'] {
+  color: var(--proxy-ink);
+  font-weight: 600;
+}
+.proxy-detail-actions {
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--proxy-border);
+}
+.proxy-detail-summary {
+  padding: 16px;
+  column-gap: 32px;
+  row-gap: 16px;
+  border-radius: 12px;
+  background: var(--proxy-raised);
+}
+.proxy-detail-summary > div:first-child,
+.proxy-detail-summary > div:last-child {
+  grid-column: 1 / -1;
+}
+.proxy-detail-summary dd {
+  color: var(--proxy-ink);
+}
+.proxy-detail-note {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--proxy-raised);
+  color: var(--proxy-muted);
+  font-size: 13px;
+}
+.proxy-detail-section {
+  padding-top: 20px;
+  border-top: 1px solid var(--proxy-border);
+}
+.proxy-detail-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+}
+.proxy-detail-records {
+  padding-top: 14px;
+  border-top: 1px solid var(--proxy-border);
+}
+.proxy-detail-records summary {
+  font-size: 13px;
+  color: var(--proxy-muted);
+}
+body:has(.proxy-orders-page) .mobile-picker-panel {
+  color: var(--proxy-ink, #20262e);
+}
+body:has(.proxy-orders-page) .mobile-picker-panel input:focus {
+  outline: none;
+  box-shadow: none;
+  border-color: #8798ae;
+}
+@media (min-width: 1100px) {
+  .proxy-workspace > aside {
+    top: 12px;
+    bottom: 12px;
+    left: 12px;
+    width: 208px;
+    border-radius: 18px;
+  }
+  .proxy-workspace > div {
+    padding-left: 232px;
+  }
+  .proxy-workspace > div > header {
+    top: 12px;
+    margin: 12px 24px 0;
+    border-radius: 14px;
+  }
+  .proxy-shell-context {
+    display: flex;
+  }
+  .proxy-workspace > aside .app-brand {
+    height: 76px;
+    padding: 0 12px;
+  }
+  .proxy-workspace > aside :is(nav a, nav button) {
+    min-height: 38px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+    font-size: 13px;
+  }
+  .proxy-workspace > aside nav svg {
+    width: 18px;
+    height: 18px;
+  }
+}
+@media (min-width: 1600px) {
+  .proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:last-child {
+    width: 220px;
+  }
+  .proxy-orders-table .proxy-actions-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1100px) and (min-height: 680px) {
+  .proxy-workspace .app-content {
+    height: calc(100dvh - 64px);
+    overflow: hidden;
+  }
+  .proxy-orders-page {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+  }
+  .proxy-list-surface {
+    flex: 1;
+    min-height: 0;
+  }
+  .proxy-table-scroll {
+    flex: 1;
+    min-height: 0;
+  }
+}
+@media (max-width: 1099px) {
+  .proxy-workspace > aside {
+    border-radius: 0;
+  }
+  .proxy-workspace .app-content {
+    padding: 20px;
+  }
+}
+@media (max-width: 767px) {
+  .proxy-page-heading {
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+  .proxy-orders-page .proxy-page-heading h1 {
+    font-size: 22px;
+    line-height: 30px;
+  }
+  .proxy-workspace .app-content {
+    padding: 16px;
+  }
+  .proxy-page-heading p {
+    font-size: 12px;
+  }
+  .proxy-page-heading > div:last-child {
+    flex-wrap: wrap;
+  }
+  .proxy-orders-page .btn,
+  .proxy-orders-page .input,
+  .proxy-dialog button,
+  .proxy-dialog .responsive-select-trigger,
+  .proxy-dialog .btn,
+  .proxy-dialog .input {
+    min-height: 44px;
+  }
+  .proxy-orders-page .input,
+  .proxy-dialog .input,
+  .proxy-dialog input,
+  .proxy-dialog textarea {
+    font-size: 16px;
+  }
+  .proxy-workspace-tabs {
+    gap: 20px;
+  }
+  .proxy-workspace-tabs button {
+    min-height: 44px;
+    padding: 8px 0;
+  }
+  .proxy-operations-note {
+    align-items: flex-start;
+  }
+  .proxy-operations-note > svg {
+    margin-top: 2px;
+  }
+  .proxy-operations-note > button {
+    margin-left: 24px;
+  }
+  .proxy-pool-explanation {
+    width: 100%;
+    margin-left: 24px;
+  }
+  .proxy-list-toolbar {
+    padding: 12px;
+  }
+  .proxy-orders-page .proxy-search {
+    max-width: none;
+    flex: 1 1 100%;
+  }
+  .proxy-list-toolbar .btn {
+    padding-left: 10px;
+    padding-right: 10px;
+  }
+  .proxy-table-scroll {
+    padding: 0 12px;
+  }
+  .proxy-dialog.proxy-dialog {
+    padding: 0;
+    align-items: stretch;
+  }
+  .proxy-dialog .proxy-dialog-panel {
+    width: 100%;
+    max-width: none;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+  }
+  .proxy-dialog header {
+    padding: max(12px, env(safe-area-inset-top)) 16px 12px;
+  }
+  .proxy-dialog header h2 {
+    font-size: 18px;
+  }
+  .proxy-dialog header > button {
+    min-height: 44px;
+    width: 44px;
+  }
+  .proxy-dialog-body {
+    padding: 16px;
+    font-size: 14px;
+  }
+  .proxy-dialog-feedback {
+    top: -16px;
+  }
+  .proxy-dialog-footer {
+    bottom: -16px;
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
+  }
+  .proxy-dialog .proxy-candidate-row {
+    flex-direction: column;
+    align-items: stretch;
+    padding: 12px;
+    border: 1px solid var(--proxy-border);
+    border-radius: 8px;
+  }
+  .proxy-dialog .proxy-candidate-row > .btn {
+    align-self: flex-end;
+  }
+  .proxy-dialog label:has(input[type='checkbox']) {
+    min-height: 44px;
+  }
+  .proxy-dialog input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
+  }
+  .proxy-registration-steps {
+    gap: 10px;
+  }
+  .proxy-registration-steps li:not(:last-child)::after {
+    margin-left: 4px;
+  }
+}
+/* 同一语义表在手机上重排；字段和业务处理函数保留，不复制请求分支。 */
+@media (max-width: 639px) {
+  .proxy-orders-page .proxy-table-scroll {
+    overflow: visible;
+  }
+  .proxy-orders-page .proxy-orders-table {
+    display: block;
+    min-width: 0;
+    width: 100%;
+    table-layout: auto;
+  }
+  .proxy-orders-page .proxy-orders-table thead {
+    display: none;
+  }
+  .proxy-orders-page .proxy-orders-table tbody {
+    display: block;
+  }
+  .proxy-orders-page .proxy-orders-table tbody tr {
+    display: grid;
+    position: relative;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px 12px;
+    padding: 18px 0;
+    border-bottom: 1px solid var(--proxy-border);
+  }
+  .proxy-orders-page .proxy-orders-table :is(th, td) {
+    display: block;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 0;
+    font-size: 13px;
+  }
+  .proxy-orders-page .proxy-orders-table td:first-child {
+    grid-column: 2;
+    grid-row: 1;
+    padding: 4px 2px;
+  }
+  .proxy-orders-page .proxy-orders-table td:nth-child(2) {
+    grid-column: 1;
+    grid-row: 1;
+  }
+  .proxy-orders-page .proxy-orders-table td:not(:first-child):not(:nth-child(2)) {
+    grid-column: 1 / -1;
+  }
+  .proxy-orders-page .proxy-orders-table td[data-label]::before {
+    display: block;
+    content: attr(data-label);
+    margin-bottom: 3px;
+    font-size: 12px;
+    color: var(--proxy-muted);
+  }
+  .proxy-orders-page .proxy-orders-table td[data-label='状态'] {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .proxy-orders-table td[data-label='状态'] .input {
+    width: auto;
+    min-height: 44px;
+    padding: 8px 10px;
+  }
+  .proxy-orders-table .proxy-customer-cell > button {
+    font-size: 14px;
+  }
+  .proxy-orders-page .proxy-orders-table .proxy-row-actions {
+    position: static;
+  }
+  .proxy-orders-table .proxy-actions-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .proxy-orders-table .proxy-row-actions .btn {
+    min-height: 44px;
+    padding: 8px 10px;
+    border-color: var(--proxy-border);
+    border-radius: 999px;
+  }
+  .proxy-copy-hint {
+    width: 100%;
+  }
+  .proxy-orders-page .proxy-accounts-table td:last-child {
+    grid-column: 1 / -1;
+  }
+  .proxy-orders-page .proxy-table-navigation {
+    display: none;
+  }
+  .proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) td:nth-child(3) {
+    order: 1;
+  }
+  .proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) td[data-label='状态'] {
+    order: 2;
+  }
+  .proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) .proxy-row-actions {
+    order: 3;
+  }
+  .proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) td[data-label='目标门店'] {
+    order: 4;
+  }
+  .proxy-orders-page
+    .proxy-orders-table:not(.proxy-accounts-table)
+    td[data-label='账号 / 官方订单'] {
+    order: 5;
+  }
+  .proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) td[data-label='备注'] {
+    order: 6;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .proxy-orders-page *,
+  .proxy-dialog * {
+    scroll-behavior: auto;
+    transition: none;
+  }
+  .proxy-orders-page .btn:active,
+  .proxy-dialog .btn:active {
+    transform: none;
+  }
+}
+
+/* 本页选择器：状态为轻量圆点标签，普通字段保留白色输入外观。 */
+.proxy-orders-page .proxy-select-trigger,
+.proxy-dialog .proxy-select-trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.proxy-select-trigger .proxy-select-value {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.proxy-select-chevron {
+  flex-shrink: 0;
+  color: #7a8491;
+  transition: transform 140ms ease;
+}
+.proxy-select-trigger[aria-expanded='true'] .proxy-select-chevron {
+  transform: rotate(180deg);
+}
+.proxy-orders-page .proxy-select-trigger[aria-expanded='true']:not(.proxy-status-chip),
+.proxy-dialog .proxy-select-trigger[aria-expanded='true']:not(.proxy-status-chip) {
+  border-color: #9faebe;
+  background: #fafbfd;
+}
+.proxy-status-chip,
+.proxy-select-option {
+  --status-ink: #596471;
+  --status-dot: #8994a2;
+  --status-bg: #f2f4f6;
+  --status-edge: #e8ecf0;
+}
+[data-proxy-status='rushing'] {
+  --status-ink: #345f96;
+  --status-dot: #5686c7;
+  --status-bg: #eef4fc;
+  --status-edge: #e1ebf8;
+}
+[data-proxy-status='succeeded'] {
+  --status-ink: #326d4c;
+  --status-dot: #4e9a70;
+  --status-bg: #eef8f1;
+  --status-edge: #e0eee5;
+}
+[data-proxy-status='cancelled'] {
+  --status-ink: #68717d;
+  --status-dot: #9aa2ad;
+  --status-bg: #f5f6f7;
+  --status-edge: #eaedf0;
+}
+.proxy-status-chip,
+.proxy-orders-page .proxy-select-trigger.proxy-status-chip,
+.proxy-dialog .proxy-select-trigger.proxy-status-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  min-height: 26px;
+  padding: 3px 8px;
+  border: 1px solid var(--status-edge);
+  border-radius: 999px;
+  color: var(--status-ink);
+  background: var(--status-bg);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 18px;
+  white-space: nowrap;
+}
+.proxy-status-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--status-dot, #8994a2);
+}
+[data-proxy-status='cancelled'] .proxy-status-dot {
+  border: 1px solid var(--status-dot);
+  background: transparent;
+}
+.proxy-select-trigger.proxy-status-chip:hover:not(:disabled) {
+  border-color: #c7d2df;
+  filter: brightness(0.985);
+}
+.proxy-status-chip .proxy-select-chevron {
+  width: 12px;
+  height: 12px;
+  color: var(--status-ink);
+  opacity: 0.75;
+}
+.proxy-orders-table td[data-label='状态'] .proxy-select-trigger {
+  width: auto;
+  max-width: 100%;
+}
+.proxy-select-menu {
+  position: fixed;
+  z-index: 150;
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid #e5e9ee;
+  border-radius: 12px;
+  background: #fff;
+  color: #20262e;
+  box-shadow: 0 10px 32px rgb(29 35 43 / 12%);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.proxy-select-content {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  max-height: inherit;
+}
+.proxy-select-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 8px 4px;
+  padding: 6px 8px;
+  min-height: 34px;
+  border: 1px solid #e1e6ec;
+  border-radius: 8px;
+  color: #626b76;
+  background: #fff;
+}
+.proxy-select-search:focus-within {
+  border-color: #9faebe;
+}
+.proxy-select-search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  box-shadow: none;
+  background: transparent;
+  color: #20262e;
+  font: inherit;
+}
+.proxy-select-search input::placeholder {
+  color: #626b76;
+  opacity: 1;
+}
+.proxy-select-options {
+  min-height: 0;
+  overflow: auto;
+  padding: 6px;
+  outline: none;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #c9d0d7 transparent;
+}
+.proxy-select-menu .proxy-select-option,
+body:has(.proxy-orders-page) .mobile-picker-dialog .proxy-select-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: #3f4956;
+  text-align: left;
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+}
+.proxy-select-option-label {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.proxy-select-group {
+  display: block;
+  color: #626b76;
+  font-size: 12px;
+}
+.proxy-select-menu .proxy-select-option[data-active='true'],
+body:has(.proxy-orders-page) .mobile-picker-dialog .proxy-select-option:hover {
+  background: #f4f6f8;
+}
+.proxy-select-menu .proxy-select-option[aria-selected='true'],
+body:has(.proxy-orders-page) .mobile-picker-dialog .proxy-select-option[aria-selected='true'] {
+  background: #f0f4f9;
+  color: #263e60;
+  font-weight: 500;
+}
+.proxy-select-check {
+  flex: none;
+  color: #1e3a8a;
+}
+.proxy-select-menu .proxy-select-option:disabled {
+  color: #737b85;
+  background: transparent;
+  cursor: not-allowed;
+}
+.proxy-select-empty,
+.proxy-select-invalid {
+  padding: 12px;
+  color: #626b76;
+  font-size: 13px;
+}
+.proxy-select-invalid {
+  color: #a33e47;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) {
+  min-width: 1120px;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(1) {
+  width: 36px;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(2) {
+  width: 140px;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(3) {
+  width: 180px;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(4) {
+  width: 108px;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(5) {
+  width: 90px;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(6) {
+  width: 116px;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(7) {
+  width: 120px;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(8) {
+  width: 132px;
+}
+.proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(9) {
+  width: 164px;
+}
+.proxy-orders-page .proxy-orders-table .proxy-fee-cell {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.proxy-fee-value {
+  color: #27313d;
+  font-weight: 500;
+}
+.proxy-orders-page .proxy-fee-inline {
+  display: none;
+  color: var(--proxy-muted);
+  white-space: nowrap;
+}
+@media (min-width: 640px) and (max-width: 1099px) {
+  .proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) {
+    min-width: 1030px;
+  }
+  .proxy-orders-page .proxy-orders-table .proxy-fee-cell {
+    display: none;
+  }
+  .proxy-orders-page .proxy-fee-inline {
+    display: block;
+  }
+}
+@media (min-width: 1600px) {
+  .proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) th:nth-child(9) {
+    width: 220px;
+  }
+}
+@media (max-width: 767px) {
+  .proxy-orders-page .proxy-select-trigger.proxy-status-chip,
+  .proxy-dialog .proxy-select-trigger.proxy-status-chip {
+    min-height: 44px;
+    font-size: 14px;
+    padding: 8px 10px;
+  }
+  body:has(.proxy-orders-page) .mobile-picker-dialog:has(.proxy-select-content) {
+    border-radius: 20px 20px 0 0;
+    color: #20262e;
+    background: #fff;
+  }
+  body:has(.proxy-orders-page)
+    .mobile-picker-dialog:has(.proxy-select-content)
+    .mobile-picker-heading {
+    border-color: #e9edf0;
+  }
+  body:has(.proxy-orders-page) .mobile-picker-dialog .proxy-select-content {
+    max-height: calc(75dvh - 76px);
+  }
+  body:has(.proxy-orders-page) .mobile-picker-dialog .proxy-select-search {
+    min-height: 44px;
+    margin: 12px 12px 6px;
+  }
+  body:has(.proxy-orders-page) .mobile-picker-dialog .proxy-select-search input {
+    font-size: 16px;
+    min-height: 28px;
+  }
+  body:has(.proxy-orders-page) .mobile-picker-dialog .proxy-select-options {
+    padding: 8px 12px 12px;
+  }
+  body:has(.proxy-orders-page) .mobile-picker-dialog .proxy-select-option {
+    min-height: 44px;
+    padding: 11px 12px;
+    font-size: 14px;
+  }
+}
+@media (max-width: 639px) {
+  .proxy-orders-page .proxy-orders-table:not(.proxy-accounts-table) {
+    min-width: 0;
+  }
+  .proxy-orders-page .proxy-orders-table td[data-label='代抢费用'] {
+    order: 3;
+    text-align: left;
+  }
+  .proxy-orders-page .proxy-orders-table td[data-label='代抢费用']::before {
+    display: inline;
+    margin-right: 10px;
+  }
+}
+
+/* 保留生产多城市门店交互，仅在代抢路由中呈现。 */
 .proxy-city-options {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
@@ -39,426 +1404,4 @@
 }
 .proxy-store-scope-summary {
   overflow-wrap: anywhere;
-}
-.proxy-dialog-feedback {
-  position: sticky;
-  top: -1rem;
-  z-index: 5;
-  background: white;
-}
-.proxy-dialog-footer {
-  position: sticky;
-  bottom: -1rem;
-  z-index: 4;
-  background: white;
-  border-top: 1px solid #e5e7eb;
-  padding: 1rem 0 max(1rem, env(safe-area-inset-bottom));
-}
-.proxy-orders-table td {
-  vertical-align: top;
-}
-.proxy-orders-table .proxy-row-actions {
-  position: sticky;
-  right: 0;
-  background: white;
-  box-shadow: -4px 0 6px -5px #9ca3af;
-}
-.proxy-orders-table tr:hover .proxy-row-actions {
-  background: #f9fafb;
-}
-.proxy-orders-table th:last-child {
-  position: sticky;
-  right: 0;
-  z-index: 2;
-  background: #f9fafb;
-}
-.proxy-orders-table .proxy-row-actions .btn {
-  padding: 0.4rem 0.65rem;
-}
-@media (max-width: 767px) {
-  .proxy-orders-page .input,
-  .proxy-dialog .input,
-  .proxy-dialog input,
-  .proxy-dialog textarea,
-  .proxy-dialog select {
-    font-size: 16px;
-  }
-  .proxy-orders-page .input,
-  .proxy-orders-page .btn,
-  .proxy-dialog .input,
-  .proxy-dialog input:not([type='checkbox']):not([type='radio']),
-  .proxy-dialog button,
-  .proxy-dialog .responsive-select-trigger {
-    min-height: 44px;
-  }
-  .proxy-dialog.proxy-dialog {
-    margin: 0;
-    padding: 0;
-    align-items: stretch;
-  }
-  .proxy-dialog .proxy-dialog-panel {
-    border-radius: 0;
-    height: 100dvh;
-    max-height: 100dvh;
-    width: 100%;
-  }
-  .proxy-dialog-body {
-    padding: 1rem;
-    overscroll-behavior: contain;
-    scroll-padding-bottom: 6rem;
-  }
-  .proxy-dialog header {
-    padding: 0.75rem 1rem;
-    padding-top: max(0.75rem, env(safe-area-inset-top));
-  }
-  .proxy-dialog header h2 {
-    font-size: 18px;
-  }
-  .proxy-dialog .proxy-candidate-row {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 0.75rem;
-    border: 1px solid #e5e7eb;
-    border-radius: 0.5rem;
-  }
-  .proxy-dialog .proxy-candidate-row > .btn {
-    align-self: flex-end;
-  }
-  .proxy-dialog label:has(input[type='checkbox']) {
-    min-height: 44px;
-  }
-  .proxy-dialog input[type='checkbox'] {
-    width: 18px;
-    height: 18px;
-    flex-shrink: 0;
-  }
-  .proxy-dialog-footer {
-    display: grid;
-    grid-template-columns: 1fr 2fr;
-  }
-  .proxy-dialog-feedback {
-    top: -1rem;
-  }
-  .proxy-orders-table .proxy-row-actions,
-  .proxy-orders-table th:last-child {
-    position: static;
-    box-shadow: none;
-  }
-}
-
-.proxy-dialog .btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-  box-shadow: none;
-}
-.proxy-orders-page {
-  min-width: 0;
-  max-width: 100%;
-}
-.proxy-delegations-table .proxy-id-cell {
-  min-width: 2.75rem;
-}
-.proxy-delegations-table .proxy-customer-cell {
-  min-width: 5.25rem;
-  max-width: 8rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.proxy-delegations-table .proxy-phone-cell {
-  min-width: 7rem;
-  white-space: nowrap;
-}
-.proxy-delegations-table .proxy-email-cell {
-  min-width: 8.75rem;
-  max-width: 12rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.proxy-delegations-table .proxy-product-cell {
-  min-width: 10.75rem;
-  max-width: 15rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.proxy-delegations-table .proxy-city-cell {
-  min-width: 4.25rem;
-  max-width: 6rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.proxy-delegations-table .proxy-payment-cell {
-  min-width: 5.25rem;
-}
-.proxy-delegations-table .proxy-source-cell {
-  min-width: 4.5rem;
-  max-width: 7rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.proxy-delegations-table .proxy-notes-cell {
-  min-width: 8.75rem;
-  max-width: 14rem;
-  overflow-wrap: anywhere;
-}
-.proxy-delegations-table .proxy-status-cell {
-  min-width: 7.75rem;
-}
-.proxy-delegations-table .proxy-date-cell {
-  min-width: 6.5rem;
-  max-width: 7.5rem;
-  white-space: normal;
-}
-.proxy-order-action-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.375rem;
-  width: 10rem;
-}
-.proxy-order-action-grid > p {
-  grid-column: 1 / -1;
-  max-width: none;
-}
-.btn.proxy-status-control {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.375rem;
-  min-height: 32px;
-  padding: 0.25rem 0.5rem;
-  border: 1px solid currentColor;
-  border-radius: 9999px;
-  font-size: 13px;
-  font-weight: 500;
-  white-space: nowrap;
-}
-.proxy-status-control:hover {
-  filter: brightness(0.97);
-}
-.proxy-status-control:focus-visible,
-.proxy-status-option:focus-visible {
-  outline: 2px solid #1e3a8a;
-  outline-offset: 3px;
-}
-.proxy-status-control:disabled,
-.proxy-status-option:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.proxy-status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-.proxy-status-pending {
-  color: #92400e;
-  background: #fef3c7;
-}
-.proxy-status-rushing {
-  color: #1e40af;
-  background: #dbeafe;
-}
-.proxy-status-succeeded {
-  color: #166534;
-  background: #dcfce7;
-}
-.proxy-status-cancelled {
-  color: #4b5563;
-  background: #f3f4f6;
-}
-.proxy-status-options {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
-}
-.btn.proxy-status-option {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  padding: 0.75rem;
-  border: 2px solid transparent;
-  border-radius: 0.5rem;
-  text-align: left;
-}
-.proxy-status-option[aria-pressed='true'] {
-  border-color: currentColor;
-}
-@media (max-width: 767px) {
-  .proxy-orders-page .proxy-status-control,
-  .proxy-dialog .proxy-status-control {
-    min-height: 44px;
-  }
-  .proxy-order-action-grid {
-    width: 12rem;
-  }
-  .proxy-delegations-table .proxy-notes-cell button {
-    min-width: 44px;
-    min-height: 44px;
-  }
-}
-
-.proxy-orders-table .proxy-account-email-cell {
-  min-width: 12rem;
-  max-width: 20rem;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-.proxy-orders-table .proxy-account-notes-cell {
-  min-width: 13rem;
-  max-width: 20rem;
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.proxy-delegations-table td,
-.proxy-delegations-table th {
-  padding: 0.5rem;
-}
-.proxy-list-date {
-  display: flex;
-  flex-direction: column;
-  gap: 0.125rem;
-  white-space: nowrap;
-}
-
-/* 手机只挂载摘要分支，桌面继续使用完整表格。 */
-.proxy-mobile-list,
-.proxy-mobile-summary,
-.proxy-mobile-summary > * {
-  min-width: 0;
-  max-width: 100%;
-}
-.proxy-mobile-list {
-  display: flex;
-  flex-direction: column;
-}
-.proxy-mobile-summary {
-  padding: 0.75rem;
-  border-bottom: 1px solid #e5e7eb;
-  overflow-wrap: anywhere;
-}
-.proxy-mobile-summary:last-child {
-  border-bottom: 0;
-}
-.proxy-mobile-summary-heading {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.5rem;
-}
-.proxy-mobile-selection {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  min-width: 44px;
-  min-height: 44px;
-}
-.proxy-mobile-selection input,
-.proxy-mobile-select-all input {
-  width: 20px;
-  height: 20px;
-}
-.proxy-mobile-product {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow: hidden;
-}
-.proxy-mobile-meta {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.25rem 0.75rem;
-}
-.proxy-mobile-notes .group > p {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 3;
-  overflow: hidden;
-}
-.proxy-mobile-notes button {
-  min-width: 44px;
-  min-height: 44px;
-}
-.proxy-mobile-primary,
-.proxy-mobile-more-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.5rem;
-}
-.proxy-mobile-primary .btn,
-.proxy-mobile-more-actions .btn {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.375rem;
-  min-width: 0;
-  white-space: normal;
-}
-.proxy-mobile-more > summary {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  list-style: none;
-}
-.proxy-mobile-more > summary::-webkit-details-marker {
-  display: none;
-}
-.proxy-mobile-more[open] > summary > svg {
-  transform: rotate(180deg);
-}
-.proxy-mobile-selection-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  color: #4b5563;
-  font-size: 12px;
-}
-.proxy-mobile-select-all {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  min-height: 44px;
-  font-size: 14px;
-}
-@media (max-width: 767px) {
-  .proxy-page-heading {
-    flex-wrap: nowrap;
-    gap: 0.5rem;
-  }
-  .proxy-page-heading > div:first-child {
-    min-width: 0;
-  }
-  .proxy-page-heading h1 {
-    font-size: 20px;
-    white-space: nowrap;
-  }
-  .proxy-page-heading p {
-    display: none;
-  }
-  .proxy-page-heading > div:last-child {
-    flex-shrink: 0;
-  }
-  .proxy-list-toolbar .proxy-search {
-    flex: 0 0 100%;
-    min-width: 0;
-  }
-  .proxy-list-toolbar > .btn,
-  .proxy-list-toolbar > .responsive-select-trigger {
-    flex: 1 1 calc(50% - 4px);
-    max-width: 100%;
-    min-width: 0;
-    justify-content: center;
-  }
-  .proxy-mobile-more > summary {
-    min-height: 44px;
-  }
-  .proxy-dialog dd,
-  .proxy-dialog .whitespace-pre-wrap {
-    min-width: 0;
-    overflow-wrap: anywhere;
-  }
 }

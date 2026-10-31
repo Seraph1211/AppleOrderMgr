@@ -213,6 +213,31 @@
       "frontendTokens": [
         "任务配置"
       ]
+    },
+    {
+      "id": "proxy-fee-persistence",
+      "source": {
+        "src/models/ProxyOrder.js": [
+          "proxyFee: { type: DataTypes.DECIMAL(12, 2)"
+        ],
+        "src/utils/proxyFee.js": [
+          "normalizeProxyFee"
+        ],
+        "src/services/proxyOrderService.js": [
+          "proxyFee: row.proxyFee"
+        ],
+        "frontend/src/pages/ProxyOrders.jsx": [
+          "getProxyFeeError",
+          "normalizeStoreScope(response.data, stores)"
+        ],
+        "migrations/20261031000001-add-proxy-order-fee.js": [
+          "已有委托费用，禁止有损回退"
+        ]
+      },
+      "frontendTokens": [
+        "代抢费用（元）",
+        "未登记"
+      ]
     }
   ]
 }
