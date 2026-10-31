@@ -1257,6 +1257,9 @@ function OrdersWorkspace() {
                         source={order.recipientTagSource}
                       />
                     </p>
+                    <p className="order-timestamp mt-1 text-xs text-gray-600">
+                      下单时间：{formatOrderTime(order.orderDate)}
+                    </p>
                     <p className="mt-1 text-xs text-gray-600">
                       实际取货日期：{order.actualPickupDate || '尚未获取'}
                     </p>

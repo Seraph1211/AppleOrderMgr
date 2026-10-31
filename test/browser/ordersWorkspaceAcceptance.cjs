@@ -145,6 +145,11 @@ async function main() {
           (await mailStatus.innerText()).replace(/\s+/g, ' ').trim(),
           '邮件状态 可取货 2026/10/28 22:36:28'
         );
+        assert.equal(
+          await page.getByText('下单时间：2026/10/27 14:20:00', { exact: true }).count(),
+          1,
+          '下单时间独立保留，不与邮件状态更新时间混用'
+        );
       } else {
         const mailStatus = page.locator('tbody [data-column="emailOrderStatus"]').first();
         assert.equal(
