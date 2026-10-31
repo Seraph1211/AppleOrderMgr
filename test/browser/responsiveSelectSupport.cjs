@@ -12,7 +12,7 @@ async function chooseSelect(control, value) {
     await control.click();
     await control
       .page()
-      .locator('dialog.mobile-picker-dialog')
+      .locator('dialog.mobile-picker-dialog, .proxy-select-menu')
       .getByRole('option', { name: label, exact: true })
       .click();
   } catch (error) {

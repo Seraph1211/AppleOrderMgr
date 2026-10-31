@@ -1515,7 +1515,12 @@ export default function ProxyOrders() {
                           data-label="目标门店"
                           className="p-3 min-w-36 max-w-48 whitespace-normal"
                         >
-                          <p>{storeNames(row.storeCodes)}</p>
+                          <p>
+                            {storeNames(row.storeCodes)}
+                            {pickupCities(row, stores).length > 1 && (
+                              <p className="mt-1 text-xs text-gray-500">{pickupCity(row)}</p>
+                            )}
+                          </p>
                         </td>
                         <td
                           data-label="备注"

@@ -127,7 +127,7 @@ async function main() {
       };
       const entry = id =>
         page
-          .locator(width < 768 ? 'article[data-proxy-order-id]' : 'tbody tr')
+          .locator('tbody tr')
           .filter({ has: page.getByRole('checkbox', { name: `选择 ${id}`, exact: true }) });
       const edit = async id => {
         try {
