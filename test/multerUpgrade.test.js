@@ -28,7 +28,7 @@ describe('multer 升级的 multipart 安全回归（无数据库）', () => {
   });
 
   test('使用已审计的精确修复版本', () => {
-    expect(require('multer/package.json').version).toBe('2.3.0');
+    expect(require('multer/package.json').version).toBe('2.5.0');
   });
 
   test.each([8, 16, 17])('异步 fileFilter 仍执行大小上限：%i 字节', async size => {
