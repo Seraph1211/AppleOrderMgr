@@ -345,7 +345,7 @@ class ProductionFrontendGateTest(unittest.TestCase):
         source = Path(SPEC.origin).parent
         for name in (
                 'buildProductionRelease.sh', 'productionFrontendGate.py', 'productionSourceGuard.py',
-                'productionRelease.py', 'productionReleaseBackup.py',
+                'productionRelease.py', 'productionReleasePreflight.py', 'productionReleaseBackup.py',
                 'productionReleaseFiles.py', 'productionReleaseResourceProbe.py',
                 'productionReleaseDatabaseValidation.sql',
                 'productionReleaseSchemaDiagnostic.sql',

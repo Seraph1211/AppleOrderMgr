@@ -121,7 +121,8 @@ describe('真实隔离 PostgreSQL：双暂停和两次余量', () => {
   beforeEach(async () => {
     try {
       client = new Client({
-        host: 'official-order-rebuild-postgres',
+        host: process.env.RELEASE_TEST_PGHOST || 'official-order-rebuild-postgres',
+        port: Number(process.env.RELEASE_TEST_PGPORT || 5432),
         user: 'postgres',
         password: 'test-only',
         database: 'postgres',
@@ -220,7 +221,8 @@ describe('批次原值预检脚本的真实隔离 PostgreSQL', () => {
   beforeEach(async () => {
     try {
       client = new Client({
-        host: 'official-order-rebuild-postgres',
+        host: process.env.RELEASE_TEST_PGHOST || 'official-order-rebuild-postgres',
+        port: Number(process.env.RELEASE_TEST_PGPORT || 5432),
         user: 'postgres',
         password: 'test-only',
         database: 'postgres',

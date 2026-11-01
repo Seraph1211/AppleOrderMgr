@@ -114,6 +114,7 @@ cp scripts/productionReleaseSchemaInventory.sql \
   "$release_dir/productionReleaseSchemaInventory.sql"
 
 docker save "$runtime_image" "$migrator_image" | gzip -9 > "$release_dir/images.tar.gz"
+cp scripts/productionReleasePreflight.py "$release_dir/productionReleasePreflight.py"
 cp docker-compose.prod.yml "$release_dir/docker-compose.prod.yml"
 cp nginx-apple-order-mgr.conf "$release_dir/nginx-apple-order-mgr.conf"
 cat > "$release_dir/release.env" <<RELEASE_ENV
@@ -149,6 +150,7 @@ cat > "$release_dir/manifest.json" <<MANIFEST
   "frontendVersion": "$frontend_version",
   "frontendTreeDigest": "$frontend_tree_digest",
   "releaseExecutor": "productionRelease.py",
+  "releasePreflight": "productionReleasePreflight.py",
   "releaseBackupTool": "productionReleaseBackup.py",
   "releaseFilesTool": "productionReleaseFiles.py",
   "releaseResourceProbe": "productionReleaseResourceProbe.py",

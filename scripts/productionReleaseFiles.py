@@ -1150,6 +1150,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command')
     snapshot = sub.add_parser('snapshot')
+    snapshot.add_argument('--preflight-plan', required=True)
     snapshot.add_argument('--source', required=True)
     snapshot.add_argument('--store', required=True)
     snapshot.add_argument('--manifest', required=True)
@@ -1207,6 +1208,11 @@ def main():
         require(args.command is not None, 'COMMAND_REQUIRED')
         key = readKey(args.key_file)
         if args.command == 'snapshot':
+            from productionReleasePreflight import runPreflight
+            try:
+                runPreflight(args.preflight_plan)
+            except Exception as error:
+                raise FileBackupError(getattr(error, 'code', 'PREFLIGHT_FAILED'))
             result = createManifest(
                 args.source, args.store, args.manifest, key, args.release_id,
                 args.base_manifest, args.immutable_path, args.exclude_path,

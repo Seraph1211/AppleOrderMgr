@@ -1306,6 +1306,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command')
     backup = sub.add_parser('database-backup')
+    backup.add_argument('--preflight-plan', required=True)
     backup.add_argument('--database', required=True)
     backup.add_argument('--output', required=True)
     backup.add_argument('--validation-sql', required=True)
@@ -1395,6 +1396,11 @@ def main():
     try:
         require(args.command is not None, 'COMMAND_REQUIRED')
         if args.command == 'database-backup':
+            from productionReleasePreflight import runPreflight
+            try:
+                runPreflight(args.preflight_plan)
+            except Exception as error:
+                raise BackupError(getattr(error, 'code', 'PREFLIGHT_FAILED'))
             result = createDatabaseBackup(
                 args.database, args.output, args.validation_sql, args.evidence,
                 args.pg_dump, args.psql)

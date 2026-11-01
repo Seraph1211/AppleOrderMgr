@@ -5,6 +5,7 @@ import concurrent.futures
 import datetime
 import fcntl
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -866,6 +867,17 @@ class ReleaseExecutor(object):
         finally:
             self.releaseLock.release()
             self.lockHeld = False
+            # 收尾失败不能掩盖原始发布结果，也不能触发业务回退。
+            try:
+                writeCloseout(self.plan)
+            except Exception:
+                try:
+                    writeJsonAtomic(self.evidenceDir / 'closeout.json', {
+                        'passed': False, 'code': 'CLOSEOUT_FAILED',
+                        'releaseId': self.plan['releaseId'],
+                    })
+                except OSError:
+                    sys.stderr.write('CLOSEOUT_FAILED\n')
 
 
 def buildSummary(journalPath, state=None):
@@ -983,11 +995,67 @@ def resolveUnknownMutation(plan, outcome, reconciliationEvidence):
         lock.release()
 
 
+def preflightBinding(plan, execute=False):
+    """CLI 强制绑定预检计划；恢复流程不重复备份前的旧指针检查。"""
+    binding = plan.get('preflight', {})
+    require(isinstance(binding, dict) and binding.get('plan') and binding.get('sha256'),
+            'PREFLIGHT_BINDING_REQUIRED')
+    path = Path(__file__).with_name('productionReleasePreflight.py')
+    spec = importlib.util.spec_from_file_location('executorPreflight', str(path))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    preflight = module.readPlan(binding['plan'])
+    require(sha256File(binding['plan'])[0] == binding['sha256'], 'PREFLIGHT_PLAN_CHANGED')
+    require(preflight['releaseId'] == plan['releaseId']
+            and all(preflight[key] == plan['frontend'][key]
+                    for key in ('candidate', 'current', 'expectedCurrent'))
+            and set(preflight['nginxUsers']) == set(plan['frontend']['nginxUsers']),
+            'PREFLIGHT_BINDING_MISMATCH')
+    if execute:
+        module.runPreflight(binding['plan'])
+
+
+def writeCloseout(plan):
+    """汇总收尾证据；不执行业务操作，不把缺失验收视为成功。"""
+    directory = Path(plan['evidenceDir'])
+    statePath = directory / 'release-state.json'
+    state = json.loads(statePath.read_text(encoding='utf-8'))
+    require(state.get('planDigest') == sha256Bytes(canonicalBytes(plan)),
+            'CLOSEOUT_PLAN_CHANGED')
+    journal = directory / 'release-timing.jsonl'
+    summary = buildSummary(journal, state)
+    writeJsonAtomic(directory / 'release-summary.json', summary)
+    rows = []
+    expected = plan.get('closeoutEvidence', [])
+    for item in expected:
+        row = {'id': item['id'], 'status': 'pending'}
+        path = Path(item['path'])
+        try:
+            require(path.is_absolute() and not path.is_symlink(), 'CLOSEOUT_PATH')
+            digest, size = sha256File(path)
+            document = json.loads(path.read_text(encoding='utf-8'))
+            require(document.get('passed') is True
+                    and document.get('releaseId') == plan['releaseId'], 'CLOSEOUT_NOT_PASSED')
+            require(not item.get('sha256') or digest == item['sha256'], 'CLOSEOUT_DIGEST')
+            row.update(status='passed', sha256=digest, bytes=size)
+        except (OSError, ValueError, ReleaseError):
+            pass
+        rows.append(row)
+    result = {'schemaVersion': 1, 'releaseId': plan['releaseId'],
+              'attemptId': plan['attemptId'], 'generatedAtUtc': utcNow(),
+              'technicalPassed': summary['passed'], 'evidence': rows,
+              'passed': summary['passed'] and bool(rows)
+                        and all(row['status'] == 'passed' for row in rows),
+              'summary': summary}
+    writeJsonAtomic(directory / 'closeout.json', result)
+    return result
+
+
 def main():
     """命令行入口。"""
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest='command')
-    for name in ('validate', 'run', 'resume'):
+    for name in ('validate', 'run', 'resume', 'closeout'):
         command = sub.add_parser(name)
         command.add_argument('--plan', required=True)
     summary = sub.add_parser('summary')
@@ -1011,6 +1079,12 @@ def main():
                 loadPlan(args.plan), args.outcome, args.evidence)
         else:
             plan = loadPlan(args.plan)
+            if args.command == 'closeout':
+                result = writeCloseout(plan)
+                print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+                return 0 if result['passed'] else 1
+            if args.command != 'resume':
+                preflightBinding(plan, execute=args.command == 'run')
             if args.command == 'validate':
                 result = {'passed': True, 'releaseId': plan['releaseId'],
                           'planDigest': sha256Bytes(canonicalBytes(plan)),

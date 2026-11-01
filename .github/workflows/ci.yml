@@ -11,6 +11,20 @@ permissions:
 jobs:
   backend:
     runs-on: ubuntu-latest
+    services:
+      release-test-postgres:
+        image: postgres:17.5-alpine3.22
+        env:
+          POSTGRES_PASSWORD: test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      NODE_ENV: test
+      RELEASE_TEST_PGHOST: 127.0.0.1
+      RELEASE_TEST_PGPORT: 5432
     steps:
       - uses: actions/checkout@v4
         with:
@@ -22,6 +36,10 @@ jobs:
       - run: npm run security:verify-vendor
       - run: npm ci
       - run: npm run lint -- --quiet
+      - name: 初始化临时测试密钥并检查测试环境
+        run: |
+          echo "FIELD_ENCRYPTION_KEY=$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")" >> "$GITHUB_ENV"
+      - run: npm run check:release-test-environment
       - run: npm test -- --runInBand
       - run: npm run docs:check
       - run: python3 scripts/productionSourceGuard.py source
@@ -44,7 +62,7 @@ jobs:
       - run: npm run lint
       - run: npm run build
       - run: mkdir -p ../coverage/frontend-capabilities && cp -a dist ../coverage/frontend-capabilities/frontend
-      - run: python3 ../scripts/productionSourceGuard.py frontend --root .. --release ../coverage/frontend-capabilities --output ../coverage/frontend-capabilities/capabilities.json
+      - run: python3 ../scripts/productionSourceGuard.py frontend --root "$GITHUB_WORKSPACE" --release "$GITHUB_WORKSPACE/coverage/frontend-capabilities" --output "$GITHUB_WORKSPACE/coverage/frontend-capabilities/capabilities.json"
       - run: npm audit --audit-level=high
 
   secret-scan:
