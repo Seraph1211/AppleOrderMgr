@@ -58,7 +58,18 @@ async function main() {
           };
         else if (url.pathname.endsWith('/logs/states')) data = { devices, instances: [instance] };
         else if (url.pathname.endsWith('/logs/accounts')) data = { items: [], nextCursor: null };
-        else if (url.pathname.endsWith('/logs/tags')) {
+        else if (url.pathname.endsWith('/logs/export-ticket')) {
+          assert.equal(request.method(), 'POST');
+          calls.push({ exportTicket: request.postDataJSON() });
+        } else if (url.pathname.endsWith('/logs/export')) {
+          return route.fulfill({
+            headers: {
+              'content-type': 'text/plain; charset=utf-8',
+              'content-disposition': 'attachment; filename="synthetic-logs.log"',
+            },
+            body: 'synthetic legacy export\n',
+          });
+        } else if (url.pathname.endsWith('/logs/tags')) {
           assert.equal(request.method(), 'PUT');
           assert.equal(readOnly, false);
           const body = request.postDataJSON();
@@ -146,6 +157,29 @@ async function main() {
         await page.locator('body').evaluate(node => node.scrollWidth <= window.innerWidth),
         true
       );
+      assert.equal(
+        await panel.getByRole('button', { name: '导出范围日志', exact: true }).count(),
+        0
+      );
+      await page.goto(origin + '/server-monitor/logs?view=legacy');
+      await panel.getByRole('button', { name: '收起筛选', exact: true }).click();
+      await panel.getByRole('button', { name: '展开筛选', exact: true }).click();
+      await panel.getByText('北京时间 · 支持跨天查询 · 最近90天日志 · 在线约1分钟同步').waitFor();
+      await panel.getByRole('button', { name: '服务器', exact: true }).click();
+      await panel.getByRole('option').filter({ hasText: device.name }).first().click();
+      await panel.getByRole('button', { name: '软件实例', exact: true }).click();
+      await panel.getByRole('option', { name: '1号实例 · 上海测试', exact: true }).click();
+      const downloading = page.waitForEvent('download');
+      await panel.getByRole('button', { name: '导出范围日志', exact: true }).click();
+      const download = await downloading;
+      const downloadPath = path.join(output, `兼容范围导出-${width}.log`);
+      await download.saveAs(downloadPath);
+      assert.equal(fs.readFileSync(downloadPath, 'utf8'), 'synthetic legacy export\n');
+      const ticket = calls.find(value => value.exportTicket)?.exportTicket;
+      assert.equal(ticket.deviceId, device.id);
+      assert.equal(ticket.localId, instance.localId);
+      assert(ticket.startAt && ticket.endAt);
+      assert.equal(await panel.getByRole('button', { name: '标签管理', exact: true }).count(), 0);
       assert.deepEqual(errors, []);
       results.push({
         width,
@@ -153,6 +187,7 @@ async function main() {
         sortSearch: true,
         draftFocus: true,
         tagWriteAndReadOnly: true,
+        legacyQueryAndNativeRangeExport: true,
         focusStyle,
       });
       await context.close();

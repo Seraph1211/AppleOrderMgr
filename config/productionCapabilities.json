@@ -4,6 +4,11 @@
     {
       "id": "logs-resource-tags",
       "source": {
+        "frontend/src/components/MonitorLogs.jsx": [
+          "MonitorResourceSelect",
+          "MonitorLogTagsDialog",
+          "priority(a.name)"
+        ],
         "src/routes/serverMonitor.js": [
           "tags.states()",
           "tags.save(req.user.id, req.body)"
@@ -20,12 +25,18 @@
       "frontendTokens": [
         "搜索名称、编号或标签",
         "标签按行保存",
-        "更多筛选"
+        "更多筛选",
+        "展开筛选"
       ]
     },
     {
       "id": "logs-cross-day",
       "source": {
+        "frontend/src/components/MonitorLogs.jsx": [
+          "MonitorLogRangeFilter",
+          "describeLogRange",
+          "exportRange"
+        ],
         "src/services/monitorLogPolicy.js": [
           "startAt",
           "endAt",
@@ -56,7 +67,9 @@
         "日期时间范围",
         "开始日期时间",
         "结束日期时间",
-        "向下滑动加载更新上下文"
+        "向下滑动加载更新上下文",
+        "支持跨天查询",
+        "导出范围日志"
       ]
     },
     {
