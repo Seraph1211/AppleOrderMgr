@@ -83,7 +83,11 @@
     "official:queue:http": "python3 scripts/runOfficialOrderHttpQueue.py",
     "check:production-source": "python3 scripts/productionSourceGuard.py source",
     "test:release": "python3 -m unittest discover -s test -p 'production*test.py'",
-    "test:browser:production-capabilities": "node test/browser/productionCapabilitiesAcceptance.cjs"
+    "test:browser:production-capabilities": "node test/browser/productionCapabilitiesAcceptance.cjs",
+    "test:browser:log-query": "node test/browser/logQueryAcceptance.cjs",
+    "test:browser:log-query-states": "node test/browser/logQueryStates.cjs",
+    "test:browser:log-query-isolation": "node test/browser/logQueryIsolation.cjs",
+    "test:logs:ui-server": "node test/browser/logQueryServer.cjs"
   },
   "keywords": [
     "apple",

@@ -266,7 +266,8 @@ function filters(query) {
   if (query.account === '__unassigned__') clauses.push('account_number IS NULL');
   else if (query.account) clauses.push('account_number=:account');
   if (query.startAt) {
-    clauses.push('sort_at >= :startBound::timestamptz', 'sort_at < :endBound::timestamptz');
+    const column = query.timeBasis === 'loggedAt' ? 'logged_at' : 'sort_at';
+    clauses.push(`${column} >= :startBound::timestamptz`, `${column} < :endBound::timestamptz`);
     replacements.startBound = `${query.startAt}+08:00`;
     replacements.endBound = new Date(Date.parse(`${query.endAt}+08:00`) + 1000).toISOString();
   }
@@ -423,12 +424,37 @@ async function list(input) {
 /** 分页账号候选，不扫描其他实例。 @param {Object} input 筛选 @returns {Promise<Object>} 编号列表 */
 async function accounts(input) {
   try {
-    p.fields(input, ['deviceId', 'localId', 'date', 'startDate', 'endDate', 'search', 'after']);
+    p.fields(input, [
+      'deviceId',
+      'localId',
+      'date',
+      'startDate',
+      'endDate',
+      'startAt',
+      'endAt',
+      'timeBasis',
+      'search',
+      'after',
+      'cursor',
+    ]);
     const rangeMode = input.startDate !== undefined || input.endDate !== undefined;
     if (rangeMode && input.date !== undefined)
       throw ApiError.badRequest('日志日期与日期范围不能混用');
     let query;
-    if (rangeMode) {
+    const preciseRange = input.startAt !== undefined || input.endAt !== undefined;
+    if (preciseRange && (rangeMode || input.date !== undefined))
+      throw ApiError.badRequest('日志日期与起止时间不能混用');
+    if (!preciseRange && (input.timeBasis !== undefined || input.cursor !== undefined))
+      throw ApiError.badRequest('账号范围参数无效');
+    if (preciseRange) {
+      query = policy.query({
+        deviceId: input.deviceId,
+        localId: input.localId,
+        startAt: input.startAt,
+        endAt: input.endAt,
+        ...(input.timeBasis !== undefined ? { timeBasis: input.timeBasis } : {}),
+      });
+    } else if (rangeMode) {
       query = {
         deviceId: p.uuid(input.deviceId).toLowerCase(),
         localId: p.uuid(input.localId).toLowerCase(),
@@ -436,6 +462,25 @@ async function accounts(input) {
       };
     } else
       query = policy.query({ deviceId: input.deviceId, localId: input.localId, date: input.date });
+    const scope = policy.digest({ ...query, search: input.search || '' });
+    let after = input.after;
+    if (preciseRange && input.after !== undefined)
+      throw ApiError.badRequest('起止时间范围请使用账号范围游标');
+    if (input.cursor !== undefined && input.cursor !== '' && typeof input.cursor !== 'string')
+      throw ApiError.badRequest('账号游标无效');
+    if (input.cursor) {
+      let cursor;
+      try {
+        cursor = JSON.parse(Buffer.from(p.shortText(input.cursor, 2000), 'base64url').toString());
+      } catch {
+        throw ApiError.badRequest('账号游标无效');
+      }
+      p.fields(cursor, ['after', 'scope']);
+      if (cursor.scope !== scope) throw ApiError.badRequest('账号范围已变化，请重新查询');
+      if (typeof cursor.after !== 'string' || !/^\d{1,64}$/.test(cursor.after))
+        throw ApiError.badRequest('账号游标无效');
+      after = cursor.after;
+    }
     const { clauses, replacements } = filters(query);
     clauses.push('account_number IS NOT NULL');
     if (input.search) {
@@ -443,21 +488,29 @@ async function accounts(input) {
       clauses.push("account_number LIKE :pattern ESCAPE '\\'");
       replacements.pattern = policy.literalSearch(input.search);
     }
-    if (input.after) {
-      if (!/^\d{1,64}$/.test(input.after)) throw ApiError.badRequest('账号游标无效');
+    if (after) {
+      if (typeof after !== 'string' || !/^\d{1,64}$/.test(after))
+        throw ApiError.badRequest('账号游标无效');
       clauses.push('account_number > :after');
-      replacements.after = input.after;
+      replacements.after = after;
     }
+    const encode = page => ({
+      ...page,
+      nextCursor:
+        preciseRange && page.nextCursor
+          ? Buffer.from(JSON.stringify({ after: page.nextCursor, scope })).toString('base64url')
+          : page.nextCursor,
+    });
     if ((await blockStore.mode(query.deviceId, query.localId)) === 'blocks')
-      return await blockStore.accounts(query, input);
+      return encode(await blockStore.accounts(query, { search: input.search, after }));
     const rows = await sequelize.query(
       `SELECT DISTINCT account_number AS account FROM monitor_log_entries WHERE ${clauses.join(' AND ')} ORDER BY account_number LIMIT 101`,
       { replacements, type: QueryTypes.SELECT }
     );
-    return {
+    return encode({
       items: rows.slice(0, 100).map(row => row.account),
       nextCursor: rows.length > 100 ? rows[99].account : null,
-    };
+    });
   } catch (error) {
     fail(error);
     throw error instanceof ApiError

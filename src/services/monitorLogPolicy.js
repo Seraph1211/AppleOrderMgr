@@ -142,6 +142,7 @@ function query(value, now = new Date()) {
     'date',
     'startAt',
     'endAt',
+    'timeBasis',
     'account',
     'fromTime',
     'toTime',
@@ -164,6 +165,10 @@ function query(value, now = new Date()) {
   } else {
     result.date = date(value.date);
     dateRange(result.date, result.date, now);
+  }
+  if (value.timeBasis !== undefined) {
+    if (value.timeBasis !== 'loggedAt' || !rangeMode) throw ApiError.badRequest('日志时间口径无效');
+    result.timeBasis = value.timeBasis;
   }
   if (value.account && value.account !== '__unassigned__' && !/^\d{1,64}$/.test(value.account))
     throw ApiError.badRequest('账号编号无效');

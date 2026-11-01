@@ -4,33 +4,28 @@
     {
       "id": "logs-resource-tags",
       "source": {
-        "frontend/src/components/MonitorLogs.jsx": [
-          "MonitorResourceSelect",
-          "MonitorLogTagsDialog",
-          "priority(a.name)"
-        ],
         "src/routes/serverMonitor.js": [
           "tags.states()",
           "tags.save(req.user.id, req.body)"
         ],
         "src/models/index.js": [
           "MonitorResourceTag:"
+        ],
+        "frontend/src/components/logQuery/monitorLogQuery.jsx": [
+          "MonitorResourceSelect",
+          "MonitorLogTagsDialog",
+          "priority(a.name)"
         ]
       },
       "frontendTokens": [
         "搜索名称、编号或标签",
         "标签按行保存",
-        "展开筛选"
+        "更多筛选"
       ]
     },
     {
       "id": "logs-cross-day",
       "source": {
-        "frontend/src/components/MonitorLogs.jsx": [
-          "MonitorLogRangeFilter",
-          "describeLogRange",
-          "exportRange"
-        ],
         "src/services/monitorLogPolicy.js": [
           "startAt",
           "endAt",
@@ -38,12 +33,30 @@
         ],
         "src/services/monitorLogService.js": [
           "accountConfigs.ingest",
-          "aosSignals.enqueue"
+          "aosSignals.enqueue",
+          "prepareExport",
+          "writeExport"
+        ],
+        "frontend/src/pages/ServerLogs.jsx": [
+          "MonitorLogQuery"
+        ],
+        "frontend/src/components/logQuery/monitorLogQuery.jsx": [
+          "rangeParams",
+          "timeBasis",
+          "startAt",
+          "endAt"
+        ],
+        "frontend/src/components/logQuery/dateTimeSelect.jsx": [
+          "开始日期时间",
+          "结束日期时间",
+          "validateLogRange"
         ]
       },
       "frontendTokens": [
-        "支持跨天查询",
-        "导出范围日志"
+        "日期时间范围",
+        "开始日期时间",
+        "结束日期时间",
+        "向下滑动加载更新上下文"
       ]
     },
     {

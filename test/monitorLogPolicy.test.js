@@ -113,4 +113,32 @@ describe('完整日志协议边界', () => {
       expect(() => p.query({ ...query, ...change }, now)).toThrow();
     expect(() => p.dateRange('2026-09-29', '2026-09-28', now)).toThrow();
   });
+  test('精确原始时间口径只在完整起止范围使用，跨年和倒序严格校验', () => {
+    const query = {
+      deviceId: randomUUID(),
+      localId: randomUUID(),
+      startAt: '2025-12-31T23:59:59',
+      endAt: '2026-01-01T00:00:00',
+      timeBasis: 'loggedAt',
+    };
+    const current = new Date('2026-01-02T00:00:00Z');
+    expect(p.query(query, current).timeBasis).toBe('loggedAt');
+    for (const change of [
+      { timeBasis: 'createdAt' },
+      { timeBasis: [] },
+      { endAt: '2025-12-31T23:59:58' },
+    ])
+      expect(() => p.query({ ...query, ...change }, current)).toThrow();
+    expect(() =>
+      p.query(
+        {
+          deviceId: query.deviceId,
+          localId: query.localId,
+          date: '2026-01-01',
+          timeBasis: 'loggedAt',
+        },
+        current
+      )
+    ).toThrow();
+  });
 });

@@ -1,6 +1,6 @@
-import MonitorLogs from '../components/MonitorLogs';
+import MonitorLogQuery from '../components/logQuery/monitorLogQuery';
 
-/** 服务器完整运行日志独立页面，使用可分配的 monitor.logs.read 权限。 */
+/** 日志查询独立页面；共享监控界面继续使用原组件。 */
 export default function ServerLogs() {
-  return <MonitorLogs standalone />;
+  return <MonitorLogQuery />;
 }

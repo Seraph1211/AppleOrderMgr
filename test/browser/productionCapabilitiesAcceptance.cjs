@@ -109,10 +109,14 @@ async function main() {
       await input.fill('上海新标签');
       const focusStyle = await input.evaluate(node => {
         const style = getComputedStyle(node);
-        return { focused: node === document.activeElement,
+        return {
+          focused: node === document.activeElement,
           focusVisible: node.matches(':focus-visible'),
           outline: style.outlineColor,
-          outlineStyle: style.outlineStyle, border: style.borderColor, shadow: style.boxShadow };
+          outlineStyle: style.outlineStyle,
+          border: style.borderColor,
+          shadow: style.boxShadow,
+        };
       });
       await page.screenshot({ path: path.join(output, `标签弹窗-${width}.png`) });
       const rect = await dialog.boundingBox();
@@ -129,8 +133,9 @@ async function main() {
       await dialog.getByText('已保存', { exact: true }).waitFor();
       assert.equal(calls.at(-1).tag, '上海新标签');
       await dialog.getByRole('button', { name: '关闭标签管理' }).click();
-      await panel.getByRole('button', { name: '收起筛选', exact: true }).click();
-      await panel.getByRole('button', { name: '展开筛选', exact: true }).click();
+      await panel.getByRole('button', { name: '更多筛选', exact: true }).click();
+      await panel.getByRole('button', { name: '完成', exact: true }).click();
+      assert(await panel.getByRole('button', { name: '查询日志', exact: true }).isVisible());
       assert((await server.textContent()).includes('上海新标签'));
       await page.screenshot({ path: path.join(output, `日志页-${width}.png`), fullPage: true });
       readOnly = true;

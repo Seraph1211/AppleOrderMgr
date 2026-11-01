@@ -502,8 +502,11 @@ function matches(row, query, anchor, direction) {
     return false;
   if (
     query.startAt &&
-    (Date.parse(row.sortAt) < Date.parse(`${query.startAt}+08:00`) ||
-      Date.parse(row.sortAt) >= Date.parse(`${query.endAt}+08:00`) + 1000)
+    (!(query.timeBasis === 'loggedAt' ? row.loggedAt : row.sortAt) ||
+      Date.parse(query.timeBasis === 'loggedAt' ? row.loggedAt : row.sortAt) <
+        Date.parse(`${query.startAt}+08:00`) ||
+      Date.parse(query.timeBasis === 'loggedAt' ? row.loggedAt : row.sortAt) >=
+        Date.parse(`${query.endAt}+08:00`) + 1000)
   )
     return false;
   if (query.keyword && !row.message.includes(query.keyword)) return false;
@@ -801,9 +804,99 @@ async function select(query, anchor = null, direction = 'ASC', limit = 50) {
     throw error;
   }
 }
+/** 按账号目录分批核对秒级候选；同批候选共享块读取与只读快照。 */
+async function rangeAccounts(query, input) {
+  try {
+    return await sequelize.transaction(
+      { isolationLevel: Transaction.ISOLATION_LEVELS.REPEATABLE_READ },
+      async transaction => {
+        try {
+          await sequelize.query("SET TRANSACTION READ ONLY; SET LOCAL statement_timeout='5s'", {
+            transaction,
+          });
+          const clauses = [
+            'device_id=:deviceId',
+            'local_id=:localId',
+            'business_date BETWEEN :startDate AND :endDate',
+            "account_number<>''",
+          ];
+          const replacements = {
+            ...query,
+            startBound: `${query.startAt}+08:00`,
+            endBound: new Date(Date.parse(`${query.endAt}+08:00`) + 1000).toISOString(),
+          };
+          if (input.search) {
+            clauses.push("account_number LIKE :pattern ESCAPE '\\'");
+            replacements.pattern = policy.literalSearch(input.search);
+          }
+          const found = [];
+          let after = input.after || '';
+          while (found.length < 101) {
+            const candidates = await sequelize.query(
+              `SELECT DISTINCT account_number AS account FROM monitor_log_block_accounts
+               WHERE ${clauses.join(' AND ')} AND account_number > :after
+               ORDER BY account_number LIMIT 100`,
+              { replacements: { ...replacements, after }, transaction, type: QueryTypes.SELECT }
+            );
+            if (!candidates.length) break;
+            const remaining = new Set(candidates.map(row => row.account));
+            const confirmed = new Set();
+            let blockAfter = '0';
+            while (remaining.size) {
+              const blocks = await sequelize.query(
+                `SELECT b.* FROM monitor_log_blocks b
+                 WHERE b.device_id=:deviceId AND b.local_id=:localId
+                   AND b.business_date BETWEEN :startDate AND :endDate AND b.id > :blockAfter
+                   AND b.max_sort_at >= :startBound::timestamptz AND b.min_sort_at < :endBound::timestamptz
+                   AND EXISTS (SELECT 1 FROM monitor_log_block_accounts a
+                     WHERE a.business_date=b.business_date AND a.block_id=b.id AND a.account_number IN (:candidates))
+                 ORDER BY b.id LIMIT 32`,
+                {
+                  replacements: { ...replacements, blockAfter, candidates: [...remaining] },
+                  transaction,
+                  type: QueryTypes.SELECT,
+                }
+              );
+              for (const block of blocks) {
+                const rows = await readBlock(block);
+                for (const row of rows) {
+                  if (remaining.has(row.accountNumber) && matches(row, query, null, 'ASC')) {
+                    remaining.delete(row.accountNumber);
+                    confirmed.add(row.accountNumber);
+                  }
+                }
+              }
+              if (blocks.length < 32) break;
+              blockAfter = String(blocks.at(-1).id);
+            }
+            found.push(
+              ...candidates.map(row => row.account).filter(account => confirmed.has(account))
+            );
+            after = candidates.at(-1).account;
+            if (candidates.length < 100) break;
+          }
+          return { items: found.slice(0, 100), nextCursor: found.length > 100 ? found[99] : null };
+        } catch (error) {
+          fail(error);
+          throw error;
+        }
+      }
+    );
+  } catch (error) {
+    fail(error);
+    throw error;
+  }
+}
 /** 日目录账号分页。 @param {Object} query 范围 @param {Object} input 账号筛选 @returns {Promise<Object>} 分页 */
 async function accounts(query, input) {
   try {
+    if (
+      query.startAt &&
+      (query.timeBasis ||
+        !query.startAt.endsWith('T00:00:00') ||
+        !query.endAt.endsWith('T23:59:59'))
+    )
+      return await rangeAccounts(query, input);
     const clauses = [
       'device_id=:deviceId',
       'local_id=:localId',

@@ -12,6 +12,8 @@
 
 ## 按任务阅读
 
+- 日志查询UI：[已确认需求V1.0](planning/日志查询页面UI与交互重构需求.md) → [开发提示词](planning/日志查询页面UI重构开发提示词.md) → [实现与验收](archive/2026-11/2026-11-01-日志查询UI实现与验收.md)；[预览与验证边界](planning/日志查询页面UI设计预览.md)，[AOS日志API指南](deployment/AOS日志API使用指南.md)。仅独立日志内容区，其他页面保留。
+
 - iPhone Duo 报价与价格走势：[现行说明](design/Apple公开报价.md#iphone-duo-价格走势独立页2026-10-30) → [API 契约](design/API设计.md#apple-公开报价接口2026-09-25) → [测试指南](testing/测试与验收指南.md#iphone-duo-公开价格走势页)。独立历史页为 `/quote/duo/history`，无需登录且不在现有报价页增加入口。
 
 - 订单 UI：[截图增量 V1.1及确认版需求](planning/订单管理与左侧菜单UI重构需求.md) → [实施与验收](archive/2026-10/2026-10-29-订单UI重构实施与生产验收.md)。仅订单页及其弹层、共享左侧菜单；其他页面内容区保留。
