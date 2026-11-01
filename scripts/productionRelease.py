@@ -1004,7 +1004,10 @@ def preflightBinding(plan, execute=False):
     spec = importlib.util.spec_from_file_location('executorPreflight', str(path))
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    preflight = module.readPlan(binding['plan'])
+    try:
+        preflight = module.readPlan(binding['plan'])
+    except Exception as error:
+        raise ReleaseError(getattr(error, 'code', 'PREFLIGHT_PLAN_INVALID'))
     require(sha256File(binding['plan'])[0] == binding['sha256'], 'PREFLIGHT_PLAN_CHANGED')
     require(preflight['releaseId'] == plan['releaseId']
             and all(preflight[key] == plan['frontend'][key]
@@ -1012,7 +1015,10 @@ def preflightBinding(plan, execute=False):
             and set(preflight['nginxUsers']) == set(plan['frontend']['nginxUsers']),
             'PREFLIGHT_BINDING_MISMATCH')
     if execute:
-        module.runPreflight(binding['plan'])
+        try:
+            module.runPreflight(binding['plan'])
+        except Exception as error:
+            raise ReleaseError(getattr(error, 'code', 'PREFLIGHT_FAILED'))
 
 
 def writeCloseout(plan):
