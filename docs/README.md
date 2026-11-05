@@ -12,6 +12,8 @@
 
 ## 按任务阅读
 
+- ApplePurchase 云同步 PP 端：[协作任务](development/协作任务/2026-11-06-ApplePurchase云同步PP端实现.md) → [数据库结构](database/数据库架构.md#applepurchase-云同步独立-schema2026-11-06) → [API 路由归属](design/API设计.md#applepurchase-与-pp-库存同步-v12026-11-06)。跨项目字段与错误语义以 DuoPurchaseClient 冻结 v1 接口文档为唯一契约；当前实现、隔离测试、真实联调和部署分别记录。
+
 - 日志查询UI：[已确认需求V1.0](planning/日志查询页面UI与交互重构需求.md) → [开发提示词](planning/日志查询页面UI重构开发提示词.md) → [实现与验收](archive/2026-11/2026-11-01-日志查询UI实现与验收.md)；[预览与验证边界](planning/日志查询页面UI设计预览.md)，[AOS日志API指南](deployment/AOS日志API使用指南.md)。仅独立日志内容区，其他页面保留。
 
 - iPhone Duo 报价与价格走势：[现行说明](design/Apple公开报价.md#iphone-duo-价格走势独立页2026-10-30) → [API 契约](design/API设计.md#apple-公开报价接口2026-09-25) → [测试指南](testing/测试与验收指南.md#iphone-duo-公开价格走势页)。独立历史页为 `/quote/duo/history`，无需登录且不在现有报价页增加入口。

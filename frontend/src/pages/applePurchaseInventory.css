@@ -1,0 +1,27 @@
+.apple-purchase-page {
+  @apply space-y-4;
+}
+.apple-purchase-header {
+  @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
+}
+.apple-purchase-filters {
+  @apply grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5;
+}
+.apple-purchase-table-wrap {
+  @apply overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm;
+}
+.apple-purchase-table {
+  @apply min-w-full divide-y divide-gray-200 text-left;
+}
+.apple-purchase-table th {
+  @apply whitespace-nowrap bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600;
+}
+.apple-purchase-table td {
+  @apply whitespace-nowrap px-3 py-2.5 text-sm text-gray-700;
+}
+.apple-purchase-table tbody {
+  @apply divide-y divide-gray-100;
+}
+.apple-purchase-json {
+  @apply max-h-48 min-w-[280px] overflow-auto whitespace-pre-wrap break-all rounded-lg bg-gray-50 p-2 text-xs text-gray-700;
+}

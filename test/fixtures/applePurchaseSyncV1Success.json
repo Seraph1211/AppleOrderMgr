@@ -1,0 +1,11 @@
+{
+  "success": true,
+  "data": {
+    "batchId": "019a4d22-71ef-7d80-82fa-85d40d78b35d",
+    "accepted": { "observations": 1, "monitorChanges": 1 },
+    "duplicates": { "observations": 0, "monitorChanges": 0 },
+    "highWater": { "observations": "1", "monitorChanges": "1" },
+    "serverTime": "2026-11-05T08:09:12.567Z"
+  },
+  "requestId": "019a4d22-86d3-756a-80f8-a961ecf99155"
+}

@@ -62,6 +62,8 @@ validateEncryptionConfiguration();
 
 // ---------- 基础中间件 ----------
 app.disable('x-powered-by');
+// 机器同步接口在通用 10 MiB JSON 解析、网页 JWT 和操作审计之前执行，独立限制 1 MiB。
+app.use('/api/apple-purchase-sync/v1', require('./routes/applePurchaseSyncMachine'));
 app.use('/api/internal/v1/identity', require('./routes/internalIdentity'));
 app.use('/api/identity-verifications', (_req, res, next) => {
   res.set({ 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
@@ -147,6 +149,11 @@ app.use('/api/identity-verifications', require('./routes/identityVerifications')
 app.use('/api/quote-pricing', require('./routes/quotePricing'));
 app.use('/api/stock', require('./routes/stock'));
 app.use('/api/inventory', require('./routes/inventory'));
+app.use(
+  '/api/admin/apple-purchase-sync/v1/terminals',
+  require('./routes/applePurchaseSyncAdmin')
+);
+app.use('/api/apple-purchase-inventory/v1', require('./routes/applePurchaseInventory'));
 
 // ---------- 404 兜底 ----------
 app.use((req, _res, next) => {
@@ -197,8 +204,11 @@ function shutdown(signal) {
   const monitorStopped = require('./services/monitorService').stop();
 
   // 先结束长期SSE与独立PG监听，避免server.close等待这些流形成关闭循环。
-  const quoteEventsStopped = require('./services/duoQuoteEvents').stopDuoQuoteEvents();
-  quoteEventsStopped.then(() =>
+  const eventServicesStopped = Promise.all([
+    require('./services/duoQuoteEvents').stopDuoQuoteEvents(),
+    require('./services/applePurchaseInventoryEvents').stopApplePurchaseInventoryEvents(),
+  ]);
+  eventServicesStopped.then(() =>
     server.close(async err => {
       if (err) {
         logger.error('关闭 HTTP 服务失败', { error: err.message });
@@ -214,6 +224,7 @@ function shutdown(signal) {
         await monitorStopped;
         await emailService.stopEmailService();
         await require('./repositories/quoteSourceRepository').closeQuoteSourcePool();
+        await require('./services/applePurchaseSyncDatabase').closeApplePurchaseSyncDatabases();
         await sequelize.close();
         logger.info('数据库连接已关闭');
       } catch (closeErr) {

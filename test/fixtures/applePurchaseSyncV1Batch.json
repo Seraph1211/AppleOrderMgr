@@ -1,0 +1,62 @@
+{
+  "contractVersion": "1",
+  "batchId": "019a4d22-71ef-7d80-82fa-85d40d78b35d",
+  "terminalId": "019a4d22-19f0-7dd1-9a4a-440dad73b87c",
+  "sentAt": "2026-11-05T08:09:12.345Z",
+  "mode": "live",
+  "sourceHistory": {
+    "observations": {
+      "availableFrom": "2026-11-03T02:00:00.000Z",
+      "completeness": "complete_from_available_from"
+    },
+    "monitorChanges": {
+      "availableFrom": "2026-11-05T07:55:00.000Z",
+      "completeness": "complete_from_available_from"
+    }
+  },
+  "observations": [
+    {
+      "observationId": "synthetic-observation-0001",
+      "sourceSequence": "7449",
+      "responseReceivedAt": "2026-11-05T08:09:10.123Z",
+      "responseReceivedAtMs": 1793866150123,
+      "city": "合成城市",
+      "storeId": "apple-store:SYNTHETIC",
+      "officialStoreId": "SYNTH",
+      "storeName": "合成门店",
+      "partNumber": "SYNTHETIC-PART-NUMBER",
+      "productId": "apple-product:SYNTHETIC-PART-NUMBER",
+      "productName": "合成机型",
+      "specification": "合成机型 256GB 合成颜色",
+      "officialTitle": null,
+      "color": "合成颜色",
+      "storage": "256GB",
+      "family": "synthetic_family",
+      "availability": "available"
+    }
+  ],
+  "monitorChanges": [
+    {
+      "eventId": "synthetic-monitor-event-0001",
+      "sourceSequence": "1",
+      "monitorId": "monitor-synthetic",
+      "monitorName": "合成监控",
+      "changeType": "configuration_updated",
+      "changedAt": "2026-11-05T08:08:00.456Z",
+      "changedAtMs": 1793866080456,
+      "previousRevision": 3,
+      "revision": 4,
+      "before": { "partNumbers": ["SYNTHETIC-OLD"] },
+      "after": { "partNumbers": ["SYNTHETIC-PART-NUMBER"] },
+      "changes": [
+        {
+          "field": "partNumbers",
+          "before": ["SYNTHETIC-OLD"],
+          "after": ["SYNTHETIC-PART-NUMBER"]
+        }
+      ],
+      "source": "user",
+      "taskId": null
+    }
+  ]
+}

@@ -30,6 +30,9 @@ import PublicIphone18Quotes from './pages/PublicIphone18Quotes';
 import PublicDuoQuotes from './pages/PublicDuoQuotes';
 import DuoQuoteHistory from './pages/DuoQuoteHistory';
 import Iphone18QuotePricing from './pages/Iphone18QuotePricing';
+import ApplePurchaseInventory from './pages/ApplePurchaseInventory';
+import ApplePurchaseMonitorChanges from './pages/ApplePurchaseMonitorChanges';
+import ApplePurchaseTerminals from './pages/ApplePurchaseTerminals';
 import { PERMISSIONS } from './constants/permissions';
 import { useAuth } from './contexts/AuthContext';
 
@@ -75,6 +78,28 @@ function ManagementApp() {
             <ProtectedRoute>
               <Layout>
                 <Routes>
+                  <Route
+                    path="/apple-purchase-inventory"
+                    element={permissionRoute(
+                      PERMISSIONS.INVENTORY_READ,
+                      <ApplePurchaseInventory />
+                    )}
+                  />
+                  <Route
+                    path="/apple-purchase-monitor-changes"
+                    element={permissionRoute(
+                      PERMISSIONS.INVENTORY_READ,
+                      <ApplePurchaseMonitorChanges />
+                    )}
+                  />
+                  <Route
+                    path="/apple-purchase-terminals"
+                    element={
+                      <ProtectedRoute requiredRole="admin">
+                        <ApplePurchaseTerminals />
+                      </ProtectedRoute>
+                    }
+                  />
                   <Route
                     path="/inventory-monitor"
                     element={permissionRoute(

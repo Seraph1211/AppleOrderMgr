@@ -4,6 +4,8 @@ const logger = require('../utils/logger');
 const MODULE_LABELS = {
   'server-monitor': '服务器监控',
   inventory: '库存监控',
+  admin: 'ApplePurchase 同步终端',
+  'apple-purchase-inventory': 'ApplePurchase 云库存',
   'mail-contacts': '邮件联系人',
   'wecom-notifications': '企微订单通知',
   'identity-verifications': '身份核验',

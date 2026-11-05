@@ -29,11 +29,29 @@ export const NAVIGATION_GROUPS = [
     icon: 'Warehouse',
     children: [
       {
+        name: 'ApplePurchase 有货记录',
+        href: '/apple-purchase-inventory',
+        icon: 'Package',
+        permission: PERMISSIONS.INVENTORY_READ,
+      },
+      {
+        name: '监控任务变更历史',
+        href: '/apple-purchase-monitor-changes',
+        icon: 'ScrollText',
+        permission: PERMISSIONS.INVENTORY_READ,
+      },
+      {
         name: '库存查询',
         href: '/inventory-monitor',
         icon: 'Package',
         exact: true,
         permission: PERMISSIONS.INVENTORY_READ,
+      },
+      {
+        name: 'ApplePurchase 同步终端',
+        href: '/apple-purchase-terminals',
+        icon: 'Settings',
+        adminOnly: true,
       },
       { name: '监控管理', href: '/inventory-monitor/manage', icon: 'Settings', adminOnly: true },
     ],

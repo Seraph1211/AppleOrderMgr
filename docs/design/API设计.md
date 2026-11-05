@@ -1306,3 +1306,14 @@ status 为 missing/active/invalidated；errors 仅给行号、字段、错误码
 端点、权限及请求不变。内部投递 `aosAccountRatio.version=3` 来源项保留 `numerator/denominator/versionId/reason`，新增 `stockCount`（非负整数或 null）、`stockReason`（固定诊断或 null）、`stockAccounts`（原始任务编号集合）。通知来源行格式为 `提交任务数/有货任务数/配置任务数`，有货证据不全时中间项 `—`，不从提交反推。顶部和门店次数继续仅统计既有提交信号。旧版快照仅作历史读取；未出站汇总升级新格式，已发送历史不改。
 
 - 费用增量（2026-10-31，已生产发布）：POST `/` 与 PUT `/:id` 接受可选 `proxyFee`，表示每笔委托费用总额（元）。允许十进制金额字符串或JSON数值，0–9999999999.99、最多两位小数；负数、非有限值、布尔/对象/数组、货币符号、千分位、指数形式字符串及超精度返回400，不自动舍入。创建省略/null/空白为NULL；编辑省略保留原值，显式null/空白清空。列表rows和详情以两位小数字符串或null返回同一字段，保存响应也返回规范化 `proxyFee`。编辑继续要求expectedVersion，冲突409且费用不被覆盖；费用随原事务保存，不影响账号、模板、状态、官方订单或收款。需要上述正式迁移先行，未生产发布。
+# ApplePurchase 与 PP 库存同步 v1（2026-11-06）
+
+> 外部字段、路径、响应和错误语义以 DuoPurchaseClient《ApplePurchase 与 PP 库存同步接口》冻结 v1 为唯一契约；本节只登记 AppleOrderMgr 路由归属和权限，不复制完整契约。
+
+- 机器接口：`GET /api/apple-purchase-sync/v1/status`、`POST /api/apple-purchase-sync/v1/batches`。使用独立 Bearer Token，不接受网页 JWT；严格 JSON、1 MiB、1–500 项、同事务混合写入、事件／批次幂等、`Cache-Control: no-store` 和脱敏错误。
+- 管理接口：`GET/POST /api/admin/apple-purchase-sync/v1/terminals`、`PATCH /api/admin/apple-purchase-sync/v1/terminals/:terminalId`、`POST .../:terminalId/rotate-token`。仅管理员网页会话可用；Token 仅创建／轮换响应显示一次。
+- 网页接口：`GET /api/apple-purchase-inventory/v1/observations`、`monitor-changes`、`status`、`events`。复用 `inventory.read`；SSE 仅发送两类高水位版本提示，正文由查询接口获取。
+- API 时间一律为三位毫秒 UTC；PostgreSQL bigint 一律输出十进制字符串。游标签名绑定端点、筛选、方向、高水位和末项键；筛选不一致、篡改或过期返回 `INVALID_CURSOR`。
+- 写入成功只在事务提交后返回；同 ID 同内容按重复成功，同 ID 异内容返回 409 并整批回滚。机器端 429／503 带 `Retry-After`。
+
+生产基址、非敏感终端 ID 和一次性 Token 安全交付方式在真实联调阶段确定；源码和文档不得写入 Token 或真实敏感载荷。
