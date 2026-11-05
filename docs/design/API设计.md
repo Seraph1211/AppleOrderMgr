@@ -90,7 +90,7 @@
 
 - `GET /api/public/apple-quotes`：无需登录，每 IP 每分钟最多 120 次，且不写入内部操作日志。公开开关关闭返回 503 `QUOTE_PAGE_PAUSED`；来源不可用、空批次、无效／重复商品身份或非法数字价格返回 503 `QUOTE_SOURCE_UNAVAILABLE`，电询和商品组合变动不阻断页面。成功仅返回 `enabled`、`updatedAt`、`stale`、筛选候选及 `items[{productKey,productName,productModel,storageGb,color,quotePrice,officialPrice}]`，不返回明威价、调价字段、规格码、来源地址或操作人。
 - `GET /api/public/iphone18-quotes`：历史兼容别名，返回内容与 `/api/public/apple-quotes` 相同；新客户端不得继续使用该地址。
-- `GET /api/public/duo-quotes`：无需登录，返回全国8款Duo当前公开零售价、官网价、溢价及版本；严格排除批发价、加价、操作人与来源指纹，使用公开接口限流与 `Cache-Control: no-store`。
+- `GET /api/public/duo-quotes`：无需登录，返回预激活8款Duo当前公开零售价、官网价、溢价及版本；严格排除批发价、加价、操作人与来源指纹，使用公开接口限流与 `Cache-Control: no-store`。来源固定为四容量两色，容量、颜色和内部商品键保持不变。
 - `GET /api/public/duo-quotes/history?range=24h|7d|30d|all`：无需登录，默认 `7d`。返回 `range`、`rangeStart`、`rangeEnd`、`availableFrom`、`updatedAt`、`lastCheckedAt`、`stale`，以及按容量组织的 `retailSeries`、`officialSeries`。点只含 `changedAt`、`price`、`baseline`；缺价为 `null`。同容量两色官网价一致时合并为 `official`，不一致时分别返回，禁止静默覆盖。
 - `GET /api/public/duo-quotes/events`：无需登录的同源SSE，仅发送 `quote-version` 和非负整数版本；不发送商品、价格、来源或账号信息。
 - `GET /api/quote-pricing/iphone18`：仅管理员。返回公开设置版本、来源批次、完整商品列表及每项明威价、官网价、百分比、固定金额和最终报价。
