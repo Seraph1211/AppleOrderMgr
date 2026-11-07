@@ -80,6 +80,24 @@ test('单个规格缺失时回填上次有效报价并标记，不影响其他�
   expect(items.filter(item => !item.sourceMissing)).toHaveLength(7);
 });
 
+test('当前来源官网价为空时逐规格使用最近一次有效官网价', () => {
+  const source = batch();
+  const historicalTime = new Date(source.sourceUpdatedAt.getTime() - 60000);
+  source.items.forEach(item => {
+    item.officialPrice = null;
+  });
+  source.officialPriceItems = source.items.map(item => ({
+    ...item,
+    sourceUpdatedAt: historicalTime,
+    officialPrice: item.storageGb === 256 ? '15999' : String(15999 + (item.storageGb - 256) * 5),
+  }));
+  const items = normalizeDuoSource(source);
+  expect(items).toHaveLength(8);
+  expect(items.every(item => item.officialPrice !== null)).toBe(true);
+  expect(items.filter(item => item.sourceMissing)).toHaveLength(0);
+  expect(items.find(item => item.storageGb === 256)).toMatchObject({ officialPrice: 15999 });
+});
+
 test('从未出现过的缺失规格保留固定行并使用空价', () => {
   const source = batch();
   source.items.pop();

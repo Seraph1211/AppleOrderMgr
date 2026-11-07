@@ -46,6 +46,7 @@ export default function PublicDuoQuotes() {
   const [error, setError] = useState('');
   const [selectedCapacities, setSelectedCapacities] = useState([]);
   const [selectedColors, setSelectedColors] = useState([]);
+  const [openWarningKey, setOpenWarningKey] = useState(null);
   const pending = useRef(null);
   const queued = useRef(false);
   const active = useRef(false);
@@ -314,6 +315,15 @@ export default function PublicDuoQuotes() {
     [data, selectedCapacities, selectedColors]
   );
 
+  useEffect(() => {
+    if (
+      openWarningKey &&
+      !items.some(item => item.productKey === openWarningKey && item.sourceMissing)
+    ) {
+      setOpenWarningKey(null);
+    }
+  }, [items, openWarningKey]);
+
   return (
     <div className="duo-quote-page">
       <main className="duo-quote-main">
@@ -425,15 +435,35 @@ export default function PublicDuoQuotes() {
                     <span className="duo-premium-content">
                       <span>{formatPremium(item.premiumAmount)}</span>
                       {item.sourceMissing && (
-                        <span
+                        <button
+                          type="button"
                           className="duo-source-warning"
-                          role="img"
-                          aria-label="该规格本次来源缺失，当前展示上次有效报价"
-                          title="该规格本次来源缺失，当前展示上次有效报价"
-                          tabIndex={0}
+                          aria-label="查看该规格报价异常"
+                          aria-expanded={openWarningKey === item.productKey}
+                          aria-describedby={`duo-source-warning-${item.productKey}`}
+                          data-open={openWarningKey === item.productKey}
+                          onBlur={() => setOpenWarningKey(null)}
+                          onClick={() =>
+                            setOpenWarningKey(current =>
+                              current === item.productKey ? null : item.productKey
+                            )
+                          }
+                          onKeyDown={event => {
+                            if (event.key === 'Escape') {
+                              setOpenWarningKey(null);
+                              event.currentTarget.blur();
+                            }
+                          }}
                         >
                           <AlertCircle aria-hidden="true" />
-                        </span>
+                          <span
+                            id={`duo-source-warning-${item.productKey}`}
+                            className="duo-source-warning-tooltip"
+                            role="tooltip"
+                          >
+                            本次明威来源缺少该规格，当前零售价沿用上次有效报价，其他规格不受影响。
+                          </span>
+                        </button>
                       )}
                     </span>
                   </td>

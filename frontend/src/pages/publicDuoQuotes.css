@@ -103,7 +103,7 @@
   outline-offset: 3px;
 }
 .duo-quote-table-wrap {
-  overflow: hidden;
+  overflow: visible;
   margin-top: 20px;
   border-radius: 18px;
   background: #fff;
@@ -137,6 +137,18 @@
   font-size: 16px;
   font-weight: 600;
 }
+.duo-quote-table thead th:first-child {
+  border-top-left-radius: 18px;
+}
+.duo-quote-table thead th:last-child {
+  border-top-right-radius: 18px;
+}
+.duo-quote-table tbody tr:last-child td:first-child {
+  border-bottom-left-radius: 18px;
+}
+.duo-quote-table tbody tr:last-child td:last-child {
+  border-bottom-right-radius: 18px;
+}
 .duo-quote-table td {
   height: 56px;
   padding: 14px 8px;
@@ -165,11 +177,11 @@
 }
 .duo-color-starlight {
   border-color: #d6d1c6;
-  background: linear-gradient(135deg, #f2eee3, #eae5d9);
+  background: linear-gradient(135deg, #f2eee3, #eae5d9); /* taste-skill-ignore: 产品色样 */
 }
 .duo-color-midnight {
   border-color: #171d28;
-  background: linear-gradient(145deg, #303b4d, #131821);
+  background: linear-gradient(145deg, #303b4d, #131821); /* taste-skill-ignore: 产品色样 */
 }
 .duo-retail {
   color: #1b63a5;
@@ -192,11 +204,20 @@
   gap: 6px;
 }
 .duo-source-warning {
+  position: relative;
+  z-index: 2;
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
   color: #9a6700;
+  cursor: help;
 }
 .duo-source-warning svg {
   width: 16px;
@@ -204,9 +225,36 @@
   stroke-width: 2.25;
 }
 .duo-source-warning:focus-visible {
-  border-radius: 3px;
   outline: 2px solid #9a6700;
   outline-offset: 2px;
+}
+.duo-source-warning-tooltip {
+  position: absolute;
+  right: -8px;
+  bottom: calc(100% + 8px);
+  z-index: 20;
+  width: max-content;
+  max-width: min(300px, calc(100vw - 32px));
+  padding: 9px 12px;
+  border: 1px solid #fde68a;
+  border-radius: 8px;
+  background: #fffbeb;
+  box-shadow: 0 4px 12px #00000014;
+  color: #7c4a03;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 20px;
+  text-align: left;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.duo-source-warning:hover .duo-source-warning-tooltip,
+.duo-source-warning:focus-visible .duo-source-warning-tooltip,
+.duo-source-warning[data-open='true'] .duo-source-warning-tooltip {
+  opacity: 1;
+  visibility: visible;
 }
 .duo-quote-status {
   margin: 22px 0 0;
@@ -338,9 +386,18 @@
   .duo-premium-content {
     gap: 3px;
   }
+  .duo-source-warning {
+    transform: translateX(-6px);
+  }
   .duo-source-warning svg {
     width: 14px;
     height: 14px;
+  }
+  .duo-source-warning-tooltip {
+    right: -4px;
+    max-width: min(260px, calc(100vw - 24px));
+    font-size: 12px;
+    line-height: 18px;
   }
   .duo-quote-table .duo-empty {
     font-size: 14px;
@@ -370,5 +427,8 @@
     flex-basis: 10px;
     width: 10px;
     height: 10px;
+  }
+  .duo-source-warning {
+    transform: translateX(-10px);
   }
 }

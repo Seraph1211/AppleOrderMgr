@@ -87,6 +87,23 @@ test('应该让缺失规格回填上次有效价并仅标记该行', () => {
   expect(items.slice(1).every(item => item.sourceMissing === false)).toBe(true);
 });
 
+test('应该让当前批次空官网价使用逐规格最近有效值', () => {
+  const source = batch();
+  const historicalTime = new Date(source.sourceUpdatedAt.getTime() - 60000);
+  source.items.forEach(item => {
+    item.officialPrice = null;
+  });
+  source.officialPriceItems = source.items.map(item => ({
+    ...item,
+    officialPrice: '15999',
+    sourceUpdatedAt: historicalTime,
+  }));
+  const items = normalizeDuoItems(source);
+  expect(items).toHaveLength(8);
+  expect(items.every(item => item.officialPrice === 15999)).toBe(true);
+  expect(items.every(item => item.premiumAmount !== null)).toBe(true);
+});
+
 test.each([
   [16350, 15999, 16400, 400],
   [18700, 17999, 18750, 750],

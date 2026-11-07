@@ -119,18 +119,34 @@ describe('iPhone 18 报价来源仓库', () => {
           },
         ],
       ])
+      .mockResolvedValueOnce([
+        [
+          {
+            product_model: 'Duo',
+            storage_gb: 256,
+            color: '夜空色',
+            official_price: '15999',
+            site_update_time: new Date('2026-11-06T01:00:00.000Z'),
+          },
+        ],
+      ])
       .mockResolvedValueOnce([[{ last_checked_at: sourceTime }]]);
     const result = await repository.fetchLatestDuoBatch();
     expect(mockConnection.execute.mock.calls[0][0]).toContain("product_model = 'Duo'");
     expect(mockConnection.execute.mock.calls[1][0]).toContain('GROUP BY storage_gb, color');
-    expect(mockConnection.execute.mock.calls[2][0]).toContain(
+    expect(mockConnection.execute.mock.calls[2][0]).toContain('official_price IS NOT NULL');
+    expect(mockConnection.execute.mock.calls[2][0]).toContain('official_price > 0');
+    expect(mockConnection.execute.mock.calls[3][0]).toContain(
       "spider_name = 'ecommerce.hnmwdx.duo'"
     );
-    expect(mockConnection.execute.mock.calls[2][0]).toContain(
+    expect(mockConnection.execute.mock.calls[3][0]).toContain(
       "error_message LIKE '页面更新时间未变化:%'"
     );
     expect(result.fallbackItems).toEqual([
       expect.objectContaining({ storageGb: 512, color: '星光白色' }),
+    ]);
+    expect(result.officialPriceItems).toEqual([
+      expect.objectContaining({ storageGb: 256, color: '夜空色', officialPrice: '15999' }),
     ]);
     expect(mockConnection.release).toHaveBeenCalled();
   });

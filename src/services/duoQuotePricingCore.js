@@ -94,12 +94,22 @@ function normalizeDuoSource(batch) {
   const sourceTime = new Date(batch.sourceUpdatedAt).getTime();
   const currentByKey = new Map(current.map(item => [item.productKey, item]));
   const fallbackByKey = normalizeSourceRows(batch.fallbackItems || [], sourceTime, false);
+  const officialPriceByKey = normalizeSourceRows(
+    batch.officialPriceItems || [],
+    sourceTime,
+    false
+  );
   return EXPECTED_IDENTITIES.map(identity => {
     const productKey = createProductKey({ productModel: 'Duo', ...identity });
     const currentItem = currentByKey.get(productKey);
-    if (currentItem) return currentItem;
     const fallback = fallbackByKey.get(productKey);
-    return {
+    const officialPrice =
+      currentItem?.officialPrice ??
+      officialPriceByKey.get(productKey)?.officialPrice ??
+      fallback?.officialPrice ??
+      null;
+    if (currentItem) return { ...currentItem, officialPrice };
+    const missingItem = {
       ...(fallback || {
         productKey,
         productName: `iPhone Duo ${identity.color} ${formatStorage(identity.storageGb)}`,
@@ -109,8 +119,10 @@ function normalizeDuoSource(batch) {
         wholesalePrice: null,
         officialPrice: null,
       }),
+      officialPrice,
       sourceMissing: true,
     };
+    return missingItem;
   });
 }
 

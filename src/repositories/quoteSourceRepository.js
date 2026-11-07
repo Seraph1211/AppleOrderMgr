@@ -104,7 +104,7 @@ async function closeQuoteSourcePool() {
   await current.end();
 }
 
-/** 读取 Duo 最新批次与独立的有效检查时间，不回退历史批次。 @returns {Promise<Object>} 来源批次 */
+/** 读取 Duo 最新批次、逐规格最近有效官网价与独立检查时间。 @returns {Promise<Object>} 来源批次 */
 async function fetchLatestDuoBatch() {
   const connection = await getPool().getConnection();
   try {
@@ -137,6 +137,26 @@ async function fetchLatestDuoBatch() {
         WHERE current.product_model = 'Duo'`,
       []
     );
+    const [officialPriceRows] = await connection.execute(
+      `SELECT current.product_model, current.storage_gb, current.color,
+              current.official_price, current.site_update_time
+         FROM quote_hnmwdx_apple AS current
+         JOIN (
+           SELECT storage_gb, color, MAX(site_update_time) AS site_update_time
+             FROM quote_hnmwdx_apple
+            WHERE product_model = 'Duo'
+              AND official_price IS NOT NULL
+              AND official_price > 0
+            GROUP BY storage_gb, color
+         ) AS latest
+           ON latest.storage_gb = current.storage_gb
+          AND latest.color = current.color
+          AND latest.site_update_time = current.site_update_time
+        WHERE current.product_model = 'Duo'
+          AND current.official_price IS NOT NULL
+          AND current.official_price > 0`,
+      []
+    );
     const [checks] = await connection.execute(
       `SELECT MAX(finished_at) AS last_checked_at FROM crawl_job_log
         WHERE spider_name = 'ecommerce.hnmwdx.duo'
@@ -161,6 +181,14 @@ async function fetchLatestDuoBatch() {
         storageGb: Number(row.storage_gb),
         color: row.color,
         wholesalePrice: row.wholesale_price,
+        officialPrice: row.official_price,
+        sourceUpdatedAt: row.site_update_time,
+      })),
+      officialPriceItems: officialPriceRows.map(row => ({
+        productModel: row.product_model,
+        storageGb: Number(row.storage_gb),
+        color: row.color,
+        wholesalePrice: null,
         officialPrice: row.official_price,
         sourceUpdatedAt: row.site_update_time,
       })),

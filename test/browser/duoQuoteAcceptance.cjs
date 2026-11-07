@@ -95,18 +95,36 @@ fs.mkdirSync(output, { recursive: true });
     assert.equal(await page.locator('tbody tr').count(), 8);
     assert.ok((await page.locator('tbody tr').first().innerText()).includes('¥16,300'));
     assert.ok((await page.locator('tbody tr').first().innerText()).includes('+300'));
-    data.items[1].sourceMissing = true;
+    data.items[0].sourceMissing = true;
     await page.clock.fastForward(60000);
-    const sourceWarning = page.getByRole('img', {
-      name: '该规格本次来源缺失，当前展示上次有效报价',
+    const sourceWarning = page.getByRole('button', {
+      name: '查看该规格报价异常',
     });
     await sourceWarning.waitFor();
     assert.equal(await sourceWarning.count(), 1);
+    const warningTooltip = page.getByRole('tooltip');
+    await sourceWarning.hover();
+    await page.clock.fastForward(150);
+    await warningTooltip.waitFor({ state: 'visible' });
     assert.equal(
-      await sourceWarning.getAttribute('title'),
-      '该规格本次来源缺失，当前展示上次有效报价'
+      await warningTooltip.innerText(),
+      '本次明威来源缺少该规格，当前零售价沿用上次有效报价，其他规格不受影响。'
     );
-    data.items[1].sourceMissing = false;
+    await page.screenshot({ path: path.join(output, 'tooltip-1392.png'), fullPage: false });
+    await page.mouse.move(0, 0);
+    await warningTooltip.waitFor({ state: 'hidden' });
+    await sourceWarning.click();
+    await warningTooltip.waitFor({ state: 'visible' });
+    assert.equal(await sourceWarning.getAttribute('aria-expanded'), 'true');
+    await page.getByRole('heading', { name: 'iPhone Duo 报价表' }).click();
+    await warningTooltip.waitFor({ state: 'hidden' });
+    await sourceWarning.focus();
+    await page.keyboard.press('Shift+Tab');
+    await page.keyboard.press('Tab');
+    await warningTooltip.waitFor({ state: 'visible' });
+    await page.keyboard.press('Escape');
+    await warningTooltip.waitFor({ state: 'hidden' });
+    data.items[0].sourceMissing = false;
     assert.deepEqual(
       await page.locator('tbody tr td:nth-child(2)').allTextContents(),
       [256, 512, 1024, 2048].flatMap(() => ['夜空色', '星光白色'])
@@ -139,9 +157,21 @@ fs.mkdirSync(output, { recursive: true });
         const warningBox = await sourceWarning.boundingBox();
         const tableBox = await page.locator('.duo-quote-table').boundingBox();
         assert.ok(
-          warningBox.x >= tableBox.x && warningBox.x + warningBox.width <= tableBox.x + tableBox.width,
-          `source warning clipped at ${width}`
+          warningBox.x >= tableBox.x &&
+            warningBox.x + warningBox.width <= tableBox.x + tableBox.width,
+          `source warning clipped at ${width}: ${JSON.stringify({ warningBox, tableBox })}`
         );
+        await sourceWarning.hover();
+        await page.clock.fastForward(150);
+        const tooltipBox = await warningTooltip.boundingBox();
+        assert.ok(
+          tooltipBox.x >= 0 && tooltipBox.x + tooltipBox.width <= width && tooltipBox.y >= 0,
+          `source warning tooltip clipped at ${width}`
+        );
+        if (width === 320) {
+          await page.screenshot({ path: path.join(output, 'tooltip-320.png'), fullPage: false });
+        }
+        await page.mouse.move(0, 0);
       }
       if (width < 768) {
         const fontSize = await page
@@ -311,6 +341,6 @@ fs.mkdirSync(output, { recursive: true });
     await browser.close();
   }
 })().catch(error => {
-  process.stderr.write(String(error));
+  process.stderr.write(error.stack || String(error));
   process.exit(1);
 });
