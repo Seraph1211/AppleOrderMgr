@@ -6,16 +6,13 @@ import {
   ChevronLeft,
   ChevronRight,
   ListFilter,
-  Lock,
   RotateCcw,
-  Unlock as OpenLock, // taste-skill-ignore: Lucide 图标名。
   X,
 } from 'lucide-react';
 import {
-  applePurchaseInventoryApi as api,
-  subscribeApplePurchaseInventory,
-} from '../api/applePurchaseInventoryApi';
-import { useAuth } from '../contexts/AuthContext';
+  publicApplePurchaseAvailabilityApi as api,
+  subscribePublicAvailability,
+} from '../api/publicApplePurchaseAvailabilityApi';
 import {
   FILTERS,
   RANGE_PRESETS,
@@ -30,6 +27,7 @@ import {
   getRangeBounds,
   getTrendBounds,
 } from './applePurchaseAvailabilityFilters';
+import ApplePurchaseAvailabilityChanges from './ApplePurchaseAvailabilityChanges';
 import ApplePurchaseAvailabilityTrend from './ApplePurchaseAvailabilityTrend';
 import './applePurchaseAvailability.css';
 
@@ -37,43 +35,11 @@ const PAGE_SIZES = [20, 50, 100, 200];
 const RESULT_TABS = [
   ['records', '有货明细'],
   ['trend', '趋势统计'],
+  ['changes', '检测任务配置变更'],
 ];
-const LOCK_STORAGE_KEY = 'applePurchaseAvailability.locks.v1';
 const PAGE_TITLE = 'ApplePurchase 有货记录';
 const DATE_FIELD = { key: 'range', label: '检测时间' };
 const INITIAL_SELECTIONS = Object.fromEntries(FILTERS.map(({ key }) => [key, []]));
-
-function readLocks(storageKey) {
-  try {
-    const stored = JSON.parse(localStorage.getItem(storageKey)) || {};
-    const locks = {};
-    for (const { key } of FILTERS) {
-      if (Array.isArray(stored[key])) {
-        locks[key] = [...new Set(stored[key])]
-          .filter(value => typeof value === 'string' && value.trim() && value.length <= 128)
-          .slice(0, 100);
-      }
-    }
-    const range = stored.range;
-    if (RANGE_PRESETS.some(([key]) => key === range?.preset)) {
-      locks.range = { ...defaultRange(), preset: range.preset };
-    } else if (
-      range?.preset === 'custom' &&
-      [range.from, range.to].every(
-        value =>
-          /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-          Number.isFinite(Date.parse(value)) &&
-          formatDate(value) === value
-      ) &&
-      range.from <= range.to
-    ) {
-      locks.range = { preset: 'custom', from: range.from, to: range.to };
-    }
-    return locks;
-  } catch {
-    return {};
-  }
-}
 
 function getRangeLabel(range) {
   if (range.preset === 'custom') {
@@ -113,38 +79,24 @@ function useAvailabilityRequest(request, query, refresh = 0) {
   };
 }
 
-function FilterControl({ field, value, options, locked, onEdit, onLock }) {
+function FilterControl({ field, value, options, onEdit }) {
   const label =
     field.key === 'range' ? getRangeLabel(value) : getSelectionLabel(field, value, options);
-  const LockIcon = locked ? Lock : OpenLock;
   return (
     <div className="apav-field">
       <span className="apav-label">{field.label}</span>
-      <div className="apav-control" data-locked={locked}>
-        <button
-          type="button"
-          className="btn btn-secondary apav-select"
-          onClick={onEdit}
-          aria-label={`选择${field.label}，当前${label}`}
-          aria-haspopup="dialog"
-          disabled={locked}
-          title={label}
-        >
-          {field.key === 'range' && <CalendarDays size={16} aria-hidden="true" />}
-          <span>{label}</span>
-          <ChevronDown size={14} aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className="btn btn-secondary apav-lock"
-          onClick={onLock}
-          aria-pressed={locked}
-          aria-label={`${locked ? '解锁' : '锁定'}${field.label}`}
-          title={`${locked ? '解锁' : '锁定'}${field.label}`}
-        >
-          <LockIcon size={15} aria-hidden="true" />
-        </button>
-      </div>
+      <button
+        type="button"
+        className="btn btn-secondary apav-select"
+        onClick={onEdit}
+        aria-label={`选择${field.label}，当前${label}`}
+        aria-haspopup="dialog"
+        title={label}
+      >
+        {field.key === 'range' && <CalendarDays size={16} aria-hidden="true" />}
+        <span>{label}</span>
+        <ChevronDown size={14} aria-hidden="true" />
+      </button>
     </div>
   );
 }
@@ -302,7 +254,7 @@ function ObservationDetail({ row, onClose }) {
     ['商品规格', row.productName],
     ['料号', row.partNumber],
     ['来源终端', row.terminal],
-    ['记录 ID', row.id],
+    ['记录编号', row.id],
   ];
   return (
     <AvailabilityDialog title="有货记录详情" onClose={onClose}>
@@ -319,27 +271,22 @@ function ObservationDetail({ row, onClose }) {
   );
 }
 
-/** 通过受权独立链接查询 PP 已同步的 ApplePurchase 有货记录。 */
+/** 通过公开独立链接查询 PP 已同步的 ApplePurchase 有货记录。 */
 export default function ApplePurchaseAvailability() {
-  const { user } = useAuth();
-  const storageKey = `${LOCK_STORAGE_KEY}.${user.id}`;
-  const [locks, setLocks] = useState(() => readLocks(storageKey));
-  const [range, setRange] = useState(() => locks.range ?? defaultRange());
-  const [selections, setSelections] = useState(() =>
-    Object.fromEntries(FILTERS.map(({ key }) => [key, locks[key] ?? INITIAL_SELECTIONS[key]]))
-  );
+  const [range, setRange] = useState(defaultRange);
+  const [selections, setSelections] = useState(INITIAL_SELECTIONS);
   const [filterOpen, setFilterOpen] = useState(false);
   const mobileToggle = useRef(null);
   const [editor, setEditor] = useState(null);
   const [detail, setDetail] = useState(null);
   const [cursors, setCursors] = useState([]);
+  const [changeCursors, setChangeCursors] = useState([]);
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(Date.now);
-  const [eventVersion, setEventVersion] = useState('0');
+  const [eventVersion, setEventVersion] = useState({ observations: '0', monitorChanges: '0' });
   const [pageSize, setPageSize] = useState(PAGE_SIZES[0]);
   const [resultTab, setResultTab] = useState('records');
   const [trendInterval, setTrendInterval] = useState('hour');
-  const [storageError, setStorageError] = useState(false);
   const catalogQuery = useAvailabilityRequest(api.availabilityOptions, '', refresh);
   const catalog = catalogQuery.data;
   const options = useMemo(() => buildOptions(catalog), [catalog]);
@@ -359,6 +306,11 @@ export default function ApplePurchaseAvailability() {
       : null;
   const recordsQuery = useAvailabilityRequest(api.availabilityRecords, recordsKey, refresh);
   const trendQuery = useAvailabilityRequest(api.availabilityTrend, trendKey, refresh);
+  const changeKey =
+    resultTab === 'changes'
+      ? new URLSearchParams(changeCursors.length ? { cursor: changeCursors.at(-1) } : {}).toString()
+      : null;
+  const changesQuery = useAvailabilityRequest(api.availabilityChanges, changeKey, refresh);
   const records = recordsQuery.data;
   const terminalNames = new Map(options.terminalId.map(({ value, label }) => [value, label]));
   const visibleRows = (records?.items ?? []).map(row => ({
@@ -367,14 +319,16 @@ export default function ApplePurchaseAvailability() {
     capacity: formatStorage(row.storage),
     terminal: terminalNames.get(row.terminalId) || '—',
   }));
-  const newRecords = catalog && BigInt(eventVersion) > BigInt(catalog.snapshot);
-  const lockedCount = Object.keys(locks).length;
+  const newRecords =
+    resultTab === 'changes'
+      ? changesQuery.data &&
+        BigInt(eventVersion.monitorChanges) > BigInt(changesQuery.data.snapshot)
+      : catalog && BigInt(eventVersion.observations) > BigInt(catalog.snapshot);
   const activeFields = FILTERS.filter(({ key }) => selections[key].length);
   const filterSummary = activeFields
     .map(field => getSelectionLabel(field, selections[field.key], options[field.key]))
     .join(' · ');
-  const canReset =
-    (!locks.range && range.preset !== '24h') || activeFields.some(({ key }) => !(key in locks));
+  const canReset = range.preset !== '24h' || activeFields.length > 0;
 
   useEffect(() => {
     const previous = document.title;
@@ -386,36 +340,24 @@ export default function ApplePurchaseAvailability() {
 
   useEffect(
     () =>
-      subscribeApplePurchaseInventory(version => {
-        if (/^\d+$/.test(version.observations)) setEventVersion(version.observations);
+      subscribePublicAvailability(version => {
+        if (/^\d+$/.test(version?.observations) && /^\d+$/.test(version?.monitorChanges)) {
+          setEventVersion(version);
+        }
       }),
     []
   );
 
   function refreshResults() {
     setCursors([]);
+    setChangeCursors([]);
     setNow(Date.now());
     setRefresh(previous => previous + 1);
   }
 
-  function toggleLock(key) {
-    const next = { ...locks };
-    if (key in next) delete next[key];
-    else next[key] = key === 'range' ? range : selections[key];
-    setLocks(next);
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(next));
-      setStorageError(false);
-    } catch {
-      setStorageError(true);
-    }
-  }
-
   function resetFilters() {
-    setRange(locks.range ?? defaultRange(now));
-    setSelections(
-      Object.fromEntries(FILTERS.map(({ key }) => [key, locks[key] ?? INITIAL_SELECTIONS[key]]))
-    );
+    setRange(defaultRange(now));
+    setSelections(INITIAL_SELECTIONS);
     setCursors([]);
   }
 
@@ -440,9 +382,7 @@ export default function ApplePurchaseAvailability() {
         field={field}
         value={field.key === 'range' ? range : selections[field.key]}
         options={options[field.key]}
-        locked={field.key in locks}
         onEdit={() => setEditor(field)}
-        onLock={() => toggleLock(field.key)}
       />
     );
   }
@@ -514,15 +454,15 @@ export default function ApplePurchaseAvailability() {
           </div>
         </div>
 
-        <section className="apav-filters" aria-labelledby="apav-filter-title">
+        <section
+          className="apav-filters"
+          aria-labelledby="apav-filter-title"
+          hidden={resultTab === 'changes'}
+        >
           <div className="apav-filter-top">
             <div className="apav-filter-head">
               <h2 id="apav-filter-title">筛选记录</h2>
-              <p>
-                {lockedCount
-                  ? `已锁定 ${lockedCount} 项，重置与下次打开时保留。`
-                  : '同一项可多选，锁定后保留当前选择。'}
-              </p>
+              <p>机型、颜色、容量等条件可分别多选。</p>
             </div>
             <div className="apav-date-row">
               {renderControl(DATE_FIELD)}
@@ -545,7 +485,7 @@ export default function ApplePurchaseAvailability() {
               disabled={!canReset}
             >
               <RotateCcw size={15} aria-hidden="true" />
-              重置未锁定
+              重置筛选
             </button>
           </div>
           {filterSummary && !filterOpen && <p className="apav-mobile-summary">{filterSummary}</p>}
@@ -562,11 +502,6 @@ export default function ApplePurchaseAvailability() {
               查看结果
             </button>
           </div>
-          {storageError && (
-            <p role="status" className="apav-muted">
-              浏览器无法保存锁定，当前页面仍可使用。
-            </p>
-          )}
         </section>
 
         <section className="apav-results" aria-label="有货记录结果">
@@ -752,6 +687,26 @@ export default function ApplePurchaseAvailability() {
                 families={catalog?.families ?? []}
                 interval={trendInterval}
                 onIntervalChange={setTrendInterval}
+              />
+            )}
+          </div>
+          <div
+            id="apav-panel-changes"
+            role="tabpanel"
+            aria-labelledby="apav-tab-changes"
+            hidden={resultTab !== 'changes'}
+          >
+            {resultTab === 'changes' && (
+              <ApplePurchaseAvailabilityChanges
+                data={changesQuery.data}
+                loading={changesQuery.loading}
+                error={changesQuery.error}
+                hasPrevious={changeCursors.length > 0}
+                onPrevious={() => setChangeCursors(previous => previous.slice(0, -1))}
+                onNext={() =>
+                  setChangeCursors(previous => [...previous, changesQuery.data.nextCursor])
+                }
+                onRefresh={refreshResults}
               />
             )}
           </div>

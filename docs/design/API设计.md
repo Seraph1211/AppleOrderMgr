@@ -1320,7 +1320,7 @@ status 为 missing/active/invalidated；errors 仅给行号、字段、错误码
 
 ## ApplePurchase 独立有货查询（2026-11-07）
 
-独立网页使用 `/inventory/availability`，访问需要网页登录及 `inventory.read`。网页查询沿用同步 schema 的专用只读连接，原 v1 事件、游标和终端接口契约保持原样。
+受权查询继续要求网页登录及 `inventory.read`。查询沿用同步 schema 的专用只读连接，原 v1 事件、游标和终端接口契约保持原样。独立网页使用下述公开查询。
 
 | GET 路径（`/api/apple-purchase-inventory/v1` 下） | 查询与返回 |
 | --- | --- |
@@ -1329,3 +1329,9 @@ status 为 missing/active/invalidated；errors 仅给行号、字段、错误码
 | `/availability/trend` | 复用筛选及 `snapshot`，`from`、`to` 必传。以 `interval=hour\|day` 按北京时间整点或自然日对机型计数，返回有匹配记录的时间桶。小时范围最多 31 天，按天最多 366 天。 |
 
 同一快照下，明细与趋势统计每条匹配记录各计一次。统计范围以 PP 已收录记录的检测时间范围为限，范围外留空。已同步历史范围用于展示来源边界。新版本通过既有 SSE 提示刷新。
+
+### ApplePurchase 公开有货展示
+
+`/inventory/availability` 可直接访问。公开 API 前缀为 `/api/public/apple-purchase-availability`，提供 `GET /options`、`/records`、`/trend`、`/changes`、`/events`，均沿用专用只读连接。前三个查询沿用独立页的筛选、快照与分页口径。公开终端使用别名，观察记录使用公开编号。
+
+`/changes` 独立分页，接受 `cursor`，返回北京时间显示所需的 UTC 变更时间、类型、修订号、终端别名、门店与料号及任务需求的前后数量和增减项数，以及已知的运行状态变化。内部名称和配置原文留在管理接口。公开查询限流，响应使用 `no-store`。

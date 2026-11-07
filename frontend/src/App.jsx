@@ -267,15 +267,9 @@ function App() {
       <Route
         path="/inventory/availability"
         element={
-          <AuthProvider>
-            <ProtectedRoute requiredPermission={PERMISSIONS.INVENTORY_READ}>
-              <Suspense
-                fallback={<p role="status" className="py-8 text-center">正在加载有货记录…</p>}
-              >
-                <ApplePurchaseAvailability />
-              </Suspense>
-            </ProtectedRoute>
-          </AuthProvider>
+          <Suspense fallback={<p role="status" className="py-8 text-center">正在加载有货记录…</p>}>
+            <ApplePurchaseAvailability />
+          </Suspense>
         }
       />
       <Route

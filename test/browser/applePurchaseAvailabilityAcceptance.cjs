@@ -1,10 +1,10 @@
-/* global localStorage, document, innerWidth */
+/* global document, innerWidth */
 const assert = require('node:assert/strict');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright-core');
 
 const root = process.env.AVAILABILITY_BROWSER_URL || 'http://127.0.0.1:4178';
 const routePath = '/inventory/availability';
-const apiPrefix = '/api/apple-purchase-inventory/v1';
+const apiPrefix = '/api/public/apple-purchase-availability';
 const terminalId = '00000000-0000-4000-8000-000000000001';
 const HOUR = 3_600_000;
 const SAMPLE_COUNT = 245;
@@ -40,21 +40,14 @@ const catalog = {
   terminals: [{ id: terminalId, name: '合成同步终端' }],
 };
 
-async function installRoutes(page, permitted) {
+async function installRoutes(page) {
   const requests = [];
-  await page.addInitScript(() => localStorage.setItem('token', 'synthetic-session'));
   await page.route('**/api/**', route => {
     const url = new URL(route.request().url());
-    if (url.pathname === '/api/auth/me') {
-      return route.fulfill({
-        json: {
-          data: { id: 1, permissionsVersion: 1, permissions: permitted ? ['inventory.read'] : [] },
-        },
-      });
-    }
+    assert.ok(url.pathname.startsWith(apiPrefix + '/'), url.pathname);
     requests.push(url);
     assert.equal(route.request().method(), 'GET');
-    assert.equal(route.request().headers().authorization, 'Bearer synthetic-session');
+    assert.equal(route.request().headers().authorization, undefined);
     if (url.pathname === `${apiPrefix}/events`) {
       return route.fulfill({
         contentType: 'text/event-stream',
@@ -62,6 +55,26 @@ async function installRoutes(page, permitted) {
       });
     }
     if (url.pathname.endsWith('/options')) return route.fulfill({ json: catalog });
+    if (url.pathname.endsWith('/changes')) {
+      const cursor = url.searchParams.get('cursor');
+      return route.fulfill({
+        json: {
+          snapshot: '1',
+          items: [
+            {
+              sequence: '1',
+              changedAt: rows[0].detectedAt,
+              changeType: 'configuration_updated',
+              terminal: '终端示例',
+              previousRevision: 1,
+              revision: 2,
+              changes: [{ kind: 'products', before: 1, after: 2, added: 1, removed: 0 }],
+            },
+          ],
+          nextCursor: cursor ? null : 'next-changes',
+        },
+      });
+    }
     const params = url.searchParams;
     assert.equal(params.get('snapshot'), catalog.snapshot);
     const matches = rows.filter(row =>
@@ -104,18 +117,6 @@ async function installRoutes(page, permitted) {
 (async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   try {
-    const anonymous = await browser.newPage();
-    await anonymous.goto(`${root}${routePath}`);
-    await anonymous.waitForURL('**/login');
-    await anonymous.close();
-
-    const denied = await browser.newPage();
-    const deniedRequests = await installRoutes(denied, false);
-    await denied.goto(`${root}${routePath}`);
-    await denied.getByRole('heading', { name: '权限不足' }).waitFor();
-    assert.equal(deniedRequests.length, 0);
-    await denied.close();
-
     for (const width of [1440, 768, 390, 320]) {
       const page = await browser.newPage({
         viewport: { width, height: 900 },
@@ -123,7 +124,7 @@ async function installRoutes(page, permitted) {
       });
       const errors = [];
       page.on('pageerror', error => errors.push(error.message));
-      const requests = await installRoutes(page, true);
+      const requests = await installRoutes(page);
       await page.goto(`${root}${routePath}`);
       await page.getByText(`${SAMPLE_COUNT} 条`, { exact: true }).waitFor();
       await page.getByRole('button', { name: '有新记录，刷新' }).waitFor();
@@ -133,7 +134,7 @@ async function installRoutes(page, permitted) {
       await page.getByRole('button', { name: /^选择机型，/ }).click();
       await page.getByRole('checkbox', { name: 'iPhone Duo', exact: true }).check();
       await page.getByRole('button', { name: '完成' }).click();
-      await page.getByRole('button', { name: '锁定机型' }).click();
+      assert.equal(await page.getByRole('button', { name: /锁定/ }).count(), 0);
       await page.getByRole('button', { name: /^选择颜色，/ }).click();
       await page.getByRole('checkbox', { name: '星光白色', exact: true }).check();
       await page.getByRole('checkbox', { name: '夜空色', exact: true }).check();
@@ -156,8 +157,14 @@ async function installRoutes(page, permitted) {
       assert.deepEqual(trend.searchParams.getAll('color'), ['星光白色', '夜空色']);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       assert.deepEqual(errors, []);
-      await page.reload();
-      await page.getByText('已锁定 1 项，重置与下次打开时保留。').waitFor();
+      await page.getByRole('tab', { name: '检测任务配置变更' }).click();
+      await page.getByText('监控料号 1 → 2（新增 1）').waitFor();
+      await page.getByRole('button', { name: '下一页' }).click();
+      await page.getByRole('button', { name: '下一页' }).waitFor();
+      assert.equal(await page.getByRole('button', { name: '下一页' }).isDisabled(), true);
+      await page.getByRole('tab', { name: '有货明细' }).click();
+      await page.getByText(`${SAMPLE_COUNT} 条`, { exact: true }).waitFor();
+      if (width < 600) await page.getByRole('button', { name: '筛选 (2)', exact: true }).waitFor();
       await page.close();
     }
     process.stdout.write('独立有货记录浏览器验收通过\n');

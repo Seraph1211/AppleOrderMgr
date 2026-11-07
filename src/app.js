@@ -124,6 +124,7 @@ app.get('/api/health', (_req, res) => res.redirect(307, '/api/health/ready'));
 
 // ---------- 业务路由 ----------
 app.use('/api/auth', authRouter);
+app.use('/api/public/apple-purchase-availability', require('./routes/publicApplePurchaseAvailability'));
 app.use('/api/public', require('./routes/publicQuotes'));
 app.use('/api', authenticate);
 app.use('/api/users', usersRouter);
