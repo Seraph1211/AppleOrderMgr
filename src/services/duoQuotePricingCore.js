@@ -8,6 +8,9 @@ const DEFAULT_MARKUP = 50;
 const MAX_MARKUP_CENTS = 10000000;
 const MAX_PRICE_CENTS = 9999999999;
 const PREMIUM_UNIT_CENTS = 1000;
+const EXPECTED_IDENTITIES = Object.freeze(
+  STORAGE_ORDER.flatMap(storageGb => COLOR_ORDER.map(color => ({ storageGb, color })))
+);
 
 /** 构造受控来源错误。 @returns {ApiError} 错误 */
 function sourceUnavailable() {
@@ -40,42 +43,75 @@ function normalizeSourcePrice(value) {
   }
 }
 
-/** 严格验证全国8款并保留仅后台需要的来源价格。 @param {Object} batch 来源 @returns {Object[]} 商品 */
-function normalizeDuoSource(batch) {
-  if (!batch || !Array.isArray(batch.items) || batch.items.length !== 8) throw sourceUnavailable();
+function normalizeSourceRows(rows, sourceTime, requireCurrentTime) {
+  if (!Array.isArray(rows) || rows.length > EXPECTED_IDENTITIES.length) throw sourceUnavailable();
+  const byKey = new Map();
+  rows.forEach(row => {
+    const rowTime = new Date(row?.sourceUpdatedAt).getTime();
+    if (
+      row?.productModel !== 'Duo' ||
+      !STORAGE_ORDER.includes(row.storageGb) ||
+      !COLOR_ORDER.includes(row.color) ||
+      !Number.isFinite(rowTime) ||
+      rowTime > sourceTime ||
+      (requireCurrentTime && rowTime !== sourceTime)
+    )
+      throw sourceUnavailable();
+    const productKey = createProductKey(row);
+    if (byKey.has(productKey)) throw sourceUnavailable();
+    byKey.set(productKey, {
+      productKey,
+      productName: `iPhone Duo ${row.color} ${formatStorage(row.storageGb)}`,
+      productModel: 'Duo',
+      storageGb: row.storageGb,
+      color: row.color,
+      wholesalePrice: normalizeSourcePrice(row.wholesalePrice),
+      officialPrice: normalizeSourcePrice(row.officialPrice),
+    });
+  });
+  return byKey;
+}
+
+/** 验证当前来源批次中实际存在的Duo规格。 @param {Object} batch 来源 @returns {Object[]} 商品 */
+function normalizeDuoPartialSource(batch) {
+  if (!batch || !Array.isArray(batch.items) || !batch.items.length) throw sourceUnavailable();
   const sourceTime = new Date(batch.sourceUpdatedAt).getTime();
   if (!batch.sourceUpdatedAt || !Number.isFinite(sourceTime) || sourceTime > Date.now() + 60000) {
     throw sourceUnavailable();
   }
-  const seen = new Set();
-  return batch.items
-    .map(row => {
-      if (
-        row.productModel !== 'Duo' ||
-        !STORAGE_ORDER.includes(row.storageGb) ||
-        !COLOR_ORDER.includes(row.color) ||
-        !row.sourceUpdatedAt ||
-        new Date(row.sourceUpdatedAt).getTime() !== sourceTime
-      )
-        throw sourceUnavailable();
-      const productKey = createProductKey(row);
-      if (seen.has(productKey)) throw sourceUnavailable();
-      seen.add(productKey);
-      return {
-        productKey,
-        productName: `iPhone Duo ${row.color} ${formatStorage(row.storageGb)}`,
-        productModel: 'Duo',
-        storageGb: row.storageGb,
-        color: row.color,
-        wholesalePrice: normalizeSourcePrice(row.wholesalePrice),
-        officialPrice: normalizeSourcePrice(row.officialPrice),
-      };
-    })
+  return [...normalizeSourceRows(batch.items, sourceTime, true).values()]
+    .map(item => ({ ...item, sourceMissing: false }))
     .sort(
       (left, right) =>
         left.storageGb - right.storageGb ||
         COLOR_ORDER.indexOf(left.color) - COLOR_ORDER.indexOf(right.color)
     );
+}
+
+/** 用各规格上次有效价格回填当前缺失项，始终返回固定8款。 @param {Object} batch 来源 @returns {Object[]} 商品 */
+function normalizeDuoSource(batch) {
+  const current = normalizeDuoPartialSource(batch);
+  const sourceTime = new Date(batch.sourceUpdatedAt).getTime();
+  const currentByKey = new Map(current.map(item => [item.productKey, item]));
+  const fallbackByKey = normalizeSourceRows(batch.fallbackItems || [], sourceTime, false);
+  return EXPECTED_IDENTITIES.map(identity => {
+    const productKey = createProductKey({ productModel: 'Duo', ...identity });
+    const currentItem = currentByKey.get(productKey);
+    if (currentItem) return currentItem;
+    const fallback = fallbackByKey.get(productKey);
+    return {
+      ...(fallback || {
+        productKey,
+        productName: `iPhone Duo ${identity.color} ${formatStorage(identity.storageGb)}`,
+        productModel: 'Duo',
+        storageGb: identity.storageGb,
+        color: identity.color,
+        wholesalePrice: null,
+        officialPrice: null,
+      }),
+      sourceMissing: true,
+    };
+  });
 }
 
 /** 生成覆盖来源身份、全部价格和报价时间的稳定指纹。 @param {Object} batch 来源 @param {Object[]} items 商品 @returns {string} 指纹 */
@@ -84,7 +120,12 @@ function createSourceVersion(batch, items) {
     .update(
       JSON.stringify({
         sourceUpdatedAt: new Date(batch.sourceUpdatedAt).toISOString(),
-        items: items.map(item => [item.productKey, item.wholesalePrice, item.officialPrice]),
+        items: items.map(item => [
+          item.productKey,
+          item.wholesalePrice,
+          item.officialPrice,
+          item.sourceMissing,
+        ]),
       })
     )
     .digest('hex');
@@ -147,6 +188,7 @@ function publicDuoItem(item) {
     retailPrice: item.retailPrice,
     officialPrice: item.officialPrice,
     premiumAmount: item.premiumAmount,
+    sourceMissing: item.sourceMissing === true,
   };
 }
 
@@ -170,6 +212,7 @@ module.exports = {
   DEFAULT_MARKUP,
   MAX_PRICE_CENTS,
   moneyToCents,
+  normalizeDuoPartialSource,
   normalizeDuoSource,
   createSourceVersion,
   validateMarkup,

@@ -150,6 +150,42 @@ test('同容量两色官网价完全一致时合并官网线', async () => {
   ]);
 });
 
+test('部分来源批次只更新实际出现的规格并延续缺失规格历史状态', async () => {
+  const first = batch('2026-10-29T00:00:00.000Z', 15000);
+  const partial = batch('2026-10-29T01:00:00.000Z', 15100);
+  partial.items = partial.items.filter(
+    item => !(item.storageGb === 256 && item.color === '夜空色')
+  );
+  repository.fetchDuoHistory.mockResolvedValue({
+    availableFrom: first.sourceUpdatedAt,
+    sourceUpdatedAt: partial.sourceUpdatedAt,
+    batches: [first, partial],
+  });
+  models.DuoQuotePricingVersion.findAll.mockResolvedValue([]);
+  const current = {
+    version: 0,
+    sourceUpdatedAt: partial.sourceUpdatedAt,
+    updatedAt: partial.sourceUpdatedAt,
+    lastCheckedAt: partial.sourceUpdatedAt,
+    stale: false,
+    items: currentItems(first),
+  };
+  const result = await historyService.buildHistory(
+    current,
+    '24h',
+    first.sourceUpdatedAt,
+    new Date('2026-10-30T00:00:00.000Z')
+  );
+  const capacity = result.capacities.find(item => item.storageGb === 256);
+  expect(capacity.retailSeries.find(item => item.color === '夜空色').points).toEqual([
+    { changedAt: '2026-10-29T00:00:00.000Z', price: 15050, baseline: false },
+  ]);
+  expect(capacity.retailSeries.find(item => item.color === '星光白色').points).toEqual([
+    { changedAt: '2026-10-29T00:00:00.000Z', price: 15050, baseline: false },
+    { changedAt: '2026-10-29T01:00:00.000Z', price: 15150, baseline: false },
+  ]);
+});
+
 test('暂停与来源异常使用受控公开错误', async () => {
   process.env.QUOTE_DUO_PUBLIC_ENABLED = 'false';
   await expect(historyService.getPublicDuoQuoteHistory()).rejects.toMatchObject({

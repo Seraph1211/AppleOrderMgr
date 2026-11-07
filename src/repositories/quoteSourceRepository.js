@@ -120,6 +120,23 @@ async function fetchLatestDuoBatch() {
           )`,
       []
     );
+    const [fallbackRows] = await connection.execute(
+      `SELECT current.product_model, current.storage_gb, current.color,
+              current.wholesale_price, current.official_price,
+              current.site_update_time, current.crawl_time
+         FROM quote_hnmwdx_apple AS current
+         JOIN (
+           SELECT storage_gb, color, MAX(site_update_time) AS site_update_time
+             FROM quote_hnmwdx_apple
+            WHERE product_model = 'Duo'
+            GROUP BY storage_gb, color
+         ) AS latest
+           ON latest.storage_gb = current.storage_gb
+          AND latest.color = current.color
+          AND latest.site_update_time = current.site_update_time
+        WHERE current.product_model = 'Duo'`,
+      []
+    );
     const [checks] = await connection.execute(
       `SELECT MAX(finished_at) AS last_checked_at FROM crawl_job_log
         WHERE spider_name = 'ecommerce.hnmwdx.duo'
@@ -132,6 +149,14 @@ async function fetchLatestDuoBatch() {
       sourceUpdatedAt: rows[0]?.site_update_time || null,
       lastCheckedAt: checks[0]?.last_checked_at || null,
       items: rows.map(row => ({
+        productModel: row.product_model,
+        storageGb: Number(row.storage_gb),
+        color: row.color,
+        wholesalePrice: row.wholesale_price,
+        officialPrice: row.official_price,
+        sourceUpdatedAt: row.site_update_time,
+      })),
+      fallbackItems: fallbackRows.map(row => ({
         productModel: row.product_model,
         storageGb: Number(row.storage_gb),
         color: row.color,
@@ -181,21 +206,24 @@ async function fetchDuoHistory(range) {
     let rows;
     if (from) {
       [rows] = await connection.execute(
-        `SELECT product_model, storage_gb, color, wholesale_price, official_price,
-                site_update_time
-           FROM quote_hnmwdx_apple
-          WHERE product_model = 'Duo'
-            AND site_update_time <= ?
+        `SELECT current.product_model, current.storage_gb, current.color,
+                current.wholesale_price, current.official_price,
+                current.site_update_time
+           FROM quote_hnmwdx_apple AS current
+          WHERE current.product_model = 'Duo'
+            AND current.site_update_time <= ?
             AND (
-              site_update_time >= ?
-              OR site_update_time = (
+              current.site_update_time >= ?
+              OR current.site_update_time = (
                 SELECT MAX(previous.site_update_time)
                   FROM quote_hnmwdx_apple AS previous
                  WHERE previous.product_model = 'Duo'
+                   AND previous.storage_gb = current.storage_gb
+                   AND previous.color = current.color
                    AND previous.site_update_time < ?
               )
             )
-          ORDER BY site_update_time, storage_gb, color`,
+          ORDER BY current.site_update_time, current.storage_gb, current.color`,
         [to, from, from]
       );
     } else {

@@ -51,6 +51,7 @@ test('应该固定八款排序、保留2TB并只返回公开字段', () => {
     color: '夜空色',
     retailPrice: 16400,
     premiumAmount: 400,
+    sourceMissing: false,
   });
   expect(items[7]).toMatchObject({ storageGb: 2048, color: '星光白色' });
   expect(Object.keys(items[0]).sort()).toEqual(
@@ -63,8 +64,27 @@ test('应该固定八款排序、保留2TB并只返回公开字段', () => {
       'retailPrice',
       'officialPrice',
       'premiumAmount',
+      'sourceMissing',
     ].sort()
   );
+});
+
+test('应该让缺失规格回填上次有效价并仅标记该行', () => {
+  const source = batch();
+  const missing = source.items.find(item => item.storageGb === 256 && item.color === '夜空色');
+  source.items = source.items.filter(item => item !== missing);
+  source.fallbackItems = [
+    { ...missing, sourceUpdatedAt: new Date(source.sourceUpdatedAt.getTime() - 60000) },
+  ];
+  const items = normalizeDuoItems(source);
+  expect(items).toHaveLength(8);
+  expect(items[0]).toMatchObject({
+    storageGb: 256,
+    color: '夜空色',
+    retailPrice: 16400,
+    sourceMissing: true,
+  });
+  expect(items.slice(1).every(item => item.sourceMissing === false)).toBe(true);
 });
 
 test.each([
@@ -94,7 +114,6 @@ test.each([
 );
 
 test.each([
-  source => source.items.pop(),
   source => {
     source.items[1] = source.items[0];
   },
@@ -119,7 +138,7 @@ test.each([
   source => {
     source.sourceUpdatedAt = null;
   },
-])('应该拒绝缺项、重复、未知规格、时间冲突或非法价格', mutate => {
+])('应该拒绝重复、未知规格、时间冲突或非法价格', mutate => {
   const source = batch();
   mutate(source);
   expect(() => normalizeDuoItems(source)).toThrow('报价数据暂不可用');

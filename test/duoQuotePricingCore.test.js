@@ -60,6 +60,38 @@ test('来源指纹不受排列、检查时间影响，但包括同时间的来�
   expect(createSourceVersion(source, normalizeDuoSource(source))).not.toBe(original);
 });
 
+test('单个规格缺失时回填上次有效报价并标记，不影响其他规格', () => {
+  const source = batch();
+  const missing = source.items.pop();
+  source.fallbackItems = [
+    { ...missing, sourceUpdatedAt: new Date(source.sourceUpdatedAt.getTime() - 60000) },
+  ];
+  const items = normalizeDuoSource(source);
+  expect(items).toHaveLength(8);
+  expect(items.filter(item => item.sourceMissing)).toEqual([
+    expect.objectContaining({
+      storageGb: 2048,
+      color: '夜空色',
+      wholesalePrice: 16000.25,
+      officialPrice: 15999,
+      sourceMissing: true,
+    }),
+  ]);
+  expect(items.filter(item => !item.sourceMissing)).toHaveLength(7);
+});
+
+test('从未出现过的缺失规格保留固定行并使用空价', () => {
+  const source = batch();
+  source.items.pop();
+  const missing = normalizeDuoSource(source).find(item => item.sourceMissing);
+  expect(missing).toMatchObject({
+    storageGb: 2048,
+    color: '夜空色',
+    wholesalePrice: null,
+    officialPrice: null,
+  });
+});
+
 test('默认加价、明确零加价、负数溢价取整和公开裁剪', () => {
   const source = normalizeDuoSource(batch());
   const defaultItems = mergeDuoItems(source);
@@ -70,4 +102,5 @@ test('默认加价、明确零加价、负数溢价取整和公开裁剪', () =>
   expect(zero[0].retailPrice).toBe(16000.25);
   expect(publicDuoItem(changed[0])).not.toHaveProperty('markup');
   expect(publicDuoItem(changed[0])).not.toHaveProperty('wholesalePrice');
+  expect(publicDuoItem(changed[0])).toHaveProperty('sourceMissing', false);
 });

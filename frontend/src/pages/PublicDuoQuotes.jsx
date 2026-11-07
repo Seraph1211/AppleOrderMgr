@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle } from 'lucide-react';
 import { getPublicDuoQuotes } from '../api/quotePricingApi';
 import './publicDuoQuotes.css';
 
@@ -421,7 +422,20 @@ export default function PublicDuoQuotes() {
                   <td
                     className={`duo-premium ${item.premiumAmount < 0 ? 'duo-premium-negative' : ''}`}
                   >
-                    {formatPremium(item.premiumAmount)}
+                    <span className="duo-premium-content">
+                      <span>{formatPremium(item.premiumAmount)}</span>
+                      {item.sourceMissing && (
+                        <span
+                          className="duo-source-warning"
+                          role="img"
+                          aria-label="该规格本次来源缺失，当前展示上次有效报价"
+                          title="该规格本次来源缺失，当前展示上次有效报价"
+                          tabIndex={0}
+                        >
+                          <AlertCircle aria-hidden="true" />
+                        </span>
+                      )}
+                    </span>
                   </td>
                 </tr>
               ))}

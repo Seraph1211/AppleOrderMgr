@@ -54,6 +54,7 @@ fs.mkdirSync(output, { recursive: true });
           retailPrice: prices[i * 2 + j],
           officialPrice: officials[i * 2 + j],
           premiumAmount: Math.floor((prices[i * 2 + j] - officials[i * 2 + j]) / 10) * 10,
+          sourceMissing: false,
         }))
       ),
     };
@@ -94,6 +95,18 @@ fs.mkdirSync(output, { recursive: true });
     assert.equal(await page.locator('tbody tr').count(), 8);
     assert.ok((await page.locator('tbody tr').first().innerText()).includes('¥16,300'));
     assert.ok((await page.locator('tbody tr').first().innerText()).includes('+300'));
+    data.items[1].sourceMissing = true;
+    await page.clock.fastForward(60000);
+    const sourceWarning = page.getByRole('img', {
+      name: '该规格本次来源缺失，当前展示上次有效报价',
+    });
+    await sourceWarning.waitFor();
+    assert.equal(await sourceWarning.count(), 1);
+    assert.equal(
+      await sourceWarning.getAttribute('title'),
+      '该规格本次来源缺失，当前展示上次有效报价'
+    );
+    data.items[1].sourceMissing = false;
     assert.deepEqual(
       await page.locator('tbody tr td:nth-child(2)').allTextContents(),
       [256, 512, 1024, 2048].flatMap(() => ['夜空色', '星光白色'])
@@ -122,6 +135,14 @@ fs.mkdirSync(output, { recursive: true });
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
         `overflow at ${width}`
       );
+      if (await sourceWarning.count()) {
+        const warningBox = await sourceWarning.boundingBox();
+        const tableBox = await page.locator('.duo-quote-table').boundingBox();
+        assert.ok(
+          warningBox.x >= tableBox.x && warningBox.x + warningBox.width <= tableBox.x + tableBox.width,
+          `source warning clipped at ${width}`
+        );
+      }
       if (width < 768) {
         const fontSize = await page
           .locator('.duo-filter-option')

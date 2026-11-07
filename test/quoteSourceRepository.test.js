@@ -92,14 +92,46 @@ describe('iPhone 18 报价来源仓库', () => {
   });
 
   test('应该独立读取最新Duo批次且重叠跳过不作为有效检查', async () => {
-    await repository.fetchLatestDuoBatch();
+    mockConnection.execute.mockReset();
+    const sourceTime = new Date('2026-11-07T01:00:00.000Z');
+    mockConnection.execute
+      .mockResolvedValueOnce([
+        [
+          {
+            product_model: 'Duo',
+            storage_gb: 256,
+            color: '夜空色',
+            wholesale_price: '16000',
+            official_price: '15999',
+            site_update_time: sourceTime,
+          },
+        ],
+      ])
+      .mockResolvedValueOnce([
+        [
+          {
+            product_model: 'Duo',
+            storage_gb: 512,
+            color: '星光白色',
+            wholesale_price: '17000',
+            official_price: '16999',
+            site_update_time: new Date('2026-11-06T01:00:00.000Z'),
+          },
+        ],
+      ])
+      .mockResolvedValueOnce([[{ last_checked_at: sourceTime }]]);
+    const result = await repository.fetchLatestDuoBatch();
     expect(mockConnection.execute.mock.calls[0][0]).toContain("product_model = 'Duo'");
-    expect(mockConnection.execute.mock.calls[1][0]).toContain(
+    expect(mockConnection.execute.mock.calls[1][0]).toContain('GROUP BY storage_gb, color');
+    expect(mockConnection.execute.mock.calls[2][0]).toContain(
       "spider_name = 'ecommerce.hnmwdx.duo'"
     );
-    expect(mockConnection.execute.mock.calls[1][0]).toContain(
+    expect(mockConnection.execute.mock.calls[2][0]).toContain(
       "error_message LIKE '页面更新时间未变化:%'"
     );
+    expect(result.fallbackItems).toEqual([
+      expect.objectContaining({ storageGb: 512, color: '星光白色' }),
+    ]);
     expect(mockConnection.release).toHaveBeenCalled();
   });
 
@@ -132,6 +164,8 @@ describe('iPhone 18 报价来源仓库', () => {
     });
     const sql = mockConnection.execute.mock.calls[1][0];
     expect(sql).toContain('MAX(previous.site_update_time)');
+    expect(sql).toContain('previous.storage_gb = current.storage_gb');
+    expect(sql).toContain('previous.color = current.color');
     expect(sql).toContain('site_update_time >= ?');
     expect(result.batches).toHaveLength(1);
     expect(result.batches[0].items[0]).toMatchObject({

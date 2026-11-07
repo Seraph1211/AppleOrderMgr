@@ -7,7 +7,7 @@ const duoQuotePricingService = require('./duoQuotePricingService');
 const {
   DEFAULT_MARKUP,
   mergeDuoItems,
-  normalizeDuoSource,
+  normalizeDuoPartialSource,
   sourceUnavailable,
   validateMarkup,
 } = require('./duoQuotePricingCore');
@@ -186,7 +186,7 @@ async function buildHistory(current, range, requestedFrom, now) {
   const sourceEvents = sourceHistory.batches.map(batch => ({
     at: new Date(batch.sourceUpdatedAt),
     type: 'source',
-    items: normalizeDuoSource(batch),
+    items: normalizeDuoPartialSource(batch),
   }));
   const pricingEvents = await loadPricingEvents(now);
   const events = [...sourceEvents, ...pricingEvents].sort(
@@ -195,6 +195,7 @@ async function buildHistory(current, range, requestedFrom, now) {
       (left.type === right.type ? 0 : left.type === 'source' ? -1 : 1)
   );
 
+  const sourceItemsByKey = new Map();
   let sourceItems = [];
   let markups = new Map();
   let previousState = new Map();
@@ -205,8 +206,10 @@ async function buildHistory(current, range, requestedFrom, now) {
       appendBaseline(pointsByKey, previousState, rangeStart);
       baselineAdded = true;
     }
-    if (event.type === 'source') sourceItems = event.items;
-    else markups = event.markups;
+    if (event.type === 'source') {
+      event.items.forEach(item => sourceItemsByKey.set(identity(item.storageGb, item.color), item));
+      sourceItems = [...sourceItemsByKey.values()];
+    } else markups = event.markups;
     const nextState = calculateState(sourceItems, markups);
     if (event.at >= rangeStart && event.at <= now) {
       appendChangedPoints(pointsByKey, previousState, nextState, event.at.toISOString());
