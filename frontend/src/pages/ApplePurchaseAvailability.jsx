@@ -35,7 +35,6 @@ const PAGE_SIZES = [20, 50, 100, 200];
 const RESULT_TABS = [
   ['records', '有货明细'],
   ['trend', '趋势统计'],
-  ['changes', '检测任务配置变更'],
 ];
 const PAGE_TITLE = 'ApplePurchase 有货记录';
 const DATE_FIELD = { key: 'range', label: '检测时间' };
@@ -79,29 +78,65 @@ function useAvailabilityRequest(request, query, refresh = 0) {
   };
 }
 
-function FilterControl({ field, value, options, onEdit }) {
+function FilterControl({ field, value, options, onEdit, onClose, children }) {
+  const fieldRef = useRef(null);
+  const trigger = useRef(null);
+  const open = Boolean(children);
+  function dismiss() {
+    onClose();
+    trigger.current?.focus();
+  }
+  useEffect(() => {
+    if (!open) return undefined;
+    const outside = event => {
+      if (!fieldRef.current.contains(event.target)) onClose();
+    };
+    document.addEventListener('pointerdown', outside);
+    return () => document.removeEventListener('pointerdown', outside);
+  }, [open, onClose]);
   const label =
     field.key === 'range' ? getRangeLabel(value) : getSelectionLabel(field, value, options);
   return (
-    <div className="apav-field">
+    <div
+      ref={fieldRef}
+      className="apav-field"
+      onKeyDown={event => {
+        if (open && event.key === 'Escape' && !event.nativeEvent.isComposing) {
+          event.preventDefault();
+          dismiss();
+        }
+      }}
+    >
       <span className="apav-label">{field.label}</span>
       <button
         type="button"
         className="btn btn-secondary apav-select"
-        onClick={onEdit}
+        ref={trigger}
+        onClick={open ? onClose : onEdit}
         aria-label={`选择${field.label}，当前${label}`}
-        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? `apav-filter-${field.key}` : undefined}
         title={label}
       >
         {field.key === 'range' && <CalendarDays size={16} aria-hidden="true" />}
         <span>{label}</span>
         <ChevronDown size={14} aria-hidden="true" />
       </button>
+      {open && (
+        <div
+          id={`apav-filter-${field.key}`}
+          className="apav-filter-dropdown"
+          role="group"
+          aria-label={`选择${field.label}`}
+        >
+          {children(dismiss)}
+        </div>
+      )}
     </div>
   );
 }
 
-function AvailabilityDialog({ title, children, onClose }) {
+function AvailabilityDialog({ title, children, onClose, wide = false }) {
   const dialog = useRef(null);
   useEffect(() => {
     if (!dialog.current.open) dialog.current.showModal();
@@ -110,7 +145,7 @@ function AvailabilityDialog({ title, children, onClose }) {
   return (
     <dialog
       ref={dialog}
-      className="apav-dialog"
+      className={wide ? 'apav-dialog apav-task-dialog' : 'apav-dialog'}
       aria-labelledby="apav-dialog-title"
       onClose={onClose}
       onKeyDown={event => {
@@ -139,7 +174,7 @@ function ChoiceEditor({ field, options, values, onChange, onClose }) {
     option.label.toLowerCase().includes(search.trim().toLowerCase())
   );
   return (
-    <AvailabilityDialog title={`选择${field.label}`} onClose={onClose}>
+    <>
       <div className="apav-dialog-content">
         <label className="apav-search">
           <span>搜索{field.label}</span>
@@ -181,10 +216,12 @@ function ChoiceEditor({ field, options, values, onChange, onClose }) {
           {!matching.length && <p className="apav-muted apav-no-options">没有匹配的选项</p>}
         </div>
       </div>
-      <form method="dialog" className="apav-dialog-foot">
-        <button className="btn btn-primary apav-primary">完成</button>
-      </form>
-    </AvailabilityDialog>
+      <div className="apav-dialog-foot">
+        <button type="button" className="btn btn-primary apav-primary" onClick={onClose}>
+          完成
+        </button>
+      </div>
+    </>
   );
 }
 
@@ -193,56 +230,54 @@ function RangeEditor({ range, onChange, onClose }) {
   const apply = (event, nextRange) => {
     event.preventDefault();
     onChange(nextRange);
-    event.currentTarget.closest('dialog').close();
+    onClose();
   };
   return (
-    <AvailabilityDialog title="选择检测时间" onClose={onClose}>
-      <div className="apav-dialog-content">
-        <div className="apav-presets">
-          {RANGE_PRESETS.map(([preset, label]) => (
-            <button
-              type="button"
-              key={preset}
-              className="btn btn-secondary"
-              aria-pressed={range.preset === preset}
-              onClick={event => apply(event, { ...defaultRange(), preset })}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-        <form onSubmit={event => apply(event, { ...custom, preset: 'custom' })}>
-          <h3>自定义日期（北京时间）</h3>
-          <div className="apav-date-inputs">
-            <label>
-              开始日期
-              <input
-                className="input"
-                type="date"
-                required
-                max={custom.to || undefined}
-                value={custom.from}
-                onChange={event => setCustom({ ...custom, from: event.target.value })}
-              />
-            </label>
-            <label>
-              结束日期
-              <input
-                className="input"
-                type="date"
-                required
-                min={custom.from || undefined}
-                value={custom.to}
-                onChange={event => setCustom({ ...custom, to: event.target.value })}
-              />
-            </label>
-          </div>
-          <div className="apav-dialog-foot apav-range-foot">
-            <button className="btn btn-primary apav-primary">应用日期</button>
-          </div>
-        </form>
+    <div className="apav-dialog-content">
+      <div className="apav-presets">
+        {RANGE_PRESETS.map(([preset, label]) => (
+          <button
+            type="button"
+            key={preset}
+            className="btn btn-secondary"
+            aria-pressed={range.preset === preset}
+            onClick={event => apply(event, { ...defaultRange(), preset })}
+          >
+            {label}
+          </button>
+        ))}
       </div>
-    </AvailabilityDialog>
+      <form onSubmit={event => apply(event, { ...custom, preset: 'custom' })}>
+        <h3>自定义日期（北京时间）</h3>
+        <div className="apav-date-inputs">
+          <label>
+            开始日期
+            <input
+              className="input"
+              type="date"
+              required
+              max={custom.to || undefined}
+              value={custom.from}
+              onChange={event => setCustom({ ...custom, from: event.target.value })}
+            />
+          </label>
+          <label>
+            结束日期
+            <input
+              className="input"
+              type="date"
+              required
+              min={custom.from || undefined}
+              value={custom.to}
+              onChange={event => setCustom({ ...custom, to: event.target.value })}
+            />
+          </label>
+        </div>
+        <div className="apav-dialog-foot apav-range-foot">
+          <button className="btn btn-primary apav-primary">应用日期</button>
+        </div>
+      </form>
+    </div>
   );
 }
 
@@ -281,6 +316,7 @@ export default function ApplePurchaseAvailability() {
   const [detail, setDetail] = useState(null);
   const [cursors, setCursors] = useState([]);
   const [changeCursors, setChangeCursors] = useState([]);
+  const [showChanges, setShowChanges] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const [now, setNow] = useState(Date.now);
   const [eventVersion, setEventVersion] = useState({ observations: '0', monitorChanges: '0' });
@@ -306,10 +342,9 @@ export default function ApplePurchaseAvailability() {
       : null;
   const recordsQuery = useAvailabilityRequest(api.availabilityRecords, recordsKey, refresh);
   const trendQuery = useAvailabilityRequest(api.availabilityTrend, trendKey, refresh);
-  const changeKey =
-    resultTab === 'changes'
-      ? new URLSearchParams(changeCursors.length ? { cursor: changeCursors.at(-1) } : {}).toString()
-      : null;
+  const changeKey = showChanges
+    ? new URLSearchParams(changeCursors.length ? { cursor: changeCursors.at(-1) } : {}).toString()
+    : null;
   const changesQuery = useAvailabilityRequest(api.availabilityChanges, changeKey, refresh);
   const records = recordsQuery.data;
   const terminalNames = new Map(options.terminalId.map(({ value, label }) => [value, label]));
@@ -319,11 +354,7 @@ export default function ApplePurchaseAvailability() {
     capacity: formatStorage(row.storage),
     terminal: terminalNames.get(row.terminalId) || '—',
   }));
-  const newRecords =
-    resultTab === 'changes'
-      ? changesQuery.data &&
-        BigInt(eventVersion.monitorChanges) > BigInt(changesQuery.data.snapshot)
-      : catalog && BigInt(eventVersion.observations) > BigInt(catalog.snapshot);
+  const newRecords = catalog && BigInt(eventVersion.observations) > BigInt(catalog.snapshot);
   const activeFields = FILTERS.filter(({ key }) => selections[key].length);
   const filterSummary = activeFields
     .map(field => getSelectionLabel(field, selections[field.key], options[field.key]))
@@ -356,6 +387,7 @@ export default function ApplePurchaseAvailability() {
   }
 
   function resetFilters() {
+    setEditor(null);
     setRange(defaultRange(now));
     setSelections(INITIAL_SELECTIONS);
     setCursors([]);
@@ -383,7 +415,33 @@ export default function ApplePurchaseAvailability() {
         value={field.key === 'range' ? range : selections[field.key]}
         options={options[field.key]}
         onEdit={() => setEditor(field)}
-      />
+        onClose={() => setEditor(null)}
+      >
+        {editor?.key === field.key
+          ? close =>
+              field.key === 'range' ? (
+                <RangeEditor
+                  range={range}
+                  onClose={close}
+                  onChange={next => {
+                    setRange(next);
+                    setCursors([]);
+                  }}
+                />
+              ) : (
+                <ChoiceEditor
+                  field={field}
+                  options={availableOptions}
+                  values={selections[field.key]}
+                  onClose={close}
+                  onChange={next => {
+                    setSelections(previous => ({ ...previous, [field.key]: next }));
+                    setCursors([]);
+                  }}
+                />
+              )
+          : null}
+      </FilterControl>
     );
   }
 
@@ -443,22 +501,31 @@ export default function ApplePurchaseAvailability() {
           <div className="apav-sync-status">
             <span>最近检测 {formatTimestamp(catalog?.lastDetectedAt)}</span>
             <span>最后同步 {formatTimestamp(catalog?.lastSyncAt)}</span>
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={refreshResults}
-              disabled={catalogQuery.loading}
-            >
-              {newRecords ? '有新记录，刷新' : '刷新'}
-            </button>
+            <div className="apav-sync-actions">
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={refreshResults}
+                disabled={catalogQuery.loading}
+              >
+                {newRecords ? '有新记录，刷新' : '刷新'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                aria-haspopup="dialog"
+                onClick={() => {
+                  setChangeCursors([]);
+                  setShowChanges(true);
+                }}
+              >
+                查看任务配置
+              </button>
+            </div>
           </div>
         </div>
 
-        <section
-          className="apav-filters"
-          aria-labelledby="apav-filter-title"
-          hidden={resultTab === 'changes'}
-        >
+        <section className="apav-filters" aria-labelledby="apav-filter-title">
           <div className="apav-filter-top">
             <div className="apav-filter-head">
               <h2 id="apav-filter-title">筛选记录</h2>
@@ -690,50 +757,25 @@ export default function ApplePurchaseAvailability() {
               />
             )}
           </div>
-          <div
-            id="apav-panel-changes"
-            role="tabpanel"
-            aria-labelledby="apav-tab-changes"
-            hidden={resultTab !== 'changes'}
-          >
-            {resultTab === 'changes' && (
-              <ApplePurchaseAvailabilityChanges
-                data={changesQuery.data}
-                loading={changesQuery.loading}
-                error={changesQuery.error}
-                hasPrevious={changeCursors.length > 0}
-                onPrevious={() => setChangeCursors(previous => previous.slice(0, -1))}
-                onNext={() =>
-                  setChangeCursors(previous => [...previous, changesQuery.data.nextCursor])
-                }
-                onRefresh={refreshResults}
-              />
-            )}
-          </div>
         </section>
         <p className="apav-footnote">每行是一条有货观察，同一门店和料号可在不同时间重复出现。</p>
       </div>
-      {editor?.key === 'range' && (
-        <RangeEditor
-          range={range}
-          onChange={next => {
-            setRange(next);
-            setCursors([]);
-          }}
-          onClose={() => setEditor(null)}
-        />
-      )}
-      {editor && editor.key !== 'range' && (
-        <ChoiceEditor
-          field={editor}
-          options={availableOptions}
-          values={selections[editor.key]}
-          onChange={next => {
-            setSelections(previous => ({ ...previous, [editor.key]: next }));
-            setCursors([]);
-          }}
-          onClose={() => setEditor(null)}
-        />
+      {showChanges && (
+        <AvailabilityDialog title="检测任务配置变更" wide onClose={() => setShowChanges(false)}>
+          <ApplePurchaseAvailabilityChanges
+            data={changesQuery.data}
+            loading={changesQuery.loading}
+            error={changesQuery.error}
+            hasPrevious={changeCursors.length > 0}
+            onPrevious={() => setChangeCursors(previous => previous.slice(0, -1))}
+            onNext={() => setChangeCursors(previous => [...previous, changesQuery.data.nextCursor])}
+            onRefresh={refreshResults}
+            hasNew={Boolean(
+              changesQuery.data &&
+              BigInt(eventVersion.monitorChanges) > BigInt(changesQuery.data.snapshot)
+            )}
+          />
+        </AvailabilityDialog>
       )}
       {detail && <ObservationDetail row={detail} onClose={() => setDetail(null)} />}
     </main>

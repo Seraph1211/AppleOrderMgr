@@ -68,7 +68,19 @@ async function installRoutes(page) {
               terminal: '终端示例',
               previousRevision: 1,
               revision: 2,
-              changes: [{ kind: 'products', before: 1, after: 2, added: 1, removed: 0 }],
+              configuration: {
+                state: 'running',
+                stores: [{ city: '合成城市', name: '合成配置门店' }],
+                products: [{ name: 'iPhone Duo', specification: 'iPhone Duo 1TB 夜空色' }],
+              },
+            },
+            {
+              sequence: '2',
+              changedAt: rows[0].detectedAt,
+              changeType: 'monitor_stopped',
+              terminal: '终端示例',
+              revision: 3,
+              configuration: { state: 'stopped', stores: [], products: [] },
             },
           ],
           nextCursor: cursor ? null : 'next-changes',
@@ -132,7 +144,10 @@ async function installRoutes(page) {
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       if (width < 600) await page.getByRole('button', { name: '筛选', exact: true }).tap();
       await page.getByRole('button', { name: /^选择机型，/ }).click();
-      await page.getByRole('checkbox', { name: 'iPhone Duo', exact: true }).check();
+      const modelFilter = page.getByRole('group', { name: '选择机型' });
+      await modelFilter.waitFor();
+      assert.equal(await page.getByRole('dialog').count(), 0);
+      await modelFilter.getByRole('checkbox', { name: 'iPhone Duo', exact: true }).check();
       await page.getByRole('button', { name: '完成' }).click();
       assert.equal(await page.getByRole('button', { name: /锁定/ }).count(), 0);
       await page.getByRole('button', { name: /^选择颜色，/ }).click();
@@ -157,11 +172,16 @@ async function installRoutes(page) {
       assert.deepEqual(trend.searchParams.getAll('color'), ['星光白色', '夜空色']);
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
       assert.deepEqual(errors, []);
-      await page.getByRole('tab', { name: '检测任务配置变更' }).click();
-      await page.getByText('监控料号 1 → 2（新增 1）').waitFor();
-      await page.getByRole('button', { name: '下一页' }).click();
-      await page.getByRole('button', { name: '下一页' }).waitFor();
-      assert.equal(await page.getByRole('button', { name: '下一页' }).isDisabled(), true);
+      await page.getByRole('button', { name: '查看任务配置' }).click();
+      const dialog = page.getByRole('dialog', { name: '检测任务配置变更' });
+      await dialog.getByText('合成配置门店').waitFor();
+      await dialog.getByText('iPhone Duo 1TB 夜空色').waitFor();
+      await dialog.getByRole('button', { name: /停止监控/ }).click();
+      await dialog.getByText(/已停止 · 修订 3/).waitFor();
+      await dialog.getByRole('button', { name: '下一页' }).click();
+      await dialog.getByRole('button', { name: '下一页' }).waitFor();
+      assert.equal(await dialog.getByRole('button', { name: '下一页' }).isDisabled(), true);
+      await dialog.getByRole('button', { name: '关闭' }).click();
       await page.getByRole('tab', { name: '有货明细' }).click();
       await page.getByText(`${SAMPLE_COUNT} 条`, { exact: true }).waitFor();
       if (width < 600) await page.getByRole('button', { name: '筛选 (2)', exact: true }).waitFor();

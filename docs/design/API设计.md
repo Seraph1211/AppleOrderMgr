@@ -1335,3 +1335,5 @@ status 为 missing/active/invalidated；errors 仅给行号、字段、错误码
 `/inventory/availability` 可直接访问。公开 API 前缀为 `/api/public/apple-purchase-availability`，提供 `GET /options`、`/records`、`/trend`、`/changes`、`/events`，均沿用专用只读连接。前三个查询沿用独立页的筛选、快照与分页口径。公开终端使用别名，观察记录使用公开编号。
 
 `/changes` 独立分页，接受 `cursor`，返回北京时间显示所需的 UTC 变更时间、类型、修订号、终端别名、门店与料号及任务需求的前后数量和增减项数，以及已知的运行状态变化。内部名称和配置原文留在管理接口。公开查询限流，响应使用 `no-store`。
+
+公开配置历史的每条记录同时返回 `configuration`，从变更后快照投影运行状态、门店名称及城市、机型和规格。缺少快照时为 `null`。原始快照留在受权接口。

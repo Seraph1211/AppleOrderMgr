@@ -55,6 +55,28 @@ function summarizeChanges(before, after) {
   return changes;
 }
 
+function configurationSnapshot(after) {
+  if (!after) return null;
+  const stores = Array.isArray(after.stores) ? after.stores : [];
+  const products = Array.isArray(after.products) ? after.products : [];
+  const text = (value, limit) => (typeof value === 'string' ? value.trim().slice(0, limit) : '');
+  return {
+    state: PUBLIC_CONTROL_STATES.has(after.controlState) ? after.controlState : null,
+    stores: stores
+      .map(item => ({
+        city: text(item?.city, 128),
+        name: text(item?.name, 256),
+      }))
+      .filter(item => item.name),
+    products: products
+      .map(item => ({
+        name: text(item?.name, 256),
+        specification: text(item?.specification, 512),
+      }))
+      .filter(item => item.name || item.specification),
+  };
+}
+
 /** 创建无需登录的只读展示接口，投影公开字段并限制查询频率。 @returns {Object} 路由 */
 function createRouter(service = inventory, eventService = events) {
   const router = express.Router();
@@ -143,6 +165,7 @@ function createRouter(service = inventory, eventService = events) {
           revision: row.revision,
           terminal: publicTerminal(row.terminalId),
           changes: summarizeChanges(row.before, row.after),
+          configuration: configurationSnapshot(row.after),
         })),
       });
     })

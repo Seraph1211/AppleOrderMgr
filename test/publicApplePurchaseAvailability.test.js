@@ -6,7 +6,7 @@ const privateMarker = 'fixture-private-value';
 
 test('公开查询免登录，配置历史只返回业务摘要，保留快照和游标', async () => {
   const service = {
-    availabilityOptions: jest.fn(async () => ({
+    availabilityOptions: jest.fn(() => ({
       snapshot: '20',
       firstDetectedAt: null,
       lastDetectedAt: null,
@@ -18,15 +18,15 @@ test('公开查询免登录，配置历史只返回业务摘要，保留快照�
       stores: [],
       terminals: [{ id: terminalId, name: privateMarker, token: privateMarker }],
     })),
-    availabilityRecords: jest.fn(async () => ({
+    availabilityRecords: jest.fn(() => ({
       total: 1,
       nextCursor: 'records-cursor',
       items: [
         { sequence: '20', id: privateMarker, terminalId, store: '合成门店', secret: privateMarker },
       ],
     })),
-    availabilityTrend: jest.fn(async () => ({ points: [] })),
-    listMonitorChanges: jest.fn(async () => ({
+    availabilityTrend: jest.fn(() => ({ points: [] })),
+    listMonitorChanges: jest.fn(() => ({
       page: { highWaterSequence: '2', nextCursor: 'changes-cursor' },
       items: [
         {
@@ -42,6 +42,8 @@ test('公开查询免登录，配置历史只返回业务摘要，保留快照�
             partNumbers: [privateMarker],
             taskDemands: { [privateMarker]: { contact: privateMarker } },
             controlState: 'running',
+            stores: [{ name: '合成门店', city: '合成城市', id: privateMarker }],
+            products: [{ name: '合成机型', specification: '合成规格', id: privateMarker }],
             proxy: privateMarker,
           },
           changes: [{ secret: privateMarker }],
@@ -93,6 +95,11 @@ test('公开查询免登录，配置历史只返回业务摘要，保留快照�
     });
     expect(JSON.stringify(changes)).not.toContain(privateMarker);
     expect(changes.items[0]).not.toHaveProperty('after');
+    expect(changes.items[0].configuration).toEqual({
+      state: 'running',
+      stores: [{ name: '合成门店', city: '合成城市' }],
+      products: [{ name: '合成机型', specification: '合成规格' }],
+    });
     expect(await (await fetch(`${root}/trend?snapshot=20&interval=day`)).json()).toEqual({
       points: [],
     });
