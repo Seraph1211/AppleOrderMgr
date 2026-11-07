@@ -424,16 +424,16 @@ export default function PublicDuoQuotes() {
                     </span>
                   </td>
                   <td className="duo-retail">
-                    {formatPrice(item.retailPrice)}
+                    {item.sourceMissing ? '-' : formatPrice(item.retailPrice)}
                   </td>
                   <td className="duo-official">
                     {formatPrice(item.officialPrice)}
                   </td>
                   <td
-                    className={`duo-premium ${item.premiumAmount < 0 ? 'duo-premium-negative' : ''}`}
+                    className={`duo-premium ${!item.sourceMissing && item.premiumAmount < 0 ? 'duo-premium-negative' : ''}`}
                   >
                     <span className="duo-premium-content">
-                      <span>{formatPremium(item.premiumAmount)}</span>
+                      <span>{item.sourceMissing ? '-' : formatPremium(item.premiumAmount)}</span>
                       {item.sourceMissing && (
                         <button
                           type="button"
@@ -461,7 +461,7 @@ export default function PublicDuoQuotes() {
                             className="duo-source-warning-tooltip"
                             role="tooltip"
                           >
-                            本次明威来源缺少该规格，当前零售价沿用上次有效报价，其他规格不受影响。
+                            本次明威来源缺少该规格，零售价和溢价额暂不显示。
                           </span>
                         </button>
                       )}

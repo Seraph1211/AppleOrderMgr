@@ -209,6 +209,7 @@ async function main() {
       }
     });
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
+    rows[0].sourceMissing = true;
     await page.goto(`${BASE_URL}/quote-pricing`);
     await page.getByRole('heading', { name: '报价管理', exact: true }).waitFor();
     const list = page.getByRole('region', { name: 'Duo 报价列表' });
@@ -217,6 +218,18 @@ async function main() {
     const preview = dialog.getByRole('region', { name: '报价变更预览' });
     const firstName = '设置 256G 星光白色';
     const secondName = '设置 256G 夜空色';
+    const missingRow = list.getByRole('row').filter({
+      has: page.getByRole('button', { name: firstName }),
+    });
+    await missingRow.waitFor();
+    const cells = missingRow.locator('td.duo-pricing-desktop');
+    assert.deepEqual((await cells.allTextContents()).map(text => text.trim()).slice(-2), ['-', '-']);
+    assert.equal(await cells.nth(4).innerText(), '¥15,999');
+    assert.equal(await missingRow.locator('.duo-pricing-mobile-price strong').textContent(), '-');
+    delete rows[0].sourceMissing;
+    await page.reload();
+    await list.getByRole('button', { name: firstName }).waitFor();
+    assert.deepEqual((await cells.allTextContents()).map(text => text.trim()).slice(-2), ['¥16,050', '+¥50']);
     const successMessage = '已保存加价额，Duo 公开报价已生效。';
     const conflictMessage =
       '报价来源或设置版本已变化。输入已保留，请点击“刷新并核对”，核对最新批发价后重新预览。';

@@ -102,13 +102,18 @@ fs.mkdirSync(output, { recursive: true });
     });
     await sourceWarning.waitFor();
     assert.equal(await sourceWarning.count(), 1);
+    const missingRow = page.locator('tbody tr').filter({ has: sourceWarning });
+    assert.equal(await missingRow.locator('.duo-retail').innerText(), '-');
+    assert.equal(await missingRow.locator('.duo-premium-content > span').innerText(), '-');
+    assert.equal(await missingRow.locator('.duo-official').innerText(), '¥15,999');
+    assert.equal(await page.locator('tbody tr .duo-retail').first().innerText(), '¥16,300');
     const warningTooltip = page.getByRole('tooltip');
     await sourceWarning.hover();
     await page.clock.fastForward(150);
     await warningTooltip.waitFor({ state: 'visible' });
     assert.equal(
       await warningTooltip.innerText(),
-      '本次明威来源缺少该规格，当前零售价沿用上次有效报价，其他规格不受影响。'
+      '本次明威来源缺少该规格，零售价和溢价额暂不显示。'
     );
     await page.screenshot({ path: path.join(output, 'tooltip-1392.png'), fullPage: false });
     await page.mouse.move(0, 0);
@@ -125,6 +130,11 @@ fs.mkdirSync(output, { recursive: true });
     await page.keyboard.press('Escape');
     await warningTooltip.waitFor({ state: 'hidden' });
     data.items[0].sourceMissing = false;
+    await page.clock.fastForward(60000);
+    await sourceWarning.waitFor({ state: 'detached' });
+    const restoredRow = page.locator('tbody tr').nth(1);
+    assert.equal(await restoredRow.locator('.duo-retail').innerText(), '¥16,400');
+    assert.equal(await restoredRow.locator('.duo-premium-content > span').innerText(), '+400');
     assert.deepEqual(
       await page.locator('tbody tr td:nth-child(2)').allTextContents(),
       [256, 512, 1024, 2048].flatMap(() => ['夜空色', '星光白色'])

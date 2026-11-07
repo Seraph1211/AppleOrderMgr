@@ -626,7 +626,7 @@ export default function Iphone18QuotePricing() {
                       </td>
                       <td className="duo-pricing-mobile duo-pricing-mobile-price">
                         <strong className="block text-primary">
-                          {currency(item.retailPrice)}
+                          {item.sourceMissing ? '-' : currency(item.retailPrice)}
                         </strong>
                         <span>批发 {currency(item.wholesalePrice)}</span>
                         <span>加价 {signed(item.markup)}</span>
@@ -661,7 +661,7 @@ export default function Iphone18QuotePricing() {
                         {signed(item.markup)}
                       </td>
                       <td className="duo-pricing-desktop px-3 py-3 text-right font-semibold text-primary">
-                        {currency(item.retailPrice)}
+                        {item.sourceMissing ? '-' : currency(item.retailPrice)}
                         {item.pricingError && (
                           <div className="mt-1 text-xs font-normal text-amber-700">
                             零售价异常，请调整加价
@@ -669,7 +669,7 @@ export default function Iphone18QuotePricing() {
                         )}
                       </td>
                       <td className="duo-pricing-desktop px-3 py-3 text-right text-gray-600">
-                        {signed(item.premiumAmount)}
+                        {item.sourceMissing ? '-' : signed(item.premiumAmount)}
                       </td>
                       <td className="duo-pricing-action">
                         <button
