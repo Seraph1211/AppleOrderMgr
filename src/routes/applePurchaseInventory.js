@@ -24,6 +24,18 @@ function createRouter(service = queryService, eventService = events) {
     '/status',
     asyncHandler(async (_req, res) => res.json(await service.status()))
   );
+  router.get(
+    '/availability/options',
+    asyncHandler(async (_req, res) => res.json(await service.availabilityOptions()))
+  );
+  router.get(
+    '/availability/records',
+    asyncHandler(async (req, res) => res.json(await service.availabilityRecords(req.query)))
+  );
+  router.get(
+    '/availability/trend',
+    asyncHandler(async (req, res) => res.json(await service.availabilityTrend(req.query)))
+  );
   router.get('/events', asyncHandler(eventService.subscribe));
   return router;
 }

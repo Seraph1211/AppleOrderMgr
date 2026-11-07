@@ -1,0 +1,852 @@
+.apav-page {
+  --apav-ground: #f3f5f7;
+  --apav-surface: #fff;
+  --apav-ink: #171e28;
+  --apav-muted: #566274;
+  --apav-blue: #1e3a8a;
+  --apav-border: #e3e7ed;
+  --apav-control-border: #d2d9e3;
+  --apav-rule: #edf0f3;
+  --apav-radius: 8px;
+  min-height: 100vh;
+  background: var(--apav-ground);
+  color: var(--apav-ink);
+  font-family:
+    -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+
+.apav-shell {
+  width: min(1120px, calc(100% - 48px));
+  margin-inline: auto;
+  padding-block: 32px 24px;
+}
+
+.apav-header {
+  text-align: center;
+}
+
+.apav-identity {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.apav-identity svg {
+  flex: none;
+  color: var(--apav-blue);
+}
+
+.apav-header h1 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+}
+
+.apav-header p {
+  margin-top: 8px;
+  color: var(--apav-muted);
+}
+
+.apav-snapshot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+  margin-top: 24px;
+  padding: 9px 16px;
+  border: 1px solid var(--apav-border);
+  border-radius: var(--apav-radius);
+  background: #edf0f4;
+  color: var(--apav-muted);
+  font-size: 13px;
+}
+
+.apav-snapshot strong {
+  color: var(--apav-ink);
+  font-weight: 600;
+}
+
+.apav-sync-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.apav-page .apav-sync-status .btn {
+  min-height: 30px;
+  font-size: 12px;
+}
+
+.apav-filters,
+.apav-results {
+  margin-top: 12px;
+  border: 1px solid var(--apav-border);
+  border-radius: var(--apav-radius);
+  background: var(--apav-surface);
+}
+
+.apav-filters {
+  padding: 14px 16px 16px;
+}
+
+.apav-filter-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(250px, 320px) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.apav-results-head,
+.apav-pagination,
+.apav-dialog-head,
+.apav-choice-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.apav-filter-head h2,
+.apav-trend-head h2,
+.apav-dialog-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.apav-filter-head p,
+.apav-results-head p,
+.apav-pagination p,
+.apav-footnote {
+  color: var(--apav-muted);
+  font-size: 12px;
+}
+
+.apav-filter-head p {
+  margin-top: 2px;
+}
+
+.apav-page .btn,
+.apav-dialog .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  border-radius: 6px;
+  box-shadow: none; /* taste-skill-ignore: 清除标准按钮阴影。 */
+  transition: background-color 120ms;
+}
+
+.apav-page .btn-secondary,
+.apav-dialog .btn-secondary {
+  border-color: var(--apav-control-border);
+  color: var(--apav-ink);
+}
+
+.apav-page .btn:hover:not(:disabled),
+.apav-dialog .btn:hover:not(:disabled) {
+  background: #f1f4f7;
+}
+
+.apav-page .btn:disabled,
+.apav-dialog .btn:disabled {
+  color: var(--apav-muted);
+  cursor: default;
+}
+
+.apav-page .apav-primary,
+.apav-dialog .apav-primary {
+  background: #232a34;
+  color: #fff;
+}
+
+.apav-page .apav-primary:hover:not(:disabled),
+.apav-dialog .apav-primary:hover:not(:disabled) {
+  background: #343f4e;
+}
+
+.apav-reset {
+  flex: none;
+  font-size: 12px;
+}
+
+.apav-date-row {
+  display: flex;
+  align-items: end;
+  gap: 12px;
+}
+
+.apav-date-row .apav-field {
+  flex: 1;
+}
+
+/* 桌面 6 列等宽，5 个 12px 间距。平板 3 列各两排，手机展开后 2 列各三排。 */
+.apav-dimensions {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+
+.apav-field {
+  min-width: 0;
+}
+
+.apav-label {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--apav-muted);
+  font-size: 13px;
+}
+
+.apav-control {
+  display: flex;
+  min-width: 0;
+}
+
+.apav-page .apav-select {
+  flex: 1;
+  justify-content: flex-start;
+  min-width: 0;
+  padding-inline: 9px;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  font-size: 13px;
+}
+
+.apav-select span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.apav-select svg {
+  flex: none;
+  color: var(--apav-muted);
+}
+
+.apav-page .apav-lock {
+  flex: none;
+  width: 34px;
+  padding-inline: 0;
+  border-left: 0;
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  color: var(--apav-muted);
+}
+
+.apav-control[data-locked='true'] .apav-select {
+  background: #f7f8fa;
+  color: var(--apav-ink);
+}
+
+.apav-control[data-locked='true'] .apav-lock {
+  color: var(--apav-blue);
+  background: #eef2f8;
+}
+
+.apav-page .apav-mobile-toggle,
+.apav-page .apav-mobile-done,
+.apav-mobile-summary,
+.apav-table .apav-short-model,
+.apav-compact {
+  display: none;
+}
+
+.apav-result-tabs {
+  display: flex;
+  gap: 16px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--apav-border);
+}
+
+.apav-result-tabs .btn {
+  position: relative;
+  padding-inline: 2px;
+  border-radius: 0;
+  color: var(--apav-muted);
+}
+
+.apav-result-tabs .btn[aria-selected='true'] {
+  color: var(--apav-ink);
+  font-weight: 600;
+}
+
+.apav-result-tabs [aria-selected='true']::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  background: var(--apav-blue);
+  content: '';
+}
+
+.apav-page-size {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+  color: var(--apav-muted);
+  font-size: 12px;
+}
+
+.apav-page-size .input {
+  width: auto;
+  padding-inline: 8px;
+  color: var(--apav-ink);
+  font-size: 13px;
+}
+
+.apav-trend {
+  padding: 14px 16px;
+}
+
+.apav-trend-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.apav-trend-head p,
+.apav-trend-note {
+  margin-top: 4px;
+  color: var(--apav-muted);
+  font-size: 13px;
+}
+
+.apav-intervals,
+.apav-trend-legend,
+.apav-trend-legend li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.apav-intervals .btn {
+  white-space: nowrap;
+}
+
+.apav-intervals [aria-pressed='true'] {
+  background: #edf0f4;
+  border-color: var(--apav-muted);
+}
+
+.apav-trend-legend {
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-block: 10px 3px;
+  color: var(--apav-muted);
+  font-size: 13px;
+}
+
+.apav-chart {
+  min-width: 0;
+  height: 270px;
+}
+
+.apav-chart .recharts-default-tooltip {
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.apav-trend .apav-empty {
+  margin-top: 8px;
+  padding-inline: 0;
+  border-bottom: 0;
+}
+
+.apav-results-head {
+  padding: 14px 16px 7px;
+}
+
+.apav-result-label {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.apav-result-label span {
+  color: var(--apav-blue);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.apav-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  text-align: left;
+}
+
+.apav-table th,
+.apav-table td {
+  padding: 6px 9px;
+  overflow-wrap: anywhere;
+}
+
+.apav-table th:first-child,
+.apav-table td:first-child {
+  padding-left: 16px;
+}
+
+.apav-table th {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  height: 36px;
+  border-bottom: 1px solid var(--apav-border);
+  background: var(--apav-surface);
+  color: var(--apav-muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.apav-table td {
+  height: 46px;
+  border-bottom: 1px solid var(--apav-rule);
+  font-size: 14px;
+}
+
+.apav-table th:nth-child(1) {
+  width: 14%;
+}
+
+.apav-table th:nth-child(2) {
+  width: 20%;
+}
+
+.apav-table th:nth-child(3) {
+  width: 23%;
+}
+
+.apav-table th:nth-child(6) {
+  width: 13%;
+}
+
+.apav-table th:nth-child(7) {
+  width: 11%;
+}
+
+.apav-table th:nth-child(5),
+.apav-table td:nth-child(5) {
+  text-align: right;
+}
+
+.apav-time {
+  text-align: right;
+}
+
+.apav-time svg {
+  display: inline;
+  vertical-align: -2px;
+}
+
+.apav-table .apav-time strong {
+  color: var(--apav-blue);
+}
+
+.apav-table strong {
+  display: block;
+  font-weight: 550;
+  line-height: 1.35;
+}
+
+.apav-table small {
+  color: var(--apav-muted);
+  font-size: 12px;
+}
+
+.apav-table .apav-row-action {
+  width: 52px;
+  padding-block: 0;
+  text-align: right;
+}
+
+.apav-page .apav-icon,
+.apav-dialog .apav-icon {
+  width: 34px;
+  padding: 0;
+}
+
+.apav-muted {
+  color: var(--apav-muted);
+}
+
+.apav-pagination {
+  padding: 10px 16px;
+}
+
+.apav-pagination div {
+  display: flex;
+  gap: 6px;
+}
+
+.apav-pagination .btn {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.apav-empty {
+  padding: 20px 16px;
+  border-bottom: 1px solid var(--apav-rule);
+  color: var(--apav-muted);
+}
+
+.apav-footnote {
+  margin: 10px 0 0;
+}
+
+.apav-dialog {
+  width: min(430px, calc(100% - 32px));
+  max-height: calc(100% - 32px);
+  margin: auto;
+  padding: 0;
+  border: 1px solid var(--apav-border);
+  border-radius: var(--apav-radius);
+  background: var(--apav-surface);
+  color: var(--apav-ink);
+  font: inherit;
+  font-variant-numeric: inherit;
+}
+
+.apav-dialog::backdrop {
+  background: rgb(23 30 40 / 32%);
+}
+
+.apav-dialog-head {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--apav-border);
+}
+
+.apav-dialog-content,
+.apav-detail {
+  padding: 14px 16px;
+}
+
+.apav-search,
+.apav-date-inputs label {
+  display: grid;
+  gap: 4px;
+  color: var(--apav-muted);
+  font-size: 13px;
+}
+
+.apav-dialog .input {
+  min-height: 40px;
+  color: var(--apav-ink);
+  font-size: 16px;
+}
+
+.apav-choice-summary {
+  margin-top: 5px;
+  color: var(--apav-muted);
+  font-size: 12px;
+}
+
+.apav-text-button {
+  color: var(--apav-ink);
+  font-size: 12px;
+}
+
+.apav-choices {
+  max-height: min(42dvh, 288px);
+  overflow: auto;
+}
+
+.apav-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding-inline: 8px;
+  border-bottom: 1px solid var(--apav-rule);
+  cursor: pointer;
+}
+
+.apav-choice:hover {
+  background: #f7f8fa;
+}
+
+.apav-choice input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--apav-blue);
+}
+
+.apav-no-options {
+  padding: 8px;
+}
+
+.apav-dialog-foot {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 16px;
+  border-top: 1px solid var(--apav-border);
+}
+
+.apav-presets,
+.apav-date-inputs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.apav-presets .btn[aria-pressed='true'] {
+  border-color: var(--apav-muted);
+  background: #edf0f4;
+}
+
+.apav-dialog h3 {
+  margin-block: 16px 8px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.apav-range-foot {
+  margin-top: 12px;
+  padding: 12px 0 0;
+}
+
+.apav-detail-note {
+  margin: 12px 16px 0;
+  color: var(--apav-muted);
+  font-size: 12px;
+}
+
+.apav-detail div {
+  display: grid;
+  grid-template-columns: 96px minmax(0, 1fr);
+  align-items: baseline;
+  gap: 8px;
+  padding-block: 7px;
+  border-bottom: 1px solid var(--apav-rule);
+}
+
+.apav-detail dt {
+  color: var(--apav-muted);
+}
+
+.apav-detail dd {
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 940px) {
+  .apav-dimensions {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .apav-table .apav-wide {
+    display: none;
+  }
+
+  .apav-table .apav-compact {
+    display: block;
+  }
+
+  .apav-table small,
+  .apav-table th {
+    font-size: 13px;
+  }
+
+  .apav-table th .apav-compact {
+    display: inline;
+  }
+
+  .apav-table th:nth-child(1) {
+    width: 24%;
+  }
+
+  .apav-table th:nth-child(2) {
+    width: 32%;
+  }
+
+  .apav-table th:nth-child(3) {
+    width: auto;
+  }
+}
+
+@media (max-width: 620px) {
+  .apav-shell {
+    width: calc(100% - 32px);
+    padding-top: 22px;
+  }
+
+  .apav-header h1 {
+    font-size: 23px;
+  }
+
+  .apav-header p {
+    margin-top: 7px;
+    font-size: 13px;
+  }
+
+  .apav-snapshot {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    margin-top: 16px;
+    padding: 7px 10px;
+  }
+
+  .apav-filters {
+    padding: 10px 10px 12px;
+  }
+
+  .apav-filter-top {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .apav-reset {
+    grid-area: 1 / 2;
+  }
+
+  .apav-mobile-summary {
+    display: block;
+    margin-top: 8px;
+    color: var(--apav-muted);
+    font-size: 13px;
+  }
+
+  .apav-page .btn,
+  .apav-dialog .btn {
+    min-height: 44px;
+  }
+
+  .apav-page .apav-lock,
+  .apav-dialog .apav-icon {
+    width: 44px;
+  }
+
+  .apav-date-row {
+    grid-column: 1 / -1;
+    gap: 8px;
+  }
+
+  .apav-page .apav-sync-status .btn {
+    min-height: 44px;
+  }
+
+  .apav-page .apav-mobile-toggle,
+  .apav-page .apav-mobile-done {
+    display: inline-flex;
+  }
+
+  .apav-mobile-done {
+    grid-column: 1 / -1;
+    justify-self: end;
+  }
+
+  .apav-dimensions {
+    display: none;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .apav-dimensions[data-open='true'] {
+    display: grid;
+  }
+
+  .apav-result-tabs,
+  .apav-trend {
+    padding-inline: 10px;
+  }
+
+  .apav-page-size .input {
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .apav-intervals .btn {
+    padding-inline: 7px;
+  }
+
+  .apav-chart {
+    height: 200px;
+  }
+
+  .apav-results-head {
+    padding: 10px 10px 4px;
+    gap: 4px;
+  }
+
+  .apav-result-label {
+    flex-wrap: wrap;
+    gap: 2px 6px;
+  }
+
+  .apav-table th,
+  .apav-table td {
+    padding-inline: 5px;
+  }
+
+  .apav-table th:first-child,
+  .apav-table td:first-child {
+    padding-left: 9px;
+  }
+
+  .apav-table td {
+    height: 52px;
+  }
+
+  .apav-table .apav-full-model {
+    display: none;
+  }
+
+  .apav-table .apav-short-model {
+    display: block;
+  }
+
+  .apav-table th:nth-child(1) {
+    width: 26%;
+  }
+
+  .apav-table th:nth-child(2) {
+    width: 28%;
+  }
+
+  .apav-table th:nth-child(3) {
+    width: auto;
+  }
+
+  .apav-table .apav-row-action {
+    width: 44px;
+    padding-inline: 0;
+  }
+
+  .apav-row-action .apav-icon {
+    width: 44px;
+  }
+
+  .apav-pagination {
+    flex-wrap: wrap;
+    padding: 8px 10px;
+  }
+
+  .apav-dialog {
+    width: 100%;
+    max-width: none;
+    max-height: 86dvh;
+    margin: auto 0 0;
+    border-radius: var(--apav-radius) var(--apav-radius) 0 0;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .apav-page .btn,
+  .apav-dialog .btn {
+    transition: none;
+  }
+}

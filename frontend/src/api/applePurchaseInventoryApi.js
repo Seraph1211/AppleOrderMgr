@@ -4,6 +4,18 @@ export const applePurchaseInventoryApi = {
   observations: params => client.get('/apple-purchase-inventory/v1/observations', { params }),
   monitorChanges: params => client.get('/apple-purchase-inventory/v1/monitor-changes', { params }),
   status: () => client.get('/apple-purchase-inventory/v1/status'),
+  availabilityOptions: (_query, signal) =>
+    client.get('/apple-purchase-inventory/v1/availability/options', { signal }),
+  availabilityRecords: (query, signal) =>
+    client.get('/apple-purchase-inventory/v1/availability/records', {
+      params: new URLSearchParams(query),
+      signal,
+    }),
+  availabilityTrend: (query, signal) =>
+    client.get('/apple-purchase-inventory/v1/availability/trend', {
+      params: new URLSearchParams(query),
+      signal,
+    }),
   terminals: () => client.get('/admin/apple-purchase-sync/v1/terminals'),
   createTerminal: data => client.post('/admin/apple-purchase-sync/v1/terminals', data),
   updateTerminal: (terminalId, data) =>

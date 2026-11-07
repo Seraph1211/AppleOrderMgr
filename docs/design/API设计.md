@@ -1317,3 +1317,15 @@ status 为 missing/active/invalidated；errors 仅给行号、字段、错误码
 - 写入成功只在事务提交后返回；同 ID 同内容按重复成功，同 ID 异内容返回 409 并整批回滚。机器端 429／503 带 `Retry-After`。
 
 生产基址、非敏感终端 ID 和一次性 Token 安全交付方式在真实联调阶段确定；源码和文档不得写入 Token 或真实敏感载荷。
+
+## ApplePurchase 独立有货查询（2026-11-07）
+
+独立网页使用 `/inventory/availability`，访问需要网页登录及 `inventory.read`。网页查询沿用同步 schema 的专用只读连接，原 v1 事件、游标和终端接口契约保持原样。
+
+| GET 路径（`/api/apple-purchase-inventory/v1` 下） | 查询与返回 |
+| --- | --- |
+| `/availability/options` | 返回实际记录中的城市、门店、机型代码、颜色、容量、终端名称，已同步检测时间范围、最近成功同步时间和十进制 `snapshot`。 |
+| `/availability/records` | 必传 `snapshot`。可用 `from`、`to`（三位毫秒 UTC，包含边界），以及 `city`、`storeId`、`family`、`color`、`storage`、`terminalId`。分类参数可重复，同类取并集，不同类取交集。页长 `limit` 为 20、50、100、200（默认 20），按检测时间、入库序号倒序，游标绑定筛选、快照及页长。返回匹配总数、明细和下一页游标。 |
+| `/availability/trend` | 复用筛选及 `snapshot`，`from`、`to` 必传。以 `interval=hour\|day` 按北京时间整点或自然日对机型计数，返回有匹配记录的时间桶。小时范围最多 31 天，按天最多 366 天。 |
+
+同一快照下，明细与趋势统计每条匹配记录各计一次。统计范围以 PP 已收录记录的检测时间范围为限，范围外留空。已同步历史范围用于展示来源边界。新版本通过既有 SSE 提示刷新。

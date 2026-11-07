@@ -264,6 +264,34 @@
         "代抢费用（元）",
         "未登记"
       ]
+    },
+    {
+      "id": "apple-purchase-availability",
+      "source": {
+        "frontend/src/App.jsx": [
+          "path=\"/inventory/availability\"",
+          "ApplePurchaseAvailability"
+        ],
+        "frontend/src/pages/ApplePurchaseAvailability.jsx": [
+          "PAGE_SIZES = [20, 50, 100, 200]",
+          "subscribeApplePurchaseInventory"
+        ],
+        "src/routes/applePurchaseInventory.js": [
+          "/availability/options",
+          "/availability/records",
+          "/availability/trend"
+        ],
+        "src/services/applePurchaseInventoryQueryService.js": [
+          "o.response_received_at DESC, o.sequence DESC",
+          "AT TIME ZONE 'Asia/Shanghai'"
+        ]
+      },
+      "frontendTokens": [
+        "/inventory/availability",
+        "趋势统计",
+        "每页条数",
+        "PP 同步记录"
+      ]
     }
   ]
 }

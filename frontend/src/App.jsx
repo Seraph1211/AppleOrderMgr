@@ -37,6 +37,7 @@ import { PERMISSIONS } from './constants/permissions';
 import { useAuth } from './contexts/AuthContext';
 
 const Stock = lazy(() => import('./pages/Stock'));
+const ApplePurchaseAvailability = lazy(() => import('./pages/ApplePurchaseAvailability'));
 
 function stockPage(element) {
   return (
@@ -263,6 +264,24 @@ function App() {
       <Route path="/quote/duo" element={<PublicDuoQuotes />} />
       <Route path="/quote/duo/history" element={<DuoQuoteHistory />} />
       <Route path="/quote/iphone18" element={<Navigate to="/quote/apple" replace />} />
+      <Route
+        path="/inventory/availability"
+        element={
+          <AuthProvider>
+            <ProtectedRoute requiredPermission={PERMISSIONS.INVENTORY_READ}>
+              <Suspense
+                fallback={<p role="status" className="py-8 text-center">正在加载有货记录…</p>}
+              >
+                <ApplePurchaseAvailability />
+              </Suspense>
+            </ProtectedRoute>
+          </AuthProvider>
+        }
+      />
+      <Route
+        path="/inventory/availability-preview"
+        element={<Navigate to="/inventory/availability" replace />}
+      />
       <Route path="/*" element={<ManagementApp />} />
     </Routes>
   );

@@ -316,10 +316,7 @@ describeDb('ApplePurchase 同步隔离 PostgreSQL', () => {
       return items;
     };
 
-    for (const listPage of [
-      queryService.listObservations,
-      queryService.listMonitorChanges,
-    ]) {
+    for (const listPage of [queryService.listObservations, queryService.listMonitorChanges]) {
       const ascending = await collectPages(listPage, 'asc');
       const descending = await collectPages(listPage, 'desc');
       expect(ascending.map(item => item.sequence)).toEqual(sequences);
@@ -371,7 +368,12 @@ describeDb('ApplePurchase 同步隔离 PostgreSQL', () => {
 
     const fixedCases = [
       [queryService.listObservations, 'asc', fixedPages.observationsAsc, sequences],
-      [queryService.listObservations, 'desc', fixedPages.observationsDesc, [...sequences].reverse()],
+      [
+        queryService.listObservations,
+        'desc',
+        fixedPages.observationsDesc,
+        [...sequences].reverse(),
+      ],
       [queryService.listMonitorChanges, 'asc', fixedPages.monitorChangesAsc, sequences],
       [
         queryService.listMonitorChanges,
@@ -422,5 +424,82 @@ describeDb('ApplePurchase 同步隔离 PostgreSQL', () => {
       { type: QueryTypes.SELECT }
     );
     expect(history.count).toBeGreaterThan(0);
+  });
+
+  test('独立页按检测时间稳定翻页，复用快照按北京时间统计', async () => {
+    const source = await terminalService.createTerminal(
+      { name: '合成独立页终端' },
+      { id: 1 },
+      crypto.randomUUID()
+    );
+    const authenticated = await ingestService.authenticate(source.token);
+    const batch = makeBatch({ terminalId: source.terminalId });
+    const observation = batch.observations[0];
+    const dayStart = '2026-11-06T16:00:00.000Z';
+    const previousDay = '2026-11-06T15:59:59.999Z';
+    batch.monitorChanges = [];
+    batch.observations = Array.from({ length: 43 }, (_, index) => {
+      const responseReceivedAt = index === 42 ? previousDay : dayStart;
+      return {
+        ...observation,
+        observationId: `availability-${index}`,
+        responseReceivedAt,
+        responseReceivedAtMs: Date.parse(responseReceivedAt),
+        family: index === 41 ? 'availability_pro' : 'availability_duo',
+        color: index % 2 ? '夜空色' : '星光白色',
+      };
+    });
+    await ingestService.ingestBatch(batch, authenticated, source.token, crypto.randomUUID());
+
+    const catalog = await queryService.availabilityOptions();
+    expect(catalog.families).toEqual(
+      expect.arrayContaining(['availability_duo', 'availability_pro'])
+    );
+    expect(catalog.terminals).toContainEqual({ id: source.terminalId, name: '合成独立页终端' });
+    const scope = {
+      snapshot: catalog.snapshot,
+      terminalId: source.terminalId,
+      family: ['availability_duo', 'availability_pro'],
+      color: ['星光白色', '夜空色'],
+      storage: '256GB',
+      from: previousDay,
+      to: dayStart,
+    };
+    const first = await queryService.availabilityRecords(scope);
+    expect(first.total).toBe(43);
+    expect(first.items).toHaveLength(20);
+    expect(first.items[0].id).toBe('availability-41');
+    expect(first.items.every(item => typeof item.sequence === 'string')).toBe(true);
+
+    const late = makeBatch({ terminalId: source.terminalId });
+    late.observations = [{ ...batch.observations[42], observationId: 'availability-late' }];
+    late.monitorChanges = [];
+    await ingestService.ingestBatch(late, authenticated, source.token, crypto.randomUUID());
+    const second = await queryService.availabilityRecords({ ...scope, cursor: first.nextCursor });
+    const last = await queryService.availabilityRecords({ ...scope, cursor: second.nextCursor });
+    const allIds = [...first.items, ...second.items, ...last.items].map(item => item.id);
+    expect(new Set(allIds).size).toBe(43);
+    expect(allIds.at(-1)).toBe('availability-42');
+    expect(last.nextCursor).toBeNull();
+    expect(last.total).toBe(43);
+    await expect(
+      queryService.availabilityRecords({ ...scope, cursor: first.nextCursor, limit: '50' })
+    ).rejects.toMatchObject({ code: 'INVALID_CURSOR' });
+    await expect(
+      queryService.availabilityRecords({ ...scope, family: { invalid: 'value' } })
+    ).rejects.toMatchObject({ statusCode: 400 });
+
+    const daily = await queryService.availabilityTrend({ ...scope, interval: 'day' });
+    expect(daily.points).toEqual([
+      { time: '2026-11-05T16:00:00.000Z', family: 'availability_duo', count: 1 },
+      { time: dayStart, family: 'availability_duo', count: 41 },
+      { time: dayStart, family: 'availability_pro', count: 1 },
+    ]);
+    const hourly = await queryService.availabilityTrend({ ...scope, interval: 'hour' });
+    expect(hourly.points[0].time).toBe('2026-11-06T15:00:00.000Z');
+    expect(hourly.points.reduce((total, point) => total + point.count, 0)).toBe(first.total);
+    await expect(
+      queryService.availabilityTrend({ ...scope, to: '2027-01-01T00:00:00.000Z', interval: 'hour' })
+    ).rejects.toMatchObject({ code: 'TREND_RANGE_TOO_WIDE' });
   });
 });

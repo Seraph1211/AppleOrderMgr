@@ -375,4 +375,226 @@ async function highWater() {
   }
 }
 
-module.exports = { highWater, listMonitorChanges, listObservations, status };
+const AVAILABILITY_FILTER_COLUMNS = {
+  city: 'city',
+  storeId: 'store_id',
+  family: 'family',
+  color: 'color',
+  storage: 'storage',
+  terminalId: 'terminal_id',
+};
+const AVAILABILITY_PAGE_SIZES = [20, 50, 100, 200];
+const DAY_MS = 86_400_000;
+const AVAILABILITY_MAX_FILTER_VALUES = 100;
+const AVAILABILITY_MAX_FILTER_LENGTH = 128;
+const AVAILABILITY_TREND_DAYS = { hour: 31, day: 366 };
+
+function readAvailabilityFilters(query, extra) {
+  const dimensions = Object.keys(AVAILABILITY_FILTER_COLUMNS);
+  const allowed = new Set(['snapshot', 'from', 'to', ...dimensions, ...extra]);
+  if (Object.keys(query).some(key => !allowed.has(key))) {
+    throw ApiError.badRequest('存在不支持的有货查询参数');
+  }
+  const filters = {
+    snapshot: decimal(scalar(query, 'snapshot'), 'snapshot'),
+    from: scalar(query, 'from'),
+    to: scalar(query, 'to'),
+  };
+  for (const key of ['from', 'to']) {
+    const value = filters[key];
+    if (
+      value !== undefined &&
+      (!UTC_PATTERN.test(value) || Number.isNaN(Date.parse(value)) || dateIso(value) !== value)
+    ) {
+      throw ApiError.badRequest(`${key} 必须是有效的三位毫秒 UTC 时间`);
+    }
+  }
+  if (filters.from && filters.to && filters.from > filters.to) {
+    throw ApiError.badRequest('from 不能晚于 to');
+  }
+  for (const key of dimensions) {
+    const raw = query[key];
+    const values = raw === undefined ? [] : Array.isArray(raw) ? raw : [raw];
+    if (
+      values.length > AVAILABILITY_MAX_FILTER_VALUES ||
+      values.some(
+        value =>
+          typeof value !== 'string' ||
+          !value.trim() ||
+          value.length > AVAILABILITY_MAX_FILTER_LENGTH ||
+          (key === 'terminalId' && !UUID_PATTERN.test(value))
+      )
+    ) {
+      throw ApiError.badRequest(`${key} 查询值无效`);
+    }
+    filters[key] = [...new Set(values)].sort();
+  }
+  return filters;
+}
+
+function availabilityWhere(filters, replacements) {
+  const conditions = ['o.sequence <= CAST(:snapshot AS bigint)'];
+  replacements.snapshot = filters.snapshot;
+  for (const [key, operator] of [
+    ['from', '>='],
+    ['to', '<='],
+  ]) {
+    if (!filters[key]) continue;
+    conditions.push(`o.response_received_at ${operator} :${key}`);
+    replacements[key] = filters[key];
+  }
+  for (const [key, column] of Object.entries(AVAILABILITY_FILTER_COLUMNS)) {
+    addArrayFilter(conditions, replacements, `o.${column}`, key, filters[key]);
+  }
+  return conditions.join(' AND ');
+}
+
+function availabilityError(error) {
+  if (error instanceof ApiError) return error;
+  return new ApiError(503, 'DATABASE_UNAVAILABLE', '有货记录查询暂不可用');
+}
+
+/** 返回同步记录中的候选值、可查询时间范围与快照版本。 @returns {Promise<Object>} 查询选项 */
+async function availabilityOptions() {
+  try {
+    const database = getReadDatabase();
+    const [result] = await database.query(
+      `WITH stores AS (
+         SELECT DISTINCT city, store_id AS id, store_name AS name
+         FROM apple_purchase_sync.observations
+       )
+       SELECT
+         COALESCE(MAX(o.sequence), 0)::text AS snapshot,
+         MIN(o.response_received_at) AS "firstDetectedAt",
+         MAX(o.response_received_at) AS "lastDetectedAt",
+         ARRAY_AGG(DISTINCT o.city ORDER BY o.city) FILTER (WHERE o.city <> '') AS cities,
+         ARRAY_AGG(DISTINCT o.family ORDER BY o.family) AS families,
+         ARRAY_AGG(DISTINCT o.color ORDER BY o.color) FILTER (WHERE o.color <> '') AS colors,
+         ARRAY_AGG(DISTINCT o.storage ORDER BY o.storage) FILTER (WHERE o.storage <> '') AS capacities,
+         (SELECT jsonb_agg(stores ORDER BY city, name, id) FROM stores) AS stores,
+         (SELECT MAX(last_success_at) FROM apple_purchase_sync.terminals) AS "lastSyncAt",
+         (SELECT jsonb_agg(jsonb_build_object('id', id, 'name', name) ORDER BY name, id)
+            FROM apple_purchase_sync.terminals) AS terminals
+       FROM apple_purchase_sync.observations o`,
+      { type: QueryTypes.SELECT }
+    );
+    return {
+      ...result,
+      firstDetectedAt: result.firstDetectedAt ? dateIso(result.firstDetectedAt) : null,
+      lastDetectedAt: result.lastDetectedAt ? dateIso(result.lastDetectedAt) : null,
+      lastSyncAt: result.lastSyncAt ? dateIso(result.lastSyncAt) : null,
+      cities: result.cities || [],
+      families: result.families || [],
+      colors: result.colors || [],
+      capacities: result.capacities || [],
+      stores: result.stores || [],
+      terminals: result.terminals || [],
+    };
+  } catch (error) {
+    throw availabilityError(error);
+  }
+}
+
+/** 以检测时间及入库序号查询独立页面，固定快照并返回匹配总数。 @param {Object} query 筛选 @returns {Promise<Object>} 明细 */
+async function availabilityRecords(query) {
+  try {
+    const filters = readAvailabilityFilters(query, ['limit', 'cursor']);
+    const limit = Number(scalar(query, 'limit') ?? AVAILABILITY_PAGE_SIZES[0]);
+    if (!AVAILABILITY_PAGE_SIZES.includes(limit)) {
+      throw ApiError.badRequest('每页条数须为 20、50、100 或 200');
+    }
+    const filterDigest = digest({ endpoint: 'availability-records', ...filters, limit });
+    const encodedCursor = scalar(query, 'cursor');
+    const replacements = { limit: limit + 1 };
+    const where = availabilityWhere(filters, replacements);
+    let after = '';
+    if (encodedCursor !== undefined) {
+      const cursor = decodeCursor(encodedCursor);
+      if (cursor.filterDigest !== filterDigest || !cursor.detectedAt) {
+        throw new ApiError(400, 'INVALID_CURSOR', '分页游标与当前筛选不匹配');
+      }
+      replacements.lastSequence = decimal(cursor.sequence, 'sequence');
+      replacements.lastDetectedAt = cursor.detectedAt;
+      after =
+        'AND (o.response_received_at, o.sequence) < (:lastDetectedAt, CAST(:lastSequence AS bigint))';
+    }
+    const [result] = await getReadDatabase().query(
+      `SELECT
+         (SELECT COUNT(*)::text FROM apple_purchase_sync.observations o WHERE ${where}) AS total,
+         COALESCE((SELECT jsonb_agg(item ORDER BY item."detectedAt" DESC, item.sort_key DESC)
+           FROM (
+             SELECT o.sequence AS sort_key, o.sequence::text AS sequence,
+               o.response_received_at AS "detectedAt", o.ingested_at AS "ingestedAt",
+               o.observation_id AS id, o.terminal_id AS "terminalId",
+               o.city, o.store_id AS "storeId", o.store_name AS store,
+               o.family, o.color, o.storage, o.product_name AS "productName",
+               o.part_number AS "partNumber"
+             FROM apple_purchase_sync.observations o
+             WHERE ${where} ${after}
+             ORDER BY o.response_received_at DESC, o.sequence DESC
+             LIMIT :limit
+           ) item), '[]'::jsonb) AS items`,
+      { replacements, type: QueryTypes.SELECT }
+    );
+    const hasMore = result.items.length > limit;
+    const items = result.items.slice(0, limit).map(({ sort_key: _sortKey, ...item }) => ({
+      ...item,
+      detectedAt: dateIso(item.detectedAt),
+      ingestedAt: dateIso(item.ingestedAt),
+    }));
+    let nextCursor = null;
+    if (hasMore) {
+      const last = items.at(-1);
+      nextCursor = encodeCursor({
+        filterDigest,
+        sequence: last.sequence,
+        detectedAt: last.detectedAt,
+        expiresAt: Date.now() + CURSOR_TTL_MS,
+      });
+    }
+    return { items, total: Number(result.total), nextCursor };
+  } catch (error) {
+    throw availabilityError(error);
+  }
+}
+
+/** 按北京时间整点或自然日统计匹配的有货观察。 @param {Object} query 筛选 @returns {Promise<Object>} 统计时间桶 */
+async function availabilityTrend(query) {
+  try {
+    const filters = readAvailabilityFilters(query, ['interval']);
+    const interval = scalar(query, 'interval');
+    if (!['hour', 'day'].includes(interval) || !filters.from || !filters.to) {
+      throw ApiError.badRequest('统计需要开始、结束时间及 hour 或 day 粒度');
+    }
+    const maxDays = AVAILABILITY_TREND_DAYS[interval];
+    if (Date.parse(filters.to) - Date.parse(filters.from) >= maxDays * DAY_MS) {
+      throw new ApiError(400, 'TREND_RANGE_TOO_WIDE', `当前粒度最多统计 ${maxDays} 天`);
+    }
+    const replacements = { interval };
+    const where = availabilityWhere(filters, replacements);
+    const rows = await getReadDatabase().query(
+      `SELECT date_trunc(:interval, o.response_received_at AT TIME ZONE 'Asia/Shanghai')
+           AT TIME ZONE 'Asia/Shanghai' AS time,
+         o.family, COUNT(*)::text AS count
+       FROM apple_purchase_sync.observations o
+       WHERE ${where}
+       GROUP BY 1, 2 ORDER BY 1, 2`,
+      { replacements, type: QueryTypes.SELECT }
+    );
+    return {
+      points: rows.map(row => ({ ...row, time: dateIso(row.time), count: Number(row.count) })),
+    };
+  } catch (error) {
+    throw availabilityError(error);
+  }
+}
+
+module.exports = {
+  highWater,
+  listMonitorChanges,
+  listObservations,
+  status,
+  availabilityOptions,
+  availabilityRecords,
+  availabilityTrend,
+};
